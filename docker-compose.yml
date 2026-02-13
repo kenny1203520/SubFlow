@@ -12,5 +12,12 @@ services:
     volumes:
       - db_data:/var/lib/postgresql
 
+  adminer:
+    image: adminer
+    container_name: subflow_adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+
 volumes:
   db_data:
