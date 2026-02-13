@@ -1,22 +1,13 @@
 <script setup lang="ts">
-import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
+import { useLayoutStore } from '../stores/layout';
 import { useI18n } from 'vue-i18n';
 
 const router = useRouter();
 const authStore = useAuthStore();
-const isSidebarOpen = ref(false); // For mobile
-const isCollapsed = ref(false); // For desktop
+const layoutStore = useLayoutStore();
 const { t, locale } = useI18n();
-
-const toggleSidebar = () => {
-    isSidebarOpen.value = !isSidebarOpen.value;
-};
-
-const toggleCollapse = () => {
-    isCollapsed.value = !isCollapsed.value;
-};
 
 const setLanguage = (lang: string) => {
     locale.value = lang;
@@ -32,7 +23,7 @@ const logout = async () => {
     <div class="app-layout">
         <!-- Mobile Header -->
         <header class="mobile-header lg:hidden">
-            <button @click="toggleSidebar" class="menu-btn">
+            <button @click="layoutStore.toggleSidebar" class="menu-btn">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
                     stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
@@ -42,33 +33,30 @@ const logout = async () => {
         </header>
 
         <!-- Sidebar Overlay (Mobile) -->
-        <div v-if="isSidebarOpen" @click="isSidebarOpen = false" class="overlay lg:hidden"></div>
+        <div v-if="layoutStore.isSidebarOpen" @click="layoutStore.closeSidebar" class="overlay lg:hidden"></div>
 
         <!-- Sidebar -->
-        <aside :class="['sidebar', { 'open': isSidebarOpen, 'collapsed': isCollapsed }]">
+        <aside :class="['sidebar', { 'open': layoutStore.isSidebarOpen, 'collapsed': layoutStore.isCollapsed }]">
             <div class="sidebar-header">
-                <div class="logo-area" v-if="!isCollapsed">
+                <div class="logo-area">
                     <div class="logo-icon">S</div>
-                    <span class="logo-text">SubFlow</span>
-                </div>
-                <div class="logo-area justify-center w-full" v-else>
-                    <div class="logo-icon">S</div>
+                    <span class="logo-text hide-on-collapsed">SubFlow</span>
                 </div>
 
                 <!-- Desktop Collapse Button -->
-                <button @click="toggleCollapse" class="collapse-btn hidden lg:flex"
-                    :title="isCollapsed ? 'Expand' : 'Collapse'">
+                <button @click="layoutStore.toggleCollapse" class="collapse-btn"
+                    :title="layoutStore.isCollapsed ? t('common.actions.expand') : t('common.actions.collapse')">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
                         stroke="currentColor">
-                        <path v-if="!isCollapsed" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                        <path v-if="!layoutStore.isCollapsed" stroke-linecap="round" stroke-linejoin="round"
+                            stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
                         <path v-else stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                     </svg>
                 </button>
 
                 <!-- Mobile Close Button -->
-                <button @click="toggleSidebar" class="close-btn lg:hidden">
+                <button @click="layoutStore.toggleSidebar" class="close-btn lg:hidden">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
                         stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
@@ -78,56 +66,53 @@ const logout = async () => {
             </div>
 
             <nav class="nav-links">
-                <router-link to="/dashboard" class="nav-item" @click="isSidebarOpen = false"
+                <router-link to="/dashboard" class="nav-item" @click="layoutStore.closeSidebar"
                     :title="t('dashboard.dashboard')">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
                         viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
                     </svg>
-                    <span v-if="!isCollapsed" class="nav-text">{{ t('dashboard.dashboard') }}</span>
+                    <span class="nav-text hide-on-collapsed">{{ t('dashboard.dashboard') }}</span>
                 </router-link>
-                <router-link to="/groups" class="nav-item" @click="isSidebarOpen = false"
+                <router-link to="/groups" class="nav-item" @click="layoutStore.closeSidebar"
                     :title="t('dashboard.groups')">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
                         viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                     </svg>
-                    <span v-if="!isCollapsed" class="nav-text">{{ t('dashboard.groups') }}</span>
+                    <span class="nav-text hide-on-collapsed">{{ t('dashboard.groups') }}</span>
                 </router-link>
-                <router-link to="/subscriptions" class="nav-item" @click="isSidebarOpen = false"
+                <router-link to="/subscriptions" class="nav-item" @click="layoutStore.closeSidebar"
                     :title="t('dashboard.subscriptions')">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
                         viewBox="0 0 24 24" stroke="currentColor">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                             d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
                     </svg>
-                    <span v-if="!isCollapsed" class="nav-text">{{ t('dashboard.subscriptions') }}</span>
+                    <span class="nav-text hide-on-collapsed">{{ t('dashboard.subscriptions') }}</span>
                 </router-link>
             </nav>
 
             <div class="sidebar-footer">
                 <!-- Language Switcher -->
-                <div class="lang-switcher" :class="{ 'collapsed': isCollapsed }">
+                <div class="lang-switcher" :class="{ 'collapsed': layoutStore.isCollapsed }">
                     <button :class="['lang-opt', { active: locale === 'zh' }]" @click="setLanguage('zh')">
-                        {{ isCollapsed ? '中' : '中文' }}
+                        <span class="full-text">中文</span>
+                        <span class="short-text">中</span>
                     </button>
                     <button :class="['lang-opt', { active: locale === 'en' }]" @click="setLanguage('en')">
-                        {{ isCollapsed ? 'EN' : 'EN' }}
+                        EN
                     </button>
                 </div>
 
                 <!-- User Profile -->
-                <div class="user-profile" v-if="authStore.user" :class="{ 'collapsed': isCollapsed }">
-                    <div class="user-info" v-if="!isCollapsed">
-                        <div class="avatar">{{ authStore.user.username[0].toUpperCase() }}</div>
-                        <div class="details">
-                            <span class="username">{{ authStore.user.username }}</span>
-                        </div>
+                <div class="user-profile" v-if="authStore.user" :class="{ 'collapsed': layoutStore.isCollapsed }">
+                    <div class="avatar">{{ authStore.user.username[0].toUpperCase() }}</div>
+                    <div class="user-info hide-on-collapsed">
+                        <span class="username">{{ authStore.user.username }}</span>
                     </div>
-                    <div class="avatar" v-else :title="authStore.user.username">{{
-                        authStore.user.username[0].toUpperCase() }}</div>
 
                     <button @click="logout" class="logout-icon-btn" :title="t('common.actions.logout')">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
@@ -141,7 +126,7 @@ const logout = async () => {
         </aside>
 
         <!-- Main Content -->
-        <main :class="['main-content', { 'sidebar-collapsed': isCollapsed }]">
+        <main :class="['main-content', { 'sidebar-collapsed': layoutStore.isCollapsed }]">
             <div class="container">
                 <slot></slot>
             </div>
@@ -216,17 +201,26 @@ const logout = async () => {
     border-radius: 50%;
     color: white;
     border: 2px solid var(--bg-sidebar);
-    display: flex;
+    display: none;
+    /* Hidden on mobile */
     align-items: center;
     justify-content: center;
     cursor: pointer;
     z-index: 100;
 }
 
+@media (min-width: 1024px) {
+    .collapse-btn {
+        display: flex;
+        /* Shown on desktop */
+    }
+}
+
 .logo-area {
     display: flex;
     align-items: center;
     gap: 0.75rem;
+    overflow: hidden;
 }
 
 .logo-icon {
@@ -268,11 +262,14 @@ const logout = async () => {
     font-weight: 500;
     text-decoration: none;
     white-space: nowrap;
+    overflow: hidden;
 }
 
-.sidebar.collapsed .nav-item {
-    justify-content: center;
-    padding: 0.75rem;
+@media (min-width: 1024px) {
+    .sidebar.collapsed .nav-item {
+        justify-content: center;
+        padding: 0.75rem;
+    }
 }
 
 .nav-item:hover {
@@ -303,11 +300,6 @@ const logout = async () => {
     transition: all 0.3s;
 }
 
-.lang-switcher.collapsed {
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
 .lang-opt {
     flex: 1;
     background: none;
@@ -319,6 +311,25 @@ const logout = async () => {
     border-radius: var(--radius-sm);
     cursor: pointer;
     transition: all 0.2s;
+}
+
+.lang-opt .short-text {
+    display: none;
+}
+
+@media (min-width: 1024px) {
+    .lang-switcher.collapsed {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .lang-switcher.collapsed .lang-opt .full-text {
+        display: none;
+    }
+
+    .lang-switcher.collapsed .lang-opt .short-text {
+        display: inline;
+    }
 }
 
 .lang-opt.active {
@@ -339,9 +350,11 @@ const logout = async () => {
     padding-top: 0.5rem;
 }
 
-.user-profile.collapsed {
-    flex-direction: column;
-    gap: 1rem;
+@media (min-width: 1024px) {
+    .user-profile.collapsed {
+        flex-direction: column;
+        gap: 1rem;
+    }
 }
 
 .user-info {
@@ -393,6 +406,13 @@ const logout = async () => {
 .logout-icon-btn:hover {
     background-color: rgba(239, 68, 68, 0.1);
     color: var(--danger-color);
+}
+
+/* Visibility Utilities */
+@media (min-width: 1024px) {
+    .sidebar.collapsed .hide-on-collapsed {
+        display: none;
+    }
 }
 
 /* Mobile Header */

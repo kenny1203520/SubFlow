@@ -308,7 +308,15 @@ svg {
     display: none;
 }
 
+.lg\:hidden {
+    display: flex;
+}
+
 @media (min-width: 1024px) {
+    .lg\:hidden {
+        display: none !important;
+    }
+
     .lg\:flex {
         display: flex !important;
     }
