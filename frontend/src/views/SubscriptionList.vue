@@ -2,7 +2,9 @@
 import { ref, onMounted } from 'vue';
 import { socket } from '../socket';
 import MainLayout from './MainLayout.vue';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const subscriptions = ref<any[]>([]);
 const loading = ref(true);
 
@@ -38,13 +40,13 @@ onMounted(() => {
 <template>
     <MainLayout>
         <div class="header">
-            <h1>My Subscriptions</h1>
+            <h1>{{ t('subscriptions.title') }}</h1>
         </div>
 
-        <div v-if="loading" class="state">Loading subscriptions...</div>
+        <div v-if="loading" class="state">{{ t('subscriptions.loading') }}</div>
 
         <div v-else-if="subscriptions.length === 0" class="empty-state">
-            <p>No active subscriptions found in your groups.</p>
+            <p>{{ t('subscriptions.noSubscriptions') }}</p>
         </div>
 
         <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -52,26 +54,27 @@ onMounted(() => {
                 <div class="sub-header">
                     <div class="sub-title">
                         <h3>{{ sub.name }}</h3>
-                        <span :class="['status-badge', sub.status]">{{ sub.status }}</span>
+                        <span :class="['status-badge', sub.status]">{{ t(`subscriptions.${sub.status}`) }}</span>
                     </div>
                 </div>
                 <div class="amount-display">
-                    ${{ sub.amount }} <span class="cycle">/ {{ sub.cycle }}</span>
+                    ${{ sub.amount }} <span class="cycle">/ {{ t(`subscriptions.cycle`) }}: {{ sub.cycle }}</span>
                 </div>
 
                 <div class="sub-details">
-                    <p>Next payment: <strong>{{ sub.next_payment_date ? new
+                    <p>{{ t('subscriptions.nextPayment') }}: <strong>{{ sub.next_payment_date ? new
                         Date(sub.next_payment_date).toLocaleDateString() : 'N/A' }}</strong></p>
                 </div>
 
                 <div class="sub-actions">
                     <button v-if="sub.status === 'active'" @click="updateStatus(sub.id, 'paused')"
-                        class="btn btn-pause">Pause</button>
+                        class="btn btn-pause">{{ t('subscriptions.pause') }}</button>
                     <button v-if="sub.status === 'paused'" @click="updateStatus(sub.id, 'active')"
-                        class="btn btn-activate">Activate</button>
+                        class="btn btn-activate">{{ t('subscriptions.activate') }}</button>
                     <button v-if="sub.status !== 'cancelled'" @click="updateStatus(sub.id, 'cancelled')"
-                        class="btn btn-cancel">Cancel</button>
-                    <button v-if="sub.status === 'cancelled'" disabled class="btn btn-disabled">Cancelled</button>
+                        class="btn btn-cancel">{{ t('subscriptions.cancel') }}</button>
+                    <button v-if="sub.status === 'cancelled'" disabled class="btn btn-disabled">{{
+                        t('subscriptions.cancelled') }}</button>
                 </div>
             </div>
         </div>

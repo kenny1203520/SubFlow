@@ -1,0 +1,29 @@
+{
+    "appName": "SubFlow",
+    "actions": {
+        "create": "Create",
+        "add": "Add",
+        "cancel": "Cancel",
+        "delete": "Delete",
+        "edit": "Edit",
+        "save": "Save",
+        "login": "Login",
+        "signup": "Sign Up",
+        "logout": "Logout",
+        "back": "Back",
+        "submit": "Submit"
+    },
+    "status": {
+        "loading": "Loading...",
+        "success": "Success",
+        "error": "Error",
+        "empty": "No data found",
+        "loadingMore": "Loading more..."
+    },
+    "placeholders": {
+        "email": "Email Address",
+        "name": "Name",
+        "amount": "0.00",
+        "description": "e.g. Dinner, Groceries"
+    }
+}

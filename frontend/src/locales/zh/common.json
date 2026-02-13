@@ -1,0 +1,29 @@
+{
+    "appName": "SubFlow",
+    "actions": {
+        "create": "新建",
+        "add": "添加",
+        "cancel": "取消",
+        "delete": "刪除",
+        "edit": "編輯",
+        "save": "保存",
+        "login": "登錄",
+        "signup": "註冊",
+        "logout": "登出",
+        "back": "返回",
+        "submit": "提交"
+    },
+    "status": {
+        "loading": "加載中...",
+        "success": "成功",
+        "error": "錯誤",
+        "empty": "暫無數據",
+        "loadingMore": "加載更多..."
+    },
+    "placeholders": {
+        "email": "電子郵件地址",
+        "name": "名稱",
+        "amount": "0.00",
+        "description": "例如：晚餐、雜貨"
+    }
+}

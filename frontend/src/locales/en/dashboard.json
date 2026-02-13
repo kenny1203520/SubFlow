@@ -1,0 +1,13 @@
+{
+    "dashboard": "Dashboard",
+    "groups": "Groups",
+    "subscriptions": "Subscriptions",
+    "totalOwed": "Total Owed",
+    "totalOwedToYou": "Total Owed to You",
+    "activeSubscriptions": "Active Subscriptions",
+    "recentActivity": "Recent Activity",
+    "welcomeBack": "Welcome back, {name}",
+    "noActivity": "No recent activity.",
+    "youOwe": "You owe money",
+    "peopleOweYou": "People owe you"
+}

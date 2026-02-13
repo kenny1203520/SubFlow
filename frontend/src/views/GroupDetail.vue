@@ -5,7 +5,9 @@ import { socket } from '../socket';
 import { useAuthStore } from '../stores/auth';
 import AddExpenseModal from '../components/AddExpenseModal.vue';
 import MainLayout from './MainLayout.vue';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const authStore = useAuthStore();
 
 const route = useRoute();
@@ -64,7 +66,7 @@ const handleExpenseAdded = () => {
 };
 
 const settleExpense = (expenseId: string, userId: string) => {
-    if (!confirm('Mark this debt as settled?')) return;
+    if (!confirm(t('groups.confirmSettle'))) return;
     socket.emit('expense:settle', { expenseId, userId }, (res: any) => {
         if (res.status === 'ok') {
             fetchData();
@@ -93,13 +95,23 @@ const addMember = () => {
         <div class="group-detail" v-if="!loading && group">
             <header class="header">
                 <div class="title-section">
-                    <button @click="router.push('/groups')" class="back-btn">← Back</button>
+                    <button @click="router.push('/groups')" class="back-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                        {{ t('groups.backToGroups') }}
+                    </button>
                     <h1>{{ group.name }}</h1>
                 </div>
                 <div class="actions">
-                    <button @click="showAddMember = !showAddMember" class="btn btn-secondary add-member-btn">Add
-                        Member</button>
-                    <button @click="showAddExpense = true" class="btn btn-primary">Add Expense</button>
+                    <button @click="showAddMember = !showAddMember" class="btn btn-secondary add-member-btn">
+                        {{ t('groups.addMember') }}
+                    </button>
+                    <button @click="showAddExpense = true" class="btn btn-primary">
+                        {{ t('groups.addExpense') }}
+                    </button>
                 </div>
             </header>
 
@@ -107,11 +119,12 @@ const addMember = () => {
                 @close="showAddExpense = false" @added="handleExpenseAdded" />
 
             <div v-if="showAddMember" class="add-member-form card">
-                <h3>Invite New Member</h3>
+                <h3>{{ t('groups.inviteNewMember') }}</h3>
                 <div class="form-row">
-                    <input v-model="newMemberEmail" type="email" placeholder="Member Email" class="input" />
-                    <button @click="addMember" class="btn btn-primary">Invite</button>
-                    <button @click="showAddMember = false" class="btn btn-text">Cancel</button>
+                    <input v-model="newMemberEmail" type="email" :placeholder="t('groups.memberEmail')" class="input" />
+                    <button @click="addMember" class="btn btn-primary">{{ t('common.actions.add') }}</button>
+                    <button @click="showAddMember = false" class="btn btn-text">{{ t('common.actions.cancel')
+                        }}</button>
                 </div>
             </div>
 
@@ -120,11 +133,11 @@ const addMember = () => {
                 <div class="lg:col-span-2 space-y-8">
                     <section class="expenses-section">
                         <div class="section-header">
-                            <h2>Expenses</h2>
+                            <h2>{{ t('groups.expenses') }}</h2>
                         </div>
 
                         <div v-if="expenses.length === 0" class="empty-state">
-                            No expenses recorded yet.
+                            {{ t('groups.noExpenses') }}
                         </div>
                         <div v-else class="expense-list">
                             <div v-for="expense in expenses" :key="expense.id" class="expense-card card">
@@ -141,11 +154,11 @@ const addMember = () => {
 
                     <section class="debts-section">
                         <div class="section-header">
-                            <h2>Unpaid Debts</h2>
+                            <h2>{{ t('groups.unpaidDebts') }}</h2>
                         </div>
 
                         <div v-if="splits.length === 0" class="empty-state">
-                            All settled! No outstanding debts.
+                            {{ t('groups.settled') }}
                         </div>
                         <div v-else class="split-list">
                             <div v-for="split in splits" :key="split.expense_id + split.user_id"
@@ -153,20 +166,20 @@ const addMember = () => {
                                 <div class="split-info">
                                     <div class="split-text">
                                         <span class="user-highlight">{{(members.find(m => m.id ===
-                                            split.user_id))?.username }}</span>
-                                        owes
+                                            split.user_id))?.username}}</span>
+                                        {{ t('groups.owe') }}
                                         <span class="user-highlight">{{ split.payer_name }}</span>
                                     </div>
                                     <div class="amount-row">
                                         <span class="amount text-danger">${{ split.amount_owed }}</span>
-                                        <span class="reason">For: {{ split.description }}</span>
+                                        <span class="reason">{{ t('groups.for') }}: {{ split.description }}</span>
                                     </div>
                                 </div>
                                 <button
                                     v-if="split.user_id === authStore.user?.id || group.created_by === authStore.user?.id"
                                     @click="settleExpense(split.expense_id, split.user_id)"
                                     class="btn btn-sm btn-success">
-                                    Settle
+                                    {{ t('groups.settle') }}
                                 </button>
                             </div>
                         </div>
@@ -176,7 +189,7 @@ const addMember = () => {
                 <!-- Sidebar: Members -->
                 <aside class="members-sidebar">
                     <div class="card">
-                        <h2>Members</h2>
+                        <h2>{{ t('groups.members') }}</h2>
                         <ul class="member-list">
                             <li v-for="member in members" :key="member.id" class="member-item">
                                 <div class="member-avatar">{{ member.username[0].toUpperCase() }}</div>
@@ -190,7 +203,7 @@ const addMember = () => {
                 </aside>
             </div>
         </div>
-        <div v-else-if="loading" class="state-container">Loading group details...</div>
+        <div v-else-if="loading" class="state-container">{{ t('common.status.loading') }}</div>
         <div v-else class="state-container error">{{ error }}</div>
     </MainLayout>
 </template>

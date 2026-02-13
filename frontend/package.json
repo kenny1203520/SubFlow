@@ -15,6 +15,7 @@
         "socket.io-client": "^4.8.3",
         "socket.io-msgpack-parser": "^3.0.2",
         "vue": "^3.5.25",
+        "vue-i18n": "^11.2.8",
         "vue-router": "^5.0.2"
     },
     "devDependencies": {
