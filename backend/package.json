@@ -18,9 +18,12 @@
         "express": "^5.2.1",
         "lucia": "^3.2.2",
         "oslo": "^1.2.1",
-        "pg": "^8.18.0"
+        "pg": "^8.18.0",
+        "socket.io": "^4.8.3",
+        "socket.io-msgpack-parser": "^3.0.2"
     },
     "devDependencies": {
+        "@types/cookie": "^0.6.0",
         "@types/cors": "^2.8.19",
         "@types/express": "^5.0.6",
         "@types/node": "^25.2.3",
