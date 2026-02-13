@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import axios from 'axios';
+import http from '../http';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 
@@ -21,19 +21,19 @@ const handleSubmit = async () => {
     errorMsg.value = '';
     try {
         if (isLogin.value) {
-            const res = await axios.post('/auth/signin', {
+            const res = await http.post('/auth/signin', {
                 username: username.value,
                 password: password.value
             });
-            authStore.setUser(res.data);
+            authStore.setUser(res.data.user); // Ensure we pass the user object, often nested in response
             router.push('/dashboard');
         } else {
-            const res = await axios.post('/auth/signup', {
+            const res = await http.post('/auth/signup', {
                 username: username.value,
                 email: email.value,
                 password: password.value
             });
-            authStore.setUser(res.data);
+            authStore.setUser(res.data.user || res.data); // Handle potential response structure
             router.push('/dashboard');
         }
     } catch (err: any) {
