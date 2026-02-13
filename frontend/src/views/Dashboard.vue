@@ -1,22 +1,26 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted } from 'vue';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
+import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
-const user = ref<any>(null);
+const authStore = useAuthStore();
 
 onMounted(async () => {
-    try {
-        const res = await axios.get('/auth/user');
-        user.value = res.data;
-    } catch (err) {
-        router.push('/auth');
+    if (!authStore.user) {
+        try {
+            const res = await axios.get('/auth/user');
+            authStore.setUser(res.data);
+        } catch (err) {
+            router.push('/auth');
+        }
     }
 });
 
 const logout = async () => {
     await axios.post('/auth/signout');
+    authStore.clearUser();
     router.push('/auth');
 };
 </script>
@@ -30,8 +34,8 @@ const logout = async () => {
             <router-link to="/groups" class="nav-item">Groups</router-link>
             <router-link to="/subscriptions" class="nav-item">Subscriptions</router-link>
         </nav>
-        <div class="user-info" v-if="user">
-            <p>{{ user.username }}</p>
+        <div class="user-info" v-if="authStore.user">
+            <p>{{ (authStore.user as any).username }}</p>
             <button @click="logout" class="logout-btn">Logout</button>
         </div>
     </aside>

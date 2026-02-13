@@ -2,12 +2,10 @@
 import { ref } from 'vue';
 import axios from 'axios';
 import { useRouter } from 'vue-router';
-
-// Configure axios defaults
-axios.defaults.baseURL = 'http://localhost:3000';
-axios.defaults.withCredentials = true;
+import { useAuthStore } from '../stores/auth';
 
 const router = useRouter();
+const authStore = useAuthStore();
 const isLogin = ref(true);
 const username = ref('');
 const email = ref('');
@@ -23,21 +21,19 @@ const handleSubmit = async () => {
     errorMsg.value = '';
     try {
         if (isLogin.value) {
-            await axios.post('/auth/signin', {
+            const res = await axios.post('/auth/signin', {
                 username: username.value,
                 password: password.value
             });
+            authStore.setUser(res.data);
             router.push('/dashboard');
         } else {
-            await axios.post('/auth/signup', {
+            const res = await axios.post('/auth/signup', {
                 username: username.value,
                 email: email.value,
                 password: password.value
             });
-            // Auto login or ask to login? Let's just switch to login mode or auto-login.
-            // For simplicity, let's ask to login
-            isLogin.value = true; 
-            // OR auto login if the backend set the cookie on signup (which it does in my code)
+            authStore.setUser(res.data);
             router.push('/dashboard');
         }
     } catch (err: any) {

@@ -6,6 +6,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 
 import Auth from './views/Auth.vue'
 import Dashboard from './views/Dashboard.vue'
+import GroupList from './views/GroupList.vue'
+import GroupDetail from './views/GroupDetail.vue'
+import SubscriptionList from './views/SubscriptionList.vue'
 
 const routes = [
     { path: '/', redirect: '/dashboard' },
@@ -15,8 +18,9 @@ const routes = [
         component: Dashboard,
         meta: { requiresAuth: true }
     },
-    { path: '/groups', component: { template: '<div>Groups Placeholder</div>' } },
-    { path: '/subscriptions', component: { template: '<div>Subscriptions Placeholder</div>' } },
+    { path: '/groups', component: GroupList, meta: { requiresAuth: true } },
+    { path: '/groups/:id', component: GroupDetail, meta: { requiresAuth: true } },
+    { path: '/subscriptions', component: SubscriptionList, meta: { requiresAuth: true } },
 ]
 
 const router = createRouter({
@@ -25,7 +29,7 @@ const router = createRouter({
 })
 
 // Simple Route Guard
-router.beforeEach((to, from, next) => {
+router.beforeEach((_to, _from, next) => {
     next();
 });
 
