@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { pool } from './db';
 import parser from 'socket.io-msgpack-parser';
 import { lucia } from './auth/lucia';
 import { parse } from 'cookie';
@@ -70,6 +71,49 @@ io.on("connection", (socket) => {
     registerGroupHandlers(io, socket);
     registerExpenseHandlers(io, socket);
     registerSubscriptionHandlers(io, socket);
+
+    socket.on("dashboard:stats", async (cb: (res: any) => void) => {
+        try {
+            const userId = socket.data.user.id;
+
+            // Total Owed TO you (people owe you money)
+            const owedToMeRes = await pool.query(
+                `SELECT SUM(es.amount_owed) as total
+                 FROM expense_splits es
+                 JOIN expenses e ON es.expense_id = e.id
+                 WHERE e.paid_by = $1 AND es.user_id != $1 AND es.is_paid = false`,
+                [userId]
+            );
+
+            // Total YOU owe (you owe people money)
+            const iOweRes = await pool.query(
+                `SELECT SUM(es.amount_owed) as total
+                 FROM expense_splits es
+                 WHERE es.user_id = $1 AND es.is_paid = false`,
+                [userId]
+            );
+
+            // Active subscriptions count
+            const subCountRes = await pool.query(
+                `SELECT COUNT(*) as count FROM subscriptions s
+                 JOIN group_members gm ON s.group_id = gm.group_id
+                 WHERE gm.user_id = $1 AND s.status = 'active'`,
+                [userId]
+            );
+
+            cb({
+                status: "ok",
+                stats: {
+                    totalOwedToMe: parseFloat(owedToMeRes.rows[0].total || 0),
+                    totalIOwe: parseFloat(iOweRes.rows[0].total || 0),
+                    activeSubscriptions: parseInt(subCountRes.rows[0].count || 0)
+                }
+            });
+        } catch (error) {
+            console.error("Error getting dashboard stats:", error);
+            cb({ status: "error", message: "Failed to fetch stats" });
+        }
+    });
 
     socket.on("ping", (cb) => {
         cb("pong");

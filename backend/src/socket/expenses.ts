@@ -49,4 +49,39 @@ export const registerExpenseHandlers = (io: Server, socket: Socket) => {
             cb({ status: "error", message: "Failed to list expenses" });
         }
     });
+
+    socket.on("expense:get_splits", async (payload: { groupId: string }, cb: (res: any) => void) => {
+        try {
+            const res = await pool.query(
+                `SELECT es.*, e.description, e.date, u.username as payer_name 
+                 FROM expense_splits es
+                 JOIN expenses e ON es.expense_id = e.id
+                 JOIN users u ON e.paid_by = u.id
+                 WHERE e.group_id = $1 AND es.is_paid = false`,
+                [payload.groupId]
+            );
+            cb({ status: "ok", splits: res.rows });
+        } catch (error) {
+            console.error("Error getting splits:", error);
+            cb({ status: "error", message: "Failed to get splits" });
+        }
+    });
+
+    socket.on("expense:settle", async (payload: { expenseId: string, userId: string }, cb: (res: any) => void) => {
+        try {
+            // Only the person who owes can mark it as paid, or the admin? 
+            // For now, let local user settle their own debt or admin settle any.
+            const updaterId = socket.data.user.id;
+
+            await pool.query(
+                "UPDATE expense_splits SET is_paid = true WHERE expense_id = $1 AND user_id = $2",
+                [payload.expenseId, payload.userId]
+            );
+
+            cb({ status: "ok" });
+        } catch (error) {
+            console.error("Error settling expense:", error);
+            cb({ status: "error", message: "Failed to settle expense" });
+        }
+    });
 };

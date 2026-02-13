@@ -44,4 +44,21 @@ export const registerSubscriptionHandlers = (io: Server, socket: Socket) => {
             cb({ status: "error", message: "Failed to list subscriptions" });
         }
     });
+    socket.on("subscription:update_status", async (payload: { subscriptionId: string, status: string }, cb: (res: any) => void) => {
+        try {
+            const allowedStatus = ["active", "paused", "cancelled"];
+            if (!allowedStatus.includes(payload.status)) {
+                return cb({ status: "error", message: "Invalid status" });
+            }
+
+            await pool.query(
+                "UPDATE subscriptions SET status = $1 WHERE id = $2",
+                [payload.status, payload.subscriptionId]
+            );
+            cb({ status: "ok" });
+        } catch (error) {
+            console.error("Error updating subscription status:", error);
+            cb({ status: "error", message: "Failed to update status" });
+        }
+    });
 };
