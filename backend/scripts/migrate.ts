@@ -5,12 +5,22 @@ import path from 'path';
 async function migrate() {
     const client = await pool.connect();
     try {
-        const schemaPath = path.join(__dirname, '../db/schema.sql');
-        const schemaSql = fs.readFileSync(schemaPath, 'utf8');
+        const dbDir = path.join(__dirname, '../db');
+        const files = fs.readdirSync(dbDir)
+            .filter(file => file.endsWith('.sql'))
+            .sort();
 
-        console.log('Running migration...');
+        console.log(`Found ${files.length} migration files.`);
+
         await client.query("BEGIN");
-        await client.query(schemaSql);
+
+        for (const file of files) {
+            const filePath = path.join(dbDir, file);
+            const sql = fs.readFileSync(filePath, 'utf8');
+            console.log(`Executing ${file}...`);
+            await client.query(sql);
+        }
+
         await client.query("COMMIT");
         console.log('Migration completed successfully.');
     } catch (error) {
@@ -24,3 +34,4 @@ async function migrate() {
 }
 
 migrate();
+

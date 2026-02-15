@@ -14,6 +14,9 @@ import { verifySession } from './middleware/auth';
 
 dotenv.config();
 
+import { SchedulerService } from './scheduler';
+SchedulerService.init();
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -64,6 +67,7 @@ io.use(async (socket, next) => {
 import { registerGroupHandlers } from './socket/groups';
 import { registerExpenseHandlers } from './socket/expenses';
 import { registerSubscriptionHandlers } from './socket/subscriptions';
+import { registerBillHandlers } from './socket/bills';
 
 io.on("connection", (socket) => {
     console.log(`User connected: ${socket.data.user.username}`);
@@ -71,6 +75,7 @@ io.on("connection", (socket) => {
     registerGroupHandlers(io, socket);
     registerExpenseHandlers(io, socket);
     registerSubscriptionHandlers(io, socket);
+    registerBillHandlers(io, socket);
 
     socket.on("dashboard:stats", async (cb: (res: any) => void) => {
         try {
