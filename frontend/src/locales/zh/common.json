@@ -20,10 +20,22 @@
         "empty": "暫無數據",
         "loadingMore": "加載更多..."
     },
+    "cycles": {
+        "monthly": "每月",
+        "yearly": "每年",
+        "one-time": "一次性"
+    },
+    "fields": {
+        "name": "姓名",
+        "email": "電子郵件"
+    },
     "placeholders": {
         "email": "電子郵件地址",
         "name": "名稱",
         "amount": "0.00",
-        "description": "例如：晚餐、雜貨"
+        "description": "例如：晚餐、雜貨",
+        "service": "例如：Netflix, Spotify",
+        "plan": "例如：高級、家庭",
+        "member": "姓名或電子郵件"
     }
 }

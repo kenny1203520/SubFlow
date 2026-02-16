@@ -20,10 +20,22 @@
         "empty": "No data found",
         "loadingMore": "Loading more..."
     },
+    "cycles": {
+        "monthly": "Monthly",
+        "yearly": "Yearly",
+        "one-time": "One-time"
+    },
+    "fields": {
+        "name": "Name",
+        "email": "Email"
+    },
     "placeholders": {
         "email": "Email Address",
         "name": "Name",
         "amount": "0.00",
-        "description": "e.g. Dinner, Groceries"
+        "description": "e.g. Dinner, Groceries",
+        "service": "e.g. Netflix, Spotify",
+        "plan": "e.g. Premium, Family",
+        "member": "Name or Email"
     }
 }
