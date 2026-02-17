@@ -54,5 +54,6 @@
     "status_paid": "Paid",
     "status_overdue": "Overdue",
     "splits": "Splits",
-    "member": "Member"
+    "member": "Member",
+    "payer": "Paid By"
 }

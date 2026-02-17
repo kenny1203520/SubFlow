@@ -355,8 +355,52 @@ const exportData = async (type: 'expenses' | 'bills') => {
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <!-- Left Column: Expenses & Bills -->
                 <div class="lg:col-span-2 space-y-6">
+                    <!-- Search & Filter Bar -->
+                    <div class="glass-panel p-4 mb-4 flex flex-wrap gap-4 items-end animate-fade-in"
+                        style="animation-delay: 0.25s">
+                        <div class="flex-1 min-w-[200px]">
+                            <label class="form-label">{{ t('common.fields.search') }}</label>
+                            <input v-model="searchQuery" type="text" :placeholder="t('common.placeholders.search')"
+                                class="glass-input" />
+                        </div>
+                        <div class="w-40">
+                            <label class="form-label">{{ t('groups.payer', 'Payer') }}</label>
+                            <select v-model="memberFilter" class="glass-input">
+                                <option value="">{{ t('common.all') }}</option>
+                                <option v-for="m in members" :key="m.id" :value="m.user_id">{{ m.username }}</option>
+                            </select>
+                        </div>
+                        <div class="w-40">
+                            <label class="form-label">{{ t('common.fields.startDate') }}</label>
+                            <input v-model="startDate" type="date" class="glass-input" />
+                        </div>
+                        <div class="w-40">
+                            <label class="form-label">{{ t('common.fields.endDate') }}</label>
+                            <input v-model="endDate" type="date" class="glass-input" />
+                        </div>
+                        <div class="flex gap-2">
+                            <button @click="exportData('expenses')"
+                                class="btn bg-slate-100 text-slate-600 hover:bg-slate-200"
+                                :title="t('common.actions.export')">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                            </button>
+                            <button @click="showAddExpense = true" class="btn btn-primary">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 4v16m8-8H4" />
+                                </svg>
+                                {{ t('groups.addExpense') }}
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Tabs -->
-                    <div class="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+                    <div class="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit mb-6">
                         <button @click="currentTab = 'expenses'"
                             :class="['px-4 py-2 rounded-lg text-sm font-bold transition-all', currentTab === 'expenses' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700']">
                             {{ t('groups.expenses') }}

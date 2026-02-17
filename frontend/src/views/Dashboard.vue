@@ -151,24 +151,29 @@ onMounted(async () => {
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in" style="animation-delay: 0.2s">
                 <div class="lg:col-span-2 space-y-6">
                     <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-500" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                        <div
+                            class="w-8 h-8 rounded-lg bg-primary-100 flex items-center justify-center text-primary-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                        </div>
                         {{ t('dashboard.recentActivity') }}
                     </h3>
 
-                    <div class="glass-panel p-8 text-center border-2 border-dashed border-slate-200 bg-white/40">
+                    <div
+                        class="glass-panel p-12 text-center border-2 border-dashed border-slate-200 bg-white/40 group hover:border-primary-300 transition-colors">
                         <div
-                            class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24"
+                            class="w-20 h-20 bg-white rounded-2xl flex items-center justify-center mx-auto mb-6 text-slate-300 shadow-sm group-hover:scale-110 transition-transform duration-500">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10" fill="none" viewBox="0 0 24 24"
                                 stroke="currentColor">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
                                     d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
                             </svg>
                         </div>
-                        <p class="text-slate-500 font-medium">{{ t('dashboard.noActivity') }}</p>
+                        <h4 class="text-lg font-bold text-slate-700 mb-2">{{ t('dashboard.noActivityTitle') }}</h4>
+                        <p class="text-slate-400 max-w-xs mx-auto text-sm">{{ t('dashboard.noActivityDesc') }}</p>
                     </div>
                 </div>
 

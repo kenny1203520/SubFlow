@@ -54,5 +54,6 @@
     "status_paid": "已支付",
     "status_overdue": "已逾期",
     "splits": "分摊详情",
-    "member": "成员"
+    "member": "成员",
+    "payer": "付款人"
 }

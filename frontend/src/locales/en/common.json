@@ -11,14 +11,16 @@
         "signup": "Sign Up",
         "logout": "Logout",
         "back": "Back",
-        "submit": "Submit"
+        "submit": "Submit",
+        "export": "Export"
     },
     "status": {
         "loading": "Loading...",
         "success": "Success",
         "error": "Error",
         "empty": "No data found",
-        "loadingMore": "Loading more..."
+        "loadingMore": "Loading more...",
+        "all": "All"
     },
     "cycles": {
         "monthly": "Monthly",
@@ -27,9 +29,13 @@
     },
     "fields": {
         "name": "Name",
-        "email": "Email"
+        "email": "Email",
+        "search": "Search",
+        "startDate": "Start Date",
+        "endDate": "End Date"
     },
     "placeholders": {
+        "search": "Search for...",
         "email": "Email Address",
         "name": "Name",
         "amount": "0.00",

@@ -191,7 +191,8 @@ const logout = async () => {
     background: var(--bg-body);
 }
 
-/* Sidebar Floating Style */
+/* Sidebar Floating Style
+    */
 .sidebar {
     position: fixed;
     top: 1rem;
@@ -203,9 +204,11 @@ const logout = async () => {
     flex-direction: column;
     padding: 1.5rem;
     transition: all var(--transition-bounce);
-    /* Glass Panel styles inherited from global .glass-panel */
+    /* Glass Panel styles inherited
+    from global .glass-panel */
     border: 1px solid rgba(255, 255, 255, 0.7);
-    box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
+    box-shadow: 0 8px 32px rgba(31, 38, 135,
+            0.05);
 }
 
 .sidebar.collapsed {
@@ -224,7 +227,8 @@ const logout = async () => {
 /* On Mobile, sidebar slides out completely */
 @media (max-width: 1024px) {
     .sidebar {
-        transform: translateX(calc(-100% - 2rem));
+        transform:
+            translateX(calc(-100% - 2rem));
         bottom: 0;
         top: 0;
         left: 0;
@@ -241,7 +245,8 @@ const logout = async () => {
 .sidebar-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content:
+        space-between;
     margin-bottom: 2rem;
     padding: 0 0.5rem;
 }
@@ -256,7 +261,8 @@ const logout = async () => {
     font-size: 1.25rem;
     font-weight: 700;
     background: var(--primary-gradient);
-    -webkit-background-clip: text;
+    -webkit-background-clip:
+        text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
 }
@@ -264,7 +270,8 @@ const logout = async () => {
 /* Nav Links */
 .nav-links {
     flex: 1;
-    display: flex;
+    display:
+        flex;
     flex-direction: column;
     gap: 0.5rem;
 }
@@ -316,29 +323,31 @@ const logout = async () => {
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
+    cursor:
+        pointer;
     box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
 }
 
 .collapse-btn:hover {
     color: var(--primary-600);
-    border-color: var(--primary-200);
+    border-color:
+        var(--primary-200);
 }
 
-/* Main Wrapper */
+/* Main Wrapper - Replaced with Tailwind-friendly padding logic */
 .main-wrapper {
-    margin-left: calc(260px + 2rem);
+    margin-left: 260px;
     flex: 1;
     min-height: 100vh;
     transition: all var(--transition-bounce);
     display: flex;
     flex-direction: column;
+    width: 100%;
+    /* Ensure width */
 }
 
-@media (min-width: 1024px) {
-    .main-wrapper.sidebar-collapsed {
-        margin-left: calc(80px + 2rem);
-    }
+.main-wrapper.sidebar-collapsed {
+    margin-left: 80px;
 }
 
 @media (max-width: 1024px) {
@@ -359,6 +368,10 @@ const logout = async () => {
 .content-view {
     padding: 0 2rem 2rem 2rem;
     flex: 1;
+    width: 100%;
+    /* Ensure full width */
+    max-width: 1600px;
+    margin: 0 auto;
 }
 
 /* Lang Switcher */
@@ -375,7 +388,8 @@ const logout = async () => {
     border-radius: 8px;
     font-size: 0.75rem;
     font-weight: 600;
-    color: var(--slate-500);
+    color:
+        var(--slate-500);
     background: transparent;
     border: none;
     cursor: pointer;
@@ -389,7 +403,8 @@ const logout = async () => {
 }
 
 .overlay {
-    position: fixed;
+    position:
+        fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.2);
     backdrop-filter: blur(2px);

@@ -9,5 +9,7 @@
     "welcomeBack": "歡迎回來，{name}",
     "noActivity": "暫無近期活動。",
     "youOwe": "您欠款",
-    "peopleOweYou": "他人欠您"
+    "peopleOweYou": "他人欠您",
+    "noActivityTitle": "暫無近期活動",
+    "noActivityDesc": "從創建群組或添加費用開始，體驗 SubFlow 的強大功能吧！"
 }
