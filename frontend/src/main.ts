@@ -43,15 +43,45 @@ const router = createRouter({
     routes,
 })
 
-// Simple Route Guard
-router.beforeEach((_to, _from, next) => {
+const pinia = createPinia()
+const app = createApp(App)
+app.use(pinia)
+
+import { useAuthStore } from './stores/auth'
+import http from './http'
+
+const authStore = useAuthStore()
+
+// Initialize auth
+const initApp = async () => {
+    try {
+        const res = await http.get('/auth/user');
+        if (res.data) {
+            authStore.setUser(res.data);
+        }
+    } catch (err) {
+        console.log('Not authenticated');
+    } finally {
+        app.use(router)
+        app.use(i18n)
+        app.mount('#app')
+    }
+}
+
+// Better Route Guard
+router.beforeEach(async (to, from, next) => {
+    if (to.meta.requiresAuth && !authStore.user) {
+        // Try one last time to check auth if user is null
+        try {
+            const res = await http.get('/auth/user');
+            if (res.data) {
+                authStore.setUser(res.data);
+                return next();
+            }
+        } catch (e) { }
+        return next('/auth');
+    }
     next();
 });
 
-const pinia = createPinia()
-
-const app = createApp(App)
-app.use(pinia)
-app.use(router)
-app.use(i18n)
-app.mount('#app')
+initApp();

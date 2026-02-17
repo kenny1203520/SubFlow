@@ -10,6 +10,8 @@ import { lucia } from './auth/lucia';
 import { parse } from 'cookie';
 
 import authRoutes from './routes/auth';
+import userRoutes from './routes/user';
+import uploadRoutes from './routes/upload';
 import { verifySession } from './middleware/auth';
 
 dotenv.config();
@@ -42,7 +44,11 @@ app.use(express.static(frontendPath));
 
 // API Routes
 app.use("/auth", authRoutes);
+app.use("/api/user", userRoutes);
 app.use("/api/files", uploadRoutes);
+
+// Static for uploads
+app.use("/uploads", express.static(path.resolve(__dirname, '../../uploads')));
 
 // Socket.IO Auth
 io.use(async (socket, next) => {
@@ -73,7 +79,6 @@ import { ExpenseController } from './controllers/ExpenseController';
 import { SubscriptionController } from './controllers/SubscriptionController';
 import { NotificationController } from './controllers/NotificationController';
 import { FileController } from './controllers/FileController';
-import uploadRoutes from './routes/upload';
 
 io.on("connection", (socket) => {
     console.log(`User connected: ${socket.data.user.username}`);

@@ -30,7 +30,8 @@ const logout = async () => {
         <div v-if="layoutStore.isSidebarOpen" @click="layoutStore.closeSidebar" class="overlay lg:hidden"></div>
 
         <!-- Sidebar -->
-        <aside :class="['sidebar', 'glass-panel', { 'open': layoutStore.isSidebarOpen, 'collapsed': layoutStore.isCollapsed }]">
+        <aside
+            :class="['sidebar', 'glass-panel', { 'open': layoutStore.isSidebarOpen, 'collapsed': layoutStore.isCollapsed }]">
             <div class="sidebar-header">
                 <div class="logo-area">
                     <div class="logo-icon animate-pulse">S</div>
@@ -53,19 +54,31 @@ const logout = async () => {
             <nav class="nav-links">
                 <router-link to="/dashboard" class="nav-item" @click="layoutStore.closeSidebar">
                     <div class="icon-wrapper">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+                        </svg>
                     </div>
                     <span class="nav-text hide-on-collapsed">{{ t('dashboard.dashboard') }}</span>
                 </router-link>
                 <router-link to="/groups" class="nav-item" @click="layoutStore.closeSidebar">
                     <div class="icon-wrapper">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
                     </div>
                     <span class="nav-text hide-on-collapsed">{{ t('dashboard.groups') }}</span>
                 </router-link>
                 <router-link to="/subscriptions" class="nav-item" @click="layoutStore.closeSidebar">
                     <div class="icon-wrapper">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
                     </div>
                     <span class="nav-text hide-on-collapsed">{{ t('dashboard.subscriptions') }}</span>
                 </router-link>
@@ -77,12 +90,18 @@ const logout = async () => {
                     <button class="lang-btn" @click="setLanguage('en')">EN</button>
                 </div>
                 <div class="user-panel glass-card" v-if="authStore.user">
-                    <div class="avatar-sm">{{ authStore.user.username[0].toUpperCase() }}</div>
+                    <img v-if="authStore.user.avatar_url" :src="authStore.user.avatar_url"
+                        class="avatar-sm object-cover" />
+                    <div v-else class="avatar-sm">{{ authStore.user.username[0].toUpperCase() }}</div>
                     <div class="user-info hide-on-collapsed">
                         <span class="username">{{ authStore.user.username }}</span>
                     </div>
                     <button @click="logout" class="logout-btn hide-on-collapsed">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                        </svg>
                     </button>
                 </div>
             </div>
@@ -94,7 +113,11 @@ const logout = async () => {
             <header class="top-header glass-panel">
                 <div class="header-left">
                     <button @click="layoutStore.toggleSidebar" class="menu-btn lg:hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
                     </button>
                     <h2 class="page-title">{{ router.currentRoute.value.name || 'Dashboard' }}</h2>
                 </div>
@@ -102,7 +125,9 @@ const logout = async () => {
                     <NotificationCenter />
                     <div class="divider"></div>
                     <router-link to="/profile" class="profile-link">
-                         <div class="avatar-sm">{{ authStore.user?.username[0].toUpperCase() }}</div>
+                        <img v-if="authStore.user?.avatar_url" :src="authStore.user.avatar_url"
+                            class="avatar-sm object-cover" />
+                        <div v-else class="avatar-sm">{{ authStore.user?.username[0].toUpperCase() }}</div>
                     </router-link>
                 </div>
             </header>
@@ -132,6 +157,7 @@ const logout = async () => {
     filter: blur(80px);
     opacity: 0.15;
 }
+
 .blur-1 {
     width: 400px;
     height: 400px;
@@ -139,6 +165,7 @@ const logout = async () => {
     top: -100px;
     left: -100px;
 }
+
 .blur-2 {
     width: 300px;
     height: 300px;
@@ -163,11 +190,18 @@ const logout = async () => {
 }
 
 @media (min-width: 1024px) {
-    .sidebar { transform: translateX(0); }
-    .sidebar.collapsed { width: 88px; }
+    .sidebar {
+        transform: translateX(0);
+    }
+
+    .sidebar.collapsed {
+        width: 88px;
+    }
 }
 
-.sidebar.open { transform: translateX(0); }
+.sidebar.open {
+    transform: translateX(0);
+}
 
 .sidebar-header {
     padding: 2rem 1.5rem;
@@ -289,8 +323,13 @@ const logout = async () => {
 }
 
 @media (min-width: 1024px) {
-    .main-wrapper { margin-left: 280px; }
-    .main-wrapper.sidebar-collapsed { margin-left: 88px; }
+    .main-wrapper {
+        margin-left: 280px;
+    }
+
+    .main-wrapper.sidebar-collapsed {
+        margin-left: 88px;
+    }
 }
 
 .top-header {

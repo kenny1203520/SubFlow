@@ -5,7 +5,7 @@
     --primary-500: #6366f1;
     --primary-600: #4f46e5;
     --primary-700: #4338ca;
-    
+
     /* 漸層色定義 */
     --primary-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
     --surface-gradient: linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0.4) 100%);
@@ -137,6 +137,7 @@ body {
         opacity: 0;
         transform: translateY(20px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);
@@ -145,6 +146,61 @@ body {
 
 .animate-fade-in-up {
     animation: fadeInUp 0.6s ease-out forwards;
+}
+
+.animate-fade-in {
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Utilities */
+.relative {
+    position: relative;
+}
+
+.absolute {
+    position: absolute;
+}
+
+.hidden {
+    display: none;
+}
+
+.object-cover {
+    object-fit: cover;
+}
+
+.w-full {
+    width: 100%;
+}
+
+.h-full {
+    height: 100%;
 }
 
 /* 其他基礎樣式優化... (略，保持原有結構但套用新變數) */
@@ -162,7 +218,9 @@ body {
     border-color: var(--primary-100);
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
     padding: 0.75rem 1rem;
     border-radius: var(--radius-md);
     border: 1px solid var(--slate-200);
@@ -178,9 +236,27 @@ input:focus {
 }
 
 /* Grid & Layout Helpers */
-.grid { display: grid; gap: 1.5rem; }
-.flex { display: flex; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.gap-2 { gap: 0.5rem; }
-.gap-4 { gap: 1rem; }
+.grid {
+    display: grid;
+    gap: 1.5rem;
+}
+
+.flex {
+    display: flex;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.gap-2 {
+    gap: 0.5rem;
+}
+
+.gap-4 {
+    gap: 1rem;
+}

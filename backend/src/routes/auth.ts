@@ -81,7 +81,16 @@ router.post("/signin", async (req, res) => {
         const sessionCookie = lucia.createSessionCookie(session.id);
 
         res.setHeader("Set-Cookie", sessionCookie.serialize());
-        return res.status(200).json({ success: true, user: { id: user.id, username: user.username, email: user.email } });
+        return res.status(200).json({
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                avatar_url: user.avatar_url,
+                is_verified: user.is_verified
+            }
+        });
     } catch (error) {
         console.error(error);
         return res.status(500).send("Internal Server Error");

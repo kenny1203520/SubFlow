@@ -6,6 +6,7 @@
     "birthday": "Birthday",
     "phone": "Phone Number",
     "save": "Save Changes",
+    "changeAvatar": "Change Avatar",
     "updateSuccess": "Profile updated successfully",
     "updateFailed": "Failed to update profile"
 }
