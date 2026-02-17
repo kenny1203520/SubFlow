@@ -1,5 +1,6 @@
 {
     "title": "My Groups",
+    "groupDetail": "Group Detail",
     "createGroup": "Create Group",
     "createFirstGroup": "Create your first group",
     "noGroups": "You are not in any groups yet.",

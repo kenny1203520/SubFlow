@@ -46,8 +46,8 @@ onMounted(async () => {
     <MainLayout>
         <div class="dashboard-wrapper space-y-8">
             <!-- Welcome Banner -->
-            <header
-                class="relative overflow-hidden rounded-3xl bg-primary-gradient p-8 text-white shadow-lg animate-fade-in">
+            <header class="relative overflow-hidden rounded-3xl p-8 text-white shadow-lg animate-fade-in"
+                style="background: var(--primary-gradient);">
                 <div class="absolute top-0 right-0 p-4 opacity-10">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-64 w-64" fill="currentColor" viewBox="0 0 24 24">
                         <path
@@ -190,7 +190,8 @@ onMounted(async () => {
                                         d="M12 4v16m8-8H4" />
                                 </svg>
                             </div>
-                            <span class="font-medium text-slate-700 group-hover:text-primary-700">Create Group</span>
+                            <span class="font-medium text-slate-700 group-hover:text-primary-700">{{
+                                t('dashboard.createGroup') }}</span>
                         </button>
                         <button @click="router.push('/subscriptions')"
                             class="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left group">
@@ -202,8 +203,8 @@ onMounted(async () => {
                                         d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
                                 </svg>
                             </div>
-                            <span class="font-medium text-slate-700 group-hover:text-emerald-700">Add
-                                Subscription</span>
+                            <span class="font-medium text-slate-700 group-hover:text-emerald-700">{{
+                                t('dashboard.addSubscription') }}</span>
                         </button>
                     </div>
                 </div>

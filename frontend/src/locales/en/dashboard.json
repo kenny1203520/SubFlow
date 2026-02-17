@@ -11,5 +11,8 @@
     "youOwe": "You owe money",
     "peopleOweYou": "People owe you",
     "noActivityTitle": "No activity yet",
-    "noActivityDesc": "Start by creating a group or adding expenses to see the magic happen."
+    "noActivityDesc": "Start by creating a group or adding expenses to see the magic happen.",
+    "quickActions": "Quick Actions",
+    "createGroup": "Create Group",
+    "addSubscription": "Add Subscription"
 }

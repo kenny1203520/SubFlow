@@ -158,18 +158,20 @@ onMounted(fetchProfile);
 </template>
 
 <style scoped>
-.max-w-2xl {
-    max-width: 48rem;
-}
-
 .avatar-wrapper {
     width: 150px;
     height: 150px;
     border-radius: 50%;
     overflow: hidden;
     cursor: pointer;
-    border: 4px solid rgba(255, 255, 255, 0.2);
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+    border: 4px solid var(--primary-200);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.12);
+    transition: all 0.3s ease;
+}
+
+.avatar-wrapper:hover {
+    border-color: var(--primary-400);
+    box-shadow: 0 8px 32px 0 rgba(99, 102, 241, 0.25);
 }
 
 .avatar-image {
@@ -188,38 +190,12 @@ onMounted(fetchProfile);
     display: flex;
     align-items: center;
     justify-content: center;
+    color: white;
     opacity: 0;
     transition: opacity 0.3s ease;
 }
 
 .avatar-wrapper:hover .avatar-overlay {
     opacity: 1;
-}
-
-.glass-input {
-    width: 100%;
-    background: rgba(255, 255, 255, 0.05);
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    padding: 0.75rem 1rem;
-    color: white;
-    transition: all 0.3s ease;
-}
-
-.glass-input:focus {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.3);
-    outline: none;
-    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
-}
-
-.form-label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.7);
-    margin-bottom: 0.5rem;
 }
 </style>

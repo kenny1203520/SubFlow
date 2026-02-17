@@ -1,0 +1,8 @@
+{
+    "title": "活動記錄",
+    "subtitle": "查看您近期的帳戶活動與安全事件。",
+    "action": "動作",
+    "description": "描述",
+    "ip": "IP 位址",
+    "noLogs": "目前沒有活動記錄。"
+}

@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router';
+import { computed } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useLayoutStore } from '../stores/layout';
 import { useI18n } from 'vue-i18n';
 import NotificationCenter from '../components/NotificationCenter.vue';
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
 const layoutStore = useLayoutStore();
 const { t, locale } = useI18n();
+
+const pageTitle = computed(() => {
+    const titleKey = route.meta?.titleKey as string;
+    return titleKey ? t(titleKey) : t('dashboard.dashboard');
+});
 
 const setLanguage = (lang: string) => {
     locale.value = lang;
@@ -147,8 +154,7 @@ const logout = async () => {
                                 d="M4 6h16M4 12h16M4 18h16" />
                         </svg>
                     </button>
-                    <h2 class="text-2xl font-bold text-slate-800 tracking-tight">{{ router.currentRoute.value.name ||
-                        t('dashboard.dashboard') }}</h2>
+                    <h2 class="text-2xl font-bold text-slate-800 tracking-tight">{{ pageTitle }}</h2>
                 </div>
 
                 <div class="flex items-center gap-4">

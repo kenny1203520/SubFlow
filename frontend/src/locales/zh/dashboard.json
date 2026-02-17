@@ -11,5 +11,8 @@
     "youOwe": "您欠款",
     "peopleOweYou": "他人欠您",
     "noActivityTitle": "暫無近期活動",
-    "noActivityDesc": "從創建群組或添加費用開始，體驗 SubFlow 的強大功能吧！"
+    "noActivityDesc": "從創建群組或添加費用開始，體驗 SubFlow 的強大功能吧！",
+    "quickActions": "快捷操作",
+    "createGroup": "建立群組",
+    "addSubscription": "新增訂閱"
 }

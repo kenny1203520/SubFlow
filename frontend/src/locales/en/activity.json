@@ -1,0 +1,8 @@
+{
+    "title": "Activity Log",
+    "subtitle": "View your recent account activity and security events.",
+    "action": "Action",
+    "description": "Description",
+    "ip": "IP Address",
+    "noLogs": "No activity logs found."
+}

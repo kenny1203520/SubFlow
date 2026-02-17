@@ -1,4 +1,5 @@
 {
+    "title": "安全性",
     "security": "安全性",
     "twoFactorAuth": "兩步驟驗證 (2FA)",
     "enable2FA": "啟用 2FA",

@@ -29,16 +29,16 @@ const routes = [
     {
         path: '/dashboard',
         component: Dashboard,
-        meta: { requiresAuth: true }
+        meta: { requiresAuth: true, titleKey: 'dashboard.dashboard' }
     },
-    { path: '/groups', component: GroupList, meta: { requiresAuth: true } },
-    { path: '/groups/:id', component: GroupDetail, meta: { requiresAuth: true } },
-    { path: '/subscriptions', component: SubscriptionList, meta: { requiresAuth: true } },
-    { path: '/wallet', component: WalletView, meta: { requiresAuth: true } },
-    { path: '/security', component: SecurityView, meta: { requiresAuth: true } },
-    { path: '/profile', component: ProfileView, meta: { requiresAuth: true } },
-    { path: '/activity', component: ActivityLog, meta: { requiresAuth: true } },
-    { path: '/admin', component: AdminDashboard, meta: { requiresAuth: true, requiresAdmin: true } },
+    { path: '/groups', component: GroupList, meta: { requiresAuth: true, titleKey: 'dashboard.groups' } },
+    { path: '/groups/:id', component: GroupDetail, meta: { requiresAuth: true, titleKey: 'groups.groupDetail' } },
+    { path: '/subscriptions', component: SubscriptionList, meta: { requiresAuth: true, titleKey: 'dashboard.subscriptions' } },
+    { path: '/wallet', component: WalletView, meta: { requiresAuth: true, titleKey: 'wallet.wallet' } },
+    { path: '/security', component: SecurityView, meta: { requiresAuth: true, titleKey: 'security.title' } },
+    { path: '/profile', component: ProfileView, meta: { requiresAuth: true, titleKey: 'profile.profile' } },
+    { path: '/activity', component: ActivityLog, meta: { requiresAuth: true, titleKey: 'activity.title' } },
+    { path: '/admin', component: AdminDashboard, meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'admin.title' } },
 ]
 
 const router = createRouter({
