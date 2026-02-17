@@ -227,9 +227,10 @@ const exportData = async (type: 'expenses' | 'bills') => {
                         <div class="flex items-center gap-2 text-sm text-slate-500">
                             <span
                                 class="px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 font-bold uppercase text-xs">{{
-                                    group.service_name || 'Generic Service' }}</span>
+                                    group.service_name || t('groups.genericService') }}</span>
                             <span>•</span>
-                            <span>Created on {{ new Date(group.created_at).toLocaleDateString() }}</span>
+                            <span>{{ t('groups.createdOnLabel') }} {{ new Date(group.created_at).toLocaleDateString()
+                                }}</span>
                         </div>
                     </div>
                 </div>
@@ -317,8 +318,9 @@ const exportData = async (type: 'expenses' | 'bills') => {
                     class="glass-panel p-4 flex flex-col justify-center bg-primary-gradient text-white relative overflow-hidden">
                     <div class="absolute -right-4 -top-4 bg-white/20 w-16 h-16 rounded-full blur-xl"></div>
                     <span class="text-xs uppercase font-bold text-primary-100 mb-1">{{ t('groups.amount') }}</span>
-                    <span class="text-2xl font-extrabold">{{ group.currency }} {{ group.amount }} <span
-                            class="text-sm font-medium opacity-80">/ {{ t(`common.cycles.${group.billing_cycle}`)
+                    <span class="text-2xl font-extrabold">{{ group.service_currency }} {{ group.amount }} <span
+                            class="text-sm font-medium opacity-80">/ {{ group.billing_type === 'recurring' ?
+                                t(`common.cycles.${group.interval_unit}`) : t('common.cycles.once')
                             }}</span></span>
                 </div>
                 <div class="glass-panel p-4 flex flex-col justify-center">
@@ -418,7 +420,7 @@ const exportData = async (type: 'expenses' | 'bills') => {
                             <div v-if="filteredExpenses.length === 0"
                                 class="flex flex-col items-center justify-center p-12 glass-panel border-dashed border-2 border-slate-200">
                                 <p class="text-slate-400">
-                                    {{ expenses.length > 0 ? t('groups.noSearchResults', 'No matching results') :
+                                    {{ expenses.length > 0 ? t('groups.noSearchResults') :
                                         t('groups.noExpenses') }}
                                 </p>
                             </div>
@@ -502,7 +504,7 @@ const exportData = async (type: 'expenses' | 'bills') => {
                         <div v-if="filteredBills.length === 0"
                             class="flex flex-col items-center justify-center p-12 glass-panel border-dashed border-2 border-slate-200">
                             <p class="text-slate-400">
-                                {{ bills.length > 0 ? t('groups.noSearchResults', 'No matching results') :
+                                {{ bills.length > 0 ? t('groups.noSearchResults') :
                                     t('groups.noBills') }}
                             </p>
                         </div>
@@ -594,9 +596,9 @@ const exportData = async (type: 'expenses' | 'bills') => {
         </div>
 
         <div v-else class="flex flex-col items-center justify-center p-20 min-h-screen text-center">
-            <p class="text-red-500 font-bold text-lg mb-2">Error loading group</p>
+            <p class="text-red-500 font-bold text-lg mb-2">{{ t('common.status.error') }}</p>
             <p class="text-slate-600">{{ error }}</p>
-            <button @click="router.push('/groups')" class="mt-4 btn btn-primary">Back to Groups</button>
+            <button @click="router.push('/groups')" class="mt-4 btn btn-primary">{{ t('groups.backToGroups') }}</button>
         </div>
     </MainLayout>
 </template>

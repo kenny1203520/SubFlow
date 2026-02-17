@@ -50,11 +50,15 @@
     "generatedBills": "已生成账单",
     "noBills": "暂无生成的账单。",
     "dueDate": "到期日",
-    "status": "状态",
+    "status": "狀態",
     "status_pending": "待支付",
     "status_paid": "已支付",
     "status_overdue": "已逾期",
     "splits": "分摊详情",
-    "member": "成员",
-    "payer": "付款人"
+    "member": "成員",
+    "payer": "付款人",
+    "subtitle": "管理您的共享支出群組",
+    "genericService": "一般服務",
+    "noSearchResults": "沒有匹配的搜索結果",
+    "createdOnLabel": "創建於"
 }

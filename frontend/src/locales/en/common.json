@@ -25,7 +25,11 @@
     "cycles": {
         "monthly": "Monthly",
         "yearly": "Yearly",
-        "one-time": "One-time"
+        "one-time": "One-time",
+        "day": "Day",
+        "month": "Month",
+        "year": "Year",
+        "once": "Once"
     },
     "fields": {
         "name": "Name",

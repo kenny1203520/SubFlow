@@ -16,8 +16,11 @@ const form = ref({
     website: '',
     plan_name: '',
     amount: 0,
-    currency: 'TWD',
-    billing_cycle: 'monthly',
+    service_currency: 'TWD',
+    payment_currency: 'TWD',
+    billing_type: 'recurring',
+    interval_unit: 'month',
+    interval_value: 1,
     max_members: 1,
     billing_method: 'equal',
 });
@@ -71,7 +74,7 @@ const handleSubmit = () => {
                 <!-- Basic Group Info -->
                 <div class="section">
                     <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">{{ t('groups.basicInfo')
-                        }}</h3>
+                    }}</h3>
                     <div class="form-group">
                         <label for="groupName" class="block text-sm font-medium text-slate-700 mb-1">{{
                             t('groups.groupName') }} *</label>
@@ -88,13 +91,13 @@ const handleSubmit = () => {
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.serviceName')
-                                }}</label>
+                            }}</label>
                             <input v-model="form.service_name" type="text"
                                 :placeholder="t('common.placeholders.service')" class="glass-input w-full" />
                         </div>
                         <div class="form-group">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.website')
-                                }}</label>
+                            }}</label>
                             <input v-model="form.website" type="url" placeholder="https://..."
                                 class="glass-input w-full" />
                         </div>
@@ -108,30 +111,30 @@ const handleSubmit = () => {
                     <div class="grid grid-cols-2 gap-4 mb-4">
                         <div class="form-group">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.planName')
-                                }}</label>
+                            }}</label>
                             <input v-model="form.plan_name" type="text" :placeholder="t('common.placeholders.plan')"
                                 class="glass-input w-full" />
                         </div>
                         <div class="form-group">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.billingCycle')
-                                }}</label>
-                            <select v-model="form.billing_cycle" class="glass-input w-full">
-                                <option value="monthly">{{ t('common.cycles.monthly') }}</option>
-                                <option value="yearly">{{ t('common.cycles.yearly') }}</option>
-                                <option value="one-time">{{ t('common.cycles.one-time') }}</option>
+                            }}</label>
+                            <select v-model="form.interval_unit" class="glass-input w-full">
+                                <option value="month">{{ t('common.cycles.month') }}</option>
+                                <option value="year">{{ t('common.cycles.year') }}</option>
+                                <option value="day">{{ t('common.cycles.day') }}</option>
                             </select>
                         </div>
                     </div>
                     <div class="grid grid-cols-3 gap-4">
                         <div class="form-group col-span-2">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.amount')
-                                }}</label>
+                            }}</label>
                             <input v-model.number="form.amount" type="number" step="0.01" class="glass-input w-full" />
                         </div>
                         <div class="form-group">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.currency')
-                                }}</label>
-                            <input v-model="form.currency" type="text" maxlength="3"
+                            }}</label>
+                            <input v-model="form.service_currency" type="text" maxlength="3"
                                 class="glass-input w-full uppercase" />
                         </div>
                     </div>
@@ -140,16 +143,16 @@ const handleSubmit = () => {
                 <!-- Group Settings -->
                 <div class="section">
                     <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">{{ t('groups.settings')
-                        }}</h3>
+                    }}</h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.maxMembers')
-                                }}</label>
+                            }}</label>
                             <input v-model.number="form.max_members" type="number" min="1" class="glass-input w-full" />
                         </div>
                         <div class="form-group">
                             <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.billingMethod')
-                                }}</label>
+                            }}</label>
                             <select v-model="form.billing_method" class="glass-input w-full">
                                 <option value="equal">{{ t('groups.methods.equal') }}</option>
                                 <option value="fixed">{{ t('groups.methods.fixed') }}</option>

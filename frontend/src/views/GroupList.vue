@@ -38,7 +38,7 @@ const handleGroupCreated = () => {
                 class="flex justify-between items-center bg-white/40 sticky top-0 z-10 backdrop-blur-md p-4 rounded-2xl border border-white/50 shadow-sm">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-800">{{ t('groups.title') }}</h1>
-                    <p class="text-slate-500 text-sm">Manage your shared expenses groups</p>
+                    <p class="text-slate-500 text-sm">{{ t('groups.subtitle') }}</p>
                 </div>
                 <button @click="showCreateModal = true"
                     class="btn btn-primary shadow-lg hover:shadow-xl transform hover:-translate-y-1 transition-all">

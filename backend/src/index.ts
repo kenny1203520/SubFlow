@@ -119,9 +119,8 @@ io.on("connection", (socket) => {
 
             // Active subscriptions count
             const subCountRes = await pool.query(
-                `SELECT COUNT(*) as count FROM subscriptions s
-                 JOIN group_members gm ON s.group_id = gm.group_id
-                 WHERE gm.user_id = $1 AND s.status = 'active'`,
+                `SELECT COUNT(*) as count FROM subscriptions
+                 WHERE owner_id = $1 AND status = 'active'`,
                 [userId]
             );
 

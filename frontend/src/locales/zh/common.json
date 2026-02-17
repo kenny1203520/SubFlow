@@ -23,9 +23,13 @@
         "all": "全部"
     },
     "cycles": {
-        "monthly": "每月",
-        "yearly": "每年",
-        "one-time": "一次性"
+        "monthly": "按月",
+        "yearly": "按年",
+        "one-time": "一次性",
+        "day": "日",
+        "month": "月",
+        "year": "年",
+        "once": "一次性"
     },
     "fields": {
         "name": "姓名",

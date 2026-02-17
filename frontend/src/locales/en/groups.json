@@ -56,5 +56,9 @@
     "status_overdue": "Overdue",
     "splits": "Splits",
     "member": "Member",
-    "payer": "Paid By"
+    "payer": "Paid By",
+    "subtitle": "Manage your shared expenses groups",
+    "genericService": "Generic Service",
+    "noSearchResults": "No matching results",
+    "createdOnLabel": "Created on"
 }

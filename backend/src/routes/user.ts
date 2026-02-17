@@ -13,7 +13,7 @@ router.get("/profile", requireAuth, async (req, res) => {
     try {
         const query = `
             SELECT 
-                u.id, u.username, u.email, u.avatar_url, u.is_verified,
+                u.id, u.username, u.email, u.avatar_url,
                 p.first_name, p.last_name, p.birthday, p.mobile_phone as phone
             FROM users u
             LEFT JOIN user_profiles p ON u.id = p.user_id
