@@ -220,4 +220,6 @@ onMounted(fetchProfile);
     font-size: 0.875rem;
     font-weight: 600;
     color: rgba(255, 255, 255, 0.7);
-    margin-bo
+    margin-bottom: 0.5rem;
+}
+</style>
