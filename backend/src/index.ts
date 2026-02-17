@@ -64,18 +64,24 @@ io.use(async (socket, next) => {
     }
 });
 
-import { registerGroupHandlers } from './socket/groups';
+import { GroupController } from './controllers/GroupController';
+import { BillController } from './controllers/BillController';
+import { WalletController } from './controllers/WalletController';
+import { SecurityController } from './controllers/SecurityController';
 import { registerExpenseHandlers } from './socket/expenses';
 import { registerSubscriptionHandlers } from './socket/subscriptions';
-import { registerBillHandlers } from './socket/bills';
 
 io.on("connection", (socket) => {
     console.log(`User connected: ${socket.data.user.username}`);
 
-    registerGroupHandlers(io, socket);
+    new GroupController(io, socket).register();
+    new BillController(io, socket).register();
+    new WalletController(io, socket).register();
+    new SecurityController(io, socket).register();
+
+    // Still using procedural handlers for these until refactored
     registerExpenseHandlers(io, socket);
     registerSubscriptionHandlers(io, socket);
-    registerBillHandlers(io, socket);
 
     socket.on("dashboard:stats", async (cb: (res: any) => void) => {
         try {
