@@ -13,11 +13,13 @@
     "type": "commonjs",
     "dependencies": {
         "@lucia-auth/adapter-postgresql": "^3.1.2",
+        "@types/multer": "^2.0.0",
         "@types/node-cron": "^3.0.11",
         "cors": "^2.8.6",
         "dotenv": "^17.3.1",
         "express": "^5.2.1",
         "lucia": "^3.2.2",
+        "multer": "^2.0.2",
         "node-cron": "^4.2.1",
         "oslo": "^1.2.1",
         "pg": "^8.18.0",

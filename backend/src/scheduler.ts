@@ -1,4 +1,6 @@
 import cron from 'node-cron';
+import { BillService } from './services/BillService';
+import { GroupRepository } from './repositories/GroupRepository';
 import { pool } from './db';
 
 export class SchedulerService {
@@ -15,7 +17,13 @@ export class SchedulerService {
     }
 
     private static async generateBills() {
+        // We still need raw query to find due groups efficiently, 
+        // or add a method to GroupRepository.
+        // Let's add the query here for now, but use BillService for creation.
+
+        const billService = new BillService();
         const client = await pool.connect();
+
         try {
             await client.query('BEGIN');
 
@@ -31,88 +39,68 @@ export class SchedulerService {
             console.log(`Found ${dueGroups.rows.length} groups due for billing.`);
 
             for (const group of dueGroups.rows) {
-                // 1. Create a new Bill
                 const issueDate = new Date();
                 const dueDate = new Date();
-                dueDate.setDate(dueDate.getDate() + 7); // Due in 7 days by default
+                dueDate.setDate(dueDate.getDate() + 7);
 
-                const billRes = await client.query(`
-                    INSERT INTO bills (
-                        group_id, title, description, total_amount, currency, 
-                        issue_date, due_date, status, created_by
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                    RETURNING id
-                `, [
-                    group.id,
-                    `${group.name} - ${issueDate.toLocaleDateString()}`,
-                    `Automated bill for ${group.billing_cycle} subscription`,
-                    group.amount,
-                    group.currency,
-                    issueDate,
-                    dueDate,
-                    'pending',
-                    group.created_by // System generated, but attributed to creator/admin
-                ]);
+                try {
+                    // Use BillService to create the bill and splits
+                    // Note: BillService.createBill expects { groupId, title, description, amount, splits: [...] }
+                    // We need to fetch members to calculate splits first.
 
-                const billId = billRes.rows[0].id;
+                    // Actually, let's keep the logic here but reuse BillService if possible.
+                    // Since BillService.createBill takes explicit splits, we should calculate them here.
+                    // Or better, extend BillService to have `generateAutoBill(groupId)`?
+                    // For this refactor, let's just use BillService.createBill to ensure consistency in bill creation.
 
-                // 2. Calculate Splits
-                const membersRes = await client.query(`
-                    SELECT * FROM group_members WHERE group_id = $1
-                `, [group.id]);
+                    // Helper to get members
+                    const membersRes = await client.query(`SELECT * FROM group_members WHERE group_id = $1`, [group.id]);
+                    const members = membersRes.rows;
+                    if (members.length === 0) continue;
 
-                const members = membersRes.rows;
-                if (members.length === 0) continue;
+                    let splitAmount = 0;
+                    if (group.billing_method === 'equal') {
+                        splitAmount = parseFloat((group.amount / members.length).toFixed(2));
+                    }
 
-                let splitAmount = 0;
+                    const splits = members.map((m: any) => ({
+                        userId: m.user_id, // Note: BillService expects userId not memberId in the interface we defined? 
+                        // Let's check BillService.createBill signature.
+                        // It takes { userId, amount }. 
+                        amount: splitAmount
+                    }));
 
-                // For now, support 'equal' split only as per immediate requirement, 
-                // but structure allows for 'fixed' or 'percentage' extension.
-                if (group.billing_method === 'equal') {
-                    splitAmount = parseFloat((group.amount / members.length).toFixed(2));
-                }
-                // TODO: Implement other billing methods
+                    // We need a userId for 'createdBy'. System generated? 
+                    // Let's use group.created_by or a system ID.
+                    const creatorId = group.created_by;
 
-                // 3. Create Bill Splits
-                for (const member of members) {
+                    await billService.createBill(creatorId, {
+                        groupId: group.id,
+                        title: `${group.name} - ${issueDate.toLocaleDateString()}`,
+                        description: `Automated bill for ${group.billing_cycle} subscription`,
+                        amount: group.amount,
+                        currency: group.currency,
+                        dueDate: dueDate.toISOString(),
+                        splits: splits
+                    });
+
+                    // Update Group Next Payment Date
+                    let nextDate = new Date(group.next_payment_date);
+                    if (group.billing_cycle === 'monthly') {
+                        nextDate.setMonth(nextDate.getMonth() + 1);
+                    } else if (group.billing_cycle === 'yearly') {
+                        nextDate.setFullYear(nextDate.getFullYear() + 1);
+                    }
+
                     await client.query(`
-                        INSERT INTO bill_splits (
-                            bill_id, member_id, user_id, amount_owed, status
-                        ) VALUES ($1, $2, $3, $4, $5)
-                    `, [
-                        billId,
-                        member.id,
-                        member.user_id, // Can be null
-                        splitAmount,
-                        'pending'
-                    ]);
+                        UPDATE groups 
+                        SET next_payment_date = $1, updated_at = NOW()
+                        WHERE id = $2
+                    `, [nextDate, group.id]);
+
+                } catch (err) {
+                    console.error(`Failed to generate bill for group ${group.id}:`, err);
                 }
-
-                // 4. Update Group Next Payment Date
-                let nextDate = new Date(group.next_payment_date);
-                if (group.billing_cycle === 'monthly') {
-                    nextDate.setMonth(nextDate.getMonth() + 1);
-                } else if (group.billing_cycle === 'yearly') {
-                    nextDate.setFullYear(nextDate.getFullYear() + 1);
-                }
-
-                await client.query(`
-                    UPDATE groups 
-                    SET next_payment_date = $1, updated_at = NOW()
-                    WHERE id = $2
-                `, [nextDate, group.id]);
-
-                // 5. Audit Log
-                await client.query(`
-                    INSERT INTO audit_logs (
-                        target_type, target_id, action, changes
-                    ) VALUES ($1, $2, $3, $4)
-                `, [
-                    'group',
-                    group.id,
-                    'auto_billing',
-                    JSON.stringify({ bill_id: billId, amount: group.amount })
-                ]);
             }
 
             await client.query('COMMIT');
@@ -125,3 +113,4 @@ export class SchedulerService {
         }
     }
 }
+

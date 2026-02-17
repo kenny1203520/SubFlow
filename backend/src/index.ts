@@ -42,6 +42,7 @@ app.use(express.static(frontendPath));
 
 // API Routes
 app.use("/auth", authRoutes);
+app.use("/api/files", uploadRoutes);
 
 // Socket.IO Auth
 io.use(async (socket, next) => {
@@ -68,8 +69,11 @@ import { GroupController } from './controllers/GroupController';
 import { BillController } from './controllers/BillController';
 import { WalletController } from './controllers/WalletController';
 import { SecurityController } from './controllers/SecurityController';
-import { registerExpenseHandlers } from './socket/expenses';
-import { registerSubscriptionHandlers } from './socket/subscriptions';
+import { ExpenseController } from './controllers/ExpenseController';
+import { SubscriptionController } from './controllers/SubscriptionController';
+import { NotificationController } from './controllers/NotificationController';
+import { FileController } from './controllers/FileController';
+import uploadRoutes from './routes/upload';
 
 io.on("connection", (socket) => {
     console.log(`User connected: ${socket.data.user.username}`);
@@ -78,10 +82,10 @@ io.on("connection", (socket) => {
     new BillController(io, socket).register();
     new WalletController(io, socket).register();
     new SecurityController(io, socket).register();
-
-    // Still using procedural handlers for these until refactored
-    registerExpenseHandlers(io, socket);
-    registerSubscriptionHandlers(io, socket);
+    new ExpenseController(io, socket).register();
+    new SubscriptionController(io, socket).register();
+    new NotificationController(io, socket).register();
+    new FileController(io, socket).register();
 
     socket.on("dashboard:stats", async (cb: (res: any) => void) => {
         try {
