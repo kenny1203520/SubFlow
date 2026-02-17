@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth';
 import AddExpenseModal from '../components/AddExpenseModal.vue';
 import BillTicket from '../components/BillTicket.vue';
 import BillDetailModal from '../components/BillDetailModal.vue';
+import FileManager from '../components/FileManager.vue';
 import MainLayout from './MainLayout.vue';
 import { useI18n } from 'vue-i18n';
 
@@ -335,8 +336,9 @@ const bindAccount = (memberId: string) => {
                     :is-host="group.created_by === authStore.user?.id" @close="showBillDetail = false"
                     @updated="viewBillDetail(selectedBill)" />
 
-                <!-- Sidebar: Members -->
-                <aside class="members-sidebar">
+                <!-- Sidebar: Members & Files -->
+                <aside class="members-sidebar space-y-8">
+                    <FileManager :group-id="groupId" />
                     <div class="card">
                         <h2>{{ t('groups.members') }}</h2>
                         <ul class="member-list">

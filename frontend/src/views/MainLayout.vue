@@ -3,6 +3,7 @@ import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useLayoutStore } from '../stores/layout';
 import { useI18n } from 'vue-i18n';
+import NotificationCenter from '../components/NotificationCenter.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -21,25 +22,18 @@ const logout = async () => {
 
 <template>
     <div class="app-layout">
-        <!-- Mobile Header -->
-        <header class="mobile-header lg:hidden">
-            <button @click="layoutStore.toggleSidebar" class="menu-btn">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                    stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-            </button>
-            <span class="logo-text-sm">SubFlow</span>
-        </header>
+        <!-- 背景裝飾 (Premium Feel) -->
+        <div class="bg-decoration blur-1"></div>
+        <div class="bg-decoration blur-2"></div>
 
         <!-- Sidebar Overlay (Mobile) -->
         <div v-if="layoutStore.isSidebarOpen" @click="layoutStore.closeSidebar" class="overlay lg:hidden"></div>
 
         <!-- Sidebar -->
-        <aside :class="['sidebar', { 'open': layoutStore.isSidebarOpen, 'collapsed': layoutStore.isCollapsed }]">
+        <aside :class="['sidebar', 'glass-panel', { 'open': layoutStore.isSidebarOpen, 'collapsed': layoutStore.isCollapsed }]">
             <div class="sidebar-header">
                 <div class="logo-area">
-                    <div class="logo-icon">S</div>
+                    <div class="logo-icon animate-pulse">S</div>
                     <span class="logo-text hide-on-collapsed">SubFlow</span>
                 </div>
 
@@ -54,110 +48,71 @@ const logout = async () => {
                             d="M13 5l7 7-7 7M5 5l7 7-7 7" />
                     </svg>
                 </button>
-
-                <!-- Mobile Close Button -->
-                <button @click="layoutStore.toggleSidebar" class="close-btn lg:hidden">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
-                        stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
             </div>
 
             <nav class="nav-links">
-                <router-link to="/dashboard" class="nav-item" @click="layoutStore.closeSidebar"
-                    :title="t('dashboard.dashboard')">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-                    </svg>
+                <router-link to="/dashboard" class="nav-item" @click="layoutStore.closeSidebar">
+                    <div class="icon-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" /></svg>
+                    </div>
                     <span class="nav-text hide-on-collapsed">{{ t('dashboard.dashboard') }}</span>
                 </router-link>
-                <router-link to="/groups" class="nav-item" @click="layoutStore.closeSidebar"
-                    :title="t('dashboard.groups')">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
+                <router-link to="/groups" class="nav-item" @click="layoutStore.closeSidebar">
+                    <div class="icon-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                    </div>
                     <span class="nav-text hide-on-collapsed">{{ t('dashboard.groups') }}</span>
                 </router-link>
-                <router-link to="/subscriptions" class="nav-item" @click="layoutStore.closeSidebar"
-                    :title="t('dashboard.subscriptions')">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                    </svg>
+                <router-link to="/subscriptions" class="nav-item" @click="layoutStore.closeSidebar">
+                    <div class="icon-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                    </div>
                     <span class="nav-text hide-on-collapsed">{{ t('dashboard.subscriptions') }}</span>
-                </router-link>
-                <router-link to="/wallet" class="nav-item" @click="layoutStore.closeSidebar"
-                    :title="t('wallet.wallet')">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-                    </svg>
-                    <span class="nav-text hide-on-collapsed">{{ t('wallet.wallet') }}</span>
-                </router-link>
-                <router-link to="/security" class="nav-item" @click="layoutStore.closeSidebar"
-                    :title="t('security.security')">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                    </svg>
-                    <span class="nav-text hide-on-collapsed">{{ t('security.security') }}</span>
-                </router-link>
-                <router-link to="/profile" class="nav-item" @click="layoutStore.closeSidebar"
-                    :title="t('profile.profile')">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
-                        viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                    <span class="nav-text hide-on-collapsed">{{ t('profile.profile') }}</span>
                 </router-link>
             </nav>
 
             <div class="sidebar-footer">
-                <!-- Language Switcher -->
-                <div class="lang-switcher" :class="{ 'collapsed': layoutStore.isCollapsed }">
-                    <button :class="['lang-opt', { active: locale === 'zh' }]" @click="setLanguage('zh')">
-                        <span class="full-text">中文</span>
-                        <span class="short-text">中</span>
-                    </button>
-                    <button :class="['lang-opt', { active: locale === 'en' }]" @click="setLanguage('en')">
-                        EN
-                    </button>
+                <div class="lang-switcher-container hide-on-collapsed">
+                    <button class="lang-btn" @click="setLanguage('zh')">中文</button>
+                    <button class="lang-btn" @click="setLanguage('en')">EN</button>
                 </div>
-
-                <!-- User Profile -->
-                <div class="user-profile" v-if="authStore.user" :class="{ 'collapsed': layoutStore.isCollapsed }">
-                    <div class="avatar">{{ authStore.user.username[0].toUpperCase() }}</div>
+                <div class="user-panel glass-card" v-if="authStore.user">
+                    <div class="avatar-sm">{{ authStore.user.username[0].toUpperCase() }}</div>
                     <div class="user-info hide-on-collapsed">
                         <span class="username">{{ authStore.user.username }}</span>
                     </div>
-
-                    <button @click="logout" class="logout-icon-btn" :title="t('common.actions.logout')">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
-                            stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                        </svg>
+                    <button @click="logout" class="logout-btn hide-on-collapsed">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
                     </button>
                 </div>
             </div>
         </aside>
 
-        <!-- Main Content -->
-        <main :class="['main-content', { 'sidebar-collapsed': layoutStore.isCollapsed }]">
-            <div class="container">
-                <slot></slot>
-            </div>
-        </main>
+        <!-- Main Content Area -->
+        <div :class="['main-wrapper', { 'sidebar-collapsed': layoutStore.isCollapsed }]">
+            <!-- Top Header -->
+            <header class="top-header glass-panel">
+                <div class="header-left">
+                    <button @click="layoutStore.toggleSidebar" class="menu-btn lg:hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" /></svg>
+                    </button>
+                    <h2 class="page-title">{{ router.currentRoute.value.name || 'Dashboard' }}</h2>
+                </div>
+                <div class="header-right">
+                    <NotificationCenter />
+                    <div class="divider"></div>
+                    <router-link to="/profile" class="profile-link">
+                         <div class="avatar-sm">{{ authStore.user?.username[0].toUpperCase() }}</div>
+                    </router-link>
+                </div>
+            </header>
+
+            <main class="content-view">
+                <div class="animate-fade-in-up">
+                    <slot></slot>
+                </div>
+            </main>
+        </div>
     </div>
 </template>
 
@@ -165,337 +120,275 @@ const logout = async () => {
 .app-layout {
     display: flex;
     min-height: 100vh;
-    background-color: var(--bg-body);
-    flex-direction: column;
+    position: relative;
+    overflow: hidden;
 }
 
-@media (min-width: 1024px) {
-    .app-layout {
-        flex-direction: row;
-    }
-}
-
-/* Sidebar Styling */
-.sidebar {
+/* Background Gradients */
+.bg-decoration {
     position: fixed;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 260px;
-    background-color: var(--bg-sidebar);
-    color: var(--text-light);
-    transform: translateX(-100%);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 50;
+    border-radius: 50%;
+    z-index: -1;
+    filter: blur(80px);
+    opacity: 0.15;
+}
+.blur-1 {
+    width: 400px;
+    height: 400px;
+    background: var(--primary-color);
+    top: -100px;
+    left: -100px;
+}
+.blur-2 {
+    width: 300px;
+    height: 300px;
+    background: #a855f7;
+    bottom: -50px;
+    right: -50px;
+}
+
+/* Sidebar Overhaul */
+.sidebar {
+    width: 280px;
+    height: 100vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.1);
-}
-
-.sidebar.open {
-    transform: translateX(0);
+    z-index: 50;
+    transition: all var(--transition-normal);
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translateX(-100%);
+    background: rgba(255, 255, 255, 0.45) !important;
 }
 
 @media (min-width: 1024px) {
-    .sidebar {
-        position: fixed;
-        transform: none;
-        box-shadow: none;
-    }
-
-    .sidebar.collapsed {
-        width: 80px;
-    }
+    .sidebar { transform: translateX(0); }
+    .sidebar.collapsed { width: 88px; }
 }
 
+.sidebar.open { transform: translateX(0); }
+
 .sidebar-header {
-    height: 70px;
+    padding: 2rem 1.5rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 1.5rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    position: relative;
-}
-
-.collapse-btn {
-    position: absolute;
-    right: -12px;
-    top: 24px;
-    width: 24px;
-    height: 24px;
-    background-color: var(--primary-color);
-    border-radius: 50%;
-    color: white;
-    border: 2px solid var(--bg-sidebar);
-    display: none;
-    /* Hidden on mobile */
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    z-index: 100;
-}
-
-@media (min-width: 1024px) {
-    .collapse-btn {
-        display: flex;
-        /* Shown on desktop */
-    }
 }
 
 .logo-area {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    overflow: hidden;
+    gap: 1rem;
 }
 
 .logo-icon {
-    width: 32px;
-    height: 32px;
-    background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
-    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    background: var(--primary-gradient);
+    border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 800;
     color: white;
-    flex-shrink: 0;
+    font-weight: 800;
+    font-size: 1.25rem;
+    box-shadow: var(--shadow-md);
 }
 
 .logo-text {
-    font-size: 1.25rem;
+    font-size: 1.5rem;
     font-weight: 700;
-    letter-spacing: -0.025em;
-    color: white;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: -1px;
 }
 
+/* Nav Items */
 .nav-links {
-    padding: 1.5rem 1rem;
     flex: 1;
+    padding: 1rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.75rem;
 }
 
 .nav-item {
     display: flex;
     align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    color: var(--slate-400);
+    gap: 1rem;
+    padding: 0.875rem 1rem;
     border-radius: var(--radius-md);
-    transition: all 0.2s;
-    font-weight: 500;
+    color: var(--slate-600);
     text-decoration: none;
-    white-space: nowrap;
-    overflow: hidden;
+    transition: all var(--transition-fast);
 }
 
-@media (min-width: 1024px) {
-    .sidebar.collapsed .nav-item {
-        justify-content: center;
-        padding: 0.75rem;
-    }
-}
-
-.nav-item:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-    color: white;
-}
-
-.nav-item.router-link-active {
-    background-color: var(--primary-600);
-    color: white;
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
-}
-
-/* Footer Section */
-.sidebar-footer {
-    padding: 1.5rem;
-    background-color: rgba(0, 0, 0, 0.2);
-    border-top: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-/* Language Switcher */
-.lang-switcher {
-    display: flex;
-    background-color: rgba(0, 0, 0, 0.3);
-    padding: 0.25rem;
-    border-radius: var(--radius-md);
-    margin-bottom: 1.5rem;
-    transition: all 0.3s;
-}
-
-.lang-opt {
-    flex: 1;
-    background: none;
-    border: none;
-    color: var(--slate-400);
-    padding: 0.375rem;
-    font-size: 0.8125rem;
-    font-weight: 600;
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.lang-opt .short-text {
-    display: none;
-}
-
-@media (min-width: 1024px) {
-    .lang-switcher.collapsed {
-        flex-direction: column;
-        gap: 0.25rem;
-    }
-
-    .lang-switcher.collapsed .lang-opt .full-text {
-        display: none;
-    }
-
-    .lang-switcher.collapsed .lang-opt .short-text {
-        display: inline;
-    }
-}
-
-.lang-opt.active {
-    background-color: var(--primary-600);
-    color: white;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-.lang-opt:hover:not(.active) {
-    color: white;
-}
-
-/* User Profile */
-.user-profile {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding-top: 0.5rem;
-}
-
-@media (min-width: 1024px) {
-    .user-profile.collapsed {
-        flex-direction: column;
-        gap: 1rem;
-    }
-}
-
-.user-info {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    overflow: hidden;
-}
-
-.avatar {
+.icon-wrapper {
     width: 36px;
     height: 36px;
-    background-color: var(--slate-700);
-    color: white;
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-weight: 600;
-    font-size: 0.875rem;
-    border: 2px solid var(--bg-sidebar);
-    flex-shrink: 0;
+    border-radius: 10px;
+    transition: all var(--transition-fast);
 }
 
-.details {
+.nav-item:hover {
+    background: rgba(99, 102, 241, 0.05);
+    color: var(--primary-600);
+}
+
+.nav-item.router-link-active {
+    background: white;
+    box-shadow: var(--shadow-sm);
+    color: var(--primary-600);
+}
+
+.nav-item.router-link-active .icon-wrapper {
+    background: var(--primary-gradient);
+    color: white;
+    box-shadow: 0 4px 10px rgba(99, 102, 241, 0.2);
+}
+
+/* Sidebar Footer */
+.sidebar-footer {
+    padding: 2rem 1rem;
+}
+
+.lang-switcher-container {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+.lang-btn {
+    flex: 1;
+    padding: 0.5rem;
+    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    background: white;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.user-panel {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem;
+}
+
+/* Main Wrapper & Top Header */
+.main-wrapper {
+    flex: 1;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    transition: all var(--transition-normal);
 }
 
-.username {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: white;
-    white-space: nowrap;
-}
-
-.logout-icon-btn {
-    background: none;
-    border: none;
-    color: var(--slate-400);
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: var(--radius-md);
-    transition: all 0.2s;
-}
-
-.logout-icon-btn:hover {
-    background-color: rgba(239, 68, 68, 0.1);
-    color: var(--danger-color);
-}
-
-/* Visibility Utilities */
 @media (min-width: 1024px) {
-    .sidebar.collapsed .hide-on-collapsed {
-        display: none;
-    }
+    .main-wrapper { margin-left: 280px; }
+    .main-wrapper.sidebar-collapsed { margin-left: 88px; }
 }
 
-/* Mobile Header */
-.mobile-header {
-    height: 60px;
-    background-color: var(--bg-surface);
-    border-bottom: 1px solid var(--border-color);
-    padding: 0 1rem;
+.top-header {
+    height: 80px;
+    padding: 0 2rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    margin: 1.5rem;
 }
 
-.logo-text-sm {
-    font-weight: 700;
-    font-size: 1.1rem;
-    color: var(--text-main);
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
 }
 
-.menu-btn,
-.close-btn {
+.icon-btn {
+    position: relative;
     background: none;
     border: none;
-    color: var(--text-main);
-    padding: 0.5rem;
+    color: var(--slate-500);
     cursor: pointer;
+    padding: 0.5rem;
 }
 
-.close-btn {
-    color: white;
+.badge {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    background: var(--danger-color);
+    border-radius: 50%;
+    border: 2px solid white;
 }
 
-/* Main Content */
-.main-content {
+.divider {
+    width: 1px;
+    height: 24px;
+    background: var(--border-color);
+}
+
+.avatar-sm {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: var(--slate-100);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+}
+
+.content-view {
+    padding: 0 1.5rem 1.5rem;
     flex: 1;
-    overflow-y: auto;
-    padding: 2rem;
-    transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-@media (min-width: 1024px) {
-    .main-content {
-        margin-left: 260px;
-        height: 100vh;
-    }
-
-    .main-content.sidebar-collapsed {
-        margin-left: 80px;
-    }
 }
 
 .overlay {
     position: fixed;
     inset: 0;
-    background-color: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(4px);
     z-index: 40;
-    backdrop-filter: blur(2px);
+}
+
+.hide-on-collapsed {
+    transition: opacity 0.2s;
+}
+
+.collapsed .hide-on-collapsed {
+    opacity: 0;
+    pointer-events: none;
+    display: none;
+}
+
+.collapse-btn {
+    position: absolute;
+    right: -12px;
+    top: 30px;
+    width: 24px;
+    height: 24px;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: var(--shadow-sm);
+}
+
+.logout-btn {
+    background: none;
+    border: none;
+    color: var(--slate-400);
+    cursor: pointer;
+    margin-left: auto;
 }
 </style>
