@@ -46,9 +46,15 @@ CREATE TABLE IF NOT EXISTS groups (
     end_value TEXT,
     -- Stores occurrences count or date string
     max_members INTEGER NOT NULL DEFAULT 1,
+    -- Billing Method
     billing_method TEXT CHECK (
         billing_method IN ('equal', 'fixed', 'percentage')
     ) DEFAULT 'equal',
+    -- Fees & Taxes
+    extra_fee_percentage DECIMAL(5, 2) DEFAULT 0,
+    -- e.g., 1.5 for 1.5%
+    fixed_fee_amount DECIMAL(15, 2) DEFAULT 0,
+    -- Fixed fee per bill
     next_payment_date DATE,
     created_by TEXT REFERENCES users(id),
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'archived')),
@@ -61,32 +67,41 @@ CREATE INDEX IF NOT EXISTS idx_groups_service_id ON groups(service_id);
 CREATE TABLE IF NOT EXISTS group_members (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
-    user_id TEXT REFERENCES users(id),
-    temp_name TEXT,
-    -- For non-registered members
-    -- Expanded Roles
-    role TEXT CHECK (
-        role IN (
-            'owner',
-            'admin',
-            'treasurer',
-            'member',
-            'viewer'
+    -- Member Binding Logic:
+    -- 1. user_id can be NULL (Top-level placeholder)
+    -- 2. temp_name represents the "Slot Name"
+    -- 3. If user_id is set, it's a bound user.
+    -- 4. To "transfer" binding: Update user_id.
+    user_id TEXT REFERENCES users(id) ON DELETE
+    SET NULL,
+        temp_name TEXT,
+        -- Nickname within this specific group (User requested separate nickname)
+        display_name TEXT,
+        can_self_edit_nickname BOOLEAN DEFAULT TRUE,
+        -- Roles (Primary role, detailed permission in group_member_roles)
+        role TEXT CHECK (
+            role IN (
+                'owner',
+                'admin',
+                'treasurer',
+                'member',
+                'viewer'
+            )
+        ) DEFAULT 'member',
+        share_ratio DECIMAL(5, 2) CHECK (
+            share_ratio >= 0
+            AND share_ratio <= 100
+        ),
+        -- For percentage billing
+        fixed_amount DECIMAL(15, 2) CHECK (fixed_amount >= 0),
+        -- For fixed billing
+        joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        -- Constraint: Either user_id OR temp_name must exist to identify the slot
+        CONSTRAINT member_identity CHECK (
+            user_id IS NOT NULL
+            OR temp_name IS NOT NULL
         )
-    ) DEFAULT 'member',
-    share_ratio DECIMAL(5, 2) CHECK (
-        share_ratio >= 0
-        AND share_ratio <= 100
-    ),
-    -- For percentage billing
-    fixed_amount DECIMAL(15, 2) CHECK (fixed_amount >= 0),
-    -- For fixed billing
-    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    CONSTRAINT member_identity CHECK (
-        user_id IS NOT NULL
-        OR temp_name IS NOT NULL
-    )
 );
 -- General query index for group members
 CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id);
