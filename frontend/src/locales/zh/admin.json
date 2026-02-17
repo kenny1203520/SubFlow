@@ -1,0 +1,10 @@
+{
+    "adminDashboard": "管理員儀表板",
+    "totalUsers": "總使用者數",
+    "totalGroups": "總群組數",
+    "totalRevenue": "總交易額",
+    "activeSubscriptions": "活躍訂閱數",
+    "systemLogs": "系統日誌",
+    "reconciliation": "財務對帳",
+    "userManagement": "使用者管理"
+}

@@ -1,0 +1,13 @@
+{
+    "security": "安全性",
+    "twoFactorAuth": "兩步驟驗證 (2FA)",
+    "enable2FA": "啟用 2FA",
+    "disable2FA": "停用 2FA",
+    "devices": "登入裝置管理",
+    "revoke": "強制登出",
+    "currentDevice": "目前裝置",
+    "lastUsed": "最後使用時間",
+    "status": "狀態",
+    "enabled": "已啟用",
+    "disabled": "未啟用"
+}

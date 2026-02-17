@@ -1,0 +1,13 @@
+{
+    "security": "Security",
+    "twoFactorAuth": "Two-Factor Authentication (2FA)",
+    "enable2FA": "Enable 2FA",
+    "disable2FA": "Disable 2FA",
+    "devices": "Device Management",
+    "revoke": "Logout Device",
+    "currentDevice": "This Device",
+    "lastUsed": "Last Used",
+    "status": "Status",
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+}

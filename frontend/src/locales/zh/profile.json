@@ -1,0 +1,11 @@
+{
+    "profile": "個人資料",
+    "username": "使用者名稱",
+    "email": "電子郵件",
+    "realName": "真實姓名",
+    "birthday": "生日",
+    "phone": "電話號碼",
+    "save": "儲存變更",
+    "updateSuccess": "個人資料已更新",
+    "updateFailed": "更新失敗"
+}

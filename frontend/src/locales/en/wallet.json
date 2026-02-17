@@ -1,0 +1,18 @@
+{
+    "wallet": "Wallet",
+    "balance": "Balance",
+    "deposit": "Deposit",
+    "transfer": "Transfer",
+    "transactions": "Transactions",
+    "rootWallet": "Root Wallet",
+    "groupWallet": "Group Wallet",
+    "serviceWallet": "Service Wallet",
+    "amount": "Amount",
+    "description": "Description",
+    "type": "Type",
+    "date": "Date",
+    "noTransactions": "No transactions yet",
+    "insufficientBalance": "Insufficient balance",
+    "success": "Success",
+    "failed": "Failed"
+}

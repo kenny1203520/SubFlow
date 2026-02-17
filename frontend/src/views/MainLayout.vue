@@ -93,6 +93,33 @@ const logout = async () => {
                     </svg>
                     <span class="nav-text hide-on-collapsed">{{ t('dashboard.subscriptions') }}</span>
                 </router-link>
+                <router-link to="/wallet" class="nav-item" @click="layoutStore.closeSidebar"
+                    :title="t('wallet.wallet')">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                    </svg>
+                    <span class="nav-text hide-on-collapsed">{{ t('wallet.wallet') }}</span>
+                </router-link>
+                <router-link to="/security" class="nav-item" @click="layoutStore.closeSidebar"
+                    :title="t('security.security')">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                    </svg>
+                    <span class="nav-text hide-on-collapsed">{{ t('security.security') }}</span>
+                </router-link>
+                <router-link to="/profile" class="nav-item" @click="layoutStore.closeSidebar"
+                    :title="t('profile.profile')">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" fill="none"
+                        viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                    <span class="nav-text hide-on-collapsed">{{ t('profile.profile') }}</span>
+                </router-link>
             </nav>
 
             <div class="sidebar-footer">

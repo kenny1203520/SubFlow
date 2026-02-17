@@ -1,0 +1,10 @@
+{
+    "adminDashboard": "Admin Dashboard",
+    "totalUsers": "Total Users",
+    "totalGroups": "Total Groups",
+    "totalRevenue": "Total Revenue",
+    "activeSubscriptions": "Active Subscriptions",
+    "systemLogs": "System Logs",
+    "reconciliation": "Finance Reconciliation",
+    "userManagement": "User Management"
+}
