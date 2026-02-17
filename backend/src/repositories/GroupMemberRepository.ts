@@ -43,4 +43,11 @@ export class GroupMemberRepository extends BaseRepository {
             [userId, memberId]
         );
     }
+
+    async removeMember(groupId: string, userId: string): Promise<void> {
+        await this.query(
+            "DELETE FROM group_members WHERE group_id = $1 AND user_id = $2",
+            [groupId, userId]
+        );
+    }
 }

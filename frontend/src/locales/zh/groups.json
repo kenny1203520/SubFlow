@@ -57,8 +57,25 @@
     "splits": "分摊详情",
     "member": "成員",
     "payer": "付款人",
-    "subtitle": "管理您的共享支出群組",
+    "subtitle": "管理您的分帳群組",
     "genericService": "一般服務",
-    "noSearchResults": "沒有匹配的搜索結果",
-    "createdOnLabel": "創建於"
+    "noSearchResults": "沒有找到群組。",
+    "createdOnLabel": "建立於",
+    "serviceSearchPlaceholder": "搜尋服務...",
+    "startDate": "開始日期",
+    "endCondition": "結束條件",
+    "endConditions": {
+        "indefinite": "無限期 (永久)",
+        "date": "結束日期",
+        "total_amount": "總金額上限"
+    },
+    "endValue": "結束數值",
+    "iconUrl": "圖示連結",
+    "iconPreview": "圖示預覽",
+    "customIcon": "自訂圖示",
+    "dangerZone": "危險區域",
+    "deleteGroup": "刪除群組",
+    "leaveGroup": "離開群組",
+    "confirmDelete": "確定要刪除此群組嗎？此操作無法撤銷。",
+    "confirmLeave": "確定要離開此群組嗎？"
 }

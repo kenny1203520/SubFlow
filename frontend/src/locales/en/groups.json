@@ -59,6 +59,23 @@
     "payer": "Paid By",
     "subtitle": "Manage your shared expenses groups",
     "genericService": "Generic Service",
-    "noSearchResults": "No matching results",
-    "createdOnLabel": "Created on"
+    "noSearchResults": "No groups found.",
+    "createdOnLabel": "Created on",
+    "serviceSearchPlaceholder": "Search for a service...",
+    "startDate": "Start Date",
+    "endCondition": "End Condition",
+    "endConditions": {
+        "indefinite": "Indefinite (Forever)",
+        "date": "End Date",
+        "total_amount": "Total Amount Limit"
+    },
+    "endValue": "End Value",
+    "iconUrl": "Icon URL",
+    "iconPreview": "Icon Preview",
+    "customIcon": "Custom Icon",
+    "dangerZone": "Danger Zone",
+    "deleteGroup": "Delete Group",
+    "leaveGroup": "Leave Group",
+    "confirmDelete": "Are you sure you want to delete this group? This action cannot be undone.",
+    "confirmLeave": "Are you sure you want to leave this group?"
 }

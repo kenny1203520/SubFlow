@@ -120,4 +120,21 @@ export class GroupService {
         // Validation logic here
         await this.memberRepo.bindMember(memberId, userId);
     }
-}
+
+    async deleteGroup(userId: string, groupId: string) {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role !== 'admin') throw new Error("Only admins can delete the group");
+
+        // Transaction/Cascade delete is handled by DB usually, or we can explicit delete
+        await this.groupRepo.delete(groupId);
+    }
+
+    async leaveGroup(userId: string, groupId: string) {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (!role) throw new Error("You are not a member of this group");
+        if (role === 'admin') throw new Error("Admins cannot leave the group. Delete it instead.");
+
+        await this.memberRepo.removeMember(groupId, userId);
+    }
+
+ 

@@ -39,17 +39,28 @@ export class GroupRepository extends BaseRepository {
             `INSERT INTO groups (
                 name, service_name, service_id, website, plan_name, amount, 
                 service_currency, payment_currency, billing_type, interval_unit, interval_value, 
-                max_members, billing_method, created_by, next_payment_date
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING *`,
+                max_members, billing_method, created_by, next_payment_date,
+                start_date, end_condition, end_value
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18) RETURNING *`,
             [
                 data.name, data.service_name, data.service_id, data.website, data.plan_name,
                 data.amount, data.service_currency || 'TWD', data.payment_currency || 'TWD',
                 data.billing_type || 'recurring', data.interval_unit, data.interval_value || 1,
                 data.max_members, data.billing_method || 'equal', data.created_by,
-                data.next_payment_date
+                data.next_payment_date,
+                data.start_date, data.end_condition || 'indefinite', data.end_value
             ]
         );
         return res.rows[0];
+    }
+
+    async findById(id: string): Promise<GroupRow | null> {
+        const res = await this.query('SELECT * FROM groups WHERE id = $1', [id]);
+        return res.rows[0] || null;
+    }
+
+    async delete(id: string): Promise<void> {
+        await this.query('DELETE FROM groups WHERE id = $1', [id]);
     }
 
     async findByUserId(userId: string): Promise<GroupRow[]> {
@@ -61,5 +72,4 @@ export class GroupRepository extends BaseRepository {
         );
         return res.rows;
     }
-
- 
+}

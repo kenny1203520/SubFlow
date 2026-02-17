@@ -44,7 +44,9 @@ router.get('/user/activity', async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching activity logs:', error);
-        res.status(500).json({ message: 'Server error' });
+        console.error('User ID:', userId);
+        console.error('Query Params:', { limit, offset });
+        res.status(500).json({ message: 'Server error fetching activity logs', error: String(error) });
     }
 });
 

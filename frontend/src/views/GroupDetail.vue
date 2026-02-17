@@ -206,6 +206,28 @@ const exportData = async (type: 'expenses' | 'bills') => {
         alert('Export failed');
     }
 };
+
+const deleteGroup = () => {
+    if (!confirm(t('groups.confirmDelete'))) return;
+    socket.emit('group:delete', { groupId }, (res: any) => {
+        if (res.status === 'ok') {
+            router.push('/groups');
+        } else {
+            alert(res.message);
+        }
+    });
+};
+
+const leaveGroup = () => {
+    if (!confirm(t('groups.confirmLeave'))) return;
+    socket.emit('group:leave', { groupId }, (res: any) => {
+        if (res.status === 'ok') {
+            router.push('/groups');
+        } else {
+            alert(res.message);
+        }
+    });
+};
 </script>
 
 <template>
@@ -222,6 +244,16 @@ const exportData = async (type: 'expenses' | 'bills') => {
                                 d="M10 19l-7-7 7-7m-7 7h18" />
                         </svg>
                     </button>
+
+                    <!-- Group Icon -->
+                    <div
+                        class="h-16 w-16 rounded-2xl bg-white shadow-sm border border-slate-100 flex items-center justify-center overflow-hidden shrink-0">
+                        <img v-if="group.icon_url" :src="group.icon_url" alt="Icon"
+                            class="w-full h-full object-cover" />
+                        <span v-else class="text-2xl font-bold text-primary-500">{{ group.name.charAt(0).toUpperCase()
+                        }}</span>
+                    </div>
+
                     <div>
                         <h1 class="text-3xl font-extrabold text-slate-800">{{ group.name }}</h1>
                         <div class="flex items-center gap-2 text-sm text-slate-500">
@@ -411,6 +443,70 @@ const exportData = async (type: 'expenses' | 'bills') => {
                             :class="['px-4 py-2 rounded-lg text-sm font-bold transition-all', currentTab === 'bills' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700']">
                             {{ t('groups.bills') }}
                         </button>
+                        <button @click="currentTab = 'settings'"
+                            :class="['px-4 py-2 rounded-lg text-sm font-bold transition-all', currentTab === 'settings' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700']">
+                            {{ t('groups.settings') }}
+                        </button>
+                    </div>
+
+                    <div v-if="currentTab === 'settings'" class="animate-fade-in space-y-8">
+                        <!-- Group Information -->
+                        <section class="glass-panel p-6">
+                            <h3 class="text-lg font-bold text-slate-800 mb-4">{{ t('groups.basicInfo') }}</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="text-xs font-bold text-slate-400 uppercase">{{ t('groups.startDate')
+                                    }}</label>
+                                    <p class="font-medium text-slate-800">{{ group.start_date ? new
+                                        Date(group.start_date).toLocaleDateString() : '---' }}</p>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-400 uppercase">{{
+                                        t('groups.endCondition') }}</label>
+                                    <p class="font-medium text-slate-800">
+                                        {{ t(`groups.endConditions.${group.end_condition || 'indefinite'}`) }}
+                                        <span v-if="group.end_condition === 'date' && group.end_value">
+                                            ({{ new Date(group.end_value).toLocaleDateString() }})
+                                        </span>
+                                        <span v-if="group.end_condition === 'total_amount' && group.end_value">
+                                            ({{ group.end_value }})
+                                        </span>
+                                    </p>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-400 uppercase">{{ t('groups.maxMembers')
+                                    }}</label>
+                                    <p class="font-medium text-slate-800">{{ group.max_members }}</p>
+                                </div>
+                                <div>
+                                    <label class="text-xs font-bold text-slate-400 uppercase">{{
+                                        t('groups.createdOnLabel') }}</label>
+                                    <p class="font-medium text-slate-800">{{ new
+                                        Date(group.created_at).toLocaleDateString() }}</p>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- Danger Zone -->
+                        <section class="glass-panel p-6 border-l-4 border-red-500">
+                            <h3 class="text-lg font-bold text-red-600 mb-4">{{ t('groups.dangerZone') }}</h3>
+                            <div class="flex flex-col gap-4">
+                                <div v-if="group.created_by === authStore.user?.id">
+                                    <p class="text-sm text-slate-600 mb-2">{{ t('groups.confirmDelete') }}</p>
+                                    <button @click="deleteGroup"
+                                        class="btn bg-red-50 text-red-600 hover:bg-red-100 border border-red-200">
+                                        {{ t('groups.deleteGroup') }}
+                                    </button>
+                                </div>
+                                <div v-else>
+                                    <p class="text-sm text-slate-600 mb-2">{{ t('groups.confirmLeave') }}</p>
+                                    <button @click="leaveGroup"
+                                        class="btn bg-red-50 text-red-600 hover:bg-red-100 border border-red-200">
+                                        {{ t('groups.leaveGroup') }}
+                                    </button>
+                                </div>
+                            </div>
+                        </section>
                     </div>
 
                     <div v-if="currentTab === 'expenses'" class="animate-fade-in space-y-8">

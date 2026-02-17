@@ -4,8 +4,8 @@ import { requireAuth, verifySession } from "../middleware/auth";
 
 const router = Router();
 
-// Apply session verification
-router.use(verifySession);
+// Apply session verification - Now handled globally in index.ts
+// router.use(verifySession);
 
 router.get("/profile", requireAuth, async (req, res) => {
     const userId = res.locals.user!.id;

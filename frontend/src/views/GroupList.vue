@@ -79,7 +79,11 @@ const handleGroupCreated = () => {
                     </div>
 
                     <div class="mb-4">
-                        <div
+                        <div v-if="group.icon_url"
+                            class="w-12 h-12 rounded-xl bg-white border border-slate-100 mb-3 shadow-sm overflow-hidden group-hover:scale-110 transition-transform">
+                            <img :src="group.icon_url" alt="Icon" class="w-full h-full object-cover" />
+                        </div>
+                        <div v-else
                             class="w-12 h-12 rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-xl mb-3 shadow-sm group-hover:scale-110 transition-transform">
                             {{ group.name[0].toUpperCase() }}
                         </div>
