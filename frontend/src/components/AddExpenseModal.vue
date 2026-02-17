@@ -46,33 +46,39 @@ const handleSubmit = () => {
 </script>
 
 <template>
-    <div class="modal-overlay" @click.self="$emit('close')">
-        <div class="modal-content card">
-            <h2>{{ t('groups.addExpense') }}</h2>
-            <form @submit.prevent="handleSubmit">
+    <div class="modal-overlay animate-fade-in" @click.self="$emit('close')">
+        <div class="modal-content glass-panel">
+            <h2 class="text-xl font-bold text-slate-800 mb-6">{{ t('groups.addExpense') }}</h2>
+            <form @submit.prevent="handleSubmit" class="space-y-6">
                 <div class="form-group">
-                    <label>{{ t('groups.groupDesc') }}</label>
+                    <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.groupDesc') }}</label>
                     <input v-model="description" type="text" :placeholder="t('common.placeholders.description')"
-                        required :disabled="isSubmitting" />
+                        required :disabled="isSubmitting" class="glass-input w-full" />
                 </div>
                 <div class="form-group">
-                    <label>{{ t('groups.expenses') }}</label>
-                    <input v-model="totalAmount" type="number" step="0.01"
-                        :placeholder="t('common.placeholders.amount')" required :disabled="isSubmitting" />
+                    <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.expenses') }}</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-2.5 text-slate-400 font-bold">$</span>
+                        <input v-model="totalAmount" type="number" step="0.01"
+                            :placeholder="t('common.placeholders.amount')" required :disabled="isSubmitting"
+                            class="glass-input w-full pl-8" />
+                    </div>
                 </div>
 
-                <div class="split-info">
-                    <p>{{ t('groups.splitEqually', { count: members.length }) }}</p>
-                    <p v-if="totalAmount">{{ t('groups.eachOwes', {
-                        amount: '$' + (totalAmount /
-                            members.length).toFixed(2) }) }}</p>
+                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <p class="text-sm text-slate-600 mb-1">{{ t('groups.splitEqually', { count: members.length }) }}</p>
+                    <p v-if="totalAmount" class="font-bold text-primary-600">
+                        {{ t('groups.eachOwes', { amount: '$' + (totalAmount / members.length).toFixed(2) }) }}
+                    </p>
                 </div>
 
-                <p v-if="error" class="error-msg">{{ error }}</p>
+                <p v-if="error" class="text-red-500 text-sm">{{ error }}</p>
 
-                <div class="actions">
-                    <button type="button" @click="$emit('close')" :disabled="isSubmitting" class="btn btn-secondary">{{
-                        t('common.actions.cancel') }}</button>
+                <div class="flex justify-end gap-3">
+                    <button type="button" @click="$emit('close')" :disabled="isSubmitting"
+                        class="btn bg-slate-100 text-slate-600 hover:bg-slate-200">
+                        {{ t('common.actions.cancel') }}
+                    </button>
                     <button type="submit" :disabled="isSubmitting || !totalAmount" class="btn btn-primary">
                         {{ isSubmitting ? t('common.status.loading') : t('groups.addExpense') }}
                     </button>
@@ -89,7 +95,8 @@ const handleSubmit = () => {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.5);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -98,63 +105,11 @@ const handleSubmit = () => {
 
 .modal-content {
     background: white;
+    /* Fallback */
+    background: var(--glass-bg);
+    /* Use glass variable if available */
     padding: 2rem;
-    border-radius: 8px;
     width: 100%;
     max-width: 450px;
-}
-
-.form-group {
-    margin-bottom: 1.25rem;
-}
-
-label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: bold;
-}
-
-input {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-.split-info {
-    background: #f8f9fa;
-    padding: 1rem;
-    border-radius: 4px;
-    margin-bottom: 1.25rem;
-    font-size: 0.9rem;
-}
-
-.error-msg {
-    color: #e74c3c;
-    margin-bottom: 1rem;
-}
-
-.actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-}
-
-.submit-btn {
-    background-color: #4CAF50;
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
-    cursor: pointer;
-    font-weight: bold;
-}
-
-.cancel-btn {
-    background: none;
-    border: 1px solid #ddd;
-    padding: 0.75rem 1.5rem;
-    border-radius: 4px;
-    cursor: pointer;
 }
 </style>

@@ -18,7 +18,7 @@ const handleSubmit = async () => {
     error.value = '';
 
     try {
-        const res = await api.post('/auth/password-reset', { email: email.value });
+        await api.post('/auth/password-reset', { email: email.value });
         message.value = t('auth.resetLinkSent', 'Reset link sent to your email.');
     } catch (err: any) {
         error.value = err.response?.data || 'Error sending reset link';
@@ -29,32 +29,43 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-    <div class="auth-page">
-        <div class="auth-card glass-panel animate-fade-in-up">
-            <h1 class="auth-title">{{ t('auth.forgotPassword', 'Forgot Password') }}</h1>
-            <p class="auth-subtitle">{{ t('auth.forgotSubtitle', 'Enter your email to receive a reset link') }}</p>
+    <div class="min-h-screen w-full flex items-center justify-center p-4 relative overflow-hidden bg-body">
+        <!-- Dynamic Background -->
+        <div class="absolute top-0 left-0 w-full h-full overflow-hidden -z-10">
+            <div class="blob blob-1"></div>
+            <div class="blob blob-2 opacity-50"></div>
+        </div>
 
-            <form @submit.prevent="handleSubmit" class="auth-form">
+        <div class="w-full max-w-md glass-panel p-8 shadow-2xl animate-fade-in-up">
+            <h1 class="text-3xl font-extrabold text-center mb-2 text-gradient">
+                {{ t('auth.forgotPassword', 'Forgot Password') }}
+            </h1>
+            <p class="text-center text-slate-500 mb-8">
+                {{ t('auth.forgotSubtitle', 'Enter your email to receive a reset link') }}
+            </p>
+
+            <form @submit.prevent="handleSubmit" class="space-y-6">
                 <div class="form-group">
-                    <label>{{ t('auth.email') }}</label>
+                    <label class="form-label">{{ t('auth.email') }}</label>
                     <input v-model="email" type="email" :placeholder="t('auth.email')" required class="glass-input" />
                 </div>
 
-                <div v-if="message" class="alert alert-success mt-4">
+                <div v-if="message" class="p-3 rounded-lg bg-green-50 text-green-700 text-sm border border-green-200">
                     {{ message }}
                 </div>
-                <div v-if="error" class="alert alert-danger mt-4">
-                    {{ error }}_{{ t('auth.emailNotFound', 'If account exists, email sent.') }}
+                <div v-if="error" class="p-3 rounded-lg bg-red-50 text-red-600 text-sm border border-red-200">
+                    {{ error }}
                 </div>
 
-                <button type="submit" :disabled="loading" class="btn btn-primary w-full mt-6">
+                <button type="submit" :disabled="loading" class="btn btn-primary w-full shadow-lg">
                     {{ loading ? t('common.status.loading') : t('auth.sendResetLink', 'Send Reset Link') }}
                 </button>
 
-                <div class="auth-footer mt-6">
-                    <button @click="router.push('/auth')" class="btn-link">
-                        {{ t('auth.backToLogin', 'Back to Login') }}
-                    </button>
+                <div class="text-center mt-6">
+                    <span @click="router.push('/auth')"
+                        class="text-sm text-slate-500 hover:text-primary-600 cursor-pointer font-medium hover:underline transition-colors">
+                        ← {{ t('auth.backToLogin', 'Back to Login') }}
+                    </span>
                 </div>
             </form>
         </div>
@@ -62,79 +73,41 @@ const handleSubmit = async () => {
 </template>
 
 <style scoped>
-.auth-page {
-    min-height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    padding: 1rem;
+/* Blob Animations (Copied from Auth.vue for consistency) */
+.blob {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.5;
+    animation: float 10s infinite ease-in-out;
 }
 
-.auth-card {
-    width: 100%;
-    max-width: 450px;
-    padding: 2.5rem;
-    color: white;
+.blob-1 {
+    top: -10%;
+    right: -10%;
+    width: 400px;
+    height: 400px;
+    background: var(--primary-300);
 }
 
-.auth-title {
-    font-size: 2rem;
-    font-weight: 800;
-    margin-bottom: 0.5rem;
-    text-align: center;
+.blob-2 {
+    bottom: -10%;
+    left: -10%;
+    width: 300px;
+    height: 300px;
+    background: var(--accent-color);
+    animation-delay: -5s;
 }
 
-.auth-subtitle {
-    font-size: 1rem;
-    color: rgba(255, 255, 255, 0.7);
-    margin-bottom: 2rem;
-    text-align: center;
-}
+@keyframes float {
 
-.form-group {
-    margin-bottom: 1.5rem;
-}
+    0%,
+    100% {
+        transform: translateY(0);
+    }
 
-.form-group label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    margin-bottom: 0.5rem;
-}
-
-.glass-input {
-    width: 100%;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: var(--radius-lg);
-    padding: 0.75rem 1rem;
-    color: white;
-    outline: none;
-    transition: all 0.3s ease;
-}
-
-.glass-input:focus {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.4);
-    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
-}
-
-.btn-link {
-    background: none;
-    border: none;
-    color: white;
-    font-size: 0.875rem;
-    cursor: pointer;
-    text-decoration: underline;
-    opacity: 0.8;
-}
-
-.btn-link:hover {
-    opacity: 1;
-}
-
-.auth-footer {
-    text-align: center;
+    50% {
+        transform: translateY(-20px);
+    }
 }
 </style>

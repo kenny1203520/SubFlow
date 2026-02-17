@@ -64,47 +64,58 @@ const handleSubmit = () => {
 </script>
 
 <template>
-    <div class="modal-overlay" @click.self="$emit('close')">
-        <div class="modal-content card">
-            <h2>{{ t('groups.createGroup') }}</h2>
-            <form @submit.prevent="handleSubmit" class="scrollable-form">
+    <div class="modal-overlay animate-fade-in" @click.self="$emit('close')">
+        <div class="modal-content glass-panel">
+            <h2 class="text-2xl font-bold text-slate-800 mb-6">{{ t('groups.createGroup') }}</h2>
+            <form @submit.prevent="handleSubmit" class="scrollable-form space-y-8">
                 <!-- Basic Group Info -->
                 <div class="section">
-                    <h3>{{ t('groups.basicInfo') }}</h3>
+                    <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">{{ t('groups.basicInfo')
+                        }}</h3>
                     <div class="form-group">
-                        <label for="groupName">{{ t('groups.groupName') }} *</label>
+                        <label for="groupName" class="block text-sm font-medium text-slate-700 mb-1">{{
+                            t('groups.groupName') }} *</label>
                         <input id="groupName" v-model="form.name" type="text"
-                            :placeholder="t('common.placeholders.name')" required :disabled="isSubmitting" />
+                            :placeholder="t('common.placeholders.name')" required :disabled="isSubmitting"
+                            class="glass-input w-full" />
                     </div>
                 </div>
 
                 <!-- Service Details -->
                 <div class="section">
-                    <h3>{{ t('groups.serviceDetails') }}</h3>
+                    <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">{{
+                        t('groups.serviceDetails') }}</h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
-                            <label>{{ t('groups.serviceName') }}</label>
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.serviceName')
+                                }}</label>
                             <input v-model="form.service_name" type="text"
-                                :placeholder="t('common.placeholders.service')" />
+                                :placeholder="t('common.placeholders.service')" class="glass-input w-full" />
                         </div>
                         <div class="form-group">
-                            <label>{{ t('groups.website') }}</label>
-                            <input v-model="form.website" type="url" placeholder="https://..." />
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.website')
+                                }}</label>
+                            <input v-model="form.website" type="url" placeholder="https://..."
+                                class="glass-input w-full" />
                         </div>
                     </div>
                 </div>
 
                 <!-- Plan Details -->
                 <div class="section">
-                    <h3>{{ t('groups.planAndBilling') }}</h3>
-                    <div class="grid grid-cols-2 gap-4">
+                    <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">{{
+                        t('groups.planAndBilling') }}</h3>
+                    <div class="grid grid-cols-2 gap-4 mb-4">
                         <div class="form-group">
-                            <label>{{ t('groups.planName') }}</label>
-                            <input v-model="form.plan_name" type="text" :placeholder="t('common.placeholders.plan')" />
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.planName')
+                                }}</label>
+                            <input v-model="form.plan_name" type="text" :placeholder="t('common.placeholders.plan')"
+                                class="glass-input w-full" />
                         </div>
                         <div class="form-group">
-                            <label>{{ t('groups.billingCycle') }}</label>
-                            <select v-model="form.billing_cycle">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.billingCycle')
+                                }}</label>
+                            <select v-model="form.billing_cycle" class="glass-input w-full">
                                 <option value="monthly">{{ t('common.cycles.monthly') }}</option>
                                 <option value="yearly">{{ t('common.cycles.yearly') }}</option>
                                 <option value="one-time">{{ t('common.cycles.one-time') }}</option>
@@ -113,27 +124,33 @@ const handleSubmit = () => {
                     </div>
                     <div class="grid grid-cols-3 gap-4">
                         <div class="form-group col-span-2">
-                            <label>{{ t('groups.amount') }}</label>
-                            <input v-model.number="form.amount" type="number" step="0.01" />
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.amount')
+                                }}</label>
+                            <input v-model.number="form.amount" type="number" step="0.01" class="glass-input w-full" />
                         </div>
                         <div class="form-group">
-                            <label>{{ t('groups.currency') }}</label>
-                            <input v-model="form.currency" type="text" maxlength="3" />
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.currency')
+                                }}</label>
+                            <input v-model="form.currency" type="text" maxlength="3"
+                                class="glass-input w-full uppercase" />
                         </div>
                     </div>
                 </div>
 
                 <!-- Group Settings -->
                 <div class="section">
-                    <h3>{{ t('groups.settings') }}</h3>
+                    <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">{{ t('groups.settings')
+                        }}</h3>
                     <div class="grid grid-cols-2 gap-4">
                         <div class="form-group">
-                            <label>{{ t('groups.maxMembers') }}</label>
-                            <input v-model.number="form.max_members" type="number" min="1" />
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.maxMembers')
+                                }}</label>
+                            <input v-model.number="form.max_members" type="number" min="1" class="glass-input w-full" />
                         </div>
                         <div class="form-group">
-                            <label>{{ t('groups.billingMethod') }}</label>
-                            <select v-model="form.billing_method">
+                            <label class="block text-sm font-medium text-slate-700 mb-1">{{ t('groups.billingMethod')
+                                }}</label>
+                            <select v-model="form.billing_method" class="glass-input w-full">
                                 <option value="equal">{{ t('groups.methods.equal') }}</option>
                                 <option value="fixed">{{ t('groups.methods.fixed') }}</option>
                                 <option value="percentage">{{ t('groups.methods.percentage') }}</option>
@@ -143,29 +160,33 @@ const handleSubmit = () => {
                 </div>
 
                 <!-- Initial Members -->
-                <div class="section">
-                    <h3>{{ t('groups.initialMembers') }}</h3>
-                    <div class="member-input-row">
-                        <select v-model="nextMemberType" class="type-select">
+                <div class="section w-full">
+                    <h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">{{
+                        t('groups.initialMembers') }}</h3>
+                    <div class="flex gap-2 mb-3 w-full">
+                        <select v-model="nextMemberType" class="glass-input w-32">
                             <option value="name">{{ t('common.fields.name') }}</option>
                             <option value="email">{{ t('common.fields.email') }}</option>
                         </select>
                         <input v-model="nextMemberValue" type="text" :placeholder="t('common.placeholders.member')"
-                            @keydown.enter.prevent="addMember" />
-                        <button type="button" @click="addMember" class="btn btn-sm btn-secondary">+</button>
+                            @keydown.enter.prevent="addMember" class="glass-input flex-1" />
+                        <button type="button" @click="addMember" class="btn btn-secondary px-4">+</button>
                     </div>
-                    <div class="member-tags">
-                        <div v-for="(m, idx) in initialMembers" :key="idx" class="member-tag">
+                    <div class="flex flex-wrap gap-2">
+                        <div v-for="(m, idx) in initialMembers" :key="idx"
+                            class="px-3 py-1 rounded-full bg-primary-50 text-primary-700 border border-primary-100 text-sm flex items-center gap-2">
                             <span>{{ m.value }}</span>
-                            <button @click="removeMember(idx)" type="button">&times;</button>
+                            <button @click="removeMember(idx)" type="button"
+                                class="text-primary-400 hover:text-primary-700">&times;</button>
                         </div>
                     </div>
                 </div>
 
-                <p v-if="error" class="error-msg">{{ error }}</p>
+                <p v-if="error" class="text-red-500 text-sm">{{ error }}</p>
 
-                <div class="actions">
-                    <button type="button" @click="$emit('close')" :disabled="isSubmitting" class="btn btn-secondary">
+                <div class="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                    <button type="button" @click="$emit('close')" :disabled="isSubmitting"
+                        class="btn bg-slate-100 text-slate-600 hover:bg-slate-200">
                         {{ t('common.actions.cancel') }}
                     </button>
                     <button type="submit" :disabled="isSubmitting || !form.name.trim()" class="btn btn-primary">
@@ -184,8 +205,8 @@ const handleSubmit = () => {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(4px);
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
     align-items: center;
@@ -193,15 +214,12 @@ const handleSubmit = () => {
 }
 
 .modal-content {
-    background: var(--bg-surface);
-    padding: 2rem;
-    border-radius: var(--radius-lg);
-    width: 100%;
-    max-width: 600px;
+    padding: 2.5rem;
+    width: 90%;
+    max-width: 650px;
     max-height: 90vh;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
 }
 
 .scrollable-form {
@@ -209,135 +227,27 @@ const handleSubmit = () => {
     padding-right: 0.5rem;
 }
 
-h2 {
-    margin-top: 0;
-    margin-bottom: 1.5rem;
-    font-size: 1.5rem;
-    font-weight: 700;
+/* Custom Scrollbar for form */
+.scrollable-form::-webkit-scrollbar {
+    width: 6px;
+}
+
+.scrollable-form::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.scrollable-form::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.1);
+    border-radius: 3px;
 }
 
 .section {
-    margin-bottom: 2rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px dashed var(--border-color);
+    padding-bottom: 2rem;
 }
 
 .section:last-of-type {
     border-bottom: none;
-}
-
-h3 {
-    font-size: 0.875rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-    margin-bottom: 1rem;
-}
-
-.form-group {
-    margin-bottom: 1.25rem;
-}
-
-label {
-    display: block;
-    margin-bottom: 0.375rem;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-main);
-}
-
-input,
-select {
-    width: 100%;
-    padding: 0.625rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-    background-color: var(--bg-body);
-    color: var(--text-main);
-    font-size: 0.9375rem;
-    transition: border-color 0.2s;
-}
-
-input:focus,
-select:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.member-input-row {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.type-select {
-    width: 100px;
-}
-
-.member-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-}
-
-.member-tag {
-    background-color: var(--primary-50);
-    color: var(--primary-700);
-    padding: 0.25rem 0.75rem;
-    border-radius: 9999px;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    border: 1px solid var(--primary-100);
-}
-
-.member-tag button {
-    background: none;
-    border: none;
-    color: inherit;
-    cursor: pointer;
-    font-size: 1.1rem;
-    line-height: 1;
-    padding: 0;
-}
-
-.error-msg {
-    color: var(--danger-color);
-    margin-bottom: 1rem;
-    font-size: 0.875rem;
-}
-
-.actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
-    margin-top: 1rem;
-    position: sticky;
-    bottom: 0;
-    background: var(--bg-surface);
-    padding-top: 1rem;
-}
-
-.grid {
-    display: grid;
-}
-
-.grid-cols-2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.grid-cols-3 {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.col-span-2 {
-    grid-column: span 2 / span 2;
-}
-
-.gap-4 {
-    gap: 1rem;
+    padding-bottom: 0;
 }
 </style>

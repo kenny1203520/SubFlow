@@ -44,191 +44,169 @@ onMounted(async () => {
 
 <template>
     <MainLayout>
-        <div class="dashboard-wrapper">
-            <header class="page-header">
-                <div>
-                    <h1 class="page-title">{{ t('dashboard.dashboard') }}</h1>
-                    <p class="page-subtitle">{{ t('dashboard.welcomeBack', { name: authStore.user?.username }) }}</p>
+        <div class="dashboard-wrapper space-y-8">
+            <!-- Welcome Banner -->
+            <header
+                class="relative overflow-hidden rounded-3xl bg-primary-gradient p-8 text-white shadow-lg animate-fade-in">
+                <div class="absolute top-0 right-0 p-4 opacity-10">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-64 w-64" fill="currentColor" viewBox="0 0 24 24">
+                        <path
+                            d="M12 2L2 7l10 5 10-5-10-5zm0 9l2.5-1.25L12 8.5l-2.5 1.25L12 11zm0 2.5l-5-2.5-5 2.5L12 22l10-8.5-5-2.5-5 2.5z" />
+                    </svg>
+                </div>
+                <div class="relative z-10">
+                    <h1 class="text-3xl font-extrabold mb-2">{{ t('dashboard.dashboard') }}</h1>
+                    <p class="text-primary-100 text-lg">
+                        {{ t('dashboard.welcomeBack', { name: authStore.user?.username }) }}
+                    </p>
                 </div>
             </header>
 
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <!-- Stats Grid -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in"
+                style="animation-delay: 0.1s">
                 <!-- Owe Card -->
-                <div class="stat-card card">
-                    <div class="icon-wrapper bg-danger-light">
-                        <!-- Icon: Trending Down -->
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-danger" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
+                <div class="glass-card p-6 flex items-center gap-4 relative overflow-hidden group">
+                    <div class="absolute right-0 top-0 p-4 opacity-5 group-hover:scale-110 transition-transform">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="currentColor"
+                            viewBox="0 0 24 24">
+                            <path d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <div
+                        class="w-14 h-14 rounded-2xl bg-red-100 text-red-500 flex items-center justify-center shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6" />
                         </svg>
                     </div>
                     <div>
-                        <h3 class="stat-label">{{ t('dashboard.totalOwed') }}</h3>
-                        <p :class="['stat-value', stats.totalIOwe > 0 ? 'text-danger' : 'text-neutral']">
+                        <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider">{{
+                            t('dashboard.totalOwed') }}</h3>
+                        <p class="text-3xl font-extrabold mt-1"
+                            :class="stats.totalIOwe > 0 ? 'text-red-500' : 'text-slate-800'">
                             ${{ stats.totalIOwe.toFixed(2) }}
                         </p>
                     </div>
                 </div>
 
                 <!-- Owed To You Card -->
-                <div class="stat-card card">
-                    <div class="icon-wrapper bg-success-light">
-                        <!-- Icon: Trending Up -->
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-success" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
+                <div class="glass-card p-6 flex items-center gap-4 relative overflow-hidden group">
+                    <div class="absolute right-0 top-0 p-4 opacity-5 group-hover:scale-110 transition-transform">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="currentColor"
+                            viewBox="0 0 24 24">
+                            <path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" stroke="currentColor" stroke-width="2"
+                                stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <div
+                        class="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-500 flex items-center justify-center shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
                         </svg>
                     </div>
                     <div>
-                        <h3 class="stat-label">{{ t('dashboard.totalOwedToYou') }}</h3>
-                        <p :class="['stat-value', stats.totalOwedToMe > 0 ? 'text-success' : 'text-neutral']">
+                        <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider">{{
+                            t('dashboard.totalOwedToYou') }}</h3>
+                        <p class="text-3xl font-extrabold mt-1"
+                            :class="stats.totalOwedToMe > 0 ? 'text-emerald-500' : 'text-slate-800'">
                             ${{ stats.totalOwedToMe.toFixed(2) }}
                         </p>
                     </div>
                 </div>
 
                 <!-- Subscriptions Card -->
-                <div class="stat-card card">
-                    <div class="icon-wrapper bg-primary-light">
-                        <!-- Icon: Refresh/Cycle -->
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-primary" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
+                <div class="glass-card p-6 flex items-center gap-4 relative overflow-hidden group">
+                    <div class="absolute right-0 top-0 p-4 opacity-5 group-hover:scale-110 transition-transform">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="currentColor"
+                            viewBox="0 0 24 24">
+                            <path
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
+                    </div>
+                    <div
+                        class="w-14 h-14 rounded-2xl bg-indigo-100 text-indigo-500 flex items-center justify-center shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                         </svg>
                     </div>
                     <div>
-                        <h3 class="stat-label">{{ t('dashboard.activeSubscriptions') }}</h3>
-                        <p class="stat-value text-primary">{{ stats.activeSubscriptions }}</p>
+                        <h3 class="text-sm font-semibold text-slate-500 uppercase tracking-wider">{{
+                            t('dashboard.activeSubscriptions') }}</h3>
+                        <p class="text-3xl font-extrabold mt-1 text-slate-800">
+                            {{ stats.activeSubscriptions }}
+                        </p>
                     </div>
                 </div>
             </div>
 
-            <!-- Recent Activity -->
-            <section class="activity-section mt-8">
-                <h3 class="section-title">{{ t('dashboard.recentActivity') }}</h3>
-                <div class="card empty-activity">
-                    <div class="empty-icon">
-                        <!-- Icon: Inbox -->
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-muted" fill="none"
+            <!-- Recent Activity & Quick Actions -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in" style="animation-delay: 0.2s">
+                <div class="lg:col-span-2 space-y-6">
+                    <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-500" fill="none"
                             viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
+                        {{ t('dashboard.recentActivity') }}
+                    </h3>
+
+                    <div class="glass-panel p-8 text-center border-2 border-dashed border-slate-200 bg-white/40">
+                        <div
+                            class="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
+                            </svg>
+                        </div>
+                        <p class="text-slate-500 font-medium">{{ t('dashboard.noActivity') }}</p>
                     </div>
-                    <p>{{ t('dashboard.noActivity') }}</p>
                 </div>
-            </section>
+
+                <div class="space-y-6">
+                    <h3 class="text-xl font-bold text-slate-800">{{ t('dashboard.quickActions', 'Quick Actions') }}</h3>
+                    <div class="glass-card p-4 space-y-3">
+                        <button @click="router.push('/groups')"
+                            class="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left group">
+                            <div
+                                class="w-10 h-10 rounded-lg bg-primary-50 text-primary-600 flex items-center justify-center group-hover:bg-primary-600 group-hover:text-white transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 4v16m8-8H4" />
+                                </svg>
+                            </div>
+                            <span class="font-medium text-slate-700 group-hover:text-primary-700">Create Group</span>
+                        </button>
+                        <button @click="router.push('/subscriptions')"
+                            class="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left group">
+                            <div
+                                class="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                    stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                            </div>
+                            <span class="font-medium text-slate-700 group-hover:text-emerald-700">Add
+                                Subscription</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
     </MainLayout>
 </template>
 
 <style scoped>
-.page-header {
-    margin-bottom: 2rem;
-}
-
-.page-title {
-    font-size: 1.875rem;
-    font-weight: 700;
-    color: var(--text-main);
-    margin-bottom: 0.25rem;
-}
-
-.page-subtitle {
-    color: var(--text-muted);
-    font-size: 1rem;
-}
-
-/* Stat Cards */
-.stat-card {
-    display: flex;
-    align-items: center;
-    gap: 1.25rem;
-    padding: 1.5rem;
-}
-
-.icon-wrapper {
-    width: 56px;
-    height: 56px;
-    border-radius: var(--radius-lg);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.75rem;
-}
-
-.bg-danger-light {
-    background-color: #fee2e2;
-}
-
-.bg-success-light {
-    background-color: #dcfce7;
-}
-
-.bg-primary-light {
-    background-color: var(--primary-100);
-}
-
-.stat-label {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.25rem;
-}
-
-.stat-value {
-    font-size: 1.75rem;
-    font-weight: 800;
-    line-height: 1;
-}
-
-.text-danger {
-    color: var(--danger-color);
-}
-
-.text-success {
-    color: var(--success-color);
-}
-
-.text-primary {
-    color: var(--primary-color);
-}
-
-.text-neutral {
-    color: var(--text-main);
-}
-
-/* Activity Section */
-.mt-8 {
-    margin-top: 2.5rem;
-}
-
-.section-title {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text-main);
-    margin-bottom: 1rem;
-}
-
-.empty-activity {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 4rem 2rem;
-    border: 2px dashed var(--border-color);
-    background-color: transparent;
-    box-shadow: none;
-}
-
-.empty-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    opacity: 0.5;
-}
+/* Scoped styles are minimal as we use utility classes from style.css */
 </style>

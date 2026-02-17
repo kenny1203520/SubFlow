@@ -12,6 +12,8 @@ import { parse } from 'cookie';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
 import uploadRoutes from './routes/upload';
+import exportRoutes from './routes/export';
+import auditRoutes from './routes/audit';
 import { verifySession } from './middleware/auth';
 
 dotenv.config();
@@ -46,6 +48,8 @@ app.use(express.static(frontendPath));
 app.use("/auth", authRoutes);
 app.use("/api/user", userRoutes);
 app.use("/api/files", uploadRoutes);
+app.use("/api/export", exportRoutes);
+app.use("/api/audit", auditRoutes);
 
 // Static for uploads
 app.use("/uploads", express.static(path.resolve(__dirname, '../../uploads')));

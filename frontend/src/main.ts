@@ -17,6 +17,7 @@ import AdminDashboard from './views/AdminDashboard.vue'
 import ForgotPassword from './views/ForgotPassword.vue'
 import ResetPassword from './views/ResetPassword.vue'
 import VerifyEmail from './views/VerifyEmail.vue'
+import ActivityLog from './views/ActivityLog.vue'
 
 const routes = [
     { path: '/', redirect: '/dashboard' },
@@ -35,6 +36,7 @@ const routes = [
     { path: '/wallet', component: WalletView, meta: { requiresAuth: true } },
     { path: '/security', component: SecurityView, meta: { requiresAuth: true } },
     { path: '/profile', component: ProfileView, meta: { requiresAuth: true } },
+    { path: '/activity', component: ActivityLog, meta: { requiresAuth: true } },
     { path: '/admin', component: AdminDashboard, meta: { requiresAuth: true, requiresAdmin: true } },
 ]
 

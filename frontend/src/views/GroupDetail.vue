@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { socket } from '../socket';
 import { useAuthStore } from '../stores/auth';
@@ -42,6 +42,59 @@ const currentTab = ref('expenses'); // 'expenses' | 'bills' | 'settings'
 const showBillDetail = ref(false);
 const selectedBill = ref<any>(null);
 const selectedBillSplits = ref<any[]>([]);
+
+// Search & Filter State
+const searchQuery = ref('');
+const memberFilter = ref('');
+const startDate = ref('');
+const endDate = ref('');
+
+const filteredExpenses = computed(() => {
+    return expenses.value.filter(e => {
+        // Text Match
+        const matchText = searchQuery.value
+            ? e.description.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+            e.amount.toString().includes(searchQuery.value)
+            : true;
+
+        // Member Match (Paid By)
+        const matchMember = memberFilter.value
+            ? e.paid_by === memberFilter.value
+            : true;
+
+        // Date Match
+        let matchDate = true;
+        if (startDate.value) {
+            matchDate = matchDate && new Date(e.date) >= new Date(startDate.value);
+        }
+        if (endDate.value) {
+            matchDate = matchDate && new Date(e.date) <= new Date(endDate.value + 'T23:59:59');
+        }
+
+        return matchText && matchMember && matchDate;
+    });
+});
+
+const filteredBills = computed(() => {
+    return bills.value.filter(b => {
+        // Text Match
+        const matchText = searchQuery.value
+            ? b.title.toLowerCase().includes(searchQuery.value.toLowerCase()) ||
+            b.total_amount.toString().includes(searchQuery.value)
+            : true;
+
+        // Date Match (Issue Date)
+        let matchDate = true;
+        if (startDate.value) {
+            matchDate = matchDate && new Date(b.issue_date) >= new Date(startDate.value);
+        }
+        if (endDate.value) {
+            matchDate = matchDate && new Date(b.issue_date) <= new Date(endDate.value + 'T23:59:59');
+        }
+
+        return matchText && matchDate;
+    });
+});
 
 const viewBillDetail = (bill: any) => {
     selectedBill.value = bill;
@@ -140,163 +193,258 @@ const bindAccount = (memberId: string) => {
         }
     });
 };
+
+const exportData = async (type: 'expenses' | 'bills') => {
+    try {
+        const url = `/api/export/group/${groupId}/${type}`;
+        // Use window.open if relying purely on cookies, 
+        // OR use fetch/blob if needing to handle errors gracefully in UI.
+        // Since we rely on http proxy or same domain, and cookies are httpOnly, 
+        // window.open triggers GET request which includes cookies.
+        window.open(url, '_blank');
+    } catch (e) {
+        alert('Export failed');
+    }
+};
 </script>
 
 <template>
     <MainLayout>
-        <div class="group-detail" v-if="!loading && group">
-            <header class="header">
-                <div class="title-section">
-                    <button @click="router.push('/groups')" class="back-btn">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
+        <div class="group-detail animate-fade-in" v-if="!loading && group">
+            <!-- Header Area -->
+            <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
+                <div class="flex items-center gap-4">
+                    <button @click="router.push('/groups')"
+                        class="p-2 rounded-xl bg-white/50 hover:bg-white text-slate-500 hover:text-primary-600 transition-all shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                                d="M10 19l-7-7 7-7m-7 7h18" />
                         </svg>
-                        {{ t('groups.backToGroups') }}
                     </button>
-                    <h1>{{ group.name }}</h1>
+                    <div>
+                        <h1 class="text-3xl font-extrabold text-slate-800">{{ group.name }}</h1>
+                        <div class="flex items-center gap-2 text-sm text-slate-500">
+                            <span
+                                class="px-2 py-0.5 rounded-full bg-primary-50 text-primary-700 font-bold uppercase text-xs">{{
+                                    group.service_name || 'Generic Service' }}</span>
+                            <span>•</span>
+                            <span>Created on {{ new Date(group.created_at).toLocaleDateString() }}</span>
+                        </div>
+                    </div>
                 </div>
-                <div class="actions">
-                    <button @click="showAddMember = !showAddMember" class="btn btn-secondary add-member-btn">
+                <div class="flex gap-3">
+                    <div class="relative group">
+                        <button class="btn bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 shadow-sm">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            {{ t('common.actions.export', 'Export') }}
+                        </button>
+                        <div
+                            class="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden hidden group-hover:block z-20 animate-fade-in-up">
+                            <a @click="exportData('expenses')"
+                                class="block px-4 py-3 hover:bg-slate-50 text-slate-700 cursor-pointer flex items-center gap-2">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-primary-500" fill="none"
+                                    viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                {{ t('groups.expenses') }} (CSV)
+                            </a>
+                            <a @click="exportData('bills')"
+                                class="block px-4 py-3 hover:bg-slate-50 text-slate-700 cursor-pointer flex items-center gap-2 border-t border-slate-100">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-500" fill="none"
+                                    viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                </svg>
+                                {{ t('groups.bills') }} (CSV)
+                            </a>
+                        </div>
+                    </div>
+                    <button @click="showAddMember = !showAddMember"
+                        class="btn bg-white text-primary-600 hover:bg-primary-50 border border-primary-200 shadow-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                        </svg>
                         {{ t('groups.addMember') }}
                     </button>
-                    <button @click="showAddExpense = true" class="btn btn-primary">
+                    <button @click="showAddExpense = true"
+                        class="btn btn-primary shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                        </svg>
                         {{ t('groups.addExpense') }}
                     </button>
                 </div>
             </header>
 
-            <!-- Group Info Header -->
-            <div class="group-info-card card mb-8">
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <div class="info-item">
-                        <span class="label">{{ t('groups.serviceName') }}</span>
-                        <div class="value-row">
-                            <span class="value">{{ group.service_name || '---' }}</span>
-                            <a v-if="group.website" :href="group.website" target="_blank" class="link-icon">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
-                                    stroke="currentColor">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                        d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                </svg>
-                            </a>
-                        </div>
+            <!-- Group Info Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                <div class="glass-panel p-4 flex flex-col justify-center relative overflow-hidden">
+                    <div class="absolute right-0 bottom-0 opacity-5 transform translate-x-1/4 translate-y-1/4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="currentColor"
+                            viewBox="0 0 24 24">
+                            <path d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        </svg>
                     </div>
-                    <div class="info-item">
-                        <span class="label">{{ t('groups.planName') }}</span>
-                        <span class="value">{{ group.plan_name || '---' }}</span>
+                    <span class="text-xs uppercase font-bold text-slate-400 mb-1">{{ t('groups.serviceName') }}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-lg font-bold text-slate-800">{{ group.service_name || '---' }}</span>
+                        <a v-if="group.website" :href="group.website" target="_blank"
+                            class="text-primary-500 hover:text-primary-600">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
+                                stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                        </a>
                     </div>
-                    <div class="info-item">
-                        <span class="label">{{ t('groups.amount') }}</span>
-                        <span class="value highlight">{{ group.currency }} {{ group.amount }} / {{
-                            t(`common.cycles.${group.billing_cycle}`) }}</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">{{ t('groups.billingMethod') }}</span>
-                        <span class="value">{{ t(`groups.methods.${group.billing_method}`) }}</span>
-                    </div>
+                </div>
+                <div class="glass-panel p-4 flex flex-col justify-center">
+                    <span class="text-xs uppercase font-bold text-slate-400 mb-1">{{ t('groups.planName') }}</span>
+                    <span class="text-lg font-bold text-slate-800">{{ group.plan_name || '---' }}</span>
+                </div>
+                <div
+                    class="glass-panel p-4 flex flex-col justify-center bg-primary-gradient text-white relative overflow-hidden">
+                    <div class="absolute -right-4 -top-4 bg-white/20 w-16 h-16 rounded-full blur-xl"></div>
+                    <span class="text-xs uppercase font-bold text-primary-100 mb-1">{{ t('groups.amount') }}</span>
+                    <span class="text-2xl font-extrabold">{{ group.currency }} {{ group.amount }} <span
+                            class="text-sm font-medium opacity-80">/ {{ t(`common.cycles.${group.billing_cycle}`)
+                            }}</span></span>
+                </div>
+                <div class="glass-panel p-4 flex flex-col justify-center">
+                    <span class="text-xs uppercase font-bold text-slate-400 mb-1">{{ t('groups.billingMethod') }}</span>
+                    <span class="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-400" fill="none"
+                            viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                        </svg>
+                        {{ t(`groups.methods.${group.billing_method}`) }}
+                    </span>
                 </div>
             </div>
 
-            <AddExpenseModal v-if="showAddExpense" :group-id="groupId" :members="members"
-                @close="showAddExpense = false" @added="handleExpenseAdded" />
-
-            <BillTicket v-if="showBill && selectedSplit" :group="group"
-                :member="members.find(m => m.user_id === selectedSplit.user_id)" :split="selectedSplit" :show="showBill"
-                @close="showBill = false" />
-
-            <div v-if="showAddMember" class="add-member-form card">
-                <h3>{{ t('groups.inviteNewMember') }}</h3>
-                <div class="form-row">
-                    <select v-model="newMemberType" class="type-select">
+            <!-- Add Member Form (Toggleable) -->
+            <div v-if="showAddMember" class="glass-panel p-6 mb-8 animate-fade-in border-primary-200 border-2">
+                <h3 class="text-lg font-bold mb-4 text-primary-700">{{ t('groups.inviteNewMember') }}</h3>
+                <div class="flex gap-2">
+                    <select v-model="newMemberType"
+                        class="bg-white border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary-300 outline-none">
                         <option value="name">{{ t('common.fields.name') }}</option>
                         <option value="email">{{ t('common.fields.email') }}</option>
                     </select>
                     <input v-model="newMemberValue" type="text" :placeholder="t('common.placeholders.member')"
-                        class="input" />
+                        class="glass-input flex-1 bg-white" />
                     <button @click="addMember" class="btn btn-primary">{{ t('common.actions.add') }}</button>
-                    <button @click="showAddMember = false" class="btn btn-text">{{ t('common.actions.cancel')
-                        }}</button>
+                    <button @click="showAddMember = false" class="btn bg-slate-100 text-slate-600 hover:bg-slate-200">{{
+                        t('common.actions.cancel') }}</button>
                 </div>
             </div>
 
+            <!-- Main Grid Layout -->
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <!-- Main Content: Expenses & Debts -->
-                <div class="lg:col-span-2 space-y-8">
+                <!-- Left Column: Expenses & Bills -->
+                <div class="lg:col-span-2 space-y-6">
                     <!-- Tabs -->
-                    <div class="tabs">
+                    <div class="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
                         <button @click="currentTab = 'expenses'"
-                            :class="['tab-btn', { active: currentTab === 'expenses' }]">
+                            :class="['px-4 py-2 rounded-lg text-sm font-bold transition-all', currentTab === 'expenses' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700']">
                             {{ t('groups.expenses') }}
                         </button>
-                        <button @click="currentTab = 'bills'" :class="['tab-btn', { active: currentTab === 'bills' }]">
+                        <button @click="currentTab = 'bills'"
+                            :class="['px-4 py-2 rounded-lg text-sm font-bold transition-all', currentTab === 'bills' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-500 hover:text-slate-700']">
                             {{ t('groups.bills') }}
                         </button>
                     </div>
 
-                    <div v-if="currentTab === 'expenses'">
-                        <section class="expenses-section">
-                            <!-- Existing Expenses Section -->
-                            <div class="section-header">
-                                <h2>{{ t('groups.expenses') }}</h2>
+                    <div v-if="currentTab === 'expenses'" class="animate-fade-in space-y-8">
+                        <!-- Expense List -->
+                        <section>
+                            <h2 class="text-xl font-bold text-slate-800 mb-4">{{ t('groups.expenses') }}</h2>
+                            <div v-if="filteredExpenses.length === 0"
+                                class="flex flex-col items-center justify-center p-12 glass-panel border-dashed border-2 border-slate-200">
+                                <p class="text-slate-400">
+                                    {{ expenses.length > 0 ? t('groups.noSearchResults', 'No matching results') :
+                                        t('groups.noExpenses') }}
+                                </p>
                             </div>
-
-                            <div v-if="expenses.length === 0" class="empty-state">
-                                {{ t('groups.noExpenses') }}
-                            </div>
-                            <div v-else class="expense-list">
-                                <div v-for="expense in expenses" :key="expense.id" class="expense-card card">
-                                    <div class="expense-main">
-                                        <span class="desc">{{ expense.description }}</span>
-                                        <span class="date">{{ new Date(expense.date).toLocaleDateString() }}</span>
+                            <div v-else class="space-y-3">
+                                <div v-for="expense in filteredExpenses" :key="expense.id"
+                                    class="glass-card p-4 flex justify-between items-center group hover:bg-white transition-colors">
+                                    <div class="flex items-center gap-4">
+                                        <div
+                                            class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 group-hover:bg-primary-50 group-hover:text-primary-500 transition-colors">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+                                                viewBox="0 0 24 24" stroke="currentColor">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                    d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                        </div>
+                                        <div>
+                                            <p class="font-bold text-slate-800">{{ expense.description }}</p>
+                                            <p class="text-xs text-slate-500">{{ new
+                                                Date(expense.date).toLocaleDateString() }}</p>
+                                        </div>
                                     </div>
-                                    <div class="expense-amount">
+                                    <div class="font-bold text-lg text-slate-800">
                                         ${{ expense.amount }}
                                     </div>
                                 </div>
                             </div>
                         </section>
 
-                        <section class="debts-section mt-8">
-                            <div class="section-header">
-                                <h2>{{ t('groups.unpaidDebts') }}</h2>
+                        <!-- Debts Section -->
+                        <section>
+                            <h2 class="text-xl font-bold text-slate-800 mb-4">{{ t('groups.unpaidDebts') }}</h2>
+                            <div v-if="splits.length === 0"
+                                class="flex flex-col items-center justify-center p-12 glass-panel bg-green-50/50 border-dashed border-2 border-green-100">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-green-300 mb-2"
+                                    fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                </svg>
+                                <p class="text-green-600 font-medium">{{ t('groups.settled') }}</p>
                             </div>
-
-                            <div v-if="splits.length === 0" class="empty-state">
-                                {{ t('groups.settled') }}
-                            </div>
-                            <div v-else class="split-list">
+                            <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div v-for="split in splits" :key="split.expense_id + split.user_id"
-                                    class="split-card card">
-                                    <div class="split-info">
-                                        <div class="split-text">
-                                            <span class="user-highlight">
-                                                {{members.find(m => m.user_id === split.user_id)?.username ||
-                                                    split.user_id
-                                                }}
-                                            </span>
-                                            {{ t('groups.owe') }}
-                                            <span class="user-highlight">{{ split.payer_name }}</span>
+                                    class="glass-card p-4 border-l-4 border-yellow-400 bg-yellow-50/30">
+                                    <div class="flex justify-between items-start mb-3">
+                                        <div class="text-sm">
+                                            <span class="font-bold text-slate-800">{{members.find(m => m.user_id ===
+                                                split.user_id)?.username || split.user_id}}</span>
+                                            <span class="text-slate-400 mx-1">{{ t('groups.owe') }}</span>
+                                            <span class="font-bold text-slate-800">{{ split.payer_name }}</span>
                                         </div>
-                                        <div class="amount-row">
-                                            <span class="amount text-danger">${{ split.amount_owed }}</span>
-                                            <span class="reason">{{ t('groups.for') }}: {{ split.description }}</span>
-                                        </div>
-                                    </div>
-                                    <div class="split-actions">
-                                        <button @click="viewBill(split)" class="btn btn-sm btn-ghost"
+                                        <button @click="viewBill(split)"
+                                            class="text-slate-400 hover:text-primary-600 transition-colors"
                                             :title="t('groups.viewBill')">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none"
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
                                                 viewBox="0 0 24 24" stroke="currentColor">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                    d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                                                    d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                             </svg>
                                         </button>
+                                    </div>
+                                    <div class="flex justify-between items-end">
+                                        <div>
+                                            <div class="text-red-500 font-extrabold text-xl">${{ split.amount_owed }}
+                                            </div>
+                                            <div class="text-xs text-slate-400 mt-1">{{ split.description }}</div>
+                                        </div>
                                         <button
                                             v-if="split.user_id === authStore.user?.id || group.created_by === authStore.user?.id"
                                             @click="settleExpense(split.expense_id, split.user_id)"
-                                            class="btn btn-sm btn-success">
+                                            class="px-3 py-1 rounded-md bg-green-100 text-green-700 text-xs font-bold hover:bg-green-200 transition-colors">
                                             {{ t('groups.settle') }}
                                         </button>
                                     </div>
@@ -305,367 +453,110 @@ const bindAccount = (memberId: string) => {
                         </section>
                     </div>
 
-                    <div v-else-if="currentTab === 'bills'">
-                        <section class="bills-section">
-                            <div class="section-header">
-                                <h2>{{ t('groups.generatedBills') }}</h2>
-                            </div>
-                            <div v-if="bills.length === 0" class="empty-state">
-                                {{ t('groups.noBills') }}
-                            </div>
-                            <div v-else class="bill-list">
-                                <div v-for="bill in bills" :key="bill.id" class="bill-card card"
-                                    @click="viewBillDetail(bill)">
-                                    <div class="bill-info">
-                                        <span class="bill-title">{{ bill.title }}</span>
-                                        <span class="bill-date">{{ t('groups.dueDate') }}: {{ new
-                                            Date(bill.due_date).toLocaleDateString() }}</span>
+                    <div v-else-if="currentTab === 'bills'" class="animate-fade-in">
+                        <h2 class="text-xl font-bold text-slate-800 mb-4">{{ t('groups.generatedBills') }}</h2>
+                        <div v-if="filteredBills.length === 0"
+                            class="flex flex-col items-center justify-center p-12 glass-panel border-dashed border-2 border-slate-200">
+                            <p class="text-slate-400">
+                                {{ bills.length > 0 ? t('groups.noSearchResults', 'No matching results') :
+                                    t('groups.noBills') }}
+                            </p>
+                        </div>
+                        <div v-else class="space-y-3">
+                            <div v-for="bill in filteredBills" :key="bill.id"
+                                class="glass-card p-4 flex justify-between items-center cursor-pointer hover:bg-primary-50/50 transition-colors border-l-4 border-indigo-500"
+                                @click="viewBillDetail(bill)">
+                                <div>
+                                    <p class="font-bold text-slate-800">{{ bill.title }}</p>
+                                    <p class="text-xs text-slate-500">{{ t('groups.dueDate') }}: {{ new
+                                        Date(bill.due_date).toLocaleDateString() }}</p>
+                                </div>
+                                <div class="text-right">
+                                    <div class="font-bold text-slate-800">{{ bill.currency }} {{ bill.total_amount }}
                                     </div>
-                                    <div class="bill-amount">
-                                        {{ bill.currency }} {{ bill.total_amount }}
-                                        <span class="status-badge" :class="bill.status">{{
-                                            t(`groups.status_${bill.status}`) }}</span>
-                                    </div>
+                                    <span class="text-xs px-2 py-0.5 rounded-full font-bold uppercase" :class="{
+                                        'bg-green-100 text-green-700': bill.status === 'paid',
+                                        'bg-yellow-100 text-yellow-700': bill.status === 'pending',
+                                        'bg-red-100 text-red-700': bill.status === 'overdue'
+                                    }">
+                                        {{ t(`groups.status_${bill.status}`) }}
+                                    </span>
                                 </div>
                             </div>
-                        </section>
+                        </div>
                     </div>
                 </div>
 
-                <BillDetailModal v-if="showBillDetail && selectedBill" :bill="selectedBill" :splits="selectedBillSplits"
-                    :is-host="group.created_by === authStore.user?.id" @close="showBillDetail = false"
-                    @updated="viewBillDetail(selectedBill)" />
-
-                <!-- Sidebar: Members & Files -->
-                <aside class="members-sidebar space-y-8">
+                <!-- Right Column: Sidebar (Members & Files) -->
+                <aside class="space-y-6">
                     <FileManager :group-id="groupId" />
-                    <div class="card">
-                        <h2>{{ t('groups.members') }}</h2>
-                        <ul class="member-list">
-                            <li v-for="member in members" :key="member.member_id" class="member-item">
-                                <div class="member-avatar">{{ (member.username || '?')[0].toUpperCase() }}</div>
-                                <div class="member-details">
-                                    <span class="name">{{ member.username }}</span>
-                                    <span class="role">
+
+                    <div class="glass-panel p-6">
+                        <h2 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary-500" fill="none"
+                                viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                            </svg>
+                            {{ t('groups.members') }}
+                        </h2>
+                        <ul class="space-y-4">
+                            <li v-for="member in members" :key="member.member_id" class="flex items-center gap-3">
+                                <div
+                                    class="w-10 h-10 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center font-bold">
+                                    {{ (member.username || '?')[0].toUpperCase() }}
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-bold text-slate-800 truncate">{{ member.username }}</p>
+                                    <p class="text-xs text-slate-500 flex items-center gap-1">
                                         {{ member.role }}
-                                        <span v-if="member.temp_name" class="badge">({{ t('groups.nonMember') }})</span>
-                                    </span>
+                                        <span v-if="member.temp_name"
+                                            class="text-yellow-600 bg-yellow-50 px-1 rounded">({{ t('groups.nonMember')
+                                            }})</span>
+                                    </p>
                                 </div>
-                                <div v-if="member.temp_name" class="member-actions">
-                                    <button @click="bindAccount(member.member_id)" class="btn btn-xs btn-outline"
-                                        :title="t('groups.bindAccount')">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none"
-                                            viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
-                                        </svg>
-                                    </button>
-                                </div>
+                                <button v-if="member.temp_name" @click="bindAccount(member.member_id)"
+                                    class="text-primary-500 hover:text-primary-700" :title="t('groups.bindAccount')">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+                                        viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
+                                    </svg>
+                                </button>
                             </li>
                         </ul>
                     </div>
                 </aside>
             </div>
+
+            <!-- Modals -->
+            <AddExpenseModal v-if="showAddExpense" :group-id="groupId" :members="members"
+                @close="showAddExpense = false" @added="handleExpenseAdded" />
+
+            <BillTicket v-if="showBill && selectedSplit" :group="group"
+                :member="members.find(m => m.user_id === selectedSplit.user_id)" :split="selectedSplit" :show="showBill"
+                @close="showBill = false" />
+
+            <BillDetailModal v-if="showBillDetail && selectedBill" :bill="selectedBill" :splits="selectedBillSplits"
+                :is-host="group.created_by === authStore.user?.id" @close="showBillDetail = false"
+                @updated="viewBillDetail(selectedBill)" />
         </div>
-        <div v-else-if="loading" class="state-container">{{ t('common.status.loading') }}</div>
-        <div v-else class="state-container error">{{ error }}</div>
+
+        <div v-else-if="loading" class="flex flex-col items-center justify-center p-20 min-h-screen">
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mb-4"></div>
+            <p class="text-slate-500 animate-pulse">{{ t('common.status.loading') }}</p>
+        </div>
+
+        <div v-else class="flex flex-col items-center justify-center p-20 min-h-screen text-center">
+            <p class="text-red-500 font-bold text-lg mb-2">Error loading group</p>
+            <p class="text-slate-600">{{ error }}</p>
+            <button @click="router.push('/groups')" class="mt-4 btn btn-primary">Back to Groups</button>
+        </div>
     </MainLayout>
 </template>
 
 <style scoped>
-.header {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    margin-bottom: 2rem;
-}
-
-@media (min-width: 640px) {
-    .header {
-        flex-direction: row;
-        justify-content: space-between;
-        align-items: center;
-    }
-}
-
-.title-section {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-
-.title-section h1 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0;
-}
-
-.back-btn {
-    background: none;
-    border: 1px solid var(--border-color);
-    padding: 0.25rem 0.75rem;
-    border-radius: var(--radius-sm);
-    color: var(--text-muted);
-    font-size: 0.875rem;
-    cursor: pointer;
-}
-
-.actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-/* Group Info Card */
-.group-info-card {
-    background-color: var(--bg-surface);
-    border-left: 4px solid var(--primary-color);
-}
-
-.info-item {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-.info-item .label {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-muted);
-}
-
-.info-item .value {
-    font-weight: 600;
-    color: var(--text-main);
-}
-
-.info-item .value.highlight {
-    color: var(--primary-600);
-}
-
-.value-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.link-icon {
-    color: var(--primary-500);
-    display: flex;
-}
-
-.link-icon:hover {
-    color: var(--primary-700);
-}
-
-.add-member-btn {
-    background-color: transparent;
-    border: 1px solid var(--primary-color);
-    color: var(--primary-color);
-}
-
-.add-member-form {
-    margin-bottom: 2rem;
-}
-
-.form-row {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.type-select {
-    width: 120px;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-}
-
-.input {
-    flex: 1;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--radius-md);
-}
-
-.btn-text {
-    color: var(--text-muted);
-}
-
-.expense-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    border-left: 4px solid var(--primary-color);
-}
-
-.expense-main {
-    display: flex;
-    flex-direction: column;
-}
-
-.desc {
-    font-weight: 600;
-    color: var(--text-main);
-}
-
-.split-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    background-color: #fff9e6;
-    border: 1px solid #fde68a;
-}
-
-.split-actions {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.btn-ghost {
-    background: none;
-    border: none;
-    color: var(--text-muted);
-}
-
-.member-list {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-}
-
-.member-item {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid var(--border-color);
-}
-
-.member-avatar {
-    width: 40px;
-    height: 40px;
-    background: var(--primary-color);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    font-weight: bold;
-}
-
-.member-details {
-    flex: 1;
-}
-
-.member-details .name {
-    display: block;
-    font-weight: 600;
-}
-
-.role {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.badge {
-    background-color: var(--slate-100);
-    color: var(--slate-600);
-    padding: 0.125rem 0.375rem;
-    border-radius: 4px;
-    font-size: 0.7rem;
-}
-
-.btn-xs {
-    padding: 0.25rem;
-}
-
-.btn-outline {
-    background: none;
-    border: 1px solid var(--border-color);
-    color: var(--text-muted);
-}
-
-.btn-outline:hover {
-    border-color: var(--primary-color);
-    color: var(--primary-color);
-}
-
-.mb-8 {
-    margin-bottom: 2rem;
-}
-
-/* Tabs */
-.tabs {
-    display: flex;
-    gap: 1rem;
-    border-bottom: 1px solid var(--border-color);
-    margin-bottom: 1.5rem;
-}
-
-.tab-btn {
-    background: none;
-    border: none;
-    padding: 0.75rem 1rem;
-    font-weight: 600;
-    color: var(--text-muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-}
-
-.tab-btn.active {
-    color: var(--primary-color);
-    border-bottom-color: var(--primary-color);
-}
-
-.tab-btn:hover {
-    color: var(--text-main);
-}
-
-/* Bill List */
-.bill-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem;
-    margin-bottom: 1rem;
-    border-left: 4px solid var(--secondary-color);
-    cursor: pointer;
-    transition: transform 0.1s;
-}
-
-.bill-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.bill-info {
-    display: flex;
-    flex-direction: column;
-}
-
-.bill-title {
-    font-weight: 600;
-    color: var(--text-main);
-}
-
-.bill-date {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-}
-
-.bill-amount {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    font-weight: 600;
-    color: var(--text-main);
-    gap: 0.25rem;
-}
+/* Scoped styles minimal, relying on global utility classes from style.css */
 </style>
