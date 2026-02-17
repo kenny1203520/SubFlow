@@ -14,10 +14,16 @@ import WalletView from './views/WalletView.vue'
 import SecurityView from './views/SecurityView.vue'
 import ProfileView from './views/ProfileView.vue'
 import AdminDashboard from './views/AdminDashboard.vue'
+import ForgotPassword from './views/ForgotPassword.vue'
+import ResetPassword from './views/ResetPassword.vue'
+import VerifyEmail from './views/VerifyEmail.vue'
 
 const routes = [
     { path: '/', redirect: '/dashboard' },
     { path: '/auth', component: Auth },
+    { path: '/auth/forgot-password', component: ForgotPassword },
+    { path: '/auth/reset-password/:token', component: ResetPassword },
+    { path: '/auth/verify-email/:token', component: VerifyEmail },
     {
         path: '/dashboard',
         component: Dashboard,

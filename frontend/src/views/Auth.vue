@@ -92,6 +92,9 @@ const handleSubmit = async () => {
                 <p @click="toggleMode" class="toggle-link">
                     {{ isLogin ? t('auth.needAccount') : t('auth.haveAccount') }}
                 </p>
+                <p v-if="isLogin" @click="router.push('/auth/forgot-password')" class="toggle-link">
+                    {{ t('auth.forgotPasswordLink', 'Forgot Password?') }}
+                </p>
                 <button @click="toggleLanguage" class="lang-toggle">
                     {{ locale === 'en' ? '中文' : 'English' }}
                 </button>
