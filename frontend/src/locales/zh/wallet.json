@@ -16,5 +16,8 @@
     "insufficientBalance": "餘額不足",
     "success": "操作成功",
     "failed": "操作失敗",
-    "noWallets": "未找到錢包"
+    "noWallets": "未找到錢包",
+    "depositTitle": "儲值資金",
+    "depositDesc": "為您的錢包充值",
+    "confirmDeposit": "確認儲值"
 }

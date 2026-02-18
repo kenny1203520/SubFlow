@@ -18,8 +18,8 @@ const toggleDropdown = () => {
 const fetchNotifications = () => {
     socket.emit('notification:list', { page: 1 }, (res: any) => {
         if (res.status === 'ok') {
-            notifications.value = res.data.notifications;
-            unreadCount.value = res.data.unreadCount;
+            notifications.value = res.notifications;
+            unreadCount.value = res.unreadCount;
         }
     });
 };
@@ -68,7 +68,7 @@ onUnmounted(() => {
                 <div class="dropdown-header">
                     <h3>{{ t('notifications.title', 'Notifications') }}</h3>
                     <button class="text-btn" @click="markAllRead">{{ t('notifications.mark_all_read', 'Mark all read')
-                    }}</button>
+                        }}</button>
                 </div>
 
                 <div class="notif-list custom-scrollbar">

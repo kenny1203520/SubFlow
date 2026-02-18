@@ -16,7 +16,8 @@
         "collapse": "Collapse",
         "search": "Search",
         "prev": "Previous",
-        "next": "Next"
+        "next": "Next",
+        "retry": "Retry"
     },
     "status": {
         "loading": "Loading...",

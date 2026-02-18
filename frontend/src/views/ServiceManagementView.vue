@@ -40,7 +40,7 @@ const fetchServices = () => {
         clearTimeout(timeout);
         loading.value = false;
         if (res.status === 'ok') {
-            services.value = res.data.services;
+            services.value = res.services;
         }
     });
 };

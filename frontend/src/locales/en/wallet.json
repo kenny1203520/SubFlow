@@ -16,5 +16,8 @@
     "insufficientBalance": "Insufficient balance",
     "success": "Success",
     "failed": "Failed",
-    "noWallets": "No wallets found"
+    "noWallets": "No wallets found",
+    "depositTitle": "Deposit Funds",
+    "depositDesc": "Add funds to your wallet",
+    "confirmDeposit": "Confirm Deposit"
 }

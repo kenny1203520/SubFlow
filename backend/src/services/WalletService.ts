@@ -14,9 +14,12 @@ export class WalletService {
     }
 
     async getUserWallets(userId: string) {
+        console.log('[WalletService] getUserWallets', userId);
         // Ensure global wallet exists before returning list
         await this.getOrCreateGlobalWallet(userId);
-        return await this.walletRepo.getWalletsByUserId(userId);
+        const wallets = await this.walletRepo.getWalletsByUserId(userId);
+        console.log('[WalletService] getUserWallets found', wallets.length);
+        return wallets;
     }
 
     async getWalletDetails(walletId: string) {

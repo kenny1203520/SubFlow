@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 
-const props = defineProps<{
-    wallet: any;
-    loading?: boolean;
-}>();
+const { t } = useI18n();
+
+const props = defineProps<{ wallet: any; loading?: boolean; }>();
 
 const emit = defineEmits(['deposit', 'transfer']);
 
@@ -58,7 +58,7 @@ const bgGradient = computed(() => {
                             stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
                         </svg>
-                        Deposit
+                        {{ t('wallet.deposit') }}
                     </button>
                     <button @click="$emit('transfer', wallet)"
                         class="flex-1 py-2 px-3 bg-white/10 hover:bg-white/20 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2 backdrop-blur-sm border border-white/5">
@@ -67,7 +67,7 @@ const bgGradient = computed(() => {
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                         </svg>
-                        Transfer
+                        {{ t('wallet.transfer') }}
                     </button>
                 </div>
             </div>

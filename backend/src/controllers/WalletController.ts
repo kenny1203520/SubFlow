@@ -12,11 +12,14 @@ export class WalletController extends BaseController {
     }
 
     async listWallets(cb: (res: any) => void) {
+        console.log('[WalletController] listWallets called', this.socket.data.user?.id);
         try {
             const userId = this.socket.data.user.id;
             const wallets = await this.walletService.getUserWallets(userId);
+            console.log('[WalletController] listWallets success', wallets.length);
             this.success(cb, { wallets });
         } catch (error: any) {
+            console.error('[WalletController] listWallets error', error);
             this.error(cb, error.message || "Failed to list wallets");
         }
     }
