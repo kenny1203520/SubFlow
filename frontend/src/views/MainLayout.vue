@@ -43,9 +43,9 @@ const logout = async () => {
             :class="['sidebar glass-panel', { 'open': layoutStore.isSidebarOpen, 'collapsed': layoutStore.isCollapsed }]">
             <div class="sidebar-header">
                 <div class="logo-area">
-                    <div
-                        class="w-10 h-10 bg-primary-gradient rounded-xl flex items-center justify-center text-white font-bold text-xl shadow-lg">
-                        S</div>
+                    <div class="w-10 h-10 flex items-center justify-center">
+                        <img src="/favicon.svg" class="w-10 h-10 drop-shadow-md" alt="SubFlow" />
+                    </div>
                     <span class="logo-text hide-on-collapsed">SubFlow</span>
                 </div>
 

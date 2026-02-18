@@ -20,7 +20,9 @@ const formatDate = (date: string) => {
     <div v-if="show" class="modal-overlay" @click.self="$emit('close')">
         <div class="ticket">
             <div class="ticket-header">
-                <div class="logo">S</div>
+                <div class="logo">
+                    <img src="/favicon.svg" style="width: 24px; height: 24px;" alt="S" />
+                </div>
                 <div class="brand">SubFlow</div>
                 <div class="ticket-type">{{ t('groups.nonMember') }}</div>
             </div>

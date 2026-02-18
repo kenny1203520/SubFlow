@@ -71,11 +71,7 @@ const handleSubmit = async () => {
                 <div class="relative z-10 text-center">
                     <div
                         class="w-20 h-20 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mb-6 mx-auto shadow-glow border border-white/30">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 text-white" fill="none"
-                            viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
+                        <img src="/favicon.svg" class="h-12 w-12" alt="SubFlow Logo" />
                     </div>
                     <h1 class="text-4xl font-extrabold mb-2 tracking-tight">SubFlow</h1>
                     <p class="text-primary-100 text-lg opacity-90">Manage your subscriptions with elegance.</p>
