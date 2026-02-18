@@ -17,7 +17,8 @@
         "search": "搜尋",
         "prev": "上一頁",
         "next": "下一頁",
-        "retry": "重試"
+        "retry": "重試",
+        "accept": "接受"
     },
     "status": {
         "loading": "加載中...",
@@ -54,6 +55,9 @@
         "service": "例如：Netflix, Spotify",
         "plan": "例如：高級、家庭",
         "member": "姓名或電子郵件"
+    },
+    "validation": {
+        "required": "{field} 為必填項"
     },
     "optional": "可選"
 }

@@ -9,6 +9,7 @@ const emit = defineEmits(['close', 'created']);
 
 const isSubmitting = ref(false);
 const error = ref('');
+const step = ref(1); // 1: Basic Info, 2: Service & Billing
 
 // Service Search State
 const serviceQuery = ref('');
@@ -33,13 +34,13 @@ const form = ref({
     max_members: 1,
     billing_method: 'equal',
     start_date: '',
-    end_condition: 'indefinite',
+    end_condition: 'never',
     end_value: ''
 });
 
-const initialMembers = ref<{ type: 'email' | 'name', value: string }[]>([]);
+const initialMembers = ref<{ type: 'email' | 'name' | 'username', value: string }[]>([]);
 const nextMemberValue = ref('');
-const nextMemberType = ref<'email' | 'name'>('name');
+const nextMemberType = ref<'email' | 'name' | 'username'>('name');
 
 // Service Search Logic
 const searchServices = debounce((query: string) => {
@@ -70,11 +71,6 @@ const selectService = (service: any) => {
     form.value.website = service.domain ? `https://${service.domain}` : '';
     form.value.icon_url = service.icon_url || '';
 
-    // Auto-fill group name if empty
-    if (!form.value.name) {
-        form.value.name = service.name;
-    }
-
     showServiceDropdown.value = false;
 };
 
@@ -87,7 +83,6 @@ const handleServiceBlur = () => {
 // Icon Logic
 const iconPreviewUrl = computed(() => {
     if (form.value.icon_url) return form.value.icon_url;
-    // Fallback to unavatar if website is present
     if (form.value.website) {
         return `https://unavatar.io/${form.value.website}`;
     }
@@ -107,18 +102,22 @@ const removeMember = (index: number) => {
     initialMembers.value.splice(index, 1);
 };
 
-const handleSubmit = () => {
-    // If no name provided, use service name or "New Group"
+const nextStep = () => {
     if (!form.value.name.trim()) {
-        form.value.name = serviceQuery.value || 'New Group';
+        error.value = t('common.validation.required', { field: t('groups.groupName') });
+        return;
     }
+    error.value = '';
+    step.value = 2;
+};
 
+const handleSubmit = () => {
     isSubmitting.value = true;
     error.value = '';
 
     const payload = {
         ...form.value,
-        service_name: serviceQuery.value || form.value.service_name, // Ensure service name is captured
+        service_name: serviceQuery.value || form.value.service_name,
         initial_members: initialMembers.value.map(m => ({
             [m.type]: m.value
         }))
@@ -140,7 +139,9 @@ const handleSubmit = () => {
         <div class="modal-overlay animate-fade-in" @click.self="$emit('close')">
             <div class="modal-content glass-panel">
                 <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-2xl font-bold text-slate-800">{{ t('groups.createGroup') }}</h2>
+                    <h2 class="text-2xl font-bold text-slate-800">
+                        {{ step === 1 ? t('groups.createGroup') : t('groups.serviceDetails') }}
+                    </h2>
                     <button @click="$emit('close')" class="text-slate-400 hover:text-slate-600 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">
@@ -150,13 +151,85 @@ const handleSubmit = () => {
                     </button>
                 </div>
 
-                <form @submit.prevent="handleSubmit" class="scrollable-form space-y-8 pr-2">
-                    <!-- 1. Service & Identity -->
-                    <div class="section">
-                        <h3 class="section-title">{{ t('groups.serviceDetails') }}</h3>
+                <div class="mb-6 flex gap-2">
+                    <div class="h-1 flex-1 rounded-full transition-colors duration-300"
+                        :class="step >= 1 ? 'bg-primary-500' : 'bg-slate-200'"></div>
+                    <div class="h-1 flex-1 rounded-full transition-colors duration-300"
+                        :class="step >= 2 ? 'bg-primary-500' : 'bg-slate-200'"></div>
+                </div>
+
+                <form @submit.prevent="handleSubmit" class="scrollable-form space-y-6 pr-2">
+
+                    <!-- STEP 1: Basic Info & Members -->
+                    <div v-show="step === 1" class="space-y-6 animate-fade-in">
+                        <!-- Group Name -->
+                        <div class="form-group">
+                            <label class="field-label">{{ t('groups.groupName') }} <span
+                                    class="text-red-500">*</span></label>
+                            <input v-model="form.name" type="text" :placeholder="t('common.placeholders.name')"
+                                class="glass-input w-full text-lg" autofocus />
+                        </div>
+
+                        <!-- Initial Members -->
+                        <div class="form-group">
+                            <label class="field-label mb-2">{{ t('groups.initialMembers') }}</label>
+
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 mb-2">
+                                <div class="flex gap-2 mb-3">
+                                    <select v-model="nextMemberType" class="glass-input w-36 bg-white">
+                                        <option value="name">{{ t('groups.tempMember') }}</option>
+                                        <option value="email">{{ t('groups.inviteEmail') }}</option>
+                                        <option value="username">{{ t('groups.inviteUsername') }}</option>
+                                    </select>
+                                    <input v-model="nextMemberValue" type="text"
+                                        :placeholder="nextMemberType === 'name' ? 'e.g. Mom' : (nextMemberType === 'email' ? 'user@example.com' : 'username')"
+                                        @keydown.enter.prevent="addMember" class="glass-input flex-1 bg-white" />
+                                    <button type="button" @click="addMember" class="btn btn-primary px-4">
+                                        +
+                                    </button>
+                                </div>
+                                <p class="text-xs text-slate-500 mb-0">
+                                    {{ nextMemberType === 'name'
+                                        ? t('groups.tempMemberDesc',
+                                            'Create a placeholder member. Can be bound to a real user later.')
+                                        : (nextMemberType === 'email'
+                                            ? t('groups.inviteEmailDesc', 'Send an invitation to a registered user directly.')
+                                            : t('groups.inviteUsernameDesc', 'Invite a user by their username.'))
+                                    }}
+                                </p>
+                            </div>
+
+                            <div class="flex flex-wrap gap-2 min-h-[40px]">
+                                <div v-for="(m, idx) in initialMembers" :key="idx"
+                                    class="px-3 py-1.5 rounded-full text-sm flex items-center gap-2 border shadow-sm"
+                                    :class="m.type === 'email' || m.type === 'username' ? 'bg-indigo-50 text-indigo-700 border-indigo-100' : 'bg-slate-50 text-slate-700 border-slate-200'">
+                                    <span class="font-medium">{{ m.value }}</span>
+                                    <span v-if="m.type === 'email' || m.type === 'username'"
+                                        class="text-[10px] uppercase bg-white/50 px-1 rounded">Invite</span>
+                                    <button @click="removeMember(idx)" type="button"
+                                        class="text-slate-400 hover:text-red-500 transition-colors ml-1">&times;</button>
+                                </div>
+                                <div v-if="initialMembers.length === 0" class="text-slate-400 text-sm italic py-2">
+                                    {{ t('groups.noMembersYet', 'No members added yet.') }}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- STEP 2: Service & Billing -->
+                    <div v-show="step === 2" class="space-y-6 animate-fade-in">
+                        <div class="bg-blue-50 text-blue-700 p-3 rounded-lg text-sm flex items-start gap-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0" viewBox="0 0 20 20"
+                                fill="currentColor">
+                                <path fill-rule="evenodd"
+                                    d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+                                    clip-rule="evenodd" />
+                            </svg>
+                            {{ t('groups.optionalStep', 'This step is optional. You can add service details later.') }}
+                        </div>
 
                         <!-- Service Search & Icon -->
-                        <div class="flex gap-4 items-start mb-4">
+                        <div class="flex gap-4 items-start">
                             <div class="flex-shrink-0">
                                 <div
                                     class="w-16 h-16 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center overflow-hidden shadow-sm relative group">
@@ -164,20 +237,12 @@ const handleSubmit = () => {
                                         @error="(e: any) => e.target.style.display = 'none'"
                                         class="w-full h-full object-cover" />
                                     <span v-else class="text-2xl text-slate-300">#</span>
-
-                                    <!-- Hover to edit icon URL -->
-                                    <div
-                                        class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                        <span class="text-xs text-white font-medium">{{ t('common.actions.edit', 'Edit')
-                                            }}</span>
-                                    </div>
                                 </div>
                             </div>
 
-                            <div class="flex-1 space-y-4">
-                                <!-- Service Search -->
+                            <div class="flex-1">
+                                <label class="field-label">{{ t('groups.serviceName') }}</label>
                                 <div class="relative">
-                                    <label class="field-label">{{ t('groups.serviceName') }} *</label>
                                     <input v-model="serviceQuery" @input="onServiceInput"
                                         @focus="showServiceDropdown = true" @blur="handleServiceBlur" type="text"
                                         class="glass-input w-full"
@@ -187,7 +252,7 @@ const handleSubmit = () => {
                                     <div v-if="showServiceDropdown && (foundServices.length > 0 || isSearching)"
                                         class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                                         <div v-if="isSearching" class="p-3 text-sm text-slate-400">{{
-                                            t('common.status.searching', 'Searching...') }}</div>
+                                            t('common.status.searching') }}</div>
                                         <ul v-else>
                                             <li v-for="svc in foundServices" :key="svc.id" @click="selectService(svc)"
                                                 class="px-4 py-2 hover:bg-primary-50 cursor-pointer flex items-center gap-3 transition-colors">
@@ -198,54 +263,27 @@ const handleSubmit = () => {
                                         </ul>
                                     </div>
                                 </div>
-
-                                <!-- Website & Custom Icon URL (Collapsible or always visible?) -->
-                                <div class="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label class="field-label">{{ t('groups.website') }}</label>
-                                        <input v-model="form.website" type="url" placeholder="https://..."
-                                            class="glass-input w-full" />
-                                    </div>
-                                    <div>
-                                        <label class="field-label">{{ t('groups.iconUrl') }}</label>
-                                        <input v-model="form.icon_url" type="url" placeholder="https://..."
-                                            class="glass-input w-full" />
-                                    </div>
-                                </div>
                             </div>
                         </div>
 
-                        <!-- Group Name -->
-                        <div class="form-group">
-                            <label class="field-label">{{ t('groups.groupName') }} *</label>
-                            <input v-model="form.name" type="text" :placeholder="t('common.placeholders.name')"
-                                class="glass-input w-full" />
-                        </div>
-                    </div>
-
-                    <!-- 2. Plan & Billing -->
-                    <div class="section">
-                        <h3 class="section-title">{{ t('groups.planAndBilling') }}</h3>
-                        <div class="grid grid-cols-2 gap-4 mb-4">
+                        <!-- Plan & Amount -->
+                        <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="field-label">{{ t('groups.planName') }}</label>
-                                <input v-model="form.plan_name" type="text" :placeholder="t('common.placeholders.plan')"
-                                    class="glass-input w-full" />
+                                <input v-model="form.plan_name" type="text" class="glass-input w-full"
+                                    placeholder="e.g. Premium" />
                             </div>
-                            <div class="grid grid-cols-2 gap-2">
-                                <div>
-                                    <label class="field-label">{{ t('groups.amount') }}</label>
+                            <div>
+                                <label class="field-label">{{ t('groups.amount') }}</label>
+                                <div class="relative">
                                     <input v-model.number="form.amount" type="number" step="0.01"
-                                        class="glass-input w-full" />
-                                </div>
-                                <div>
-                                    <label class="field-label">{{ t('groups.currency') }}</label>
-                                    <input v-model="form.service_currency" type="text" maxlength="3"
-                                        class="glass-input w-full uppercase" />
+                                        class="glass-input w-full pl-8" />
+                                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">$</span>
                                 </div>
                             </div>
                         </div>
 
+                        <!-- Billing Cycle -->
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="field-label">{{ t('groups.billingCycle') }}</label>
@@ -270,92 +308,41 @@ const handleSubmit = () => {
                         </div>
                     </div>
 
-                    <!-- 3. Duration & Dates -->
-                    <div class="section">
-                        <h3 class="section-title">Subscription Duration (Optional)</h3>
-                        <p class="text-xs text-slate-400 mb-4">Set a start date or end condition if this subscription
-                            has a
-                            fixed term.</p>
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="field-label">{{ t('groups.startDate') }}</label>
-                                <input v-model="form.start_date" type="date" class="glass-input w-full" />
-                            </div>
-                            <div>
-                                <label class="field-label">{{ t('groups.maxMembers') }}</label>
-                                <input v-model.number="form.max_members" type="number" min="1"
-                                    class="glass-input w-full" />
-                            </div>
-                        </div>
-                        <div class="grid grid-cols-2 gap-4 mt-4">
-                            <div>
-                                <label class="field-label">{{ t('groups.endCondition') }}</label>
-                                <select v-model="form.end_condition" class="glass-input w-full">
-                                    <option value="indefinite">{{ t('groups.endConditions.indefinite') }}</option>
-                                    <option value="date">{{ t('groups.endConditions.date') }}</option>
-                                    <option value="total_amount">{{ t('groups.endConditions.total_amount') }}</option>
-                                </select>
-                            </div>
-                            <div v-if="form.end_condition !== 'indefinite'">
-                                <label class="field-label">{{ t('groups.endValue') }}</label>
-                                <input v-if="form.end_condition === 'date'" v-model="form.end_value" type="date"
-                                    class="glass-input w-full" />
-                                <input v-else v-model="form.end_value" type="number" class="glass-input w-full"
-                                    placeholder="Total Amount" />
-                            </div>
-                        </div>
-                    </div>
+                    <p v-if="error" class="text-red-500 text-sm bg-red-50 p-2 rounded animate-pulse">{{ error }}</p>
 
-                    <!-- 4. Initial Members -->
-                    <div class="section border-none">
-                        <h3 class="section-title">{{ t('groups.initialMembers') }}</h3>
-                        <div class="flex gap-2 mb-3">
-                            <select v-model="nextMemberType" class="glass-input w-32">
-                                <option value="name">{{ t('common.fields.name') }}</option>
-                                <option value="email">{{ t('common.fields.email') }}</option>
-                            </select>
-                            <input v-model="nextMemberValue" type="text" :placeholder="t('common.placeholders.member')"
-                                @keydown.enter.prevent="addMember" class="glass-input flex-1" />
-                            <button type="button" @click="addMember" class="btn btn-secondary px-4">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20"
-                                    fill="currentColor">
-                                    <path fill-rule="evenodd"
-                                        d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
-                                        clip-rule="evenodd" />
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="flex flex-wrap gap-2">
-                            <div v-for="(m, idx) in initialMembers" :key="idx"
-                                class="px-3 py-1 rounded-full bg-primary-50 text-primary-700 border border-primary-100 text-sm flex items-center gap-2">
-                                <span>{{ m.value }}</span>
-                                <button @click="removeMember(idx)" type="button"
-                                    class="text-primary-400 hover:text-primary-700">&times;</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <p v-if="error" class="text-red-500 text-sm bg-red-50 p-2 rounded">{{ error }}</p>
-
-                    <div class="flex justify-end gap-3 pt-6 border-t border-slate-200">
-                        <button type="button" @click="$emit('close')" :disabled="isSubmitting"
+                    <div class="flex justify-between pt-6 border-t border-slate-200 mt-8">
+                        <button v-if="step === 1" type="button" @click="$emit('close')"
                             class="btn bg-slate-100 text-slate-600 hover:bg-slate-200">
                             {{ t('common.actions.cancel') }}
                         </button>
-                        <button type="submit" :disabled="isSubmitting" class="btn btn-primary min-w-[120px]">
-                            <span v-if="isSubmitting" class="flex items-center gap-2">
-                                <svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg"
-                                    fill="none" viewBox="0 0 24 24">
-                                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
-                                        stroke-width="4"></circle>
-                                    <path class="opacity-75" fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
-                                    </path>
-                                </svg>
-                                {{ t('common.status.loading') }}
-                            </span>
-                            <span v-else>{{ t('groups.createGroup') }}</span>
+                        <button v-else type="button" @click="step = 1"
+                            class="btn bg-slate-100 text-slate-600 hover:bg-slate-200">
+                            {{ t('common.actions.back') }}
                         </button>
+
+                        <button v-if="step === 1" type="button" @click="nextStep" class="btn btn-primary px-6">
+                            {{ t('common.actions.next') }}
+                        </button>
+
+                        <div v-if="step === 2" class="flex gap-3">
+                            <button type="button" @click="handleSubmit"
+                                class="btn text-slate-500 hover:text-slate-700 hover:bg-slate-50">
+                                {{ t('groups.skipAndCreate', 'Skip & Create') }}
+                            </button>
+                            <button type="submit" :disabled="isSubmitting" class="btn btn-primary min-w-[120px]">
+                                <span v-if="isSubmitting" class="flex items-center gap-2">
+                                    <svg class="animate-spin h-4 w-4 text-white" viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                            stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                        </path>
+                                    </svg>
+                                    {{ t('common.status.loading') }}
+                                </span>
+                                <span v-else>{{ t('groups.createGroup') }}</span>
+                            </button>
+                        </div>
                     </div>
                 </form>
             </div>
@@ -370,62 +357,30 @@ const handleSubmit = () => {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(15, 23, 42, 0.4);
+    background: rgba(15, 23, 42, 0.5);
     backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
-    align-items: flex-start;
-    /* Changed from center to allow scrolling from top */
+    align-items: center;
     z-index: 1000;
-    padding: 2rem 1rem;
-    /* Add vertical padding for top/bottom spacing */
-    overflow-y: auto;
-    /* Allow overlay to scroll */
+    padding: 1rem;
 }
 
 .modal-content {
     width: 100%;
-    max-width: 600px;
-    margin: auto;
-    /* Centers vertically if space allows */
-    display: flex;
-    flex-direction: column;
-    padding: 2rem;
+    max-width: 550px;
+    background: white;
     border-radius: 1.5rem;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    background: white;
-}
-
-.section {
-    border-bottom: 1px dashed var(--border-color);
-    padding-bottom: 1.5rem;
-}
-
-.section.border-none {
-    border-bottom: none;
-    padding-bottom: 0;
-}
-
-.section-title {
-    font-size: 0.75rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text-secondary);
-    margin-bottom: 1rem;
-}
-
-.field-label {
-    display: block;
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: var(--text-secondary);
-    margin-bottom: 0.25rem;
+    padding: 2rem;
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
 }
 
 .scrollable-form {
     overflow-y: auto;
-    padding-right: 0.5rem;
+    /* max-height: 60vh; */
 }
 
 /* Custom Scrollbar */
@@ -440,5 +395,17 @@ const handleSubmit = () => {
 .scrollable-form::-webkit-scrollbar-thumb {
     background-color: var(--border-color);
     border-radius: 3px;
+}
+
+.field-label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--slate-700);
+    margin-bottom: 0.5rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
 }
 </style>

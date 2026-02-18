@@ -77,5 +77,14 @@
     "deleteGroup": "Delete Group",
     "leaveGroup": "Leave Group",
     "confirmDelete": "Are you sure you want to delete this group? This action cannot be undone.",
-    "confirmLeave": "Are you sure you want to leave this group?"
+    "confirmLeave": "Are you sure you want to leave this group?",
+    "tempMember": "Temporary Member",
+    "inviteEmail": "Invite via Email",
+    "inviteUsername": "Invite via Username",
+    "tempMemberDesc": "Create a placeholder member. Can be bound to a real user later.",
+    "inviteEmailDesc": "Send an invitation to a registered user directly via Email.",
+    "inviteUsernameDesc": "Send an invitation to a registered user directly via Username.",
+    "noMembersYet": "No members added yet.",
+    "optionalStep": "This step is optional. You can add service details later.",
+    "skipAndCreate": "Skip & Create"
 }

@@ -17,7 +17,8 @@
         "search": "Search",
         "prev": "Previous",
         "next": "Next",
-        "retry": "Retry"
+        "retry": "Retry",
+        "accept": "Accept"
     },
     "status": {
         "loading": "Loading...",
@@ -54,6 +55,9 @@
         "service": "e.g. Netflix, Spotify",
         "plan": "e.g. Premium, Family",
         "member": "Name or Email"
+    },
+    "validation": {
+        "required": "{field} is required"
     },
     "optional": "Optional"
 }

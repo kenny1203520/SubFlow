@@ -1,12 +1,14 @@
 import { GroupRepository, GroupRow } from '../repositories/GroupRepository';
 import { GroupMemberRepository } from '../repositories/GroupMemberRepository';
 import { UserRepository } from '../repositories/UserRepository';
+import { NotificationService } from './NotificationService';
 import { pool } from '../db';
 
 export class GroupService {
     private groupRepo = new GroupRepository();
     private memberRepo = new GroupMemberRepository();
     private userRepo = new UserRepository();
+    private notifService = new NotificationService();
 
     async createGroup(userId: string, payload: any): Promise<GroupRow> {
         const client = await pool.connect();
@@ -38,11 +40,17 @@ export class GroupService {
                 }
             }
 
+            // Sanitize Date Fields
+            const sanitizeDate = (d: any) => (d && d !== '') ? new Date(d) : null;
+            const sanitizeString = (s: any) => (s && s !== '') ? s : null;
+
             const group = await this.groupRepo.create({
                 ...payload,
                 service_id: serviceId,
                 created_by: userId,
-                next_payment_date: payload.next_payment_date ? new Date(payload.next_payment_date) : null
+                next_payment_date: sanitizeDate(payload.next_payment_date),
+                start_date: sanitizeDate(payload.start_date),
+                end_value: (payload.end_condition === 'date') ? (sanitizeDate(payload.end_value)?.toISOString() || null) : sanitizeString(payload.end_value)
             });
 
             await this.memberRepo.addMember({
@@ -53,14 +61,29 @@ export class GroupService {
 
             if (payload.initial_members) {
                 for (const member of payload.initial_members) {
-                    if (member.email) {
-                        const user = await this.userRepo.findByEmail(member.email);
-                        await this.memberRepo.addMember({
-                            group_id: group.id,
-                            user_id: user?.id,
-                            temp_name: user ? undefined : member.email,
-                            role: 'member'
-                        });
+                    if (member.email || member.username) {
+                        let user = null;
+                        if (member.email) user = await this.userRepo.findByEmail(member.email);
+                        else if (member.username) user = await this.userRepo.findByUsername(member.username);
+
+                        if (user) {
+                            // Invite via Notification
+                            await this.notifService.createNotification(
+                                user.id,
+                                'group_invite',
+                                'Group Invitation',
+                                `You have been invited to join ${group.name}`,
+                                { groupId: group.id, groupName: group.name, inviterId: userId }
+                            );
+                        } else {
+                            // Fallback to temp member if user not found (or treat as error? For now fallback)
+                            // User wanted "email and username". 
+                            await this.memberRepo.addMember({
+                                group_id: group.id,
+                                temp_name: member.email || member.username,
+                                role: 'member'
+                            });
+                        }
                     } else if (member.name) {
                         await this.memberRepo.addMember({
                             group_id: group.id,
@@ -95,25 +118,54 @@ export class GroupService {
         return { group, members };
     }
 
-    async addMember(adminId: string, groupId: string, payload: { email?: string, name?: string }) {
+    async addMember(adminId: string, groupId: string, payload: { email?: string, name?: string, username?: string }) {
         const role = await this.memberRepo.checkRole(groupId, adminId);
         if (role !== 'admin') throw new Error("Only admins can add members");
 
-        if (payload.email) {
-            const user = await this.userRepo.findByEmail(payload.email);
-            await this.memberRepo.addMember({
-                group_id: groupId,
-                user_id: user?.id,
-                temp_name: user ? undefined : payload.email,
-                role: 'member'
-            });
+        // Logic split: Invite vs Temp
+        if (payload.email || payload.username) {
+            let user = null;
+            if (payload.email) user = await this.userRepo.findByEmail(payload.email);
+            else if (payload.username) user = await this.userRepo.findByUsername(payload.username);
+
+            if (user) {
+                const group = await this.groupRepo.findById(groupId);
+                await this.notifService.createNotification(
+                    user.id,
+                    'group_invite',
+                    'Group Invitation',
+                    `You have been invited to join ${group?.name}`,
+                    { groupId: groupId, groupName: group?.name, inviterId: adminId }
+                );
+                return { status: 'invited' };
+            } else {
+                await this.memberRepo.addMember({
+                    group_id: groupId,
+                    temp_name: payload.email || payload.username,
+                    role: 'member'
+                });
+                return { status: 'added_temp' };
+            }
         } else if (payload.name) {
             await this.memberRepo.addMember({
                 group_id: groupId,
                 temp_name: payload.name,
                 role: 'member'
             });
+            return { status: 'added_temp' };
         }
+    }
+
+    async acceptInvite(userId: string, groupId: string) {
+        // Check if already member
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role) throw new Error("Already a member");
+
+        await this.memberRepo.addMember({
+            group_id: groupId,
+            user_id: userId,
+            role: 'member'
+        });
     }
 
     async bindMember(userId: string, memberId: string) {

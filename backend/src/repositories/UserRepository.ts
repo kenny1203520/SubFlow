@@ -19,4 +19,9 @@ export class UserRepository extends BaseRepository {
         const res = await this.query('SELECT * FROM users WHERE email = $1', [email]);
         return res.rows[0] || null;
     }
+
+    async findByUsername(username: string): Promise<UserRow | null> {
+        const res = await this.query('SELECT * FROM users WHERE username = $1', [username]);
+        return res.rows[0] || null;
+    }
 }

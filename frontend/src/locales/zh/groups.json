@@ -77,5 +77,14 @@
     "deleteGroup": "刪除群組",
     "leaveGroup": "離開群組",
     "confirmDelete": "確定要刪除此群組嗎？此操作無法撤銷。",
-    "confirmLeave": "確定要離開此群組嗎？"
+    "confirmLeave": "確定要離開此群組嗎？",
+    "tempMember": "臨時成員",
+    "inviteEmail": "Email 邀請",
+    "inviteUsername": "用戶名邀請",
+    "tempMemberDesc": "建立佔位成員，稍後可綁定真實用戶。",
+    "inviteEmailDesc": "直接透過 Email 發送邀請給已註冊用戶。",
+    "inviteUsernameDesc": "直接透過用戶名發送邀請給已註冊用戶。",
+    "noMembersYet": "尚未添加成員。",
+    "optionalStep": "此步驟為選填，您可以稍後再補上服務詳情。",
+    "skipAndCreate": "跳過並創建"
 }
