@@ -7,5 +7,6 @@
     "activate": "激活",
     "cancel": "取消",
     "cancelled": "已取消",
-    "loading": "正在加載訂閱..."
+    "loading": "正在加載訂閱...",
+    "description": "管理您的定期付款"
 }

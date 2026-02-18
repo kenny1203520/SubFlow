@@ -46,7 +46,7 @@ onMounted(() => {
                 class="flex justify-between items-center bg-white/40 sticky top-0 z-10 backdrop-blur-md p-4 rounded-2xl border border-white/50 shadow-sm">
                 <div>
                     <h1 class="text-2xl font-bold text-slate-800">{{ t('subscriptions.title') }}</h1>
-                    <p class="text-slate-500 text-sm">Track your recurring payments</p>
+                    <p class="text-slate-500 text-sm">{{ t('subscriptions.description') }}</p>
                 </div>
                 <!-- Add Subscription button could go here if we have a global create modal, or rely on group detail -->
             </div>
@@ -107,7 +107,7 @@ onMounted(() => {
                             </svg>
                             {{ t('subscriptions.nextPayment') }}: <span class="font-semibold text-slate-600">{{
                                 sub.next_payment_date ? new Date(sub.next_payment_date).toLocaleDateString() : 'N/A'
-                                }}</span>
+                            }}</span>
                         </p>
                     </div>
 

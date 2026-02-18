@@ -7,5 +7,6 @@
     "activate": "Activate",
     "cancel": "Cancel",
     "cancelled": "Cancelled",
-    "loading": "Loading subscriptions..."
+    "loading": "Loading subscriptions...",
+    "description": "Track your recurring payments"
 }
