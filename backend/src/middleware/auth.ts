@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { lucia } from "../auth/lucia";
+import { runWithContext } from "../utils/context";
 
 export const verifySession = async (req: Request, res: Response, next: NextFunction) => {
     const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
     if (!sessionId) {
         res.locals.user = null;
         res.locals.session = null;
-        return next();
+        return runWithContext({ userId: null }, next);
     }
 
     const { session, user } = await lucia.validateSession(sessionId);
@@ -18,7 +19,8 @@ export const verifySession = async (req: Request, res: Response, next: NextFunct
     }
     res.locals.user = user;
     res.locals.session = session;
-    return next();
+
+    return runWithContext({ userId: user?.id ?? null }, next);
 };
 
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
