@@ -84,6 +84,7 @@ import { ExpenseController } from './controllers/ExpenseController';
 import { SubscriptionController } from './controllers/SubscriptionController';
 import { NotificationController } from './controllers/NotificationController';
 import { FileController } from './controllers/FileController';
+import { ServiceController } from './controllers/ServiceController';
 
 io.on("connection", (socket) => {
     console.log(`User connected: ${socket.data.user.username}`);
@@ -96,6 +97,7 @@ io.on("connection", (socket) => {
     new SubscriptionController(io, socket).register();
     new NotificationController(io, socket).register();
     new FileController(io, socket).register();
+    new ServiceController(io, socket).register();
 
     socket.on("dashboard:stats", async (cb: (res: any) => void) => {
         try {

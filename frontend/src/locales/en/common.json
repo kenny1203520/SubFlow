@@ -12,7 +12,11 @@
         "logout": "Logout",
         "back": "Back",
         "submit": "Submit",
-        "export": "Export"
+        "export": "Export",
+        "collapse": "Collapse",
+        "search": "Search",
+        "prev": "Previous",
+        "next": "Next"
     },
     "status": {
         "loading": "Loading...",
@@ -20,7 +24,8 @@
         "error": "Error",
         "empty": "No data found",
         "loadingMore": "Loading more...",
-        "all": "All"
+        "all": "All",
+        "saving": "Saving..."
     },
     "cycles": {
         "monthly": "Monthly",
@@ -36,7 +41,8 @@
         "email": "Email",
         "search": "Search",
         "startDate": "Start Date",
-        "endDate": "End Date"
+        "endDate": "End Date",
+        "date": "Date"
     },
     "placeholders": {
         "search": "Search for...",
@@ -47,5 +53,6 @@
         "service": "e.g. Netflix, Spotify",
         "plan": "e.g. Premium, Family",
         "member": "Name or Email"
-    }
+    },
+    "optional": "Optional"
 }

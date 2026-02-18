@@ -17,8 +17,15 @@ const fetchLogs = async () => {
     try {
         const offset = (page.value - 1) * limit;
         const res = await http.get(`/api/audit/user/activity?limit=${limit}&offset=${offset}`);
-        logs.value = res.data.logs;
-        total.value = res.data.pagination.total;
+
+        if (res.data && res.data.logs) {
+            logs.value = res.data.logs;
+            total.value = res.data.pagination?.total || 0;
+        } else {
+            console.warn('Unexpected response format:', res.data);
+            logs.value = [];
+            total.value = 0;
+        }
     } catch (err: any) {
         console.error(err);
         error.value = err.response?.data?.message || err.message || 'Failed to load activity logs';

@@ -1,0 +1,7 @@
+{
+    "title": "服務管理",
+    "description": "管理可用的訂閱服務",
+    "newService": "新增服務",
+    "editService": "編輯服務",
+    "domainHint": "用於自動獲取圖標"
+}

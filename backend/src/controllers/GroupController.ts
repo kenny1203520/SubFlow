@@ -12,7 +12,7 @@ export class GroupController extends BaseController {
         this.socket.on("group:bind_member", (payload, cb) => this.bindMember(payload, cb));
         this.socket.on("group:delete", (payload, cb) => this.deleteGroup(payload, cb));
         this.socket.on("group:leave", (payload, cb) => this.leaveGroup(payload, cb));
-        this.socket.on("service:search", (payload, cb) => this.searchServices(payload, cb));
+        this.socket.on("group:leave", (payload, cb) => this.leaveGroup(payload, cb));
     }
 
     async createGroup(payload: any, cb: (res: any) => void) {
@@ -85,12 +85,5 @@ export class GroupController extends BaseController {
         }
     }
 
-    async searchServices(payload: { query: string }, cb: (res: any) => void) {
-        try {
-            const services = await this.groupService.searchServices(payload.query);
-            this.success(cb, { services });
-        } catch (error: any) {
-            this.error(cb, error.message || "Failed to search services");
-        }
-    }
+
 }

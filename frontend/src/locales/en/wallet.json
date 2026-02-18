@@ -1,5 +1,6 @@
 {
     "wallet": "Wallet",
+    "walletDesc": "Manage your wallets and transactions",
     "balance": "Balance",
     "deposit": "Deposit",
     "transfer": "Transfer",
@@ -14,5 +15,6 @@
     "noTransactions": "No transactions yet",
     "insufficientBalance": "Insufficient balance",
     "success": "Success",
-    "failed": "Failed"
+    "failed": "Failed",
+    "noWallets": "No wallets found"
 }

@@ -19,6 +19,7 @@ import ForgotPassword from './views/ForgotPassword.vue'
 import ResetPassword from './views/ResetPassword.vue'
 import VerifyEmail from './views/VerifyEmail.vue'
 import ActivityLog from './views/ActivityLog.vue'
+import ServiceManagementView from './views/ServiceManagementView.vue'
 
 const routes = [
     { path: '/', redirect: '/dashboard' },
@@ -38,6 +39,7 @@ const routes = [
     { path: '/security', component: SecurityView, meta: { requiresAuth: true, titleKey: 'security.title' } },
     { path: '/profile', component: ProfileView, meta: { requiresAuth: true, titleKey: 'profile.profile' } },
     { path: '/activity', component: ActivityLog, meta: { requiresAuth: true, titleKey: 'activity.title' } },
+    { path: '/services', component: ServiceManagementView, meta: { requiresAuth: true, titleKey: 'services.title' } },
     { path: '/admin', component: AdminDashboard, meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'admin.title' } },
 ]
 
@@ -72,7 +74,7 @@ const initApp = async () => {
 }
 
 // Better Route Guard
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
     if (to.meta.requiresAuth && !authStore.user) {
         // Try one last time to check auth if user is null
         try {

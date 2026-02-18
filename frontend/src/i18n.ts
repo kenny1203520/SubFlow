@@ -9,6 +9,7 @@ import enSecurity from './locales/en/security.json';
 import enAdmin from './locales/en/admin.json';
 import enWallet from './locales/en/wallet.json';
 import enActivity from './locales/en/activity.json';
+import enServices from './locales/en/services.json';
 
 import zhCommon from './locales/zh/common.json';
 import zhDashboard from './locales/zh/dashboard.json';
@@ -20,6 +21,7 @@ import zhSecurity from './locales/zh/security.json';
 import zhAdmin from './locales/zh/admin.json';
 import zhWallet from './locales/zh/wallet.json';
 import zhActivity from './locales/zh/activity.json';
+import zhServices from './locales/zh/services.json';
 
 // Define messages structure
 const messages = {
@@ -33,7 +35,8 @@ const messages = {
         security: enSecurity,
         admin: enAdmin,
         wallet: enWallet,
-        activity: enActivity
+        activity: enActivity,
+        services: enServices
     },
     zh: {
         common: zhCommon,
@@ -45,7 +48,8 @@ const messages = {
         security: zhSecurity,
         admin: zhAdmin,
         wallet: zhWallet,
-        activity: zhActivity
+        activity: zhActivity,
+        services: zhServices
     }
 };
 

@@ -10,10 +10,23 @@ const wallets = ref<any[]>([]);
 const transactions = ref<any[]>([]);
 const loading = ref(true);
 const selectedWalletId = ref<string>('');
+const error = ref<string | null>(null);
 
 const fetchWallets = () => {
     loading.value = true;
+    error.value = null;
+
+    // Timeout safeguard
+    const timeout = setTimeout(() => {
+        if (loading.value) {
+            console.error('Wallet fetch timed out');
+            error.value = 'Connection timed out. Please check your network.';
+            loading.value = false;
+        }
+    }, 5000);
+
     socket.emit('wallet:list', (res: any) => {
+        clearTimeout(timeout);
         if (res.status === 'ok') {
             wallets.value = res.wallets;
             // Automatically select first wallet to show transactions if available
@@ -23,6 +36,8 @@ const fetchWallets = () => {
                 loading.value = false;
             }
         } else {
+            console.error('Wallet fetch failed:', res.message);
+            error.value = res.message || 'Failed to load wallets.';
             loading.value = false;
         }
     });
@@ -71,13 +86,25 @@ onMounted(() => {
             <header>
                 <h1 class="text-3xl font-extrabold text-slate-800">{{ t('wallet.wallet', 'My Wallets') }}</h1>
                 <p class="text-slate-500 text-sm mt-1">{{ t('wallet.walletDesc', 'Manage your wallets and transactions')
-                    }}</p>
+                }}</p>
             </header>
 
             <!-- Loading State -->
             <div v-if="loading && wallets.length === 0" class="flex flex-col items-center justify-center p-20">
                 <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
                 <p class="mt-4 text-slate-500 font-medium">{{ t('common.status.loading') }}</p>
+            </div>
+
+            <!-- Error State -->
+            <div v-if="error"
+                class="bg-red-50 border border-red-200 text-red-600 p-4 rounded-xl flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24"
+                    stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {{ error }}
+                <button @click="fetchWallets" class="ml-4 underline hover:no-underline font-semibold">Retry</button>
             </div>
 
             <div v-else>

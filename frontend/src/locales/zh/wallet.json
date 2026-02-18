@@ -1,5 +1,6 @@
 {
     "wallet": "錢包",
+    "walletDesc": "管理您的錢包與交易紀錄",
     "balance": "餘額",
     "deposit": "儲值",
     "transfer": "轉帳",
@@ -14,5 +15,6 @@
     "noTransactions": "尚無交易紀錄",
     "insufficientBalance": "餘額不足",
     "success": "操作成功",
-    "failed": "操作失敗"
+    "failed": "操作失敗",
+    "noWallets": "未找到錢包"
 }
