@@ -19,9 +19,9 @@ const fetchLogs = async () => {
         const res = await http.get(`/api/audit/user/activity?limit=${limit}&offset=${offset}`);
         logs.value = res.data.logs;
         total.value = res.data.pagination.total;
-    } catch (err) {
+    } catch (err: any) {
         console.error(err);
-        error.value = 'Failed to load activity logs';
+        error.value = err.response?.data?.message || err.message || 'Failed to load activity logs';
     } finally {
         loading.value = false;
     }

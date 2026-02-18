@@ -1,67 +1,113 @@
 import { WalletRepository } from '../repositories/WalletRepository';
-import { pool } from '../db';
+import { pool } from '../db'; // Need direct pool access for transactions
 
 export class WalletService {
     private walletRepo = new WalletRepository();
 
-    async getWallets(userId: string) {
-        return await this.walletRepo.findByUserId(userId);
+    // Ensure a Global (Root) Wallet exists for the user
+    async getOrCreateGlobalWallet(userId: string, currency: string = 'TWD') {
+        let wallet = await this.walletRepo.findWallet(userId, currency);
+        if (!wallet) {
+            wallet = await this.walletRepo.createWallet(userId, currency);
+        }
+        return wallet;
     }
 
-    async deposit(userId: string, walletId: string, amount: number, proofUrl?: string) {
+    async getUserWallets(userId: string) {
+        // Ensure global wallet exists before returning list
+        await this.getOrCreateGlobalWallet(userId);
+        return await this.walletRepo.getWalletsByUserId(userId);
+    }
+
+    async getWalletDetails(walletId: string) {
+        const wallet = await this.walletRepo.getWalletById(walletId);
+        if (!wallet) throw new Error("Wallet not found");
+
+        const transactions = await this.walletRepo.getTransactions(walletId);
+        return { wallet, transactions };
+    }
+
+    async deposit(userId: string, amount: number, currency: string = 'TWD', method: string = 'manual') {
+        if (amount <= 0) throw new Error("Deposit amount must be positive");
+
         const client = await pool.connect();
         try {
-            await client.query("BEGIN");
+            await client.query('BEGIN');
 
-            // In a real system, deposit would be 'pending' until approved.
-            // For now, let's implement the core balance update logic.
+            // 1. Get or Create Global Wallet
+            let wallet = await this.walletRepo.findWallet(userId, currency);
+            if (!wallet) {
+                wallet = await this.walletRepo.createWallet(userId, currency);
+            }
 
-            await this.walletRepo.updateBalance(walletId, amount);
+            // 2. Update Balance
+            const updatedWallet = await this.walletRepo.updateBalance(wallet.id, amount, client);
+
+            // 3. Log Transaction
             await this.walletRepo.createTransaction({
-                wallet_id: walletId,
-                amount: amount,
+                wallet_id: wallet.id,
                 type: 'deposit',
-                description: 'User deposit'
-            });
+                amount: amount,
+                currency: currency,
+                description: `Deposit via ${method}`,
+                status: 'completed'
+            }, client);
 
-            await client.query("COMMIT");
-        } catch (error) {
-            await client.query("ROLLBACK");
-            throw error;
+            await client.query('COMMIT');
+            return updatedWallet;
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
         } finally {
             client.release();
         }
     }
 
     async transfer(userId: string, fromWalletId: string, toWalletId: string, amount: number) {
+        if (amount <= 0) throw new Error("Transfer amount must be positive");
+        if (fromWalletId === toWalletId) throw new Error("Cannot transfer to same wallet");
+
         const client = await pool.connect();
         try {
-            await client.query("BEGIN");
+            await client.query('BEGIN');
 
-            const balance = await this.walletRepo.getBalance(fromWalletId);
-            if (balance < amount) throw new Error("Insufficient balance");
+            const fromWallet = await this.walletRepo.getWalletById(fromWalletId);
+            const toWallet = await this.walletRepo.getWalletById(toWalletId);
 
-            await this.walletRepo.updateBalance(fromWalletId, -amount);
-            await this.walletRepo.updateBalance(toWalletId, amount);
+            if (!fromWallet || !toWallet) throw new Error("Wallet not found");
+            if (fromWallet.user_id !== userId) throw new Error("Unauthorized"); // Simple check
+            if (fromWallet.currency !== toWallet.currency) throw new Error("Currency mismatch");
+            if (fromWallet.balance < amount) throw new Error("Insufficient funds");
 
+            // Deduct from Source
+            await this.walletRepo.updateBalance(fromWalletId, -amount, client);
             await this.walletRepo.createTransaction({
                 wallet_id: fromWalletId,
-                amount: -amount,
                 type: 'transfer_out',
-                description: `Transfer to wallet ${toWalletId}`
-            });
+                amount: -amount,
+                currency: fromWallet.currency,
+                description: `Transfer to wallet ${toWalletId}`,
+                related_id: toWalletId,
+                related_type: 'wallet'
+            }, client);
 
+            // Add to Destination
+            await this.walletRepo.updateBalance(toWalletId, amount, client);
             await this.walletRepo.createTransaction({
                 wallet_id: toWalletId,
-                amount: amount,
                 type: 'transfer_in',
-                description: `Transfer from wallet ${fromWalletId}`
-            });
+                amount: amount,
+                currency: toWallet.currency,
+                description: `Transfer from wallet ${fromWalletId}`,
+                related_id: fromWalletId,
+                related_type: 'wallet'
+            }, client);
 
-            await client.query("COMMIT");
-        } catch (error) {
-            await client.query("ROLLBACK");
-            throw error;
+            await client.query('COMMIT');
+            return { from: fromWalletId, to: toWalletId, amount };
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
         } finally {
             client.release();
         }

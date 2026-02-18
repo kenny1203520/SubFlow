@@ -97,6 +97,18 @@ const logout = async () => {
                     <div class="active-indicator"></div>
                 </router-link>
 
+                <router-link to="/wallet" class="nav-item" @click="layoutStore.closeSidebar">
+                    <div class="icon-wrapper">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                        </svg>
+                    </div>
+                    <span class="nav-text hide-on-collapsed">{{ t('wallet.wallet', 'Wallet') }}</span>
+                    <div class="active-indicator"></div>
+                </router-link>
+
                 <router-link to="/activity" class="nav-item" @click="layoutStore.closeSidebar">
                     <div class="icon-wrapper">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
@@ -230,6 +242,11 @@ const logout = async () => {
     /* Crucial for layout */
 }
 
+.sidebar.collapsed .collapse-btn {
+    display: flex;
+    /* Force display */
+}
+
 /* On Mobile, sidebar slides out completely */
 @media (max-width: 1024px) {
     .sidebar {
@@ -251,10 +268,23 @@ const logout = async () => {
 .sidebar-header {
     display: flex;
     align-items: center;
-    justify-content:
-        space-between;
+    justify-content: space-between;
     margin-bottom: 2rem;
     padding: 0 0.5rem;
+    min-height: 40px;
+    /* Ensure height */
+}
+
+/* When collapsed, center the logo and button stack or adjust */
+.sidebar.collapsed .sidebar-header {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 0;
+    justify-content: center;
+}
+
+.sidebar.collapsed .collapse-btn {
+    margin: 0 auto;
 }
 
 .logo-area {

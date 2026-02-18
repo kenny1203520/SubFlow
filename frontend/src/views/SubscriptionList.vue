@@ -13,8 +13,10 @@ const fetchData = () => {
     socket.emit('subscription:all', (res: any) => {
         if (res.status === 'ok') {
             subscriptions.value = res.subscriptions;
-            loading.value = false;
+        } else {
+            console.error(res.message);
         }
+        loading.value = false;
     });
 };
 
@@ -74,10 +76,11 @@ onMounted(() => {
                         <div class="flex items-center gap-3">
                             <div
                                 class="w-10 h-10 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold shadow-sm">
-                                {{ sub.name[0].toUpperCase() }}
+                                {{ (sub.service_name || sub.name || '?')[0].toUpperCase() }}
                             </div>
                             <div>
-                                <h3 class="font-bold text-slate-800 text-lg leading-tight">{{ sub.name }}</h3>
+                                <h3 class="font-bold text-slate-800 text-lg leading-tight">{{ sub.service_name ||
+                                    sub.name }}</h3>
                                 <span
                                     class="text-xs px-2 py-0.5 rounded-full font-bold uppercase tracking-wide inline-block mt-1"
                                     :class="{

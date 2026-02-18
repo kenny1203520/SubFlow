@@ -5,38 +5,48 @@ export class WalletController extends BaseController {
     private walletService = new WalletService();
 
     register() {
-        this.socket.on("wallet:list", (cb) => this.getWallets(cb));
+        this.socket.on("wallet:list", (cb) => this.listWallets(cb));
+        this.socket.on("wallet:details", (payload, cb) => this.getWalletDetails(payload, cb));
         this.socket.on("wallet:deposit", (payload, cb) => this.deposit(payload, cb));
         this.socket.on("wallet:transfer", (payload, cb) => this.transfer(payload, cb));
     }
 
-    async getWallets(cb: (res: any) => void) {
+    async listWallets(cb: (res: any) => void) {
         try {
             const userId = this.socket.data.user.id;
-            const wallets = await this.walletService.getWallets(userId);
+            const wallets = await this.walletService.getUserWallets(userId);
             this.success(cb, { wallets });
         } catch (error: any) {
-            this.error(cb, error.message || "Failed to fetch wallets");
+            this.error(cb, error.message || "Failed to list wallets");
         }
     }
 
-    async deposit(payload: { walletId: string, amount: number, proofUrl?: string }, cb: (res: any) => void) {
+    async getWalletDetails(payload: { walletId: string }, cb: (res: any) => void) {
+        try {
+            const { wallet, transactions } = await this.walletService.getWalletDetails(payload.walletId);
+            this.success(cb, { wallet, transactions });
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to get wallet details");
+        }
+    }
+
+    async deposit(payload: { amount: number, currency?: string }, cb: (res: any) => void) {
         try {
             const userId = this.socket.data.user.id;
-            await this.walletService.deposit(userId, payload.walletId, payload.amount, payload.proofUrl);
-            this.success(cb);
+            const wallet = await this.walletService.deposit(userId, payload.amount, payload.currency);
+            this.success(cb, { wallet });
         } catch (error: any) {
-            this.error(cb, error.message || "Deposit failed");
+            this.error(cb, error.message || "Failed to deposit");
         }
     }
 
     async transfer(payload: { fromWalletId: string, toWalletId: string, amount: number }, cb: (res: any) => void) {
         try {
             const userId = this.socket.data.user.id;
-            await this.walletService.transfer(userId, payload.fromWalletId, payload.toWalletId, payload.amount);
-            this.success(cb);
+            const result = await this.walletService.transfer(userId, payload.fromWalletId, payload.toWalletId, payload.amount);
+            this.success(cb, { result });
         } catch (error: any) {
-            this.error(cb, error.message || "Transfer failed");
+            this.error(cb, error.message || "Failed to transfer");
         }
     }
 }

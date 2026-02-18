@@ -254,9 +254,11 @@ const handleSubmit = () => {
                     </div>
                 </div>
 
-                <!-- 3. Duration & Dates (NEW) -->
+                <!-- 3. Duration & Dates -->
                 <div class="section">
-                    <h3 class="section-title">Duration & Limits</h3>
+                    <h3 class="section-title">Subscription Duration (Optional)</h3>
+                    <p class="text-xs text-slate-400 mb-4">Set a start date or end condition if this subscription has a
+                        fixed term.</p>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="field-label">{{ t('groups.startDate') }}</label>
@@ -351,23 +353,27 @@ const handleSubmit = () => {
     width: 100%;
     height: 100%;
     background: rgba(15, 23, 42, 0.4);
-    /* Slate-900 with opacity */
     backdrop-filter: blur(8px);
     display: flex;
     justify-content: center;
     align-items: center;
     z-index: 1000;
+    padding: 1rem;
+    /* Add padding to prevent edge touching on mobile */
 }
 
 .modal-content {
-    width: 95%;
-    max-width: 700px;
+    width: 100%;
+    max-width: 600px;
+    /* Reduced specific width for better focus */
     max-height: 90vh;
     display: flex;
     flex-direction: column;
     padding: 2rem;
     border-radius: 1.5rem;
     box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+    background: white;
+    /* Ensure background is solid enough */
 }
 
 .section {
