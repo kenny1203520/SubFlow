@@ -14,7 +14,9 @@ router.get("/profile", requireAuth, async (req, res) => {
         const query = `
             SELECT 
                 u.id, u.username, u.email, u.avatar_url,
-                p.first_name, p.last_name, p.birthday, p.mobile_phone as phone
+                p.first_name, p.middle_name, p.last_name, p.nickname,
+                p.birthday, p.mobile_phone as phone,
+                p.id_number, p.passport_number, p.address
             FROM users u
             LEFT JOIN user_profiles p ON u.id = p.user_id
             WHERE u.id = $1
@@ -28,7 +30,8 @@ router.get("/profile", requireAuth, async (req, res) => {
 
         const profile = {
             ...user,
-            real_name: user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : (user.first_name || user.last_name || "")
+            // Fallback for real_name display if needed, but frontend should use individual fields
+            real_name: [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(' ')
         };
 
         return res.json({ status: "ok", profile });
@@ -40,7 +43,11 @@ router.get("/profile", requireAuth, async (req, res) => {
 
 router.patch("/profile", requireAuth, async (req, res) => {
     const userId = res.locals.user!.id;
-    const { real_name, birthday, phone, avatar_url } = req.body;
+    const {
+        first_name, middle_name, last_name, nickname,
+        birthday, phone, avatar_url,
+        id_number, passport_number, address
+    } = req.body;
 
     try {
         await pool.query("BEGIN");
@@ -49,25 +56,37 @@ router.patch("/profile", requireAuth, async (req, res) => {
             await pool.query("UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2", [avatar_url, userId]);
         }
 
-        let firstName = "";
-        let lastName = "";
-        if (real_name) {
-            const parts = real_name.trim().split(/\s+/);
-            firstName = parts[0];
-            lastName = parts.slice(1).join(" ");
-        }
-
         const upsertProfileQuery = `
-            INSERT INTO user_profiles (user_id, first_name, last_name, birthday, mobile_phone, updated_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
+            INSERT INTO user_profiles (
+                user_id, first_name, middle_name, last_name, nickname,
+                birthday, mobile_phone, id_number, passport_number, address, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
             ON CONFLICT (user_id) DO UPDATE SET
-                first_name = COALESCE(NULLIF($2, ''), user_profiles.first_name),
-                last_name = COALESCE(NULLIF($3, ''), user_profiles.last_name),
-                birthday = COALESCE($4, user_profiles.birthday),
-                mobile_phone = COALESCE(NULLIF($5, ''), user_profiles.mobile_phone),
+                first_name = COALESCE($2, user_profiles.first_name),
+                middle_name = COALESCE($3, user_profiles.middle_name),
+                last_name = COALESCE($4, user_profiles.last_name),
+                nickname = COALESCE($5, user_profiles.nickname),
+                birthday = COALESCE($6, user_profiles.birthday),
+                mobile_phone = COALESCE($7, user_profiles.mobile_phone),
+                id_number = COALESCE($8, user_profiles.id_number),
+                passport_number = COALESCE($9, user_profiles.passport_number),
+                address = COALESCE($10, user_profiles.address),
                 updated_at = NOW()
         `;
-        await pool.query(upsertProfileQuery, [userId, firstName, lastName, birthday || null, phone || null]);
+
+        await pool.query(upsertProfileQuery, [
+            userId,
+            first_name || null,
+            middle_name || null,
+            last_name || null,
+            nickname || null,
+            birthday || null,
+            phone || null,
+            id_number || null,
+            passport_number || null,
+            address || null
+        ]);
 
         await pool.query("COMMIT");
         return res.json({ status: "ok", message: "Profile updated" });

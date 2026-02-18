@@ -1,12 +1,32 @@
 {
-    "profile": "User Profile",
-    "username": "Username",
-    "email": "Email Address",
-    "realName": "Real Name",
-    "birthday": "Birthday",
-    "phone": "Phone Number",
-    "save": "Save Changes",
-    "changeAvatar": "Change Avatar",
-    "updateSuccess": "Profile updated successfully",
-    "updateFailed": "Failed to update profile"
+    "title": "Profile",
+    "sections": {
+        "basic": "Basic Information",
+        "contact": "Contact Information",
+        "identity": "Identity Documents"
+    },
+    "fields": {
+        "username": "Username",
+        "email": "Email",
+        "firstName": "First Name",
+        "middleName": "Middle Name",
+        "lastName": "Last Name",
+        "nickname": "Nickname",
+        "birthday": "Birthday",
+        "mobilePhone": "Mobile Phone",
+        "address": "Address",
+        "idNumber": "ID Number",
+        "passportNumber": "Passport Number"
+    },
+    "actions": {
+        "edit": "Edit Profile",
+        "save": "Save Changes",
+        "cancel": "Cancel",
+        "changeAvatar": "Change Avatar"
+    },
+    "messages": {
+        "updateSuccess": "Profile updated successfully",
+        "updateFailed": "Failed to update profile",
+        "uploadFailed": "Avatar upload failed"
+    }
 }

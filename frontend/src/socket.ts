@@ -10,7 +10,7 @@ export const socket = io(URL as string, {
 });
 
 socket.on("connect", () => {
-    console.log("Connected to Socket.IO server");
+    // console.log("Connected to Socket.IO server");
 });
 
 socket.on("connect_error", (err) => {

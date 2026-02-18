@@ -10,19 +10,19 @@ async function migrate() {
             .filter(file => file.endsWith('.sql'))
             .sort();
 
-        console.log(`Found ${files.length} migration files.`);
+        // console.log(`Found ${files.length} migration files.`);
 
         await client.query("BEGIN");
 
         for (const file of files) {
             const filePath = path.join(dbDir, file);
             const sql = fs.readFileSync(filePath, 'utf8');
-            console.log(`Executing ${file}...`);
+            // console.log(`Executing ${file}...`);
             await client.query(sql);
         }
 
         await client.query("COMMIT");
-        console.log('Migration completed successfully.');
+        // console.log('Migration completed successfully.');
     } catch (error) {
         await client.query("ROLLBACK");
         console.error('Migration failed:', error);

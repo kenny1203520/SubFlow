@@ -20,6 +20,6 @@ export class IconService {
      * Start the icon service (placeholder for future enhancements like caching)
      */
     static init() {
-        console.log('IconService initialized');
+        // console.log('IconService initialized');
     }
 }

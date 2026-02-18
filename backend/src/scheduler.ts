@@ -5,15 +5,15 @@ import { pool } from './db';
 
 export class SchedulerService {
     static init() {
-        console.log('Initializing Scheduler Service...');
+        // console.log('Initializing Scheduler Service...');
 
         // Run every day at 00:00 (midnight)
         cron.schedule('0 0 * * *', async () => {
-            console.log('Running daily billing check...');
+            // console.log('Running daily billing check...');
             await this.generateBills();
         });
 
-        console.log('Scheduler Service started.');
+        // console.log('Scheduler Service started.');
     }
 
     private static async generateBills() {
@@ -36,7 +36,7 @@ export class SchedulerService {
                 AND billing_cycle IN ('monthly', 'yearly')
             `);
 
-            console.log(`Found ${dueGroups.rows.length} groups due for billing.`);
+            // console.log(`Found ${dueGroups.rows.length} groups due for billing.`);
 
             for (const group of dueGroups.rows) {
                 const issueDate = new Date();
@@ -104,7 +104,7 @@ export class SchedulerService {
             }
 
             await client.query('COMMIT');
-            console.log('Daily billing check completed successfully.');
+            // console.log('Daily billing check completed successfully.');
         } catch (error) {
             await client.query('ROLLBACK');
             console.error('Error in billing scheduler:', error);

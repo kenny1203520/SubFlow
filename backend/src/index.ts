@@ -87,7 +87,7 @@ import { FileController } from './controllers/FileController';
 import { ServiceController } from './controllers/ServiceController';
 
 io.on("connection", (socket) => {
-    console.log(`User connected: ${socket.data.user.username}`);
+    // console.log(`User connected: ${socket.data.user.username}`);
 
     new GroupController(io, socket).register();
     new BillController(io, socket).register();
@@ -146,7 +146,7 @@ io.on("connection", (socket) => {
     });
 
     socket.on("disconnect", () => {
-        console.log(`User disconnected: ${socket.data.user.username}`);
+        // console.log(`User disconnected: ${socket.data.user.username}`);
     });
 });
 
@@ -159,6 +159,6 @@ app.get(/^(?!\/auth).*/, (req, res, next) => {
 });
 
 httpServer.listen(port, () => {
-    console.log(`BFF Server running at http://localhost:${port}`);
-    console.log(`Serving frontend from: ${frontendPath}`);
+    // console.log(`BFF Server running at http://localhost:${port}`);
+    // console.log(`Serving frontend from: ${frontendPath}`);
 });

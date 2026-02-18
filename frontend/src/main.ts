@@ -65,7 +65,7 @@ const initApp = async () => {
             authStore.setUser(res.data);
         }
     } catch (err) {
-        console.log('Not authenticated');
+        // console.log('Not authenticated');
     } finally {
         app.use(router)
         app.use(i18n)
