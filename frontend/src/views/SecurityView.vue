@@ -9,6 +9,11 @@ const settings = ref<any>(null);
 const devices = ref<any[]>([]);
 const loading = ref(true);
 
+const isSettingUp2FA = ref(false);
+const setupSecret = ref('');
+const setupCode = ref('');
+const errorMsg = ref('');
+
 const fetchData = () => {
     loading.value = true;
     socket.emit('security:settings', (res: any) => {
@@ -18,6 +23,45 @@ const fetchData = () => {
         if (res.status === 'ok') devices.value = res.devices;
         loading.value = false;
     });
+};
+
+const toggle2FA = () => {
+    if (settings.value?.two_factor_enabled) {
+        if (confirm("Are you sure you want to disable 2FA?")) {
+            socket.emit('security:disable_2fa', (res: any) => {
+                if (res.status === 'ok') {
+                    settings.value.two_factor_enabled = false;
+                }
+            });
+        }
+    } else {
+        socket.emit('security:generate_2fa_secret', (res: any) => {
+            if (res.status === 'ok') {
+                setupSecret.value = res.secret;
+                isSettingUp2FA.value = true;
+            }
+        });
+    }
+};
+
+const verifyAndEnable2FA = () => {
+    errorMsg.value = '';
+    socket.emit('security:enable_2fa', { secret: setupSecret.value, code: setupCode.value }, (res: any) => {
+        if (res.status === 'ok') {
+            settings.value.two_factor_enabled = true;
+            isSettingUp2FA.value = false;
+            setupCode.value = '';
+            setupSecret.value = '';
+        } else {
+            errorMsg.value = res.message || "Verification failed";
+        }
+    });
+};
+
+const cancelSetup = () => {
+    isSettingUp2FA.value = false;
+    setupCode.value = '';
+    setupSecret.value = '';
 };
 
 const revokeDevice = (deviceId: string) => {
@@ -54,9 +98,33 @@ onMounted(() => {
                             </span>
                         </p>
                     </div>
-                    <button class="btn" :class="settings?.two_factor_enabled ? 'btn-danger' : 'btn-primary'">
+                    <button @click="toggle2FA" class="btn" :class="settings?.two_factor_enabled ? 'btn-danger' : 'btn-primary'">
                         {{ settings?.two_factor_enabled ? t('security.disable2FA') : t('security.enable2FA') }}
                     </button>
+                </div>
+
+                <!-- 2FA Setup UI -->
+                <div v-if="isSettingUp2FA" class="setup-2fa mt-6 p-6 border-2 border-primary-100 rounded-2xl bg-primary-50/30 animate-fade-in">
+                    <h4 class="font-bold mb-4">{{ t('security.setupTitle', 'Setup 2FA') }}</h4>
+                    <p class="text-sm text-slate-600 mb-4">{{ t('security.setupDesc', 'Enter this secret manually in your Authenticator app:') }}</p>
+                    
+                    <div class="bg-white p-3 rounded-lg border border-slate-200 font-mono text-center text-lg tracking-widest mb-6">
+                        {{ setupSecret }}
+                    </div>
+
+                    <div class="space-y-4">
+                        <div class="form-group">
+                            <label class="text-xs font-bold text-slate-500 uppercase">{{ t('security.verifyCode', 'Verification Code') }}</label>
+                            <input type="text" v-model="setupCode" class="glass-input h-12 text-center text-xl" placeholder="000000" maxlength="6" />
+                        </div>
+
+                        <div v-if="errorMsg" class="text-danger text-sm text-center font-medium">{{ errorMsg }}</div>
+
+                        <div class="flex gap-2">
+                            <button @click="verifyAndEnable2FA" class="btn btn-primary flex-1">{{ t('common.actions.verify', 'Verify & Enable') }}</button>
+                            <button @click="cancelSetup" class="btn btn-ghost">{{ t('common.actions.cancel', 'Cancel') }}</button>
+                        </div>
+                    </div>
                 </div>
             </section>
 

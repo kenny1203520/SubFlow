@@ -6,7 +6,9 @@ export class SecurityController extends BaseController {
 
     register() {
         this.socket.on("security:settings", (cb) => this.getSettings(cb));
+        this.socket.on("security:generate_2fa_secret", (cb) => this.generate2FASecret(cb));
         this.socket.on("security:enable_2fa", (payload, cb) => this.enable2FA(payload, cb));
+        this.socket.on("security:disable_2fa", (cb) => this.disable2FA(cb));
         this.socket.on("security:devices", (cb) => this.listDevices(cb));
         this.socket.on("security:revoke_device", (payload, cb) => this.revokeDevice(payload, cb));
     }
@@ -21,13 +23,33 @@ export class SecurityController extends BaseController {
         }
     }
 
-    async enable2FA(payload: { secret: string }, cb: (res: any) => void) {
+    async generate2FASecret(cb: (res: any) => void) {
         try {
             const userId = this.socket.data.user.id;
-            await this.securityService.enable2FA(userId, payload.secret);
+            const secret = await this.securityService.generate2FASecret(userId);
+            this.success(cb, { secret });
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to generate secret");
+        }
+    }
+
+    async enable2FA(payload: { secret: string, code: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.securityService.enable2FA(userId, payload.secret, payload.code);
             this.success(cb);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to enable 2FA");
+        }
+    }
+
+    async disable2FA(cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.securityService.disable2FA(userId);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to disable 2FA");
         }
     }
 

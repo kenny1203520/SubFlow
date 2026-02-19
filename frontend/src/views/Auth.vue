@@ -15,6 +15,9 @@ const email = ref('');
 const password = ref('');
 const errorMsg = ref('');
 const isLoading = ref(false);
+const requires2FA = ref(false);
+const twoFactorCode = ref('');
+const pendingUserId = ref('');
 
 const toggleMode = () => {
     isLogin.value = !isLogin.value;
@@ -28,12 +31,30 @@ const toggleLanguage = () => {
 const handleSubmit = async () => {
     errorMsg.value = '';
     isLoading.value = true;
+    
     try {
+        if (requires2FA.value) {
+            const res = await http.post('/auth/signin/2fa', {
+                userId: pendingUserId.value,
+                code: twoFactorCode.value
+            });
+            authStore.setUser(res.data.user);
+            router.push('/dashboard');
+            return;
+        }
+
         if (isLogin.value) {
             const res = await http.post('/auth/signin', {
                 username: username.value,
                 password: password.value
             });
+            
+            if (res.data.requires2FA) {
+                requires2FA.value = true;
+                pendingUserId.value = res.data.userId;
+                return;
+            }
+
             authStore.setUser(res.data.user);
             router.push('/dashboard');
         } else {
@@ -114,9 +135,9 @@ const handleSubmit = async () => {
                                 :placeholder="t('auth.email')" />
                         </div>
 
-                        <div class="form-group">
+                        <div v-if="!requires2FA" class="form-group">
                             <label class="form-label text-sm">{{ t('auth.password') }}</label>
-                            <input type="password" v-model="password" required minlength="6"
+                            <input type="password" v-model="password" required minlength="8"
                                 class="glass-input bg-slate-50 focus:bg-white" :placeholder="t('auth.password')" />
 
                             <div v-if="isLogin" class="flex justify-end mt-1">
@@ -125,6 +146,15 @@ const handleSubmit = async () => {
                                     {{ t('auth.forgotPasswordLink', 'Forgot Password?') }}
                                 </span>
                             </div>
+                        </div>
+
+                        <!-- 2FA Input -->
+                        <div v-if="requires2FA" class="form-group animate-slide-in">
+                            <label class="form-label text-sm">{{ t('security.twoFactorAuth', 'Two-Factor Authentication') }}</label>
+                            <input type="text" v-model="twoFactorCode" required maxlength="6"
+                                class="glass-input bg-slate-50 focus:bg-white text-center text-2xl tracking-[1rem] uppercase" 
+                                placeholder="000000" />
+                            <p class="text-xs text-slate-500 mt-2 text-center">{{ t('auth.enterTotp', 'Please enter your 6-digit TOTP code.') }}</p>
                         </div>
                     </div>
 
@@ -149,7 +179,7 @@ const handleSubmit = async () => {
                                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
                             </path>
                         </svg>
-                        {{ isLoading ? t('common.status.loading') : (isLogin ? t('auth.loginBtn') : t('auth.signupBtn'))
+                        {{ isLoading ? t('common.status.loading') : (requires2FA ? t('common.actions.verify', 'Verify') : (isLogin ? t('auth.loginBtn') : t('auth.signupBtn')))
                         }}
                     </button>
 

@@ -95,7 +95,23 @@ router.post("/signup", authLimiter, async (req, res) => {
         const session = await lucia.createSession(userId, {});
         const sessionCookie = lucia.createSessionCookie(session.id);
 
-        await logActivity(userId, 'signup', 'low', 'User signed up', req);
+        const fingerprint = getDeviceFingerprint(req);
+        await logActivity(userId, 'signup', 'low', 'User signed up and auto-logged in', req, fingerprint);
+
+        // Track Device and Login History for signup (auto-login)
+        await securityRepo.logLogin({
+            user_id: userId,
+            ip: req.ip,
+            fingerprint: fingerprint,
+            status: 'success',
+            reason: null
+        });
+
+        await securityRepo.updateDevice(userId, {
+            name: req.headers['user-agent'] || 'Unknown Device',
+            fingerprint: fingerprint,
+            ip: req.ip || ''
+        });
 
         res.setHeader("Set-Cookie", sessionCookie.serialize());
         return res.status(201).json({
@@ -346,7 +362,11 @@ router.post("/signout", async (req, res) => {
         return res.status(401).send("Not authenticated");
     }
 
-    await lucia.invalidateSession(sessionId);
+    const { session } = await lucia.validateSession(sessionId);
+    if (session) {
+        await logActivity(session.userId, 'signout', 'low', 'User signed out', req);
+        await lucia.invalidateSession(session.id);
+    }
 
     const sessionCookie = lucia.createBlankSessionCookie();
     res.setHeader("Set-Cookie", sessionCookie.serialize());

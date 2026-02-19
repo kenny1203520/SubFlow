@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import http from '../http';
 import { useAuthStore } from '../stores/auth';
 import { useLayoutStore } from '../stores/layout';
 import { useI18n } from 'vue-i18n';
@@ -22,8 +23,14 @@ const setLanguage = (lang: string) => {
 };
 
 const logout = async () => {
-    authStore.clearUser();
-    router.push('/auth');
+    try {
+        await http.post('/auth/signout');
+    } catch (err) {
+        console.error("Signout failed", err);
+    } finally {
+        authStore.clearUser();
+        router.push('/auth');
+    }
 };
 </script>
 
