@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS user_security (
     -- Permanent block
     blocked_at TIMESTAMP WITH TIME ZONE,
     block_reason TEXT,
+    -- Failed login attempts
+    failed_login_attempts INT DEFAULT 0,
     -- SSO / LDAP info
     auth_provider TEXT DEFAULT 'local',
     -- 'local', 'google', 'ldap', 'sso'

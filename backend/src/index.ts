@@ -14,7 +14,9 @@ import userRoutes from './routes/user';
 import uploadRoutes from './routes/upload';
 import exportRoutes from './routes/export';
 import auditRoutes from './routes/audit';
+import helmet from 'helmet';
 import { verifySession } from './middleware/auth';
+import { apiLimiter } from './middleware/rateLimit';
 
 dotenv.config();
 
@@ -36,10 +38,12 @@ const frontendPath = path.resolve(__dirname, '../../frontend/dist');
 
 // Middleware
 app.use(express.json());
+app.use(helmet());
 app.use(cors({
     origin: ["http://localhost:5173", "http://localhost:3000", process.env.FRONTEND_URL || ""],
     credentials: true
 }));
+app.use(apiLimiter);
 app.use(verifySession);
 
 // Serve static files
