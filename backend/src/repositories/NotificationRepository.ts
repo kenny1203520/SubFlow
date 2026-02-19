@@ -7,8 +7,11 @@ export interface NotificationRow {
     title: string;
     message: string;
     is_read: boolean;
+    is_solved: boolean;
+    is_deleted: boolean;
     data: any;
     created_at: Date;
+    updated_at: Date;
 }
 
 export class NotificationRepository extends BaseRepository {

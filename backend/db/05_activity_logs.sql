@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS activity_logs (
     SET NULL,
         -- Keep log even if user is deleted
         risk_level TEXT CHECK (
-            risk_level IN ('low', 'medium', 'high', 'critical')
-        ) DEFAULT 'low',
+            risk_level IN ('info', 'low', 'medium', 'high', 'critical')
+        ) DEFAULT 'info',
         behavior_type TEXT NOT NULL,
         -- 'auth', 'finance', 'config', 'data_access'
         action TEXT NOT NULL,

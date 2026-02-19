@@ -11,11 +11,10 @@ export interface ExpenseRow {
 }
 
 export interface ExpenseSplitRow {
-    id: string;
     expense_id: string;
-    user_id: string;
+    member_id: string;
     amount_owed: number;
-    is_paid: boolean;
+    status: 'pending' | 'paid';
 }
 
 export class ExpenseRepository extends BaseRepository {
@@ -54,21 +53,16 @@ export class ExpenseRepository extends BaseRepository {
              JOIN expenses e ON es.expense_id = e.id
              JOIN group_members gm ON es.member_id = gm.id
              LEFT JOIN users u ON gm.user_id = u.id
-             WHERE e.group_id = $1 AND es.is_paid = false`,
+             WHERE e.group_id = $1 AND es.status = 'pending'`,
             [groupId]
         );
         return res.rows;
     }
 
     async settleSplit(expenseId: string, userId: string): Promise<void> {
-        // Find member_id for this user in this expense's group
-        // This is a bit complex: we need to find the member_id that corresponds to the userId in the group context
-        // But wait, settleSplit is called by logged-in user.
-        // We need to join group_members to verify.
-
         await this.query(
             `UPDATE expense_splits es
-             SET is_paid = true 
+             SET status = 'paid' 
              FROM group_members gm
              WHERE es.member_id = gm.id 
              AND es.expense_id = $1 

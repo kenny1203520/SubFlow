@@ -18,6 +18,7 @@ export class GroupController extends BaseController {
         this.socket.on("group:update", (payload, cb) => this.updateGroup(payload, cb));
         this.socket.on("group:update_member_role", (payload, cb) => this.updateMemberRole(payload, cb));
         this.socket.on("group:remove_member", (payload, cb) => this.removeMember(payload, cb));
+        this.socket.on("group:cancel_invite", (payload, cb) => this.cancelInvite(payload, cb));
     }
 
     async createGroup(payload: any, cb: (res: any) => void) {
@@ -149,4 +150,15 @@ export class GroupController extends BaseController {
             this.error(cb, error.message || "Failed to remove member");
         }
     }
+
+    async cancelInvite(payload: { groupId: string, memberId: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.groupService.cancelInvite(userId, payload.groupId, payload.memberId);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to cancel invite");
+        }
+    }
+
 }

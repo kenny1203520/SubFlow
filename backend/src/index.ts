@@ -104,19 +104,40 @@ io.on("connection", (socket) => {
             const userId = socket.data.user.id;
 
             // Total Owed TO you (people owe you money)
+            // Includes expenses you paid and bills you created
             const owedToMeRes = await pool.query(
-                `SELECT SUM(es.amount_owed) as total
-                 FROM expense_splits es
-                 JOIN expenses e ON es.expense_id = e.id
-                 WHERE e.paid_by = $1 AND es.user_id != $1 AND es.is_paid = false`,
+                `SELECT 
+                    (SELECT COALESCE(SUM(es.amount_owed), 0)
+                     FROM expense_splits es
+                     JOIN expenses e ON es.expense_id = e.id
+                     JOIN group_members gm ON es.member_id = gm.id
+                     WHERE e.paid_by = $1 
+                       AND (gm.user_id != $1 OR gm.user_id IS NULL) 
+                       AND es.status = 'pending'
+                    ) +
+                    (SELECT COALESCE(SUM(bs.amount_owed - bs.paid_amount), 0)
+                     FROM bill_splits bs
+                     JOIN bills b ON bs.bill_id = b.id
+                     WHERE b.created_by = $1 AND bs.status = 'pending'
+                    ) as total`,
                 [userId]
             );
 
             // Total YOU owe (you owe people money)
+            // Includes expense splits and bill splits where you are the member
             const iOweRes = await pool.query(
-                `SELECT SUM(es.amount_owed) as total
-                 FROM expense_splits es
-                 WHERE es.user_id = $1 AND es.is_paid = false`,
+                `SELECT 
+                    (SELECT COALESCE(SUM(es.amount_owed), 0)
+                     FROM expense_splits es
+                     JOIN expenses e ON es.expense_id = e.id
+                     JOIN group_members gm ON es.member_id = gm.id
+                     WHERE gm.user_id = $1 AND e.paid_by != $1 AND es.status = 'pending'
+                    ) +
+                    (SELECT COALESCE(SUM(bs.amount_owed - bs.paid_amount), 0)
+                     FROM bill_splits bs
+                     JOIN group_members gm ON bs.member_id = gm.id
+                     WHERE gm.user_id = $1 AND bs.status = 'pending'
+                    ) as total`,
                 [userId]
             );
 

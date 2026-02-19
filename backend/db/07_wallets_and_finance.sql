@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS exchange_rates (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(from_currency, to_currency, date)
 );
+
 -- User Wallets table (Hierarchical)
 CREATE TABLE IF NOT EXISTS user_wallets (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -24,6 +25,7 @@ CREATE TABLE IF NOT EXISTS user_wallets (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(user_id, group_id, service_id, currency) -- Ensure only one wallet per context per currency
 );
+
 -- Deposits table
 CREATE TABLE IF NOT EXISTS deposits (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,6 +52,7 @@ CREATE TABLE IF NOT EXISTS deposits (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
 -- Wallet Transactions (Ledger)
 CREATE TABLE IF NOT EXISTS wallet_transactions (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -80,6 +83,7 @@ CREATE TABLE IF NOT EXISTS wallet_transactions (
     -- If voided, reference the original transaction
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
 -- Wallet Transfers (Internal)
 CREATE TABLE IF NOT EXISTS wallet_transfers (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -92,6 +96,7 @@ CREATE TABLE IF NOT EXISTS wallet_transfers (
     executed_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
 -- Auto-Debit Rules
 CREATE TABLE IF NOT EXISTS auto_debit_rules (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),

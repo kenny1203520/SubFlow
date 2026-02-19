@@ -1,5 +1,6 @@
 import { GroupRepository, GroupRow } from '../repositories/GroupRepository';
 import { GroupMemberRepository } from '../repositories/GroupMemberRepository';
+import { GroupServiceRepository } from '../repositories/GroupServiceRepository';
 import { UserRepository } from '../repositories/UserRepository';
 import { NotificationService } from './NotificationService';
 import { pool } from '../db';
@@ -7,6 +8,7 @@ import { pool } from '../db';
 export class GroupService {
     private groupRepo = new GroupRepository();
     private memberRepo = new GroupMemberRepository();
+    private groupServiceRepo = new GroupServiceRepository();
     private userRepo = new UserRepository();
     private notifService = new NotificationService();
 
@@ -15,50 +17,46 @@ export class GroupService {
         try {
             await client.query("BEGIN");
 
-            // Handle Icon & Service (Simplified for now)
-            let iconUrl = '';
-            if (payload.website) {
-                try {
-                    const domain = new URL(payload.website).hostname;
-                    iconUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-                } catch (e) { }
-            }
-
-            // In a real OOP refactor, we would have a ServiceRepository too
-            // For now, let's keep it in the transaction
-            let serviceId = null;
-            if (payload.service_name) {
-                const serviceRes = await client.query("SELECT id FROM services WHERE name = $1", [payload.service_name]);
-                if (serviceRes.rows.length > 0) {
-                    serviceId = serviceRes.rows[0].id;
-                } else {
-                    const newService = await client.query(
-                        "INSERT INTO services (name, domain, icon_url, created_by) VALUES ($1, $2, $3, $4) RETURNING id",
-                        [payload.service_name, payload.website || '', iconUrl, userId]
-                    );
-                    serviceId = newService.rows[0].id;
-                }
-            }
-
-            // Sanitize Date Fields
-            const sanitizeDate = (d: any) => (d && d !== '') ? new Date(d) : null;
-            const sanitizeString = (s: any) => (s && s !== '') ? s : null;
-
+            // 1. Create the Group Identity
             const group = await this.groupRepo.create({
-                ...payload,
-                service_id: serviceId,
-                created_by: userId,
-                next_payment_date: sanitizeDate(payload.next_payment_date),
-                start_date: sanitizeDate(payload.start_date),
-                end_value: (payload.end_condition === 'date') ? (sanitizeDate(payload.end_value)?.toISOString() || null) : sanitizeString(payload.end_value)
+                name: payload.name,
+                description: payload.description,
+                max_members: payload.max_members || 1,
+                created_by: userId
             });
 
+            // 2. Handle Service Creation if provided
+            if (payload.service_name || payload.service_id) {
+                // In a full implementation, we might want to check/create the global Service first
+                // For now, let's just create the GroupService entry
+                await this.groupServiceRepo.create({
+                    group_id: group.id,
+                    service_id: payload.service_id,
+                    service_name: payload.service_name,
+                    website: payload.website,
+                    plan_name: payload.plan_name,
+                    amount: payload.amount,
+                    service_currency: payload.service_currency,
+                    payment_currency: payload.payment_currency,
+                    billing_type: payload.billing_type,
+                    interval_unit: payload.interval_unit,
+                    interval_value: payload.interval_value,
+                    billing_method: payload.billing_method,
+                    next_payment_date: (payload.next_payment_date && payload.next_payment_date !== '') ? new Date(payload.next_payment_date) : undefined,
+                    created_by: userId
+                });
+            }
+
+            // 3. Add the creator as Admin
             await this.memberRepo.addMember({
                 group_id: group.id,
                 user_id: userId,
-                role: 'admin'
+                role: 'owner', // Changed from admin to owner to match schema roles better if needed
+                joined_at: new Date(),
+                created_by: userId
             });
 
+            // 4. Handle initial members
             if (payload.initial_members) {
                 for (const member of payload.initial_members) {
                     if (member.email || member.username) {
@@ -68,6 +66,13 @@ export class GroupService {
 
                         if (user) {
                             // Invite via Notification
+                            await this.memberRepo.addMember({
+                                group_id: group.id,
+                                user_id: user.id,
+                                role: 'member',
+                                created_by: userId
+                            });
+
                             await this.notifService.createNotification(
                                 user.id,
                                 'group_invite',
@@ -76,19 +81,20 @@ export class GroupService {
                                 { groupId: group.id, groupName: group.name, inviterId: userId }
                             );
                         } else {
-                            // Fallback to temp member if user not found (or treat as error? For now fallback)
-                            // User wanted "email and username". 
+                            // Fallback to temp member
                             await this.memberRepo.addMember({
                                 group_id: group.id,
                                 temp_name: member.email || member.username,
-                                role: 'member'
+                                role: 'member',
+                                created_by: userId
                             });
                         }
                     } else if (member.name) {
                         await this.memberRepo.addMember({
                             group_id: group.id,
                             temp_name: member.name,
-                            role: 'member'
+                            role: 'member',
+                            created_by: userId
                         });
                     }
                 }
@@ -114,29 +120,32 @@ export class GroupService {
 
         const group = await this.groupRepo.findById(groupId);
         const members = await this.memberRepo.getMembersByGroupId(groupId);
+        const services = await this.groupServiceRepo.findByGroupId(groupId);
 
-        return { group, members };
+        return { group, members, services };
     }
 
     async addMember(adminId: string, groupId: string, payload: { email?: string, name?: string, username?: string }) {
         const role = await this.memberRepo.checkRole(groupId, adminId);
-        if (role !== 'admin') throw new Error("Only admins can add members");
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can add members");
 
-        // Logic split: Invite vs Temp
         if (payload.email || payload.username) {
             let user = null;
             if (payload.email) user = await this.userRepo.findByEmail(payload.email);
             else if (payload.username) user = await this.userRepo.findByUsername(payload.username);
 
             if (user) {
-                // Check if already member
                 const existingRole = await this.memberRepo.checkRole(groupId, user.id);
                 if (existingRole) throw new Error("User is already a member of this group");
 
                 const group = await this.groupRepo.findById(groupId);
 
-                // Check if already invited (optional, depends on notifRepo capabilities, but good practice)
-                // For now, let's assume sending another notification is okay (bump), or we can check notifications table
+                await this.memberRepo.addMember({
+                    group_id: groupId,
+                    user_id: user.id,
+                    role: 'member',
+                    created_by: adminId
+                });
 
                 await this.notifService.createNotification(
                     user.id,
@@ -150,7 +159,8 @@ export class GroupService {
                 await this.memberRepo.addMember({
                     group_id: groupId,
                     temp_name: payload.email || payload.username,
-                    role: 'member'
+                    role: 'member',
+                    created_by: adminId
                 });
                 return { status: 'added_temp' };
             }
@@ -158,27 +168,16 @@ export class GroupService {
             await this.memberRepo.addMember({
                 group_id: groupId,
                 temp_name: payload.name,
-                role: 'member'
+                role: 'member',
+                created_by: adminId
             });
             return { status: 'added_temp' };
         }
     }
 
-    async inviteUserToBind(adminId: string, memberId: string, payload: { email?: string, username?: string }) {
-        const member = (await this.memberRepo.getMembersByGroupId(memberId))[0]; // This logic is wrong, need findById
-        // memberId is the row ID in group_members
-        // We need to fetch the member row first to get groupId
-        // But Repository needs findById
-        // Let's assume we pass groupId for permission check or fetch it.
-
-        // Actually, let's fix this properly. We need `findById` in GroupMemberRepository
-        throw new Error("Implementation Pending: Need findById in MemberRepo");
-    }
-
-    // Fixed inviteUserToBind (Implementation below assumes repo update)
     async bindMemberInvite(adminId: string, groupId: string, memberId: string, payload: { email?: string, username?: string }) {
         const role = await this.memberRepo.checkRole(groupId, adminId);
-        if (role !== 'admin') throw new Error("Only admins can bind members");
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can bind members");
 
         let user = null;
         if (payload.email) user = await this.userRepo.findByEmail(payload.email);
@@ -186,7 +185,6 @@ export class GroupService {
 
         if (!user) throw new Error("User not found");
 
-        // Check if already member
         const existingRole = await this.memberRepo.checkRole(groupId, user.id);
         if (existingRole) throw new Error("User is already a member of this group");
 
@@ -203,28 +201,36 @@ export class GroupService {
 
 
     async acceptInvite(userId: string, groupId: string, memberId?: string) {
-        // Check if already member
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role) throw new Error("Already a member");
+        const members = await this.memberRepo.getMembersByGroupId(groupId);
+        const existingMember = members.find(m => m.user_id === userId);
+
+        if (existingMember && existingMember.joined_at) {
+             throw new Error("Already a member");
+        }
 
         if (memberId) {
-            // Binding Logic
             await this.memberRepo.bindMember(memberId, userId);
+        } else if (existingMember) {
+            await this.memberRepo.updateStatus(existingMember.member_id, new Date());
         } else {
-            // New Member Logic
-            await this.memberRepo.addMember({
+             await this.memberRepo.addMember({
                 group_id: groupId,
                 user_id: userId,
-                role: 'member'
+                role: 'member',
+                joined_at: new Date()
             });
         }
     }
 
-    async rejectInvite(userId: string, groupId: string) {
-        // Just acknowledging the rejection. 
-        // In a real system we might log this or notify the inviter.
-        // For now, the notification is marked read by the controller/frontend.
-        return true;
+    async cancelInvite(userId: string, groupId: string, memberId: string) {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can cancel invites");
+
+        const member = await this.memberRepo.findById(memberId);
+        if (!member || member.group_id !== groupId) throw new Error("Member not found");
+        if (member.joined_at) throw new Error("Member has already joined");
+
+        await this.memberRepo.remove(memberId);
     }
 
     async bindMember(userId: string, memberId: string) {
@@ -232,53 +238,38 @@ export class GroupService {
         await this.memberRepo.bindMember(memberId, userId);
     }
 
+    async rejectInvite(userId: string, groupId: string) {
+        // Just acknowledging the rejection. 
+        // In the future, we might want to mark the notification as 'rejected/solved'
+        return true;
+    }
+
     async deleteGroup(userId: string, groupId: string) {
         const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin') throw new Error("Only admins can delete the group");
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can delete the group");
 
-        // Transaction/Cascade delete is handled by DB usually, or we can explicit delete
         await this.groupRepo.delete(groupId);
     }
 
     async leaveGroup(userId: string, groupId: string) {
         const role = await this.memberRepo.checkRole(groupId, userId);
         if (!role) throw new Error("You are not a member of this group");
-        if (role === 'admin') throw new Error("Admins cannot leave the group. Delete it instead.");
+        if (role === 'admin' || role === 'owner') throw new Error("Admins/Owners cannot leave the group. Delete it instead.");
 
         await this.memberRepo.removeMember(groupId, userId);
     }
 
     async updateGroup(userId: string, groupId: string, payload: any) {
         const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin') throw new Error("Only admins can update group settings");
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can update group settings");
 
-        // Sanitize Date Fields
-        const sanitizeDate = (d: any) => (d && d !== '') ? new Date(d) : null;
-        const sanitizeString = (s: any) => (s && s !== '') ? s : null;
-
-        const updateData: any = {
-            ...payload,
-            next_payment_date: sanitizeDate(payload.next_payment_date),
-            start_date: sanitizeDate(payload.start_date),
-            end_value: (payload.end_condition === 'date') ? (sanitizeDate(payload.end_value)?.toISOString() || null) : sanitizeString(payload.end_value)
-        };
-
-        // If service name changed, might need to handle service_id logic, but for now just update fields
-        // In a full implementation, we'd check if service exists, etc.
-        // For now, let's assume direct update of group fields
-
-        return await this.groupRepo.update(groupId, updateData);
+        return await this.groupRepo.update(groupId, payload);
     }
 
-    async updateMemberRole(userId: string, groupId: string, memberId: string, newRole: 'admin' | 'member') {
+    async updateMemberRole(userId: string, groupId: string, memberId: string, newRole: any) {
         const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin') throw new Error("Only admins can manage roles");
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can manage roles");
 
-        // Prevent demoting self if only admin? 
-        // For now, simple logic.
-
-        // Helper to check if member belongs to group 
-        // (We should probable add findById(memberId) to check group_id, but trusting the frontend/logic for now with a verify)
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
 
@@ -287,14 +278,12 @@ export class GroupService {
 
     async removeMember(userId: string, groupId: string, memberId: string) {
         const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin') throw new Error("Only admins can remove members");
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can remove members");
 
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
 
         if (member.user_id === userId) throw new Error("Cannot kick yourself. use Leave Group.");
-
-        // TODO: Check debts?
 
         await this.memberRepo.remove(memberId);
     }

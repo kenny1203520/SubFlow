@@ -64,6 +64,16 @@ const rejectInvite = (notif: any) => {
     });
 };
 
+const deleteNotif = (notif: any) => {
+    socket.emit('notification:delete', { id: notif.id }, (res: any) => {
+        if (res.status === 'ok') {
+            fetchNotifications();
+        } else {
+            console.error(res.message);
+        }
+    });
+};
+
 onMounted(() => {
     fetchNotifications();
     socket.on('notification:new', () => {
@@ -101,12 +111,12 @@ onUnmounted(() => {
                     </div>
                     <div v-for="notif in notifications" :key="notif.id"
                         :class="['notif-item', { unread: !notif.is_read }]" @click="markRead(notif.id)">
-                        <div class="notif-content">
+                        <div v-if="!notif.is_deleted" class="notif-content">
                             <p class="notif-title">{{ notif.title }}</p>
                             <p class="notif-message">{{ notif.message }}</p>
 
                             <!-- Group Invite & Bind Action -->
-                            <div v-if="(notif.type === 'group_invite' || notif.type === 'group_bind_invite') && !notif.is_read"
+                            <div v-if="(notif.type === 'group_invite' || notif.type === 'group_bind_invite') && !notif.is_solved"
                                 class="mt-2 flex gap-2">
                                 <button @click.stop="acceptInvite(notif)"
                                     class="bg-primary-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-primary-700 transition-colors font-medium">
@@ -115,6 +125,14 @@ onUnmounted(() => {
                                 <button @click.stop="rejectInvite(notif)"
                                     class="bg-slate-100 text-slate-600 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-colors font-medium">
                                     {{ t('common.actions.reject') }}
+                                </button>
+                            </div>
+
+                            <!-- Delete Button -->
+                            <div v-if="!notif.is_deleted" class="notif-content">
+                                <button @click.stop="deleteNotif(notif)"
+                                    class="bg-slate-100 text-slate-600 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-colors font-medium">
+                                    {{ t('common.actions.delete') }}
                                 </button>
                             </div>
 

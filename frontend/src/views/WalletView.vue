@@ -76,10 +76,6 @@ const submitDeposit = (amount: number) => {
     });
 };
 
-const handleTransfer = (wallet: any) => {
-    alert("Transfer UI coming soon!");
-};
-
 onMounted(() => {
     if (socket.connected) {
         fetchWallets();
@@ -124,7 +120,7 @@ onMounted(() => {
                 <div v-if="wallets.length > 0" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
                     <WalletCard v-for="wallet in wallets" :key="wallet.id" :wallet="wallet"
                         :class="{ 'ring-4 ring-primary-200': selectedWalletId === wallet.id }"
-                        @click="selectWallet(wallet.id)" @deposit="handleDeposit" @transfer="handleTransfer" />
+                        @click="selectWallet(wallet.id)" @deposit="handleDeposit" />
                 </div>
 
                 <!-- Empty State -->

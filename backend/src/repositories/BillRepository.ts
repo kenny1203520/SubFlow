@@ -16,7 +16,8 @@ export interface BillSplitRow {
     bill_id: string;
     member_id: string;
     amount_owed: number;
-    is_paid: boolean;
+    paid_amount: number;
+    status: 'pending' | 'paid';
     paid_at?: Date;
 }
 
