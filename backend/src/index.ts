@@ -26,18 +26,18 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
     parser,
     cors: {
-        origin: ["http://localhost:5173", "http://localhost:3000"],
+        origin: ["http://localhost:5173", "http://localhost:3000", process.env.FRONTEND_URL || ""],
         credentials: true
     }
 });
 
-const port = process.env.PORT || 3000;
+const port = process.env.BACKEND_PORT || 3000;
 const frontendPath = path.resolve(__dirname, '../../frontend/dist');
 
 // Middleware
 app.use(express.json());
 app.use(cors({
-    origin: ["http://localhost:5173", "http://localhost:3000"],
+    origin: ["http://localhost:5173", "http://localhost:3000", process.env.FRONTEND_URL || ""],
     credentials: true
 }));
 app.use(verifySession);
