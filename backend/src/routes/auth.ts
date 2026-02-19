@@ -39,18 +39,18 @@ const logActivity = async (userId: string | null, action: string, risk: 'info' |
 
 // Validation Schemas
 const signupSchema = z.object({
-    username: z.string().min(3),
-    email: z.string().email(),
-    password: z.string().min(8).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+    username: z.string().min(3).max(255).regex(/^[a-zA-Z0-9_-]+$/, "Only letters, numbers, hyphens, and underscores allowed"),
+    email: z.string().email().max(255).transform(v => v.toLowerCase()),
+    password: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
 });
 
 const signinSchema = z.object({
-    username: z.string(),
-    password: z.string(),
+    username: z.string().max(255),
+    password: z.string().max(128),
 });
 
 const resetSchema = z.object({
-    password: z.string().min(8).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+    password: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
 });
 
 router.post("/signup", authLimiter, async (req, res) => {
@@ -212,7 +212,12 @@ router.post("/signin", authLimiter, async (req, res) => {
              // OR better: Create a short lived "pre-auth" session in Lucia if supported, or a standard session with "2fa_pending" attribute.
              
              // Current plan: Return `requires2FA` and a signed payload (hmac) of the userId that is valid for 5 mins.
-             const hmac = crypto.createHmac('sha256', process.env.JWT_SECRET || 'secret');
+             const jwtSecret = process.env.JWT_SECRET;
+             if (!jwtSecret) {
+                console.error("JWT_SECRET is not defined in environment variables");
+                return res.status(500).send("Security configuration error");
+             }
+             const hmac = crypto.createHmac('sha256', jwtSecret);
              const preAuthToken = hmac.update(user.id + Date.now().toString()).digest('hex');
              // For this iteration, I'll keep it simple: Client sends username/password again + code to /signin/2fa. 
              // This avoids complex state management for now.
@@ -272,7 +277,9 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
     try {
         const { userId, code } = req.body;
         
-        if (!userId || !code) return res.status(400).send("Missing credentials");
+        if (typeof userId !== "string" || typeof code !== "string") {
+            return res.status(400).send("Invalid input");
+        }
 
         // fetch user and secret
         const userRes = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
@@ -386,10 +393,11 @@ router.get("/verify-email/:token", async (req, res) => {
 });
 
 router.post("/password-reset", authLimiter, async (req, res) => {
-    const { email } = req.body;
+    let { email } = req.body;
     if (typeof email !== "string" || !email.includes("@")) {
         return res.status(400).send("Invalid email");
     }
+    email = email.toLowerCase().trim();
 
     try {
         const userRes = await pool.query("SELECT id FROM users WHERE email = $1", [email]);
