@@ -7,5 +7,8 @@
     "activeSubscriptions": "Active Subscriptions",
     "systemLogs": "System Logs",
     "reconciliation": "Finance Reconciliation",
-    "userManagement": "User Management"
+    "userManagement": "User Management",
+    "subtitle": "System overview and management",
+    "noLogs": "System logs will appear here",
+    "notReady": "Feature in progress"
 }

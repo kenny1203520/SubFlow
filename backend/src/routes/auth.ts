@@ -49,17 +49,22 @@ const logActivity = async (userId: string | null, action: string, risk: 'info' |
 // Validation Schemas
 const signupSchema = z.object({
     username: z.string().min(3).max(255).regex(/^[a-zA-Z0-9_-]+$/, "Only letters, numbers, hyphens, and underscores allowed"),
-    email: z.string().email().max(255).transform(v => v.toLowerCase()),
+    email: z.string().email().max(255).regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, "Invalid email format").transform(v => v.toLowerCase()),
     password: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
 });
 
 const signinSchema = z.object({
-    username: z.string().max(255),
-    password: z.string().max(128),
+    username: z.string().max(255).regex(/^[a-zA-Z0-9_-]+$/, "Only letters, numbers, hyphens, and underscores allowed"),
+    password: z.string().max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
 });
 
 const resetSchema = z.object({
     password: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+});
+
+const changePasswordSchema = z.object({
+    oldPassword: z.string().max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+    newPassword: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
 });
 
 router.post("/signup", authLimiter, async (req, res) => {
@@ -92,7 +97,11 @@ router.post("/signup", authLimiter, async (req, res) => {
 
         await MailService.sendVerificationEmail(email, token);
 
-        const session = await lucia.createSession(userId, {});
+        const session = await lucia.createSession(userId, {
+            ip_address: req.ip || '',
+            user_agent: req.headers['user-agent'] || '',
+            device_fingerprint: getDeviceFingerprint(req)
+        });
         const sessionCookie = lucia.createSessionCookie(session.id);
 
         const fingerprint = getDeviceFingerprint(req);
@@ -260,7 +269,11 @@ router.post("/signin", authLimiter, async (req, res) => {
             });
         }
 
-        const session = await lucia.createSession(user.id, {});
+        const session = await lucia.createSession(user.id, {
+            ip_address: req.ip || '',
+            user_agent: req.headers['user-agent'] || '',
+            device_fingerprint: getDeviceFingerprint(req)
+        });
         const sessionCookie = lucia.createSessionCookie(session.id);
         
         await logActivity(user.id, 'login', 'info', 'User logged in', req, fingerprint);
@@ -332,7 +345,12 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
              return res.status(400).send("Invalid 2FA code");
         }
 
-        const session = await lucia.createSession(user.id, {});
+        const fingerprint = getDeviceFingerprint(req);
+        const session = await lucia.createSession(user.id, {
+            ip_address: req.ip || '',
+            user_agent: req.headers['user-agent'] || '',
+            device_fingerprint: fingerprint,
+        });
         const sessionCookie = lucia.createSessionCookie(session.id);
         
         await logActivity(user.id, 'login_2fa', 'info', 'User logged in with 2FA', req);
@@ -499,6 +517,48 @@ router.post("/password-reset/:token", authLimiter, async (req, res) => {
              return res.status(400).json({ error: error.issues });
         }
         await logActivity(null, 'system_error', 'high', `Password reset execution error: ${error.message}`, req);
+        console.error(error);
+        return res.status(500).send("Server Error");
+    }
+});
+
+router.post("/change-password", authLimiter, async (req, res) => {
+    const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
+    if (!sessionId) {
+        return res.status(401).send("Not authenticated");
+    }
+
+    const { session, user } = await lucia.validateSession(sessionId);
+    if (!session) {
+        return res.status(401).send("Not authenticated");
+    }
+
+    try {
+        const { oldPassword, newPassword } = changePasswordSchema.parse(req.body);
+
+        const userRes = await pool.query("SELECT password_hash FROM users WHERE id = $1", [user.id]);
+        if (userRes.rows.length === 0) return res.status(404).send("User not found");
+        
+        const currentHash = userRes.rows[0].password_hash;
+        const validPassword = await scrypt.verify(currentHash, getPepperedPassword(oldPassword));
+
+        if (!validPassword) {
+            await logActivity(user.id, 'password_change_failed', 'medium', 'Invalid old password during change attempt', req);
+            return res.status(400).send("Invalid old password");
+        }
+
+        const newPasswordHash = await scrypt.hash(getPepperedPassword(newPassword));
+        await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [newPasswordHash, user.id]);
+
+        await logActivity(user.id, 'password_complete', 'high', 'Password changed successfully', req);
+
+        return res.status(200).json({ success: true, message: "Password updated successfully" });
+
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
+             return res.status(400).json({ error: error.issues });
+        }
+        await logActivity(user.id, 'system_error', 'high', `Password change error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Server Error");
     }

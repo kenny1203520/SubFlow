@@ -24,7 +24,9 @@
         "reject": "拒絕",
         "upload": "上傳",
         "uploading": "上傳中...",
-        "invite": "邀請"
+        "invite": "邀請",
+        "update": "更新密碼",
+        "viewAll": "查看全部"
     },
     "status": {
         "loading": "加載中...",
@@ -70,5 +72,6 @@
         "required": "{field} 為必填項"
     },
     "optional": "可選",
-    "you": "你"
+    "you": "你",
+    "noData": "暫無資料"
 }

@@ -11,6 +11,8 @@ export class SecurityController extends BaseController {
         this.socket.on("security:disable_2fa", (cb) => this.disable2FA(cb));
         this.socket.on("security:devices", (cb) => this.listDevices(cb));
         this.socket.on("security:revoke_device", (payload, cb) => this.revokeDevice(payload, cb));
+        this.socket.on("security:sessions", (cb) => this.getSessions(cb));
+        this.socket.on("security:revoke_session", (payload, cb) => this.revokeSession(payload, cb));
     }
 
     async getSettings(cb: (res: any) => void) {
@@ -70,6 +72,26 @@ export class SecurityController extends BaseController {
             this.success(cb);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to revoke device");
+        }
+    }
+
+    async getSessions(cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            const sessions = await this.securityService.getSessions(userId);
+            this.success(cb, { sessions });
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to fetch sessions");
+        }
+    }
+
+    async revokeSession(payload: { sessionId: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.securityService.revokeSession(userId, payload.sessionId);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to revoke session");
         }
     }
 }

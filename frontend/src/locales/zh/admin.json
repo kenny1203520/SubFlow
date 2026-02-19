@@ -7,5 +7,8 @@
     "activeSubscriptions": "活躍訂閱數",
     "systemLogs": "系統日誌",
     "reconciliation": "財務對帳",
-    "userManagement": "使用者管理"
+    "userManagement": "使用者管理",
+    "subtitle": "系統概覽與管理",
+    "noLogs": "系統日誌將顯示在此處",
+    "notReady": "功能開發中"
 }

@@ -1,5 +1,6 @@
 import { SecurityRepository } from '../repositories/SecurityRepository';
 import { TOTP } from 'otplib';
+import { lucia } from '../auth/lucia';
 
 export class SecurityService {
     private securityRepo = new SecurityRepository();
@@ -27,6 +28,17 @@ export class SecurityService {
     
     async listDevices(userId: string) {
         return await this.securityRepo.getDevices(userId);
+    }
+
+    async getSessions(userId: string) {
+        return await lucia.getUserSessions(userId);
+    }
+
+    async revokeSession(userId: string, sessionId: string) {
+        const session = await lucia.validateSession(sessionId);
+        if (session.session && session.session.userId === userId) {
+            await lucia.invalidateSession(sessionId);
+        }
     }
 
     async logoutDevice(userId: string, deviceId: string) {

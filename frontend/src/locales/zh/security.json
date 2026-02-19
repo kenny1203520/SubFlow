@@ -10,5 +10,13 @@
     "lastUsed": "最後使用時間",
     "status": "狀態",
     "enabled": "已啟用",
-    "disabled": "未啟用"
+    "disabled": "未啟用",
+    "changePassword": "修改密碼",
+    "setupTitle": "設定兩步驟驗證",
+    "setupDesc": "在您的驗證器 App 中手動輸入此密鑰：",
+    "verifyCode": "驗證碼",
+    "subtitle": "管理您的帳戶安全、兩步驟驗證設定以及活動中的裝置。",
+    "2faDesc": "兩步驟驗證為您的帳戶增加了一層額外的安全保障。登入時，您還需要提供來自驗證器 App 的 6 位數代碼。",
+    "revokeHint": "定期稽核您的登入裝置。如果您看到可疑活動，請立即強制登出該裝置。",
+    "confirmDisable2FA": "您確定要停用兩步驟驗證嗎？"
 }

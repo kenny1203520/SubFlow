@@ -20,6 +20,13 @@ export const lucia = new Lucia(adapter, {
             avatar_url: attributes.avatar_url,
             is_verified: attributes.is_verified
         };
+    },
+    getSessionAttributes: (attributes) => {
+        return {
+            ip_address: attributes.ip_address,
+            user_agent: attributes.user_agent,
+            device_fingerprint: attributes.device_fingerprint
+        };
     }
 });
 
@@ -27,6 +34,7 @@ declare module "lucia" {
     interface Register {
         Lucia: typeof lucia;
         DatabaseUserAttributes: DatabaseUserAttributes;
+        DatabaseSessionAttributes: DatabaseSessionAttributes;
     }
 }
 
@@ -35,4 +43,10 @@ interface DatabaseUserAttributes {
     email: string;
     avatar_url: string;
     is_verified: boolean;
+}
+
+interface DatabaseSessionAttributes {
+    ip_address: string;
+    user_agent: string;
+    device_fingerprint: string;
 }

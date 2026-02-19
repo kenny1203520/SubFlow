@@ -24,7 +24,9 @@
         "reject": "Reject",
         "upload": "Upload",
         "uploading": "Uploading...",
-        "invite": "Invite"
+        "invite": "Invite",
+        "update": "Update Password",
+        "viewAll": "View All"
     },
     "status": {
         "loading": "Loading...",
@@ -70,5 +72,6 @@
         "required": "{field} is required"
     },
     "optional": "Optional",
-    "you": "You"
+    "you": "You",
+    "noData": "No Data"
 }
