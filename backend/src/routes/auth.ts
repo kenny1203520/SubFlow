@@ -14,6 +14,15 @@ const scrypt = new Scrypt();
 import { SecurityRepository } from "../repositories/SecurityRepository";
 const securityRepo = new SecurityRepository();
 
+// Helper to get peppered password
+const getPepperedPassword = (password: string) => {
+    const authSecret = process.env.AUTH_SECRET;
+    if (!authSecret) {
+        throw new Error("AUTH_SECRET is not defined in environment variables");
+    }
+    return crypto.createHmac('sha256', authSecret).update(password).digest('hex');
+};
+
 // Helper to get device fingerprint
 const getDeviceFingerprint = (req: any) => {
     // In a real app, use a proper library or client-sent fingerprint
@@ -57,7 +66,7 @@ router.post("/signup", authLimiter, async (req, res) => {
     try {
         const { username, email, password } = signupSchema.parse(req.body);
 
-        const passwordHash = await scrypt.hash(password);
+        const passwordHash = await scrypt.hash(getPepperedPassword(password));
         const userId = generateId(15);
 
         await pool.query(
@@ -155,16 +164,20 @@ router.post("/signin", authLimiter, async (req, res) => {
             }
         }
 
-        const validPassword = await scrypt.verify(user.password_hash, password);
+        const validPassword = await scrypt.verify(user.password_hash, getPepperedPassword(password));
         if (!validPassword) {
             // Increment failed attempts
+            const maxAttempts = parseInt(process.env.AUTH_MAX_FAILED_ATTEMPTS || '5');
+            const lockoutDuration = parseInt(process.env.AUTH_LOCKOUT_DURATION_MINS || '15');
+            
             const newAttempts = (securitySettings.failed_login_attempts || 0) + 1;
             let updateSql = "UPDATE user_security SET failed_login_attempts = $1 WHERE user_id = $2";
             const updateParams: any[] = [newAttempts, user.id];
 
-            if (newAttempts >= 5) {
+            if (newAttempts >= maxAttempts) {
                 // Lockout
-                updateSql = "UPDATE user_security SET failed_login_attempts = $1, is_suspended = TRUE, suspended_until = NOW() + INTERVAL '15 minutes' WHERE user_id = $2";
+                updateSql = `UPDATE user_security SET failed_login_attempts = $1, is_suspended = TRUE, suspended_until = NOW() + ($3 || ' minutes')::interval WHERE user_id = $2`;
+                updateParams.push(lockoutDuration);
                 await logActivity(user.id, 'account_lockout', 'critical', `Account locked out after ${newAttempts} failed attempts`, req, fingerprint);
             }
 
@@ -381,6 +394,10 @@ router.get("/verify-email/:token", async (req, res) => {
         await pool.query("DELETE FROM email_verification_tokens WHERE id = $1", [verificationToken.id]);
         await pool.query("COMMIT");
 
+        // Timing-safe verification is ensured by hashing the token and matching in DB, 
+        // but for extra precaution if we were comparing in JS:
+        // if (!crypto.timingSafeEqual(Buffer.from(verificationToken.token_hash), Buffer.from(tokenHash))) throw new Error("Mismatch");
+
         await logActivity(verificationToken.user_id, 'email_verified', 'low', 'Email verified successfully', req);
 
         return res.status(200).json({ success: true, message: "Email verified successfully." });
@@ -446,7 +463,7 @@ router.post("/password-reset/:token", authLimiter, async (req, res) => {
             return res.status(400).send("Invalid or expired token");
         }
 
-        const passwordHash = await scrypt.hash(password);
+        const passwordHash = await scrypt.hash(getPepperedPassword(password));
 
         await pool.query("BEGIN");
         await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [passwordHash, resetToken.user_id]);
