@@ -17,6 +17,11 @@ export class GroupMemberRepository extends BaseRepository {
         );
     }
 
+    async findById(id: string): Promise<GroupMemberRow | null> {
+        const res = await this.query("SELECT * FROM group_members WHERE id = $1", [id]);
+        return res.rows[0] || null;
+    }
+
     async getMembersByGroupId(groupId: string): Promise<any[]> {
         const res = await this.query(
             `SELECT gm.id as member_id, u.id as user_id, COALESCE(u.username, gm.temp_name) as username, 

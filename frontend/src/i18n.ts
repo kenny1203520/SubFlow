@@ -11,6 +11,7 @@ import enWallet from './locales/en/wallet.json';
 import enActivity from './locales/en/activity.json';
 import enServices from './locales/en/services.json';
 import enNotifications from './locales/en/notifications.json';
+import enFiles from './locales/en/files.json';
 
 import zhCommon from './locales/zh/common.json';
 import zhDashboard from './locales/zh/dashboard.json';
@@ -24,6 +25,7 @@ import zhWallet from './locales/zh/wallet.json';
 import zhActivity from './locales/zh/activity.json';
 import zhServices from './locales/zh/services.json';
 import zhNotifications from './locales/zh/notifications.json';
+import zhFiles from './locales/zh/files.json';
 
 // Define messages structure
 const messages = {
@@ -39,7 +41,8 @@ const messages = {
         wallet: enWallet,
         activity: enActivity,
         services: enServices,
-        notifications: enNotifications
+        notifications: enNotifications,
+        files: enFiles
     },
     zh: {
         common: zhCommon,
@@ -53,9 +56,10 @@ const messages = {
         wallet: zhWallet,
         activity: zhActivity,
         services: zhServices,
-        notifications: zhNotifications
+        notifications: zhNotifications,
+        files: zhFiles
     }
-};
+}
 
 const i18n = createI18n({
     legacy: false, // Composition API mode

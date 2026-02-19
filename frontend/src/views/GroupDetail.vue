@@ -184,10 +184,20 @@ const addMember = () => {
 };
 
 const bindAccount = (memberId: string) => {
-    if (!confirm(t('groups.bindAccount') + '?')) return;
-    socket.emit('group:bind_member', { memberId }, (res: any) => {
+    // Simple prompt for now, could be a nice modal later
+    const input = prompt(t('groups.bindAccountPrompt', 'Enter username or email to invite:'));
+    if (!input) return;
+
+    const payload: any = { groupId, memberId };
+    if (input.includes('@')) {
+        payload.email = input;
+    } else {
+        payload.username = input;
+    }
+
+    socket.emit('group:bind_member_invite', payload, (res: any) => {
         if (res.status === 'ok') {
-            fetchData();
+            alert(t('groups.inviteSent', 'Invitation sent!'));
         } else {
             alert(res.message);
         }
@@ -464,11 +474,13 @@ const leaveGroup = () => {
                                     <label class="text-xs font-bold text-slate-400 uppercase">{{
                                         t('groups.endCondition') }}</label>
                                     <p class="font-medium text-slate-800">
-                                        {{ t(`groups.endConditions.${group.end_condition || 'indefinite'}`) }}
-                                        <span v-if="group.end_condition === 'date' && group.end_value">
+                                        {{ t(`groups.endConditions.${group.end_condition || 'never'}`) }}
+                                        <span
+                                            v-if="(group.end_condition === 'date' || group.end_condition === 'on_date') && group.end_value">
                                             ({{ new Date(group.end_value).toLocaleDateString() }})
                                         </span>
-                                        <span v-if="group.end_condition === 'total_amount' && group.end_value">
+                                        <span
+                                            v-if="(group.end_condition === 'total_amount' || group.end_condition === 'occurrences') && group.end_value">
                                             ({{ group.end_value }})
                                         </span>
                                     </p>

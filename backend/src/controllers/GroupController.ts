@@ -13,6 +13,8 @@ export class GroupController extends BaseController {
         this.socket.on("group:delete", (payload, cb) => this.deleteGroup(payload, cb));
         this.socket.on("group:leave", (payload, cb) => this.leaveGroup(payload, cb));
         this.socket.on("group:accept_invite", (payload, cb) => this.acceptInvite(payload, cb));
+        this.socket.on("group:reject_invite", (payload, cb) => this.rejectInvite(payload, cb));
+        this.socket.on("group:bind_member_invite", (payload, cb) => this.bindMemberInvite(payload, cb));
     }
 
     async createGroup(payload: any, cb: (res: any) => void) {
@@ -85,13 +87,33 @@ export class GroupController extends BaseController {
         }
     }
 
-    async acceptInvite(payload: { groupId: string }, cb: (res: any) => void) {
+    async acceptInvite(payload: { groupId: string, memberId?: string }, cb: (res: any) => void) {
         try {
             const userId = this.socket.data.user.id;
-            await this.groupService.acceptInvite(userId, payload.groupId);
+            await this.groupService.acceptInvite(userId, payload.groupId, payload.memberId);
             this.success(cb);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to accept invite");
+        }
+    }
+
+    async rejectInvite(payload: { groupId: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.groupService.rejectInvite(userId, payload.groupId);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to reject invite");
+        }
+    }
+
+    async bindMemberInvite(payload: { groupId: string, memberId: string, email?: string, username?: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.groupService.bindMemberInvite(userId, payload.groupId, payload.memberId, { email: payload.email, username: payload.username });
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to send binding invite");
         }
     }
 }

@@ -66,8 +66,11 @@
     "endCondition": "End Condition",
     "endConditions": {
         "indefinite": "Indefinite (Forever)",
+        "never": "Indefinite (Forever)",
         "date": "End Date",
-        "total_amount": "Total Amount Limit"
+        "on_date": "End Date",
+        "total_amount": "Total Amount Limit",
+        "occurrences": "Occurrences Count"
     },
     "endValue": "End Value",
     "iconUrl": "Icon URL",
@@ -86,5 +89,7 @@
     "inviteUsernameDesc": "Send an invitation to a registered user directly via Username.",
     "noMembersYet": "No members added yet.",
     "optionalStep": "This step is optional. You can add service details later.",
-    "skipAndCreate": "Skip & Create"
+    "skipAndCreate": "Skip & Create",
+    "bindAccountPrompt": "Enter username or email to invite:",
+    "inviteSent": "Invitation sent!"
 }

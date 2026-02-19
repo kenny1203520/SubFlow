@@ -41,13 +41,24 @@ const markAllRead = () => {
 };
 
 const acceptInvite = (notif: any) => {
-    socket.emit('group:accept_invite', { groupId: notif.data.groupId }, (res: any) => {
+    const payload = {
+        groupId: notif.data.groupId,
+        memberId: notif.data.memberId // Will be undefined for normal invite
+    };
+    socket.emit('group:accept_invite', payload, (res: any) => {
         if (res.status === 'ok') {
             markRead(notif.id);
-            // Optionally emit event to refresh group list if parent listens
-            // emit('invite-accepted'); 
         } else {
-            // alert(res.message); // Simple alert for now, or use a toast if available
+            console.error(res.message);
+        }
+    });
+};
+
+const rejectInvite = (notif: any) => {
+    socket.emit('group:reject_invite', { groupId: notif.data.groupId }, (res: any) => {
+        if (res.status === 'ok') {
+            markRead(notif.id);
+        } else {
             console.error(res.message);
         }
     });
@@ -81,7 +92,7 @@ onUnmounted(() => {
                 <div class="dropdown-header">
                     <h3>{{ t('notifications.title', 'Notifications') }}</h3>
                     <button class="text-btn" @click="markAllRead">{{ t('notifications.mark_all_read', 'Mark all read')
-                    }}</button>
+                        }}</button>
                 </div>
 
                 <div class="notif-list custom-scrollbar">
@@ -89,22 +100,27 @@ onUnmounted(() => {
                         {{ t('notifications.empty', 'No notifications') }}
                     </div>
                     <div v-for="notif in notifications" :key="notif.id"
-                        :class="['notif-item', { unread: !notif.read_at }]" @click="markRead(notif.id)">
+                        :class="['notif-item', { unread: !notif.is_read }]" @click="markRead(notif.id)">
                         <div class="notif-content">
                             <p class="notif-title">{{ notif.title }}</p>
                             <p class="notif-message">{{ notif.message }}</p>
 
-                            <!-- Group Invite Action -->
-                            <div v-if="notif.type === 'group_invite' && !notif.read_at" class="mt-2">
+                            <!-- Group Invite & Bind Action -->
+                            <div v-if="(notif.type === 'group_invite' || notif.type === 'group_bind_invite') && !notif.is_read"
+                                class="mt-2 flex gap-2">
                                 <button @click.stop="acceptInvite(notif)"
                                     class="bg-primary-600 text-white text-xs px-3 py-1.5 rounded-lg hover:bg-primary-700 transition-colors font-medium">
                                     {{ t('common.actions.accept') }}
+                                </button>
+                                <button @click.stop="rejectInvite(notif)"
+                                    class="bg-slate-100 text-slate-600 text-xs px-3 py-1.5 rounded-lg hover:bg-slate-200 transition-colors font-medium">
+                                    {{ t('common.actions.reject') }}
                                 </button>
                             </div>
 
                             <span class="notif-time">{{ new Date(notif.created_at).toLocaleString() }}</span>
                         </div>
-                        <div v-if="!notif.read_at" class="unread-dot"></div>
+                        <div v-if="!notif.is_read" class="unread-dot"></div>
                     </div>
                 </div>
 

@@ -46,15 +46,15 @@
     "bindAccount": "綁定帳號",
     "nonMember": "非會員參與者",
     "viewBill": "查看票據",
-    "bills": "账单",
-    "generatedBills": "已生成账单",
-    "noBills": "暂无生成的账单。",
+    "bills": "帳單",
+    "generatedBills": "已生成帳單",
+    "noBills": "暫無生成的帳單。",
     "dueDate": "到期日",
     "status": "狀態",
     "status_pending": "待支付",
     "status_paid": "已支付",
     "status_overdue": "已逾期",
-    "splits": "分摊详情",
+    "splits": "分攤詳情",
     "member": "成員",
     "payer": "付款人",
     "subtitle": "管理您的分帳群組",
@@ -66,8 +66,11 @@
     "endCondition": "結束條件",
     "endConditions": {
         "indefinite": "無限期 (永久)",
+        "never": "無限期 (永久)",
         "date": "結束日期",
-        "total_amount": "總金額上限"
+        "on_date": "結束日期",
+        "total_amount": "總金額上限",
+        "occurrences": "次數限制"
     },
     "endValue": "結束數值",
     "iconUrl": "圖示連結",
@@ -86,5 +89,7 @@
     "inviteUsernameDesc": "直接透過用戶名發送邀請給已註冊用戶。",
     "noMembersYet": "尚未添加成員。",
     "optionalStep": "此步驟為選填，您可以稍後再補上服務詳情。",
-    "skipAndCreate": "跳過並創建"
+    "skipAndCreate": "跳過並創建",
+    "bindAccountPrompt": "請輸入要邀請的用戶名或電子郵件：",
+    "inviteSent": "邀請已發送！"
 }

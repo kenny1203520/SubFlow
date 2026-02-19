@@ -1,5 +1,6 @@
 {
     "appName": "SubFlow",
+    "all": "全部",
     "actions": {
         "create": "新建",
         "add": "添加",
@@ -18,7 +19,10 @@
         "prev": "上一頁",
         "next": "下一頁",
         "retry": "重試",
-        "accept": "接受"
+        "accept": "Accept",
+        "reject": "拒絕",
+        "upload": "上傳",
+        "uploading": "上傳中..."
     },
     "status": {
         "loading": "加載中...",
