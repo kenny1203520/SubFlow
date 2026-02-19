@@ -1,5 +1,6 @@
 import { BaseController } from './BaseController';
 import { SecurityService } from '../services/SecurityService';
+import { logActivity } from '../utils/audit';
 
 export class SecurityController extends BaseController {
     private securityService = new SecurityService();
@@ -89,6 +90,20 @@ export class SecurityController extends BaseController {
         try {
             const userId = this.socket.data.user.id;
             await this.securityService.revokeSession(userId, payload.sessionId);
+            
+            const fingerprint = this.socket.handshake.auth.fingerprint;
+
+            // Log the revocation
+            await logActivity(
+                userId, 
+                'auth', 
+                'session_revoked', 
+                'medium', 
+                `User revoked session`, 
+                this.socket,
+                fingerprint
+            );
+
             this.success(cb);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to revoke session");

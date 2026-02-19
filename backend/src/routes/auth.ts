@@ -8,6 +8,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { authLimiter } from "../middleware/rateLimit";
 import { TOTP } from "otplib";
+import { logActivity, getDeviceFingerprint } from "../utils/audit";
 
 const router = Router();
 const scrypt = new Scrypt();
@@ -21,29 +22,6 @@ const getPepperedPassword = (password: string) => {
         throw new Error("AUTH_SECRET is not defined in environment variables");
     }
     return crypto.createHmac('sha256', authSecret).update(password).digest('hex');
-};
-
-// Helper to get device fingerprint
-const getDeviceFingerprint = (req: any) => {
-    // In a real app, use a proper library or client-sent fingerprint
-    const ua = req.headers['user-agent'] || '';
-    const ip = req.ip || '';
-    return crypto.createHash('sha256').update(`${ua}|${ip}`).digest('hex');
-};
-
-
-// Activity Log Helper
-const logActivity = async (userId: string | null, action: string, risk: 'info' | 'low' | 'medium' | 'high' | 'critical', description: string, req: any, deviceFingerprint?: string) => {
-    try {
-        const fp = deviceFingerprint || getDeviceFingerprint(req);
-        await pool.query(
-            `INSERT INTO activity_logs (user_id, action, behavior_type, risk_level, description, ip_address, user_agent, device_fingerprint)
-             VALUES ($1, $2, 'auth', $3, $4, $5, $6, $7)`,
-            [userId, action, risk, description, req.ip, req.headers['user-agent'], fp]
-        );
-    } catch (e) {
-        console.error("Failed to log activity:", e);
-    }
 };
 
 // Validation Schemas
@@ -105,7 +83,7 @@ router.post("/signup", authLimiter, async (req, res) => {
         const sessionCookie = lucia.createSessionCookie(session.id);
 
         const fingerprint = getDeviceFingerprint(req);
-        await logActivity(userId, 'signup', 'low', 'User signed up and auto-logged in', req, fingerprint);
+        await logActivity(userId, 'auth', 'signup', 'low', 'User signed up and auto-logged in', req, fingerprint);
 
         // Track Device and Login History for signup (auto-login)
         await securityRepo.logLogin({
@@ -140,10 +118,10 @@ router.post("/signup", authLimiter, async (req, res) => {
         if (error.code === '23505') {
             // Generic message to prevent enumeration
             const { username, email } = signupSchema.parse(req.body);
-            await logActivity(null, 'signup_failed', 'medium', `Failed signup for user: ${username} or email: ${email} already exists`, req);
+            await logActivity(null, 'auth', 'signup_failed', 'medium', `Failed signup for user: ${username} or email: ${email} already exists`, req);
             return res.status(400).send("Invalid input"); 
         }
-        await logActivity(null, 'system_error', 'high', `Signup error: ${error.message}`, req);
+        await logActivity(null, 'auth', 'system_error', 'high', `Signup error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Unknown error");
     }
@@ -157,7 +135,7 @@ router.post("/signin", authLimiter, async (req, res) => {
         const user = result.rows[0];
 
         if (!user) {
-            await logActivity(null, 'login_failed', 'medium', `Failed login for user: ${username}`, req);
+            await logActivity(null, 'auth', 'login_failed', 'medium', `Failed login for user: ${username}`, req);
             return res.status(400).send("Invalid credentials");
         }
 
@@ -174,7 +152,7 @@ router.post("/signin", authLimiter, async (req, res) => {
         }
 
         if (securitySettings.is_blocked) {
-             await logActivity(user.id, 'login_blocked', 'critical', 'Login attempted on blocked account', req, fingerprint);
+             await logActivity(user.id, 'auth', 'login_blocked', 'critical', 'Login attempted on blocked account', req, fingerprint);
              return res.status(403).send("Account is blocked. Please contact support.");
         }
 
@@ -184,7 +162,7 @@ router.post("/signin", authLimiter, async (req, res) => {
                 await pool.query("UPDATE user_security SET is_suspended = FALSE, suspended_until = NULL, failed_login_attempts = 0 WHERE user_id = $1", [user.id]);
                 securitySettings.is_suspended = false;
             } else {
-                 await logActivity(user.id, 'login_suspended', 'high', 'Login attempted on suspended account', req, fingerprint);
+                 await logActivity(user.id, 'auth', 'login_suspended', 'high', 'Login attempted on suspended account', req, fingerprint);
                  return res.status(403).send("Account is temporarily suspended due to multiple failed login attempts. Please try again later.");
             }
         }
@@ -203,11 +181,11 @@ router.post("/signin", authLimiter, async (req, res) => {
                 // Lockout
                 updateSql = `UPDATE user_security SET failed_login_attempts = $1, is_suspended = TRUE, suspended_until = NOW() + ($3 || ' minutes')::interval WHERE user_id = $2`;
                 updateParams.push(lockoutDuration);
-                await logActivity(user.id, 'account_lockout', 'critical', `Account locked out after ${newAttempts} failed attempts`, req, fingerprint);
+                await logActivity(user.id, 'auth', 'account_lockout', 'critical', `Account locked out after ${newAttempts} failed attempts`, req, fingerprint);
             }
 
             await pool.query(updateSql, updateParams);
-            await logActivity(user.id, 'login_failed', 'medium', `Invalid password for user: ${username}`, req, fingerprint);
+            await logActivity(user.id, 'auth', 'login_failed', 'medium', `Invalid password for user: ${username}`, req, fingerprint);
             
             // Log security event
             await securityRepo.logLogin({
@@ -260,7 +238,7 @@ router.post("/signin", authLimiter, async (req, res) => {
              // For this iteration, I'll keep it simple: Client sends username/password again + code to /signin/2fa. 
              // This avoids complex state management for now.
              
-             await logActivity(user.id, '2fa_required', 'low', '2FA code required for login', req, fingerprint);
+             await logActivity(user.id, 'auth', '2fa_required', 'low', '2FA code required for login', req, fingerprint);
              
              return res.status(200).json({
                 success: true,
@@ -276,7 +254,7 @@ router.post("/signin", authLimiter, async (req, res) => {
         });
         const sessionCookie = lucia.createSessionCookie(session.id);
         
-        await logActivity(user.id, 'login', 'info', 'User logged in', req, fingerprint);
+        await logActivity(user.id, 'auth', 'login', 'info', 'User logged in', req, fingerprint);
 
         // Log successful login
         await securityRepo.logLogin({
@@ -309,7 +287,7 @@ router.post("/signin", authLimiter, async (req, res) => {
         if (error instanceof z.ZodError) {
              return res.status(400).json({ error: error.issues });
         }
-        await logActivity(null, 'system_error', 'high', `Signin error: ${error.message}`, req);
+        await logActivity(null, 'auth', 'system_error', 'high', `Signin error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Internal Server Error");
     }
@@ -341,7 +319,7 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         const isValid = result?.valid;
         
         if (!isValid) {
-             await logActivity(userId, '2fa_failed', 'high', 'Invalid 2FA code', req);
+             await logActivity(userId, 'auth', '2fa_failed', 'high', 'Invalid 2FA code', req);
              return res.status(400).send("Invalid 2FA code");
         }
 
@@ -353,7 +331,7 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         });
         const sessionCookie = lucia.createSessionCookie(session.id);
         
-        await logActivity(user.id, 'login_2fa', 'info', 'User logged in with 2FA', req);
+        await logActivity(user.id, 'auth', 'login_2fa', 'info', 'User logged in with 2FA', req);
 
         res.setHeader("Set-Cookie", sessionCookie.serialize());
         return res.status(200).json({
@@ -368,7 +346,7 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         });
 
     } catch (error: any) {
-        await logActivity(null, 'system_error', 'high', `2FA error: ${error.message}`, req);
+        await logActivity(null, 'auth', 'system_error', 'high', `2FA error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Server Error");
     }
@@ -382,7 +360,7 @@ router.post("/signout", async (req, res) => {
 
     const { session } = await lucia.validateSession(sessionId);
     if (session) {
-        await logActivity(session.userId, 'signout', 'low', 'User signed out', req);
+        await logActivity(session.userId, 'auth', 'signout', 'low', 'User signed out', req);
         await lucia.invalidateSession(session.id);
     }
 
@@ -436,12 +414,12 @@ router.get("/verify-email/:token", async (req, res) => {
         // but for extra precaution if we were comparing in JS:
         // if (!crypto.timingSafeEqual(Buffer.from(verificationToken.token_hash), Buffer.from(tokenHash))) throw new Error("Mismatch");
 
-        await logActivity(verificationToken.user_id, 'email_verified', 'low', 'Email verified successfully', req);
+        await logActivity(verificationToken.user_id, 'auth', 'email_verified', 'low', 'Email verified successfully', req);
 
         return res.status(200).json({ success: true, message: "Email verified successfully." });
     } catch (error: any) {
         await pool.query("ROLLBACK");
-        await logActivity(null, 'system_error', 'high', `Email verification error: ${error.message}`, req);
+        await logActivity(null, 'auth', 'system_error', 'high', `Email verification error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Server Error");
     }
@@ -460,7 +438,7 @@ router.post("/password-reset", authLimiter, async (req, res) => {
         
         // Always return success to prevent enumeration
         if (!user) {
-            await logActivity(null, 'reset_request_unknown', 'low', `Reset requested for non-existent: ${email}`, req);
+            await logActivity(null, 'auth', 'reset_request_unknown', 'low', `Reset requested for non-existent: ${email}`, req);
             return res.status(200).json({ success: true, message: "If account exists, email sent." });
         }
 
@@ -474,11 +452,11 @@ router.post("/password-reset", authLimiter, async (req, res) => {
         );
 
         await MailService.sendPasswordResetEmail(email, token);
-        await logActivity(user.id, 'reset_request', 'info', 'Password reset requested', req);
+        await logActivity(user.id, 'auth', 'reset_request', 'info', 'Password reset requested', req);
 
         return res.status(200).json({ success: true, message: "If account exists, email sent." });
     } catch (error: any) {
-        await logActivity(null, 'system_error', 'high', `Password reset request error: ${error.message}`, req);
+        await logActivity(null, 'auth', 'system_error', 'high', `Password reset request error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Server Error");
     }
@@ -508,7 +486,7 @@ router.post("/password-reset/:token", authLimiter, async (req, res) => {
         await pool.query("UPDATE password_reset_tokens SET is_used = TRUE WHERE id = $1", [resetToken.id]);
         await pool.query("COMMIT");
         
-        await logActivity(resetToken.user_id, 'password_reset', 'high', 'Password reset successfully', req);
+        await logActivity(resetToken.user_id, 'auth', 'password_reset', 'high', 'Password reset successfully', req);
 
         return res.status(200).json({ success: true, message: "Password updated." });
     } catch (error: any) {
@@ -516,7 +494,7 @@ router.post("/password-reset/:token", authLimiter, async (req, res) => {
         if (error instanceof z.ZodError) {
              return res.status(400).json({ error: error.issues });
         }
-        await logActivity(null, 'system_error', 'high', `Password reset execution error: ${error.message}`, req);
+        await logActivity(null, 'auth', 'system_error', 'high', `Password reset execution error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Server Error");
     }
@@ -543,14 +521,14 @@ router.post("/change-password", authLimiter, async (req, res) => {
         const validPassword = await scrypt.verify(currentHash, getPepperedPassword(oldPassword));
 
         if (!validPassword) {
-            await logActivity(user.id, 'password_change_failed', 'medium', 'Invalid old password during change attempt', req);
+            await logActivity(user.id, 'auth', 'password_change_failed', 'medium', 'Invalid old password during change attempt', req);
             return res.status(400).send("Invalid old password");
         }
 
         const newPasswordHash = await scrypt.hash(getPepperedPassword(newPassword));
         await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [newPasswordHash, user.id]);
 
-        await logActivity(user.id, 'password_complete', 'high', 'Password changed successfully', req);
+        await logActivity(user.id, 'auth', 'password_complete', 'high', 'Password changed successfully', req);
 
         return res.status(200).json({ success: true, message: "Password updated successfully" });
 
@@ -558,7 +536,7 @@ router.post("/change-password", authLimiter, async (req, res) => {
         if (error instanceof z.ZodError) {
              return res.status(400).json({ error: error.issues });
         }
-        await logActivity(user.id, 'system_error', 'high', `Password change error: ${error.message}`, req);
+        await logActivity(user.id, 'auth', 'system_error', 'high', `Password change error: ${error.message}`, req);
         console.error(error);
         return res.status(500).send("Server Error");
     }
