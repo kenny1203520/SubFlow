@@ -6,7 +6,7 @@ export class ExpenseService {
     private expenseRepo = new ExpenseRepository();
     private memberRepo = new GroupMemberRepository();
 
-    async addExpense(userId: string, payload: { groupId: string, amount: number, description: string, splits: { userId: string, amount: number }[] }) {
+    async addExpense(userId: string, payload: { groupId: string, amount: number, description: string, splits: { memberId: string, amount: number }[] }) {
         const role = await this.memberRepo.checkRole(payload.groupId, userId);
         if (!role) throw new Error("Not a member");
 
@@ -23,7 +23,7 @@ export class ExpenseService {
 
             const splits = payload.splits.map(s => ({
                 expense_id: expense.id,
-                user_id: s.userId,
+                member_id: s.memberId,
                 amount_owed: s.amount
             }));
 

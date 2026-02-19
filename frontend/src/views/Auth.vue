@@ -42,7 +42,7 @@ const handleSubmit = async () => {
                 email: email.value,
                 password: password.value
             });
-            authStore.setUser(res.data.user || res.data);
+            authStore.setUser(res.data.user);
             router.push('/dashboard');
         }
     } catch (err: any) {

@@ -15,6 +15,9 @@ export class GroupController extends BaseController {
         this.socket.on("group:accept_invite", (payload, cb) => this.acceptInvite(payload, cb));
         this.socket.on("group:reject_invite", (payload, cb) => this.rejectInvite(payload, cb));
         this.socket.on("group:bind_member_invite", (payload, cb) => this.bindMemberInvite(payload, cb));
+        this.socket.on("group:update", (payload, cb) => this.updateGroup(payload, cb));
+        this.socket.on("group:update_member_role", (payload, cb) => this.updateMemberRole(payload, cb));
+        this.socket.on("group:remove_member", (payload, cb) => this.removeMember(payload, cb));
     }
 
     async createGroup(payload: any, cb: (res: any) => void) {
@@ -114,6 +117,36 @@ export class GroupController extends BaseController {
             this.success(cb);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to send binding invite");
+        }
+    }
+
+    async updateGroup(payload: any, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            const group = await this.groupService.updateGroup(userId, payload.id, payload);
+            this.success(cb, { group });
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to update group");
+        }
+    }
+
+    async updateMemberRole(payload: { groupId: string, memberId: string, role: 'admin' | 'member' }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.groupService.updateMemberRole(userId, payload.groupId, payload.memberId, payload.role);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to update role");
+        }
+    }
+
+    async removeMember(payload: { groupId: string, memberId: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.groupService.removeMember(userId, payload.groupId, payload.memberId);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to remove member");
         }
     }
 }

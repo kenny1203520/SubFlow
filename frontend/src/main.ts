@@ -48,6 +48,15 @@ const router = createRouter({
     routes,
 })
 
+router.afterEach((to) => {
+    const titleKey = to.meta.titleKey as string | undefined;
+    if (titleKey) {
+        document.title = `Subflow | ${i18n.global.t(titleKey)}`;
+    } else {
+        document.title = 'Subflow';
+    }
+});
+
 const pinia = createPinia()
 const app = createApp(App)
 app.use(pinia)

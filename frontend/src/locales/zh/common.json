@@ -15,6 +15,7 @@
         "submit": "提交",
         "export": "匯出",
         "collapse": "收起",
+        "expand": "展開",
         "search": "搜尋",
         "prev": "上一頁",
         "next": "下一頁",
@@ -22,7 +23,8 @@
         "accept": "Accept",
         "reject": "拒絕",
         "upload": "上傳",
-        "uploading": "上傳中..."
+        "uploading": "上傳中...",
+        "invite": "邀請"
     },
     "status": {
         "loading": "加載中...",
@@ -48,7 +50,11 @@
         "search": "搜尋",
         "startDate": "開始日期",
         "endDate": "結束日期",
-        "date": "日期"
+        "date": "日期",
+        "type": "類型",
+        "username": "用戶名",
+        "tempMember": "臨時成員",
+        "value": "邀請資訊"
     },
     "placeholders": {
         "search": "搜尋項目...",
@@ -63,5 +69,6 @@
     "validation": {
         "required": "{field} 為必填項"
     },
-    "optional": "可選"
+    "optional": "可選",
+    "you": "你"
 }

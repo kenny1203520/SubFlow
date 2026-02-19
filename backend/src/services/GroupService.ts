@@ -248,4 +248,54 @@ export class GroupService {
         await this.memberRepo.removeMember(groupId, userId);
     }
 
+    async updateGroup(userId: string, groupId: string, payload: any) {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role !== 'admin') throw new Error("Only admins can update group settings");
+
+        // Sanitize Date Fields
+        const sanitizeDate = (d: any) => (d && d !== '') ? new Date(d) : null;
+        const sanitizeString = (s: any) => (s && s !== '') ? s : null;
+
+        const updateData: any = {
+            ...payload,
+            next_payment_date: sanitizeDate(payload.next_payment_date),
+            start_date: sanitizeDate(payload.start_date),
+            end_value: (payload.end_condition === 'date') ? (sanitizeDate(payload.end_value)?.toISOString() || null) : sanitizeString(payload.end_value)
+        };
+
+        // If service name changed, might need to handle service_id logic, but for now just update fields
+        // In a full implementation, we'd check if service exists, etc.
+        // For now, let's assume direct update of group fields
+
+        return await this.groupRepo.update(groupId, updateData);
+    }
+
+    async updateMemberRole(userId: string, groupId: string, memberId: string, newRole: 'admin' | 'member') {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role !== 'admin') throw new Error("Only admins can manage roles");
+
+        // Prevent demoting self if only admin? 
+        // For now, simple logic.
+
+        // Helper to check if member belongs to group 
+        // (We should probable add findById(memberId) to check group_id, but trusting the frontend/logic for now with a verify)
+        const member = await this.memberRepo.findById(memberId);
+        if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
+
+        await this.memberRepo.updateRole(memberId, newRole);
+    }
+
+    async removeMember(userId: string, groupId: string, memberId: string) {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role !== 'admin') throw new Error("Only admins can remove members");
+
+        const member = await this.memberRepo.findById(memberId);
+        if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
+
+        if (member.user_id === userId) throw new Error("Cannot kick yourself. use Leave Group.");
+
+        // TODO: Check debts?
+
+        await this.memberRepo.remove(memberId);
+    }
 }

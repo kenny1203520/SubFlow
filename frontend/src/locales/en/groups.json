@@ -19,6 +19,7 @@
     "for": "For",
     "settle": "Settle",
     "backToGroups": "Back",
+    "overview": "Overview",
     "inviteNewMember": "Invite New Member",
     "memberEmail": "Member Email",
     "confirmSettle": "Mark this debt as settled?",
@@ -29,6 +30,7 @@
     "serviceDetails": "Service Details",
     "planAndBilling": "Plan & Billing",
     "settings": "Group Settings",
+    "editGroup": "Edit Group",
     "initialMembers": "Initial Members",
     "serviceName": "Service Name",
     "website": "Website URL",
@@ -58,6 +60,7 @@
     "member": "Member",
     "payer": "Paid By",
     "subtitle": "Manage your shared expenses groups",
+    "nextPayment": "Next Payment",
     "genericService": "Generic Service",
     "noSearchResults": "No groups found.",
     "createdOnLabel": "Created on",
@@ -91,5 +94,13 @@
     "optionalStep": "This step is optional. You can add service details later.",
     "skipAndCreate": "Skip & Create",
     "bindAccountPrompt": "Enter username or email to invite:",
-    "inviteSent": "Invitation sent!"
+    "invitePlaceholder": "username or email",
+    "inviteDesc": "Invite a registered user to join this group.",
+    "tempNamePlaceholder": "e.g. Guest Member",
+    "inviteSent": "Invitation sent!",
+    "confirmRoleChange": "Are you sure you want to change this member's role?",
+    "confirmKick": "Are you sure you want to remove this member from the group?",
+    "promoteToAdmin": "Promote to Admin",
+    "demoteToMember": "Demote to Member",
+    "kickMember": "Remove from Group"
 }

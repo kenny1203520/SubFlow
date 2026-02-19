@@ -19,6 +19,7 @@
     "for": "備註",
     "settle": "結算",
     "backToGroups": "返回",
+    "overview": "概覽",
     "inviteNewMember": "邀請新成員",
     "memberEmail": "成員電子郵件",
     "confirmSettle": "確定標記為已結清？",
@@ -29,6 +30,7 @@
     "serviceDetails": "服務詳情",
     "planAndBilling": "方案與計費",
     "settings": "群組設置",
+    "editGroup": "編輯群組",
     "initialMembers": "初始成員",
     "serviceName": "服務名稱",
     "website": "網站連結",
@@ -58,6 +60,7 @@
     "member": "成員",
     "payer": "付款人",
     "subtitle": "管理您的分帳群組",
+    "nextPayment": "下次扣款",
     "genericService": "一般服務",
     "noSearchResults": "沒有找到群組。",
     "createdOnLabel": "建立於",
@@ -91,5 +94,13 @@
     "optionalStep": "此步驟為選填，您可以稍後再補上服務詳情。",
     "skipAndCreate": "跳過並創建",
     "bindAccountPrompt": "請輸入要邀請的用戶名或電子郵件：",
-    "inviteSent": "邀請已發送！"
+    "invitePlaceholder": "用戶名或電子郵件",
+    "inviteDesc": "邀請已註冊的用戶加入此群組。",
+    "tempNamePlaceholder": "例如：訪客成員",
+    "inviteSent": "邀請已發送！",
+    "confirmRoleChange": "確定要更改此成員的角色嗎？",
+    "confirmKick": "確定要將此成員從群組中移除嗎？",
+    "promoteToAdmin": "升級為管理員",
+    "demoteToMember": "降級為普通成員",
+    "kickMember": "從群組移除"
 }

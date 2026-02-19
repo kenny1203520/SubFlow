@@ -15,6 +15,7 @@
         "submit": "Submit",
         "export": "Export",
         "collapse": "Collapse",
+        "expand": "Expand",
         "search": "Search",
         "prev": "Previous",
         "next": "Next",
@@ -22,7 +23,8 @@
         "accept": "Accept",
         "reject": "Reject",
         "upload": "Upload",
-        "uploading": "Uploading..."
+        "uploading": "Uploading...",
+        "invite": "Invite"
     },
     "status": {
         "loading": "Loading...",
@@ -48,7 +50,11 @@
         "search": "Search",
         "startDate": "Start Date",
         "endDate": "End Date",
-        "date": "Date"
+        "date": "Date",
+        "type": "Type",
+        "username": "Username",
+        "tempMember": "Temporary Member",
+        "value": "Invitation Value"
     },
     "placeholders": {
         "search": "Search for...",
@@ -63,5 +69,6 @@
     "validation": {
         "required": "{field} is required"
     },
-    "optional": "Optional"
+    "optional": "Optional",
+    "you": "You"
 }

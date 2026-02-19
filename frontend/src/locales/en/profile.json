@@ -1,5 +1,6 @@
 {
     "title": "Profile",
+    "profile": "Profile",
     "sections": {
         "basic": "Basic Information",
         "contact": "Contact Information",

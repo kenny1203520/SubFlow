@@ -33,7 +33,8 @@ export class SchedulerService {
                 WHERE status = 'active' 
                 AND next_payment_date IS NOT NULL 
                 AND next_payment_date <= CURRENT_DATE
-                AND billing_cycle IN ('monthly', 'yearly')
+                AND billing_type = 'recurring'
+                AND interval_unit IN ('month', 'year')
             `);
 
             // console.log(`Found ${dueGroups.rows.length} groups due for billing.`);
@@ -86,10 +87,14 @@ export class SchedulerService {
 
                     // Update Group Next Payment Date
                     let nextDate = new Date(group.next_payment_date);
-                    if (group.billing_cycle === 'monthly') {
-                        nextDate.setMonth(nextDate.getMonth() + 1);
-                    } else if (group.billing_cycle === 'yearly') {
-                        nextDate.setFullYear(nextDate.getFullYear() + 1);
+                    if (group.interval_unit === 'month') {
+                        nextDate.setMonth(nextDate.getMonth() + group.interval_value);
+                    } else if (group.interval_unit === 'year') {
+                        nextDate.setFullYear(nextDate.getFullYear() + group.interval_value);
+                    } else if (group.interval_unit === 'week') {
+                        nextDate.setDate(nextDate.getDate() + (7 * group.interval_value));
+                    } else if (group.interval_unit === 'day') {
+                        nextDate.setDate(nextDate.getDate() + group.interval_value);
                     }
 
                     await client.query(`

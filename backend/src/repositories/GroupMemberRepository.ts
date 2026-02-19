@@ -49,6 +49,20 @@ export class GroupMemberRepository extends BaseRepository {
         );
     }
 
+    async updateRole(memberId: string, role: 'admin' | 'member' | 'treasurer'): Promise<void> {
+        await this.query(
+            "UPDATE group_members SET role = $1 WHERE id = $2",
+            [role, memberId]
+        );
+    }
+
+    async remove(memberId: string): Promise<void> {
+        await this.query(
+            "DELETE FROM group_members WHERE id = $1",
+            [memberId]
+        );
+    }
+
     async removeMember(groupId: string, userId: string): Promise<void> {
         await this.query(
             "DELETE FROM group_members WHERE group_id = $1 AND user_id = $2",

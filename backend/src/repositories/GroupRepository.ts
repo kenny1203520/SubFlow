@@ -72,4 +72,18 @@ export class GroupRepository extends BaseRepository {
         );
         return res.rows;
     }
+
+    async update(id: string, data: Partial<GroupRow>): Promise<GroupRow | null> {
+        const keys = Object.keys(data).filter(k => k !== 'id' && k !== 'created_at' && k !== 'created_by');
+        if (keys.length === 0) return this.findById(id);
+
+        const setClause = keys.map((k, i) => `${k} = $${i + 2}`).join(', ');
+        const values = keys.map(k => (data as any)[k]);
+
+        const res = await this.query(
+            `UPDATE groups SET ${setClause}, updated_at = NOW() WHERE id = $1 RETURNING *`,
+            [id, ...values]
+        );
+        return res.rows[0] || null;
+    }
 }

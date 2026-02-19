@@ -47,7 +47,16 @@ router.post("/signup", async (req, res) => {
         const sessionCookie = lucia.createSessionCookie(session.id);
 
         res.setHeader("Set-Cookie", sessionCookie.serialize());
-        return res.status(201).json({ success: true, message: "Signup successful. Please verify your email." });
+        return res.status(201).json({
+            success: true,
+            user: {
+                id: userId,
+                username: username,
+                email: email,
+                is_verified: false
+            },
+            message: "Signup successful. Please verify your email."
+        });
     } catch (error: any) {
         if (error.code === '23505') {
             return res.status(400).send("Username or email already exists");

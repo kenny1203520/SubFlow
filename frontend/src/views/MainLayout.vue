@@ -145,10 +145,10 @@ const logout = async () => {
                         class="w-10 h-10 rounded-xl object-cover border border-white/50" />
                     <div v-else
                         class="w-10 h-10 rounded-xl bg-primary-100 text-primary-600 flex items-center justify-center font-bold text-lg border border-white/50">
-                        {{ authStore.user.username[0].toUpperCase() }}
+                        {{ authStore.user?.username?.[0]?.toUpperCase() || '?' }}
                     </div>
 
-                    <div class="flex-1 min-w-0 hide-on-collapsed">
+                    <div class="flex-1 min-w-0 hide-on-collapsed" v-if="authStore.user">
                         <p class="text-sm font-bold truncate text-slate-800">{{ authStore.user.username }}</p>
                         <p class="text-xs text-slate-500 truncate">Free Plan</p>
                     </div>
@@ -199,7 +199,7 @@ const logout = async () => {
                             class="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" />
                         <div v-else
                             class="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold border-2 border-white shadow-sm">
-                            {{ authStore.user?.username[0].toUpperCase() }}
+                            {{ authStore.user?.username?.[0]?.toUpperCase() || '?' }}
                         </div>
                     </router-link>
                 </div>
