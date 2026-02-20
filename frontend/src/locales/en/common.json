@@ -26,7 +26,9 @@
         "uploading": "Uploading...",
         "invite": "Invite",
         "update": "Update Password",
-        "viewAll": "View All"
+        "viewAll": "View All",
+        "verify": "Verify & Enable",
+        "confirm": "Confirm"
     },
     "status": {
         "loading": "Loading...",

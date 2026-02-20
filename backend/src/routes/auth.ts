@@ -7,7 +7,7 @@ import { MailService } from "../services/MailService";
 import crypto from "crypto";
 import { z } from "zod";
 import { authLimiter } from "../middleware/rateLimit";
-import { TOTP } from "otplib";
+import { verify } from "otplib";
 import { logActivity, getDeviceFingerprint } from "../utils/audit";
 
 const router = Router();
@@ -314,9 +314,7 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         }
 
         // TOTP verification
-        const totp = new TOTP();
-        const result = await totp.verify(code, { secret: settings.two_factor_secret });
-        const isValid = result?.valid;
+        const isValid = verify({ token: code, secret: settings.two_factor_secret });
         
         if (!isValid) {
              await logActivity(userId, 'auth', '2fa_failed', 'high', 'Invalid 2FA code', req);

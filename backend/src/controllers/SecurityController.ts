@@ -29,8 +29,8 @@ export class SecurityController extends BaseController {
     async generate2FASecret(cb: (res: any) => void) {
         try {
             const userId = this.socket.data.user.id;
-            const secret = await this.securityService.generate2FASecret(userId);
-            this.success(cb, { secret });
+            const result = await this.securityService.generate2FASecret(userId);
+            this.success(cb, { secret: result.secret, qrDataUrl: result.qrDataUrl });
         } catch (error: any) {
             this.error(cb, error.message || "Failed to generate secret");
         }
