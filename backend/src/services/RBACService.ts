@@ -6,10 +6,6 @@ export class RBACService {
     private memberRepo = new GroupMemberRepository();
 
     async hasPermission(userId: string, groupId: string, permission: string): Promise<boolean> {
-        // Legacy check for 'admin' role which usually has all permissions
-        const legacyRole = await this.memberRepo.checkRole(groupId, userId);
-        if (legacyRole === 'admin') return true;
-
         const permissions = await this.rbacRepo.getMemberPermissions(groupId, userId);
         return permissions.includes(permission);
     }

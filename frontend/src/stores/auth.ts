@@ -11,7 +11,6 @@ export const useAuthStore = defineStore('auth', {
         systemRoles: (state) => state.user?.system_roles ?? [],
         permissions: (state) => state.user?.permissions ?? [],
         hasPermission: (state) => (scope: string, action: string, resource: string) => {
-            if (state.user?.system_roles?.includes('Administrator')) return true;
             return state.user?.permissions?.includes(`${scope}:${action}:${resource}`);
         }
     },
