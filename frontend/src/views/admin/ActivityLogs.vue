@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import http from '../../http';
 import { useUIStore } from '../../stores/ui';
@@ -41,6 +41,38 @@ const filterEndDate = ref('');
 const actionOptions = ref<string[]>([]);
 const riskOptions = ref<string[]>([]);
 const behaviorOptions = ref<string[]>([]);
+
+// Refresh
+const autoRefresh = ref(false);
+const refreshInterval = ref(30000);
+let refreshTimer: any = null;
+
+const intervalOptions = [
+    { label: '1s', value: 1000 },
+    { label: '3s', value: 3000 },
+    { label: '5s', value: 5000 },
+    { label: '15s', value: 15000 },
+    { label: '30s', value: 30000 },
+    { label: '60s', value: 60000 },
+    { label: '3m', value: 180000 },
+    { label: '5m', value: 300000 },
+    { label: '10m', value: 600000 },
+    { label: '15m', value: 900000 }
+];
+
+const startTimer = () => {
+    stopTimer();
+    refreshTimer = setInterval(() => {
+        if (!loading.value) fetchLogs();
+    }, refreshInterval.value);
+};
+
+const stopTimer = () => {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+};
 
 // Detail modal
 const detailModal = ref(false);
@@ -118,7 +150,7 @@ const getRiskClasses = (level: string) => {
     }
 };
 
-const formatDate = (d: string) => new Date(d).toLocaleString();
+const formatDate = (d: string) => d ? new Date(d).toLocaleString() : 'N/A';
 
 const formatUserAgent = (uaString: string) => {
     if (!uaString) return 'Unknown';
@@ -144,15 +176,52 @@ const formatDetails = (details: any) => {
     } catch { return String(details); }
 };
 
+watch(autoRefresh, (val) => {
+    if (val) startTimer();
+    else stopTimer();
+});
+
+watch(refreshInterval, () => {
+    if (autoRefresh.value) startTimer();
+});
+
 onMounted(fetchLogs);
+onUnmounted(stopTimer);
 </script>
 
 <template>
     <div class="space-y-6">
-        <div>
-            <h2 class="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-600 bg-clip-text text-transparent">
-                {{ t('admin.logs.title') }}</h2>
-            <p class="text-neutral-400 mt-1">{{ t('admin.logs.subtitle') }}</p>
+        <div class="flex flex-col md:flex-row md:items-end justify-between gap-4">
+            <div>
+                <h2 class="text-2xl font-bold bg-gradient-to-r from-red-400 to-rose-600 bg-clip-text text-transparent">
+                    {{ t('admin.logs.title') }}</h2>
+                <p class="text-neutral-400 mt-1">{{ t('admin.logs.subtitle') }}</p>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-sm text-neutral-400 font-medium">
+                    <div class="flex items-center gap-2">
+                        <input type="checkbox" v-model="autoRefresh" id="auto-refresh-admin"
+                            class="rounded border-neutral-700 bg-neutral-800 text-red-500 focus:ring-red-500" />
+                        <label for="auto-refresh-admin" class="cursor-pointer">{{ t('common.actions.autoRefresh')
+                            }}</label>
+                    </div>
+                    <select v-if="autoRefresh" v-model="refreshInterval"
+                        class="bg-neutral-900 border border-neutral-800 rounded-lg text-xs py-1 px-2 focus:ring-1 focus:ring-red-500 outline-none text-neutral-300">
+                        <option v-for="opt in intervalOptions" :key="opt.value" :value="opt.value">
+                            {{ t(`common.intervals.${opt.label}`) }}
+                        </option>
+                    </select>
+                </div>
+                <button @click="fetchLogs" :disabled="loading"
+                    class="btn btn-secondary flex items-center gap-2 py-2 border-neutral-800 bg-neutral-900 text-neutral-300">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" :class="{ 'animate-spin': loading }"
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    {{ t('common.actions.refresh') }}
+                </button>
+            </div>
         </div>
 
         <!-- Filters -->

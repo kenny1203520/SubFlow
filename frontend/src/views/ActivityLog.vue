@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import MainLayout from './MainLayout.vue';
 import http from '../http';
 import { useI18n } from 'vue-i18n';
@@ -11,6 +11,37 @@ const error = ref('');
 const page = ref(1);
 const limit = 20;
 const total = ref(0);
+
+const autoRefresh = ref(false);
+const refreshInterval = ref(30000);
+let refreshTimer: any = null;
+
+const intervalOptions = [
+    { label: '1s', value: 1000 },
+    { label: '3s', value: 3000 },
+    { label: '5s', value: 5000 },
+    { label: '15s', value: 15000 },
+    { label: '30s', value: 30000 },
+    { label: '60s', value: 60000 },
+    { label: '3m', value: 180000 },
+    { label: '5m', value: 300000 },
+    { label: '10m', value: 600000 },
+    { label: '15m', value: 900000 }
+];
+
+const startTimer = () => {
+    stopTimer();
+    refreshTimer = setInterval(() => {
+        if (!loading.value) fetchLogs();
+    }, refreshInterval.value);
+};
+
+const stopTimer = () => {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
+        refreshTimer = null;
+    }
+};
 
 const fetchLogs = async () => {
     loading.value = true;
@@ -49,9 +80,20 @@ const prevPage = () => {
     }
 };
 
+watch(autoRefresh, (val) => {
+    if (val) startTimer();
+    else stopTimer();
+});
+
+watch(refreshInterval, () => {
+    if (autoRefresh.value) startTimer();
+});
+
 onMounted(() => {
     fetchLogs();
 });
+
+onUnmounted(stopTimer);
 
 const getRiskColor = (level: string) => {
     switch (level) {
@@ -66,11 +108,35 @@ const getRiskColor = (level: string) => {
 <template>
     <MainLayout>
         <div class="activity-log-view animate-fade-in max-w-4xl mx-auto">
-            <header class="mb-8">
-                <h1 class="text-3xl font-extrabold text-slate-800">{{ t('activity.title', 'Activity Log') }}</h1>
-                <p class="text-slate-500">
-                    {{ t('activity.subtitle', 'View your recent account activity and security events.') }}
-                </p>
+            <header class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                <div>
+                    <h1 class="text-3xl font-extrabold text-slate-800">{{ t('activity.title', 'Activity Log') }}</h1>
+                    <p class="text-slate-500">
+                        {{ t('activity.subtitle', 'View your recent account activity and security events.') }}
+                    </p>
+                </div>
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                        <input type="checkbox" v-model="autoRefresh" id="auto-refresh"
+                            class="rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+                        <label for="auto-refresh" class="cursor-pointer">{{ t('common.actions.autoRefresh') }}</label>
+                        <select v-if="autoRefresh" v-model="refreshInterval"
+                            class="ml-2 bg-slate-50 border border-slate-200 rounded-lg text-xs py-1 px-2 focus:ring-1 focus:ring-primary-500 outline-none text-primary-700">
+                            <option v-for="opt in intervalOptions" :key="opt.value" :value="opt.value">
+                                {{ t(`common.intervals.${opt.label}`) }}
+                            </option>
+                        </select>
+                    </div>
+                    <button @click="fetchLogs" :disabled="loading"
+                        class="btn btn-secondary flex items-center gap-2 py-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" :class="{ 'animate-spin': loading }"
+                            fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        {{ t('common.actions.refresh') }}
+                    </button>
+                </div>
             </header>
 
             <div class="glass-panel p-6 min-h-[400px]">

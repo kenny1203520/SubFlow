@@ -33,6 +33,8 @@
         "confirm": "Confirm",
         "ok": "OK",
         "close": "Close",
+        "refresh": "Refresh",
+        "autoRefresh": "Auto Refresh",
         "deleteConfirm": "Are you sure you want to delete this?"
     },
     "status": {
@@ -80,5 +82,17 @@
     },
     "optional": "Optional",
     "you": "You",
-    "noData": "No Data"
+    "noData": "No Data",
+    "intervals": {
+        "1s": "1s",
+        "3s": "3s",
+        "5s": "5s",
+        "15s": "15s",
+        "30s": "30s",
+        "60s": "1m",
+        "3m": "3m",
+        "5m": "5m",
+        "10m": "10m",
+        "15m": "15m"
+    }
 }
