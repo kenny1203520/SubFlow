@@ -3,8 +3,10 @@ import { ref, onMounted } from 'vue';
 import { socket } from '../socket';
 import { useI18n } from 'vue-i18n';
 import MainLayout from './MainLayout.vue';
+import { useUIStore } from '../stores/ui';
 
 const { t } = useI18n();
+const ui = useUIStore();
 const services = ref<any[]>([]);
 const loading = ref(true);
 const searchQuery = ref('');
@@ -57,14 +59,14 @@ const openEditModal = (service: any) => {
     showModal.value = true;
 };
 
-const deleteService = (id: string) => {
-    if (!confirm(t('common.actions.deleteConfirm', 'Are you sure you want to delete this service?'))) return;
+const deleteService = async (id: string) => {
+    if (!await ui.confirm(t('common.actions.deleteConfirm', 'Are you sure you want to delete this service?'))) return;
 
     socket.emit('service:delete', { id }, (res: any) => {
         if (res.status === 'ok') {
             fetchServices();
         } else {
-            alert(res.message || 'Failed to delete service');
+            ui.alert(res.message || 'Failed to delete service');
         }
     });
 };
@@ -82,7 +84,7 @@ const handleSubmit = () => {
             showModal.value = false;
             fetchServices();
         } else {
-            alert(res.message || 'Operation failed');
+            ui.alert(res.message || 'Operation failed');
         }
     });
 };

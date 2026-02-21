@@ -2,9 +2,11 @@
 import { ref, onMounted } from 'vue';
 import { socket } from '../socket';
 import MainLayout from './MainLayout.vue';
+import { useUIStore } from '../stores/ui';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
+const ui = useUIStore();
 const subscriptions = ref<any[]>([]);
 const loading = ref(true);
 
@@ -25,7 +27,7 @@ const updateStatus = (subscriptionId: string, status: string) => {
         if (res.status === 'ok') {
             fetchData();
         } else {
-            alert(res.message);
+            ui.alert(res.message);
         }
     });
 };
@@ -107,7 +109,7 @@ onMounted(() => {
                             </svg>
                             {{ t('subscriptions.nextPayment') }}: <span class="font-semibold text-slate-600">{{
                                 sub.next_payment_date ? new Date(sub.next_payment_date).toLocaleDateString() : 'N/A'
-                            }}</span>
+                                }}</span>
                         </p>
                     </div>
 

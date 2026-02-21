@@ -28,7 +28,8 @@
         "update": "更新密碼",
         "viewAll": "查看全部",
         "verify": "驗證並啟用",
-        "confirm": "確認"
+        "confirm": "確認",
+        "deleteConfirm": "您確定要刪除嗎？"
     },
     "status": {
         "loading": "加載中...",

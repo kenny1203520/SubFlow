@@ -4,16 +4,31 @@ import { useI18n } from 'vue-i18n';
 import http from '../http';
 import { useAuthStore } from '../stores/auth';
 import MainLayout from './MainLayout.vue';
+import { useUIStore } from '../stores/ui';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
+const ui = useUIStore();
 
 const isEditing = ref(false);
 const loading = ref(false);
 const uploadLoading = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
 
-const profile = ref({
+interface UserProfile {
+    first_name: string;
+    middle_name: string;
+    last_name: string;
+    nickname: string;
+    birthday: string;
+    phone: string;
+    id_number: string;
+    passport_number: string;
+    address: string;
+    avatar_url: string;
+}
+
+const profile = ref<UserProfile>({
     first_name: '',
     middle_name: '',
     last_name: '',
@@ -44,7 +59,7 @@ const fetchProfile = async () => {
                 middle_name: p.middle_name || '',
                 last_name: p.last_name || '',
                 nickname: p.nickname || '',
-                birthday: p.birthday ? new Date(p.birthday).toISOString().split('T')[0] : '',
+                birthday: p.birthday ? new Date(p.birthday).toISOString().slice(0, 10) : '',
                 phone: p.phone || '',
                 id_number: p.id_number || '',
                 passport_number: p.passport_number || '',
@@ -91,7 +106,7 @@ const handleFileChange = async (event: Event) => {
         }
     } catch (err) {
         console.error(err);
-        alert(t('profile.messages.uploadFailed', 'Upload failed'));
+        ui.alert(t('profile.messages.uploadFailed', 'Upload failed'));
     } finally {
         uploadLoading.value = false;
     }
@@ -119,9 +134,9 @@ const saveProfile = async () => {
             authStore.user.avatar_url = profile.value.avatar_url;
         }
 
-        alert(t('profile.messages.updateSuccess', 'Profile updated successfully'));
+        ui.alert(t('profile.messages.updateSuccess', 'Profile updated successfully'));
     } catch (err) {
-        alert(t('profile.messages.updateFailed', 'Update failed'));
+        ui.alert(t('profile.messages.updateFailed', 'Update failed'));
     } finally {
         loading.value = false;
     }

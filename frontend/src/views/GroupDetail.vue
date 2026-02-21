@@ -7,9 +7,11 @@ import { useI18n } from 'vue-i18n';
 import MainLayout from './MainLayout.vue';
 import AddExpenseModal from '../components/AddExpenseModal.vue';
 import FileManager from '../components/FileManager.vue';
+import { useUIStore } from '../stores/ui';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
+const ui = useUIStore();
 const route = useRoute();
 const router = useRouter();
 const groupId = route.params.id as string;
@@ -78,7 +80,7 @@ const inviteMember = () => {
                 inviteValue.value = '';
                 fetchData(true);
             } else {
-                alert(res.message);
+                ui.alert(res.message);
             }
         });
     } else {
@@ -86,10 +88,10 @@ const inviteMember = () => {
         payload[inviteType.value] = inviteValue.value;
         socket.emit('group:add_member', payload, (res: any) => {
             if (res.status === 'ok') {
-                alert(t('groups.inviteSent', 'Invitation sent!'));
+                ui.alert(t('groups.inviteSent', 'Invitation sent!'));
                 inviteValue.value = '';
             } else {
-                alert(res.message);
+                ui.alert(res.message);
             }
         });
     }
@@ -104,32 +106,32 @@ const bindAccount = (memberId: string) => {
     else payload.username = input;
 
     socket.emit('group:bind_member_invite', payload, (res: any) => {
-        if (res.status === 'ok') alert(t('groups.inviteSent'));
-        else alert(res.message);
+        if (res.status === 'ok') ui.alert(t('groups.inviteSent'));
+        else ui.alert(res.message);
     });
 };
 
-const settleExpense = (expenseId: string, userId: string) => {
-    if (!confirm(t('groups.confirmSettle'))) return;
+const settleExpense = async (expenseId: string, userId: string) => {
+    if (!await ui.confirm(t('groups.confirmSettle'))) return;
     socket.emit('expense:settle', { expenseId, userId }, (res: any) => {
         if (res.status === 'ok') fetchData(true);
-        else alert(res.message);
+        else ui.alert(res.message);
     });
 };
 
-const deleteGroup = () => {
-    if (!confirm(t('groups.confirmDelete'))) return;
+const deleteGroup = async () => {
+    if (!await ui.confirm(t('groups.confirmDelete'))) return;
     socket.emit('group:delete', { groupId }, (res: any) => {
         if (res.status === 'ok') router.push('/groups');
-        else alert(res.message);
+        else ui.alert(res.message);
     });
 };
 
-const leaveGroup = () => {
-    if (!confirm(t('groups.confirmLeave'))) return;
+const leaveGroup = async () => {
+    if (!await ui.confirm(t('groups.confirmLeave'))) return;
     socket.emit('group:leave', { groupId }, (res: any) => {
         if (res.status === 'ok') router.push('/groups');
-        else alert(res.message);
+        else ui.alert(res.message);
     });
 };
 
@@ -148,7 +150,7 @@ const saveSettings = () => {
             group.value = res.group;
             isEditing.value = false;
         } else {
-            alert(res.message);
+            ui.alert(res.message);
         }
     });
 };
@@ -183,7 +185,7 @@ const openPermissionsModal = (member: any) => {
 
 const savePermissions = () => {
     if (!selectedMember.value) return;
-    
+
     socket.emit('group:update_member_permissions', {
         groupId,
         memberId: selectedMember.value.member_id,
@@ -193,32 +195,32 @@ const savePermissions = () => {
             showPermissionsModal.value = false;
             fetchData(true);
         } else {
-            alert(res.message);
+            ui.alert(res.message);
         }
     });
 };
 
-const cancelInvite = (memberId: string) => {
-    if (!confirm(t('groups.confirmKick'))) return; 
+const cancelInvite = async (memberId: string) => {
+    if (!await ui.confirm(t('groups.confirmKick'))) return;
     socket.emit('group:cancel_invite', { groupId, memberId }, (res: any) => {
         if (res.status === 'ok') fetchData(true);
-        else alert(res.message);
+        else ui.alert(res.message);
     });
 };
 
-const updateMemberRole = (memberId: string, role: string) => {
-    if (!confirm(t('groups.confirmRoleChange'))) return;
+const updateMemberRole = async (memberId: string, role: string) => {
+    if (!await ui.confirm(t('groups.confirmRoleChange'))) return;
     socket.emit('group:update_member_role', { groupId, memberId, role }, (res: any) => {
         if (res.status === 'ok') fetchData(true);
-        else alert(res.message);
+        else ui.alert(res.message);
     });
 };
 
-const removeMember = (memberId: string) => {
-    if (!confirm(t('groups.confirmKick'))) return;
+const removeMember = async (memberId: string) => {
+    if (!await ui.confirm(t('groups.confirmKick'))) return;
     socket.emit('group:remove_member', { groupId, memberId }, (res: any) => {
         if (res.status === 'ok') fetchData(true);
-        else alert(res.message);
+        else ui.alert(res.message);
     });
 };
 </script>
@@ -235,7 +237,7 @@ const removeMember = (memberId: string) => {
             <p class="text-red-500 font-bold text-lg mb-2">{{ t('common.status.error') }}</p>
             <p class="text-slate-600">{{ error }}</p>
             <button @click="router.push('/groups')" class="mt-4 btn btn-primary">{{ t('groups.backToGroups')
-                }}</button>
+            }}</button>
         </div>
 
         <div class="group-detail animate-fade-in" v-else-if="group">
@@ -258,7 +260,7 @@ const removeMember = (memberId: string) => {
                             class="w-full h-full object-cover" />
                         <span v-else class="text-2xl font-bold text-primary-500">{{
                             group.name.charAt(0).toUpperCase()
-                            }}</span>
+                        }}</span>
                     </div>
 
                     <div>
@@ -318,13 +320,13 @@ const removeMember = (memberId: string) => {
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div class="glass-panel p-4 flex flex-col justify-center">
                             <span class="text-xs uppercase font-bold text-slate-400 mb-1">{{ t('groups.planName')
-                                }}</span>
+                            }}</span>
                             <span class="text-lg font-bold text-slate-800">{{ group.plan_name || '---' }}</span>
                         </div>
                         <div class="glass-panel p-4 flex flex-col justify-center">
                             <span class="text-xs uppercase font-bold text-slate-400 mb-1">{{
                                 t('groups.billingMethod')
-                                }}</span>
+                            }}</span>
                             <span class="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 {{ t(`groups.methods.${group.billing_method}`) }}
                             </span>
@@ -386,13 +388,13 @@ const removeMember = (memberId: string) => {
                                         class="glass-card p-4 border-l-4 border-yellow-400">
                                         <div class="text-sm mb-2">
                                             <span class="font-bold">{{ split.temp_name || split.real_username
-                                                }}</span>
+                                            }}</span>
                                             <span class="text-slate-400 mx-1">{{ t('groups.owe') }}</span>
                                             <span class="font-bold">{{ split.payer_name }}</span>
                                         </div>
                                         <div class="flex justify-between items-end">
                                             <span class="text-xl font-bold text-red-500">$ {{ split.amount_owed
-                                                }}</span>
+                                            }}</span>
                                             <button v-if="canSettle(split)"
                                                 @click="settleExpense(split.expense_id, split.user_id)"
                                                 class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200 font-bold">
@@ -414,13 +416,14 @@ const removeMember = (memberId: string) => {
                 <!-- TAB: MEMBERS -->
                 <div v-show="currentTab === 'members'" class="animate-fade-in">
                     <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xl font-bold text-slate-800">{{ t('groups.members') }} ({{ activeMembers.length }})</h2>
+                        <h2 class="text-xl font-bold text-slate-800">{{ t('groups.members') }} ({{ activeMembers.length
+                            }})</h2>
                     </div>
 
                     <!-- Enhanced Add Member Area -->
                     <div class="glass-panel p-6 mb-8 border border-primary-100">
                         <h3 class="text-sm font-bold text-primary-700 uppercase mb-4">{{ t('groups.inviteNewMember')
-                            }}</h3>
+                        }}</h3>
                         <div class="flex flex-col md:flex-row gap-4 items-end">
                             <div class="flex-1 w-full">
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{{
@@ -453,19 +456,25 @@ const removeMember = (memberId: string) => {
                     <div v-if="pendingMembers.length > 0" class="mb-8">
                         <h3 class="text-md font-bold text-slate-500 mb-4">{{ t('groups.pendingInvitations') }}</h3>
                         <div class="space-y-3">
-                            <div v-for="member in pendingMembers" :key="member.member_id" class="glass-card p-4 flex items-center justify-between opacity-75">
+                            <div v-for="member in pendingMembers" :key="member.member_id"
+                                class="glass-card p-4 flex items-center justify-between opacity-75">
                                 <div class="flex items-center gap-4">
-                                     <div class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                                    <div
+                                        class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+                                            viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
                                         </svg>
                                     </div>
                                     <div>
-                                        <p class="font-bold text-slate-700">{{ member.temp_name || member.username }}</p>
+                                        <p class="font-bold text-slate-700">{{ member.temp_name || member.username }}
+                                        </p>
                                         <p class="text-xs text-slate-500">{{ member.email }}</p>
                                     </div>
                                 </div>
-                                <button v-if="canManageMembers" @click="cancelInvite(member.member_id)" class="text-xs text-red-500 hover:text-red-700 font-bold">
+                                <button v-if="canManageMembers" @click="cancelInvite(member.member_id)"
+                                    class="text-xs text-red-500 hover:text-red-700 font-bold">
                                     {{ t('groups.cancelInvite') }}
                                 </button>
                             </div>
@@ -478,12 +487,13 @@ const removeMember = (memberId: string) => {
                             class="glass-card p-4 flex items-center gap-4">
                             <div
                                 class="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-lg">
-                                <img v-if="member.avatar_url" :src="member.avatar_url" class="w-full h-full rounded-full object-cover" /> 
+                                <img v-if="member.avatar_url" :src="member.avatar_url"
+                                    class="w-full h-full rounded-full object-cover" />
                                 <span v-else>{{ (member.username || member.temp_name || '?')[0].toUpperCase() }}</span>
                             </div>
                             <div class="flex-1">
                                 <p class="font-bold text-slate-800 text-lg">{{ member.username || member.temp_name
-                                    }}</p>
+                                }}</p>
                                 <div class="flex items-center gap-2 text-sm">
                                     <span class="uppercase font-bold text-xs"
                                         :class="member.role === 'admin' ? 'text-primary-600' : 'text-slate-500'">
@@ -500,12 +510,16 @@ const removeMember = (memberId: string) => {
 
                             <!-- Actions -->
                             <div class="flex items-center gap-2">
-                                <button v-if="canManageMembers" @click="openPermissionsModal(member)" class="p-2 text-slate-400 hover:text-primary-600 transition-colors" :title="t('groups.managePermissions')">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                                <button v-if="canManageMembers" @click="openPermissionsModal(member)"
+                                    class="p-2 text-slate-400 hover:text-primary-600 transition-colors"
+                                    :title="t('groups.managePermissions')">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+                                        viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
                                     </svg>
                                 </button>
-                                
+
                                 <button v-if="member.temp_name" @click="bindAccount(member.member_id)"
                                     class="p-2 text-primary-500 hover:bg-primary-50 rounded-lg transition-colors"
                                     :title="t('groups.bindAccount')">
@@ -628,27 +642,30 @@ const removeMember = (memberId: string) => {
         <div v-if="showPermissionsModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
             <div class="bg-white rounded-2xl w-full max-w-md p-6 animate-scale-in">
                 <h3 class="text-xl font-bold text-slate-800 mb-4">{{ t('groups.permissionsModalTitle') }}</h3>
-                
+
                 <div class="space-y-4 mb-6">
                     <div class="flex items-center justify-between">
-                         <span class="font-bold text-slate-700">{{ t('groups.perm_add_member') }}</span>
-                         <input type="checkbox" v-model="editingPermissions.can_add_member" class="toggle toggle-primary" />
+                        <span class="font-bold text-slate-700">{{ t('groups.perm_add_member') }}</span>
+                        <input type="checkbox" v-model="editingPermissions.can_add_member"
+                            class="toggle toggle-primary" />
                     </div>
-                     <div class="flex items-center justify-between">
-                         <span class="font-bold text-slate-700">{{ t('groups.perm_add_expense') }}</span>
-                         <input type="checkbox" v-model="editingPermissions.can_add_expense" class="toggle toggle-primary" />
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-slate-700">{{ t('groups.perm_add_expense') }}</span>
+                        <input type="checkbox" v-model="editingPermissions.can_add_expense"
+                            class="toggle toggle-primary" />
                     </div>
                 </div>
 
                 <div class="flex justify-end gap-3">
-                    <button @click="showPermissionsModal = false" class="btn btn-ghost">{{ t('common.actions.cancel') }}</button>
+                    <button @click="showPermissionsModal = false" class="btn btn-ghost">{{ t('common.actions.cancel')
+                        }}</button>
                     <button @click="savePermissions" class="btn btn-primary">{{ t('groups.savePermissions') }}</button>
                 </div>
             </div>
         </div>
 
-        <AddExpenseModal v-if="showAddExpense" :group-id="groupId" :members="activeMembers" @close="showAddExpense = false"
-            @added="handleExpenseAdded" />
+        <AddExpenseModal v-if="showAddExpense" :group-id="groupId" :members="activeMembers"
+            @close="showAddExpense = false" @added="handleExpenseAdded" />
 
     </MainLayout>
 </template>

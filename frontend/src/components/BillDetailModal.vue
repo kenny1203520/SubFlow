@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { socket } from '../socket';
+import { useUIStore } from '../stores/ui';
 
 const props = defineProps<{
     bill: any;
@@ -12,6 +13,7 @@ const props = defineProps<{
 const emit = defineEmits(['close', 'updated']);
 
 const { t } = useI18n();
+const ui = useUIStore();
 
 const editingSplitId = ref<string | null>(null);
 const editAmount = ref<number>(0);
@@ -37,7 +39,7 @@ const saveSplit = () => {
             emit('updated');
             cancelEdit();
         } else {
-            alert(res.message);
+            ui.alert(res.message);
         }
     });
 };

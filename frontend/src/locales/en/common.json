@@ -28,7 +28,8 @@
         "update": "Update Password",
         "viewAll": "View All",
         "verify": "Verify & Enable",
-        "confirm": "Confirm"
+        "confirm": "Confirm",
+        "deleteConfirm": "Are you sure you want to delete this?"
     },
     "status": {
         "loading": "Loading...",

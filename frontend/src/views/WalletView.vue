@@ -5,8 +5,10 @@ import { socket } from '../socket';
 import MainLayout from './MainLayout.vue';
 import WalletCard from '../components/WalletCard.vue';
 import DepositModal from '../components/DepositModal.vue';
+import { useUIStore } from '../stores/ui';
 
 const { t } = useI18n();
+const ui = useUIStore();
 const wallets = ref<any[]>([]);
 const transactions = ref<any[]>([]);
 const loading = ref(true);
@@ -68,10 +70,10 @@ const submitDeposit = (amount: number) => {
     socket.emit('wallet:deposit', { amount, currency: depositWallet.value.currency }, (res: any) => {
         showDepositModal.value = false;
         if (res.status === 'ok') {
-            alert(t('wallet.success'));
+            ui.alert(t('wallet.success'));
             fetchWallets(); // Refresh balance
         } else {
-            alert(res.message || t('wallet.failed'));
+            ui.alert(res.message || t('wallet.failed'));
         }
     });
 };
@@ -91,7 +93,7 @@ onMounted(() => {
             <header>
                 <h1 class="text-3xl font-extrabold text-slate-800">{{ t('wallet.wallet', 'My Wallets') }}</h1>
                 <p class="text-slate-500 text-sm mt-1">{{ t('wallet.walletDesc', 'Manage your wallets and transactions')
-                }}</p>
+                    }}</p>
             </header>
 
             <!-- Loading State -->
