@@ -182,7 +182,8 @@ const logout = async () => {
 
                     <div class="flex-1 min-w-0 hide-on-collapsed" v-if="authStore.user">
                         <p class="text-sm font-bold truncate text-slate-800">{{ authStore.user.username }}</p>
-                        <p class="text-xs text-slate-500 truncate">Free Plan</p>
+                        <p class="text-xs text-slate-500 truncate">{{ authStore.systemRoles.join(', ') }}
+                        </p>
                     </div>
 
                     <button @click="logout"

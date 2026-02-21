@@ -125,6 +125,12 @@ router.post("/signup", authLimiter, async (req, res) => {
             [userId]
         );
 
+        // Assign 'Guest' role
+        await pool.query(
+            "INSERT INTO user_roles (user_id, role_id) SELECT $1, id FROM system_roles WHERE name = 'Guest'",
+            [userId]
+        );
+
         await MailService.sendVerificationEmail(email, token);
 
         const session = await lucia.createSession(userId, {
@@ -549,6 +555,21 @@ router.get("/verify-email/:token", async (req, res) => {
 
         await pool.query("BEGIN");
         await pool.query("UPDATE users SET is_verified = TRUE WHERE id = $1", [verificationToken.user_id]);
+        
+        // Promote 'Guest' to 'User'
+        // First, get the role IDs
+        const guestRoleRes = await pool.query("SELECT id FROM system_roles WHERE name = 'Guest'");
+        const userRoleRes = await pool.query("SELECT id FROM system_roles WHERE name = 'User'");
+        
+        if (guestRoleRes.rows[0] && userRoleRes.rows[0]) {
+            const guestRoleId = guestRoleRes.rows[0].id;
+            const userRoleId = userRoleRes.rows[0].id;
+            
+            // Delete Guest role and insert User role
+            await pool.query("DELETE FROM user_roles WHERE user_id = $1 AND role_id = $2", [verificationToken.user_id, guestRoleId]);
+            await pool.query("INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2) ON CONFLICT DO NOTHING", [verificationToken.user_id, userRoleId]);
+        }
+
         await pool.query("DELETE FROM email_verification_tokens WHERE id = $1", [verificationToken.id]);
         await pool.query("COMMIT");
 

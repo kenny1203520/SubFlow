@@ -2,10 +2,14 @@
 INSERT INTO system_roles (name, description, is_system_role)
 VALUES 
   ('Administrator', 'Full access to all system resources - has every permission automatically', true),
-  ('Support Agent', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true)
+  ('Support Agent', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true),
+  ('User', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true),
+  ('Guest', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true)
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed default permissions for all scopes
+
+-- System Permissions
 INSERT INTO permissions (scope, action, resource, description)
 VALUES
   ('system', 'read',   'stats',    'admin.permissions.system.read.stats'),
@@ -27,7 +31,12 @@ VALUES
   ('system', 'read',   'logs',     'admin.permissions.system.read.logs'),
   ('system', 'manage', 'roles',            'admin.permissions.system.manage.roles'),
   ('system', 'manage', 'user_roles',       'admin.permissions.system.manage.user_roles'),
-  ('system', 'manage', 'permissions_user', 'admin.permissions.system.manage.permissions_user'),
+  ('system', 'manage', 'permissions_user', 'admin.permissions.system.manage.permissions_user')
+ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
+
+-- Billing Permissions
+INSERT INTO permissions (scope, action, resource, description)
+VALUES
   ('billing','read',   'all',      'admin.permissions.billing.read.all'),
   ('billing','update', 'all',      'admin.permissions.billing.update.all')
 ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
