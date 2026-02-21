@@ -489,19 +489,45 @@ router.get("/user", async (req, res) => {
         res.setHeader("Set-Cookie", sessionCookie.serialize());
     }
 
-    // Fetch system roles for this user
+    // Fetch system roles and flattened permissions for this user
     let systemRoles: string[] = [];
+    let permissions: string[] = [];
     try {
         const rolesRes = await pool.query(
             `SELECT sr.name FROM user_roles ur JOIN system_roles sr ON ur.role_id = sr.id WHERE ur.user_id = $1`,
             [user.id]
         );
         systemRoles = rolesRes.rows.map((r: any) => r.name);
-    } catch { /* no roles */ }
+
+        // Fetch flattened permissions (direct + via roles)
+        const permsRes = await pool.query(
+            `SELECT DISTINCT p.scope, p.action, p.resource 
+             FROM (
+                -- Direct permissions
+                SELECT permission_id FROM permissions_user WHERE user_id = $1
+                UNION
+                -- Role-based permissions
+                SELECT psr.permission_id FROM user_roles ur 
+                JOIN permissions_system_role psr ON ur.role_id = psr.role_id 
+                WHERE ur.user_id = $1
+             ) up
+             JOIN permissions p ON up.permission_id = p.id`,
+            [user.id]
+        );
+        permissions = permsRes.rows.map((p: any) => `${p.scope}:${p.action}:${p.resource}`);
+        
+        // Special case for Administrator: if they have the role, give them all permissions if the query didn't already
+        if (systemRoles.includes('Administrator')) {
+            const allPermsRes = await pool.query('SELECT scope, action, resource FROM permissions');
+            permissions = [...new Set([...permissions, ...allPermsRes.rows.map((p: any) => `${p.scope}:${p.action}:${p.resource}`)])];
+        }
+
+    } catch (e) { console.error("Error fetching user perms/roles", e); }
 
     return res.status(200).json({
         ...user,
         system_roles: systemRoles,
+        permissions: permissions,
         isAdmin: systemRoles.length > 0
     });
 });

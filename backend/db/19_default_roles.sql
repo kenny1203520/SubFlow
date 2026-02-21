@@ -8,23 +8,28 @@ ON CONFLICT (name) DO NOTHING;
 -- Seed default permissions for all scopes
 INSERT INTO permissions (scope, action, resource, description)
 VALUES
-  ('system', 'create', 'users',    'Create new users'),
-  ('system', 'read',   'users',    'View user list and details'),
-  ('system', 'update', 'users',    'Update any user account'),
-  ('system', 'delete', 'users',    'Delete any user account'),
-  ('system', 'read',   'sessions', 'View all active sessions'),
-  ('system', 'delete', 'sessions', 'Revoke any user session'),
-  ('system', 'read',   'settings', 'View system settings'),
-  ('system', 'update', 'settings', 'Modify system settings'),
-  ('system', 'read',   'roles',    'View system roles'),
-  ('system', 'create', 'roles',    'Create system roles'),
-  ('system', 'update', 'roles',    'Update system roles'),
-  ('system', 'delete', 'roles',    'Delete system roles'),
-  ('system', 'create', 'ip_blocks','Block an IP address'),
-  ('system', 'delete', 'ip_blocks','Unblock an IP address'),
-  ('system', 'read',   'logs',     'View system activity logs'),
-  ('billing','read',   'all',      'View all billing records'),
-  ('billing','update', 'all',      'Modify billing records')
+  ('system', 'read',   'stats',    'permissions.system.read.stats'),
+  ('system', 'create', 'users',    'permissions.system.create.users'),
+  ('system', 'read',   'users',    'permissions.system.read.users'),
+  ('system', 'update', 'users',    'permissions.system.update.users'),
+  ('system', 'delete', 'users',    'permissions.system.delete.users'),
+  ('system', 'read',   'sessions', 'permissions.system.read.sessions'),
+  ('system', 'delete', 'sessions', 'permissions.system.delete.sessions'),
+  ('system', 'read',   'settings', 'permissions.system.read.settings'),
+  ('system', 'update', 'settings', 'permissions.system.update.settings'),
+  ('system', 'create', 'roles',    'permissions.system.create.roles'),
+  ('system', 'read',   'roles',    'permissions.system.read.roles'),
+  ('system', 'update', 'roles',    'permissions.system.update.roles'),
+  ('system', 'delete', 'roles',    'permissions.system.delete.roles'),
+  ('system', 'create', 'ip_blocks','permissions.system.create.ip_blocks'),
+  ('system', 'read',   'ip_blocks','permissions.system.read.ip_blocks'),
+  ('system', 'delete', 'ip_blocks','permissions.system.delete.ip_blocks'),
+  ('system', 'read',   'logs',     'permissions.system.read.logs'),
+  ('system', 'manage', 'roles',            'permissions.system.manage.roles'),
+  ('system', 'manage', 'user_roles',       'permissions.system.manage.user_roles'),
+  ('system', 'manage', 'permissions_user', 'permissions.system.manage.permissions_user'),
+  ('billing','read',   'all',      'permissions.billing.read.all'),
+  ('billing','update', 'all',      'permissions.billing.update.all')
 ON CONFLICT (scope, action, resource) DO NOTHING;
 
 -- Grant ALL permissions to the Administrator role

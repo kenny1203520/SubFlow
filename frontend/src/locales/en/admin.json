@@ -98,16 +98,94 @@
         "builtIn": "Built-in",
         "assignToUser": "User Role Assignment",
         "manageRoles": "Manage Roles",
+        "createRole": "Create Role",
+        "editRole": "Edit Role",
+        "roleName": "Role Name",
+        "namePlaceholder": "e.g. Moderator",
+        "description": "Description",
+        "descriptionPlaceholder": "What this role is for...",
         "managePermissions": "Manage Permissions",
+        "confirmDelete": "Are you sure you want to delete role '{name}'?",
+        "fetchFailed": "Failed to load roles",
+        "saveFailed": "Failed to save role",
+        "deleteFailed": "Failed to delete role",
+        "assignFailed": "Failed to update role assignment",
+        "permFailed": "Failed to update permission",
+        "manageUsers": "Manage Users",
+        "directPermissions": "Direct Permissions",
         "assign": "Assign",
         "assigned": "Assigned",
         "remove": "Remove",
         "grant": "Grant",
         "granted": "Granted",
-        "allScopes": "All",
-        "fetchFailed": "Failed to load roles",
-        "assignFailed": "Failed to update role assignment",
-        "permFailed": "Failed to update permission"
+        "allScopes": "All"
+    },
+    "logs": {
+        "title": "Activity Logs",
+        "subtitle": "View and filter all system activity logs.",
+        "filters": "Filters",
+        "clearFilters": "Clear Filters",
+        "allRiskLevels": "All Risk Levels",
+        "allActions": "All Actions",
+        "allBehaviors": "All Types",
+        "filterByUser": "User ID",
+        "date": "Date",
+        "user": "User",
+        "action": "Action",
+        "type": "Type",
+        "description": "Description",
+        "risk": "Risk",
+        "ip": "IP Address",
+        "device": "Device",
+        "userAgent": "User Agent",
+        "fingerprint": "Device Fingerprint",
+        "details": "Details",
+        "detail": "Log Detail",
+        "noLogs": "No activity logs found.",
+        "fetchFailed": "Failed to load activity logs.",
+        "pageInfo": "Page {current} of {total}"
+    },
+    "permissions": {
+        "system": {
+            "create": {
+                "users": "Create new users",
+                "roles": "Create system roles",
+                "ip_blocks": "Block an IP address"
+            },
+            "read": {
+                "stats": "View system statistics",
+                "users": "View user list and details",
+                "sessions": "View all active sessions",
+                "settings": "View system settings",
+                "roles": "View system roles",
+                "ip_blocks": "View blocked IP addresses",
+                "logs": "View system activity logs"
+            },
+            "update": {
+                "users": "Update any user account",
+                "settings": "Modify system settings",
+                "roles": "Update system roles"
+            },
+            "delete": {
+                "users": "Delete any user account",
+                "sessions": "Revoke any user session",
+                "roles": "Delete system roles",
+                "ip_blocks": "Unblock an IP address"
+            },
+            "manage": {
+                "roles": "Create, update, and delete system roles",
+                "user_roles": "Assign and remove roles for users",
+                "permissions_user": "Assign and remove direct permissions for users"
+            }
+        },
+        "billing": {
+            "read": {
+                "all": "View all billing records"
+            },
+            "update": {
+                "all": "Modify billing records"
+            }
+        }
     },
     "settings": {
         "title": "System Settings",

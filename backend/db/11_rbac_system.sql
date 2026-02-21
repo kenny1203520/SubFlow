@@ -55,6 +55,17 @@ CREATE TABLE IF NOT EXISTS permissions_group_role (
     PRIMARY KEY (role_id, permission_id)
 );
 
+-- User Permissions (Direct assignment of granular permissions to users)
+CREATE TABLE IF NOT EXISTS permissions_user (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    granted_by TEXT REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, permission_id)
+);
+
 -- User System Roles (Global role assignments)
 CREATE TABLE IF NOT EXISTS user_roles (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -155,6 +166,18 @@ DO $$ BEGIN
     ) THEN
         CREATE TRIGGER update_permissions_group_role_timestamp
         BEFORE UPDATE ON permissions_group_role
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Permissions User
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_permissions_user_timestamp'
+    ) THEN
+        CREATE TRIGGER update_permissions_user_timestamp
+        BEFORE UPDATE ON permissions_user
         FOR EACH ROW
         EXECUTE FUNCTION update_timestamp();
     END IF;

@@ -67,31 +67,59 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
     next();
 };
 
-export const adminOnly = async (req: Request, res: Response, next: NextFunction) => {
-    if (!res.locals.session || !res.locals.user) {
-        return res.status(401).json({ error: "Unauthorized" });
-    }
-
-    try {
-        // Evaluate user_roles -> system_roles
-        const adminCheck = await pool.query(
-            `SELECT sr.name 
-             FROM user_roles ur
-             JOIN system_roles sr ON ur.role_id = sr.id
-             WHERE ur.user_id = $1`,
-            [res.locals.user.id]
-        );
-
-        if (adminCheck.rows.length === 0) {
-            return res.status(403).json({ error: "Forbidden: Admin access required." });
+export const requirePermission = (scope: string, action: string, resource: string) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
+        if (!res.locals.session || !res.locals.user) {
+            return res.status(401).json({ error: "Unauthorized" });
         }
 
-        // Optional: Attach roles to locals
-        res.locals.system_roles = adminCheck.rows.map(r => r.name);
-        
-        next();
-    } catch (error) {
-        console.error("Admin verification error", error);
-        return res.status(500).json({ error: "Internal server error" });
-    }
+        try {
+            const userId = res.locals.user.id;
+
+            // 1. Check if user has Administrator role (always allowed)
+            const rolesResult = await pool.query(
+                `SELECT sr.name FROM user_roles ur 
+                 JOIN system_roles sr ON ur.role_id = sr.id 
+                 WHERE ur.user_id = $1`,
+                [userId]
+            );
+            const roles = rolesResult.rows.map(r => r.name);
+            if (roles.includes('Administrator')) {
+                next();
+                return;
+            }
+
+            // 2. Check direct permissions
+            const directPermCheck = await pool.query(
+                `SELECT 1 FROM permissions_user up 
+                 JOIN permissions p ON up.permission_id = p.id 
+                 WHERE up.user_id = $1 AND p.scope = $2 AND p.action = $3 AND p.resource = $4`,
+                [userId, scope, action, resource]
+            );
+
+            if (directPermCheck.rowCount && directPermCheck.rowCount > 0) {
+                next();
+                return;
+            }
+
+            // 3. Check role-based permissions
+            const rolePermCheck = await pool.query(
+                `SELECT 1 FROM user_roles ur 
+                 JOIN permissions_system_role psr ON ur.role_id = psr.role_id 
+                 JOIN permissions p ON psr.permission_id = p.id 
+                 WHERE ur.user_id = $1 AND p.scope = $2 AND p.action = $3 AND p.resource = $4`,
+                [userId, scope, action, resource]
+            );
+
+            if (rolePermCheck.rowCount && rolePermCheck.rowCount > 0) {
+                next();
+                return;
+            }
+
+            return res.status(403).json({ error: `Forbidden: Missing required permission ${scope}:${action}:${resource}` });
+        } catch (error) {
+            console.error("Permission verification error", error);
+            return res.status(500).json({ error: "Internal server error" });
+        }
+    };
 };

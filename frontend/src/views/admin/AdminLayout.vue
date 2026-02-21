@@ -16,7 +16,8 @@ const navigation = [
     { key: 'admin.userManagement', href: '/admin/users', current: computed(() => route.path.startsWith('/admin/users')) },
     { key: 'admin.systemSettings', href: '/admin/settings', current: computed(() => route.path.startsWith('/admin/settings')) },
     { key: 'admin.ipBlocks', href: '/admin/ip-blocks', current: computed(() => route.path.startsWith('/admin/ip-blocks')) },
-    { key: 'admin.rolesManagement', href: '/admin/roles', current: computed(() => route.path.startsWith('/admin/roles')) }
+    { key: 'admin.rolesManagement', href: '/admin/roles', current: computed(() => route.path.startsWith('/admin/roles')) },
+    { key: 'admin.logs.title', href: '/admin/logs', current: computed(() => route.path.startsWith('/admin/logs')) }
 ];
 </script>
 

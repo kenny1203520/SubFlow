@@ -20,6 +20,7 @@ import UserManagement from './views/admin/UserManagement.vue'
 import SystemSettings from './views/admin/SystemSettings.vue'
 import IpBlocks from './views/admin/IpBlocks.vue'
 import RolesManagement from './views/admin/RolesManagement.vue'
+import ActivityLogs from './views/admin/ActivityLogs.vue'
 import ForgotPassword from './views/ForgotPassword.vue'
 import ResetPassword from './views/ResetPassword.vue'
 import VerifyEmail from './views/VerifyEmail.vue'
@@ -54,7 +55,8 @@ const routes = [
             { path: 'users', component: UserManagement, meta: { titleKey: 'admin.userManagement' } },
             { path: 'settings', component: SystemSettings, meta: { titleKey: 'admin.systemSettings' } },
             { path: 'ip-blocks', component: IpBlocks, meta: { titleKey: 'admin.ipBlocks' } },
-            { path: 'roles', component: RolesManagement, meta: { titleKey: 'admin.rolesManagement' } }
+            { path: 'roles', component: RolesManagement, meta: { titleKey: 'admin.rolesManagement' } },
+            { path: 'logs', component: ActivityLogs, meta: { titleKey: 'admin.logs.title' } }
         ]
     },
 ]

@@ -98,16 +98,94 @@
         "builtIn": "內建",
         "assignToUser": "使用者角色指派",
         "manageRoles": "管理角色",
+        "createRole": "建立角色",
+        "editRole": "編輯角色",
+        "roleName": "角色名稱",
+        "namePlaceholder": "例如：管理員",
+        "description": "描述",
+        "descriptionPlaceholder": "此角色的用途...",
         "managePermissions": "管理權限",
+        "confirmDelete": "確定要刪除角色 '{name}' 嗎？",
+        "fetchFailed": "載入角色失敗",
+        "saveFailed": "儲存角色失敗",
+        "deleteFailed": "刪除角色失敗",
+        "assignFailed": "更新角色指派失敗",
+        "permFailed": "更新權限失敗",
+        "manageUsers": "管理使用者",
+        "directPermissions": "直接受權",
         "assign": "指派",
         "assigned": "已指派",
         "remove": "移除",
         "grant": "授予",
         "granted": "已授予",
-        "allScopes": "全部",
-        "fetchFailed": "載入角色失敗",
-        "assignFailed": "更新角色指派失敗",
-        "permFailed": "更新權限失敗"
+        "allScopes": "全部"
+    },
+    "logs": {
+        "title": "活動日誌",
+        "subtitle": "檢視並篩選所有系統活動日誌。",
+        "filters": "篩選條件",
+        "clearFilters": "清除篩選",
+        "allRiskLevels": "所有風險等級",
+        "allActions": "所有動作",
+        "allBehaviors": "所有類型",
+        "filterByUser": "使用者 ID",
+        "date": "日期",
+        "user": "使用者",
+        "action": "動作",
+        "type": "類型",
+        "description": "描述",
+        "risk": "風險等級",
+        "ip": "IP 位址",
+        "device": "裝置",
+        "userAgent": "瀏覽器代理",
+        "fingerprint": "裝置指紋",
+        "details": "詳細資料",
+        "detail": "日誌詳情",
+        "noLogs": "未找到活動日誌。",
+        "fetchFailed": "載入活動日誌失敗。",
+        "pageInfo": "第 {current} 頁，共 {total} 頁"
+    },
+    "permissions": {
+        "system": {
+            "create": {
+                "users": "建立新使用者",
+                "roles": "建立系統角色",
+                "ip_blocks": "封鎖 IP 位址"
+            },
+            "read": {
+                "stats": "檢視系統統計",
+                "users": "檢視使用者列表與詳情",
+                "sessions": "檢視所有活躍工作階段",
+                "settings": "檢視系統設定",
+                "roles": "檢視系統角色",
+                "ip_blocks": "檢視已封鎖的 IP 位址",
+                "logs": "檢視系統活動日誌"
+            },
+            "update": {
+                "users": "更新使用者帳戶",
+                "settings": "修改系統設定",
+                "roles": "更新系統角色"
+            },
+            "delete": {
+                "users": "刪除使用者帳戶",
+                "sessions": "撤銷使用者工作階段",
+                "roles": "刪除系統角色",
+                "ip_blocks": "解除封鎖 IP 位址"
+            },
+            "manage": {
+                "roles": "建立、更新與刪除系統角色",
+                "user_roles": "指派與移除使用者角色",
+                "permissions_user": "指派與移除使用者直接受權"
+            }
+        },
+        "billing": {
+            "read": {
+                "all": "檢視所有財務記錄"
+            },
+            "update": {
+                "all": "修改財務記錄"
+            }
+        }
     },
     "settings": {
         "title": "系統設定",
@@ -128,7 +206,7 @@
         "provider": "服務提供商",
         "providerNone": "無",
         "siteKey": "網站金鑰（公開）",
-        "secretKey": "密鑰（私密）",
+        "secretKey": "密鑰（私秘）",
         "saveCaptcha": "儲存驗證碼設定",
         "security": "安全與鎖定策略",
         "securitySubtitle": "設定帳戶鎖定與速率限制。變更將在約 60 秒內生效。",
