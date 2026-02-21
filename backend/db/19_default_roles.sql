@@ -8,29 +8,29 @@ ON CONFLICT (name) DO NOTHING;
 -- Seed default permissions for all scopes
 INSERT INTO permissions (scope, action, resource, description)
 VALUES
-  ('system', 'read',   'stats',    'permissions.system.read.stats'),
-  ('system', 'create', 'users',    'permissions.system.create.users'),
-  ('system', 'read',   'users',    'permissions.system.read.users'),
-  ('system', 'update', 'users',    'permissions.system.update.users'),
-  ('system', 'delete', 'users',    'permissions.system.delete.users'),
-  ('system', 'read',   'sessions', 'permissions.system.read.sessions'),
-  ('system', 'delete', 'sessions', 'permissions.system.delete.sessions'),
-  ('system', 'read',   'settings', 'permissions.system.read.settings'),
-  ('system', 'update', 'settings', 'permissions.system.update.settings'),
-  ('system', 'create', 'roles',    'permissions.system.create.roles'),
-  ('system', 'read',   'roles',    'permissions.system.read.roles'),
-  ('system', 'update', 'roles',    'permissions.system.update.roles'),
-  ('system', 'delete', 'roles',    'permissions.system.delete.roles'),
-  ('system', 'create', 'ip_blocks','permissions.system.create.ip_blocks'),
-  ('system', 'read',   'ip_blocks','permissions.system.read.ip_blocks'),
-  ('system', 'delete', 'ip_blocks','permissions.system.delete.ip_blocks'),
-  ('system', 'read',   'logs',     'permissions.system.read.logs'),
-  ('system', 'manage', 'roles',            'permissions.system.manage.roles'),
-  ('system', 'manage', 'user_roles',       'permissions.system.manage.user_roles'),
-  ('system', 'manage', 'permissions_user', 'permissions.system.manage.permissions_user'),
-  ('billing','read',   'all',      'permissions.billing.read.all'),
-  ('billing','update', 'all',      'permissions.billing.update.all')
-ON CONFLICT (scope, action, resource) DO NOTHING;
+  ('system', 'read',   'stats',    'admin.permissions.system.read.stats'),
+  ('system', 'create', 'users',    'admin.permissions.system.create.users'),
+  ('system', 'read',   'users',    'admin.permissions.system.read.users'),
+  ('system', 'update', 'users',    'admin.permissions.system.update.users'),
+  ('system', 'delete', 'users',    'admin.permissions.system.delete.users'),
+  ('system', 'read',   'sessions', 'admin.permissions.system.read.sessions'),
+  ('system', 'delete', 'sessions', 'admin.permissions.system.delete.sessions'),
+  ('system', 'read',   'settings', 'admin.permissions.system.read.settings'),
+  ('system', 'update', 'settings', 'admin.permissions.system.update.settings'),
+  ('system', 'create', 'roles',    'admin.permissions.system.create.roles'),
+  ('system', 'read',   'roles',    'admin.permissions.system.read.roles'),
+  ('system', 'update', 'roles',    'admin.permissions.system.update.roles'),
+  ('system', 'delete', 'roles',    'admin.permissions.system.delete.roles'),
+  ('system', 'create', 'ip_blocks','admin.permissions.system.create.ip_blocks'),
+  ('system', 'read',   'ip_blocks','admin.permissions.system.read.ip_blocks'),
+  ('system', 'delete', 'ip_blocks','admin.permissions.system.delete.ip_blocks'),
+  ('system', 'read',   'logs',     'admin.permissions.system.read.logs'),
+  ('system', 'manage', 'roles',            'admin.permissions.system.manage.roles'),
+  ('system', 'manage', 'user_roles',       'admin.permissions.system.manage.user_roles'),
+  ('system', 'manage', 'permissions_user', 'admin.permissions.system.manage.permissions_user'),
+  ('billing','read',   'all',      'admin.permissions.billing.read.all'),
+  ('billing','update', 'all',      'admin.permissions.billing.update.all')
+ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
 
 -- Grant ALL permissions to the Administrator role
 INSERT INTO permissions_system_role (role_id, permission_id)
