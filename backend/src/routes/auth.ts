@@ -1,3 +1,4 @@
+import express from "express";
 import { Router } from "express";
 import { lucia } from "../auth/lucia";
 import { generateId } from "lucia";
@@ -90,14 +91,44 @@ const changePasswordSchema = z.object({
     newPassword: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
 });
 
-router.get("/config", (req, res) => {
+// Get captcha config
+router.get("/config", getCaptchaConfig);
+
+// Signup
+router.post("/signup", authLimiter, signupHandler);
+
+// Signin
+router.post("/signin", authLimiter, signinHandler);
+
+// 2FA Signin
+router.post("/signin/2fa", authLimiter, signin2faHandler);
+
+// Signout
+router.post("/signout", signoutHandler);
+
+// Get user
+router.get("/user", userHandler);
+
+// Verify email
+router.get("/verify-email/:token", verifyEmailHandler);
+
+// Password reset
+router.post("/password-reset", authLimiter, passwordResetHandler);
+
+// Password reset token
+router.post("/password-reset/:token", authLimiter, passwordResetTokenHandler);
+
+// Change password
+router.post("/change-password", authLimiter, changePasswordHandler);
+
+function getCaptchaConfig(req: express.Request, res: express.Response) {
     res.json({
         captchaProvider: process.env.CAPTCHA_PROVIDER || "none",
         captchaSiteKey: process.env.CAPTCHA_SITE_KEY || ""
     });
-});
+}
 
-router.post("/signup", authLimiter, async (req, res) => {
+async function signupHandler(req: express.Request, res: express.Response) {
     try {
         const { username, email, password } = signupSchema.parse(req.body);
 
@@ -186,9 +217,9 @@ router.post("/signup", authLimiter, async (req, res) => {
         console.error(err);
         return res.status(500).json({ message: "auth.errors.unknownError" });
     }
-});
+}
 
-router.post("/signin", authLimiter, async (req, res) => {
+async function signinHandler(req: express.Request, res: express.Response) {
     try {
         const { username, password, captchaToken } = signinSchema.parse(req.body);
 
@@ -363,9 +394,9 @@ router.post("/signin", authLimiter, async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "auth.errors.internalServer" });
     }
-});
+}
 
-router.post("/signin/2fa", authLimiter, async (req, res) => {
+async function signin2faHandler(req: express.Request, res: express.Response) {
     try {
         const { userId, code } = req.body;
         
@@ -458,9 +489,9 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "auth.errors.internalServer" });
     }
-});
+}
 
-router.post("/signout", async (req, res) => {
+async function signoutHandler(req: express.Request, res: express.Response) {
     const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
     if (!sessionId) {
         return res.status(401).json({ message: "auth.errors.notAuthenticated" });
@@ -475,9 +506,9 @@ router.post("/signout", async (req, res) => {
     const sessionCookie = lucia.createBlankSessionCookie();
     res.setHeader("Set-Cookie", sessionCookie.serialize());
     return res.status(200).send("Signed out");
-});
+}
 
-router.get("/user", async (req, res) => {
+async function userHandler(req: express.Request, res: express.Response) {
     const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
     if (!sessionId) {
         return res.status(401).json({ message: "auth.errors.notAuthenticated" });
@@ -533,14 +564,13 @@ router.get("/user", async (req, res) => {
     return res.status(200).json({
         ...user,
         system_roles: systemRoles,
-        permissions: permissions,
-        isAdmin: systemRoles.length > 0
+        permissions: permissions
     });
-});
+}
 
-router.get("/verify-email/:token", async (req, res) => {
+async function verifyEmailHandler(req: express.Request, res: express.Response) {
     const { token } = req.params;
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const tokenHash = crypto.createHash("sha256").update(token as string).digest("hex");
 
     try {
         const tokenRes = await pool.query(
@@ -586,9 +616,9 @@ router.get("/verify-email/:token", async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "auth.errors.internalServer" });
     }
-});
+}
 
-router.post("/password-reset", authLimiter, async (req, res) => {
+async function passwordResetHandler(req: express.Request, res: express.Response) {
     let { email } = req.body;
     if (typeof email !== "string" || !email.includes("@")) {
         return res.status(400).json({ message: "auth.errors.invalidEmail" });
@@ -623,9 +653,9 @@ router.post("/password-reset", authLimiter, async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "auth.errors.internalServer" });
     }
-});
+}
 
-router.post("/password-reset/:token", authLimiter, async (req, res) => {
+async function passwordResetTokenHandler(req: express.Request, res: express.Response) {
     try {
         const { token } = req.params;
         const { password, captchaToken } = resetSchema.parse(req.body);
@@ -666,9 +696,9 @@ router.post("/password-reset/:token", authLimiter, async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "auth.errors.internalServer" });
     }
-});
+}
 
-router.post("/change-password", authLimiter, async (req, res) => {
+async function changePasswordHandler(req: express.Request, res: express.Response) {
     const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
     if (!sessionId) {
         return res.status(401).json({ message: "auth.errors.notAuthenticated" });
@@ -708,6 +738,6 @@ router.post("/change-password", authLimiter, async (req, res) => {
         console.error(error);
         return res.status(500).json({ message: "auth.errors.internalServer" });
     }
-});
+}
 
 export default router;

@@ -7,7 +7,6 @@ export const useAuthStore = defineStore('auth', {
         isConnected: false
     }),
     getters: {
-        isAdmin: (state) => state.user?.isAdmin === true,
         systemRoles: (state) => state.user?.system_roles ?? [],
         permissions: (state) => state.user?.permissions ?? [],
         hasPermission: (state) => (scope: string, action: string, resource: string) => {

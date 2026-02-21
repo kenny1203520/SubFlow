@@ -29,5 +29,19 @@
         "updateSuccess": "個人資料已更新",
         "updateFailed": "更新失敗",
         "uploadFailed": "頭像上傳失敗"
+    },
+    "permissions": {
+        "user": {
+            "read": {
+                "profile": "檢視個人資料"
+            },
+            "update": {
+                "profile": "更新個人資料"
+            },
+            "upload": {
+                "avatar": "上傳個人頭像",
+                "file": "上傳文件或檔案"
+            }
+        }
     }
 }

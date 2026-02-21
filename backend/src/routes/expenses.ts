@@ -1,6 +1,7 @@
+import express from "express";
 import { Router } from "express";
 import { pool } from "../db";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requirePermission } from "../middleware/auth";
 import { generateId } from "lucia";
 
 const router = Router();
@@ -13,7 +14,12 @@ interface Split {
 }
 
 // Add an expense
-router.post("/", async (req, res) => {
+router.post("/", requirePermission('groups', 'create', 'expenses'), addExpense);
+
+// Get expenses for a group
+router.get("/group/:groupId", requirePermission('groups', 'read', 'expenses'), getExpensesByGroupId);
+
+async function addExpense(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     const { groupId, amount, description, splits, date } = req.body;
 
@@ -57,10 +63,9 @@ router.post("/", async (req, res) => {
     } finally {
         client.release();
     }
-});
+}
 
-// Get expenses for a group
-router.get("/group/:groupId", async (req, res) => {
+async function getExpensesByGroupId(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     const { groupId } = req.params;
 
@@ -91,6 +96,6 @@ router.get("/group/:groupId", async (req, res) => {
         console.error(error);
         res.status(500).send("Server Error");
     }
-});
+}
 
 export default router;

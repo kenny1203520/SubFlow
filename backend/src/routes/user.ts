@@ -1,13 +1,22 @@
+import express from "express";
 import { Router } from "express";
 import { pool } from "../db";
-import { requireAuth, verifySession } from "../middleware/auth";
+import { requireAuth, requirePermission } from "../middleware/auth";
 
 const router = Router();
 
-// Apply session verification - Now handled globally in index.ts
-// router.use(verifySession);
+router.use(requireAuth);
 
-router.get("/profile", requireAuth, async (req, res) => {
+// Get user profile
+router.get("/profile", requirePermission('user', 'read', 'profile'), getProfile);
+
+// Get user profile by ID
+router.get("/profile/:id", requirePermission('users', 'read', 'profile'), getProfileById);
+
+// Update user profile
+router.patch("/profile", requirePermission('user', 'update', 'profile'), updateProfile);
+
+async function getProfile(req: express.Request, res: express.Response) {
     const userId = res.locals.user!.id;
 
     try {
@@ -39,9 +48,43 @@ router.get("/profile", requireAuth, async (req, res) => {
         console.error("Error fetching profile:", error);
         return res.status(500).json({ error: "Failed to fetch profile" });
     }
-});
+}
 
-router.patch("/profile", requireAuth, async (req, res) => {
+async function getProfileById(req: express.Request, res: express.Response) {
+    const userId = req.params.id;
+
+    try {
+        const query = `
+            SELECT 
+                u.id, u.username, u.email, u.avatar_url,
+                p.first_name, p.middle_name, p.last_name, p.nickname,
+                p.birthday, p.mobile_phone as phone,
+                p.id_number, p.passport_number, p.address
+            FROM users u
+            LEFT JOIN user_profiles p ON u.id = p.user_id
+            WHERE u.id = $1
+        `;
+        const result = await pool.query(query, [userId]);
+        const user = result.rows[0];
+
+        if (!user) {
+            return res.status(404).json({ error: "User not found" });
+        }
+
+        const profile = {
+            ...user,
+            // Fallback for real_name display if needed, but frontend should use individual fields
+            real_name: [user.first_name, user.middle_name, user.last_name].filter(Boolean).join(' ')
+        };
+
+        return res.json({ status: "ok", profile });
+    } catch (error) {
+        console.error("Error fetching profile:", error);
+        return res.status(500).json({ error: "Failed to fetch profile" });
+    }
+}
+
+async function updateProfile(req: express.Request, res: express.Response) {
     const userId = res.locals.user!.id;
     const {
         first_name, middle_name, last_name, nickname,
@@ -95,6 +138,6 @@ router.patch("/profile", requireAuth, async (req, res) => {
         console.error("Error updating profile:", error);
         return res.status(500).json({ error: "Failed to update profile" });
     }
-});
+}
 
 export default router;

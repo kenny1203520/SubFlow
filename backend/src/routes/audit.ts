@@ -1,13 +1,15 @@
 import express from 'express';
 import { pool } from '../db';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, requirePermission } from '../middleware/auth';
 
 const router = express.Router();
 
 router.use(requireAuth);
 
 // Get User Activity Logs
-router.get('/user/activity', async (req, res) => {
+router.get('/user/activity', requirePermission('audit', 'read', 'user_activity'), getUserActivityLogs);
+
+async function getUserActivityLogs(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     const limit = parseInt(req.query.limit as string) || 20;
     const offset = parseInt(req.query.offset as string) || 0;
@@ -48,6 +50,5 @@ router.get('/user/activity', async (req, res) => {
         console.error('Query Params:', { limit, offset });
         res.status(500).json({ message: 'Server error fetching activity logs', error: String(error) });
     }
-});
-
+}
 export default router;

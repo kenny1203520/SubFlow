@@ -151,7 +151,8 @@ const logout = async () => {
                     <div class="active-indicator"></div>
                 </router-link>
 
-                <router-link v-if="authStore.isAdmin" to="/admin" class="nav-item" @click="layoutStore.closeSidebar">
+                <router-link v-if="authStore.hasPermission('system', 'read', 'admin')" to="/admin" class="nav-item"
+                    @click="layoutStore.closeSidebar">
                     <div class="icon-wrapper">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">

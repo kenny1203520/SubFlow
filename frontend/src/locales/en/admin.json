@@ -153,6 +153,7 @@
                 "ip_blocks": "Block an IP address"
             },
             "read": {
+                "admin": "Access administrative panel",
                 "stats": "View system statistics",
                 "users": "View user list and details",
                 "sessions": "View all active sessions",
@@ -176,6 +177,14 @@
                 "roles": "Create, update, and delete system roles",
                 "user_roles": "Assign and remove roles for users",
                 "permissions_user": "Assign and remove direct permissions for users"
+            }
+        },
+        "users": {
+            "read": {
+                "profile": "View any user profile"
+            },
+            "update": {
+                "profile": "Update any user profile"
             }
         },
         "billing": {

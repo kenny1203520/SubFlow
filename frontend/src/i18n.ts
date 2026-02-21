@@ -42,7 +42,12 @@ const messages = {
         activity: enActivity,
         services: enServices,
         notifications: enNotifications,
-        files: enFiles
+        files: enFiles,
+        // RBAC Namespaces
+        audit: enActivity,
+        billing: enAdmin,
+        user: enProfile,
+        users: enAdmin
     },
     zh: {
         common: zhCommon,
@@ -57,7 +62,12 @@ const messages = {
         activity: zhActivity,
         services: zhServices,
         notifications: zhNotifications,
-        files: zhFiles
+        files: zhFiles,
+        // RBAC Namespaces
+        audit: zhActivity,
+        billing: zhAdmin,
+        user: zhProfile,
+        users: zhAdmin
     }
 }
 

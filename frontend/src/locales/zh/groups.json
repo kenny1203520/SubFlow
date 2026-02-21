@@ -102,5 +102,28 @@
     "confirmKick": "確定要將此成員從群組中移除嗎？",
     "promoteToAdmin": "升級為管理員",
     "demoteToMember": "降級為普通成員",
-    "kickMember": "從群組移除"
+    "kickMember": "從群組移除",
+    "permissions": {
+        "groups": {
+            "create": {
+                "expenses": "新增支出項目",
+                "groups": "建立新群組"
+            },
+            "delete": {
+                "expenses": "刪除支出項目",
+                "groups": "刪除群組"
+            },
+            "query": {
+                "groups": "查詢群組"
+            },
+            "read": {
+                "expenses": "讀取支出詳情",
+                "groups": "讀取群組詳情"
+            },
+            "update": {
+                "expenses": "更新支出項目",
+                "groups": "更新群組設定"
+            }
+        }
+    }
 }

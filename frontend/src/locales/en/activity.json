@@ -4,5 +4,12 @@
     "action": "Action",
     "description": "Description",
     "ip": "IP Address",
-    "noLogs": "No activity logs found."
+    "noLogs": "No activity logs found.",
+    "permissions": {
+        "audit": {
+            "read": {
+                "user_activity": "View user activity logs"
+            }
+        }
+    }
 }

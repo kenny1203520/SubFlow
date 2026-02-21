@@ -7,7 +7,12 @@ const router = express.Router();
 router.use(requireAuth);
 
 // Export Expenses
-router.get('/group/:groupId/expenses', async (req, res) => {
+router.get('/group/:groupId/expenses', exportExpensesHandler);
+
+// Export Bills
+router.get('/group/:groupId/bills', exportBillsHandler);
+
+async function exportExpensesHandler(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     const { groupId } = req.params;
 
@@ -49,10 +54,9 @@ router.get('/group/:groupId/expenses', async (req, res) => {
         console.error("Export Expenses Error:", error);
         res.status(500).send("Server Error");
     }
-});
+}
 
-// Export Bills
-router.get('/group/:groupId/bills', async (req, res) => {
+async function exportBillsHandler(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     const { groupId } = req.params;
 
@@ -93,6 +97,6 @@ router.get('/group/:groupId/bills', async (req, res) => {
         console.error("Export Bills Error:", error);
         res.status(500).send("Server Error");
     }
-});
+}
 
 export default router;

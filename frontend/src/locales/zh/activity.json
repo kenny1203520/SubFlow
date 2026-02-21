@@ -4,5 +4,12 @@
     "action": "動作",
     "description": "描述",
     "ip": "IP 位址",
-    "noLogs": "目前沒有活動記錄。"
+    "noLogs": "目前沒有活動記錄。",
+    "permissions": {
+        "audit": {
+            "read": {
+                "user_activity": "檢視使用者活動日誌"
+            }
+        }
+    }
 }

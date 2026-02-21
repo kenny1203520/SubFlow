@@ -102,5 +102,28 @@
     "confirmKick": "Are you sure you want to remove this member from the group?",
     "promoteToAdmin": "Promote to Admin",
     "demoteToMember": "Demote to Member",
-    "kickMember": "Remove from Group"
+    "kickMember": "Remove from Group",
+    "permissions": {
+        "groups": {
+            "create": {
+                "expenses": "Add new expenses",
+                "groups": "Create new groups"
+            },
+            "delete": {
+                "expenses": "Delete expenses",
+                "groups": "Delete groups"
+            },
+            "query": {
+                "groups": "Search for groups"
+            },
+            "read": {
+                "expenses": "View expense details",
+                "groups": "View group details"
+            },
+            "update": {
+                "expenses": "Edit expenses",
+                "groups": "Update group settings"
+            }
+        }
+    }
 }

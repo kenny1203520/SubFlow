@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import { FileService } from '../services/FileService';
-import { verifySession, requireAuth } from '../middleware/auth';
+import { verifySession, requireAuth, requirePermission } from '../middleware/auth';
 
 const router = express.Router();
 const fileService = new FileService();
@@ -36,8 +36,13 @@ const upload = multer({
 
 router.use(verifySession);
 
-// Specific avatar upload endpoint
-router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) => {
+// Avatar upload
+router.post('/avatar', requireAuth, upload.single('avatar'), requirePermission('user', 'upload', 'avatar'), uploadAvatar);
+
+// Upload file
+router.post('/upload', requireAuth, upload.single('file'), requirePermission('user', 'upload', 'file'), uploadFile);
+
+async function uploadAvatar(req: express.Request, res: express.Response) {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     try {
@@ -51,9 +56,9 @@ router.post('/avatar', requireAuth, upload.single('avatar'), async (req, res) =>
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
-});
+}
 
-router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
+async function uploadFile(req: express.Request, res: express.Response) {
     if (!req.file) return res.status(400).json({ error: "No file uploaded" });
 
     try {
@@ -63,6 +68,6 @@ router.post('/upload', requireAuth, upload.single('file'), async (req, res) => {
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
-});
+}
 
 export default router;

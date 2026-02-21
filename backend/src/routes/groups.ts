@@ -1,6 +1,7 @@
+import express from "express";
 import { Router } from "express";
 import { pool } from "../db";
-import { requireAuth } from "../middleware/auth";
+import { requireAuth, requirePermission } from "../middleware/auth";
 import { generateId } from "lucia";
 
 const router = Router();
@@ -8,7 +9,15 @@ const router = Router();
 router.use(requireAuth);
 
 // List user's groups
-router.get("/", async (req, res) => {
+router.get("/", requirePermission('groups', 'query', 'groups'), listUserGroups);
+
+// Create a group
+router.post("/", requirePermission('groups', 'create', 'groups'), createGroup);
+
+// Get group details
+router.get("/:id", requirePermission('groups', 'read', 'groups'), getGroupDetails);
+
+async function listUserGroups(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     try {
         const result = await pool.query(`
@@ -23,10 +32,9 @@ router.get("/", async (req, res) => {
         console.error(error);
         res.status(500).send("Server Error");
     }
-});
+}
 
-// Create a group
-router.post("/", async (req, res) => {
+async function createGroup(req:express.Request, res:express.Response) {
     const userId = res.locals.user.id;
     const { name } = req.body;
 
@@ -60,10 +68,9 @@ router.post("/", async (req, res) => {
     } finally {
         client.release();
     }
-});
+}
 
-// Get group details
-router.get("/:id", async (req, res) => {
+async function getGroupDetails(req:express.Request, res:express.Response) {
     const userId = res.locals.user.id;
     const groupId = req.params.id;
 
@@ -96,6 +103,6 @@ router.get("/:id", async (req, res) => {
         console.error(error);
         res.status(500).send("Server Error");
     }
-});
+}
 
 export default router;

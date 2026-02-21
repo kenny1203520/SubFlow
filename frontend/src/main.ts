@@ -118,7 +118,7 @@ router.beforeEach(async (to, _from, next) => {
     }
 
     // Check Admin
-    if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    if (to.meta.requiresAdmin && !authStore.hasPermission('system', 'read', 'admin')) {
         return next('/dashboard'); // Unauthorized admin access, return to dashboard
     }
 

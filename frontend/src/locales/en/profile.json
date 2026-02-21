@@ -29,5 +29,19 @@
         "updateSuccess": "Profile updated successfully",
         "updateFailed": "Failed to update profile",
         "uploadFailed": "Avatar upload failed"
+    },
+    "permissions": {
+        "user": {
+            "read": {
+                "profile": "View own profile"
+            },
+            "update": {
+                "profile": "Update own profile"
+            },
+            "upload": {
+                "avatar": "Upload avatar",
+                "file": "Upload files"
+            }
+        }
     }
 }

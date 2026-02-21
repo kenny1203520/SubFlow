@@ -153,6 +153,7 @@
                 "ip_blocks": "封鎖 IP 位址"
             },
             "read": {
+                "admin": "存取管理控制台",
                 "stats": "檢視系統統計",
                 "users": "檢視使用者列表與詳情",
                 "sessions": "檢視所有活躍工作階段",
@@ -176,6 +177,14 @@
                 "roles": "建立、更新與刪除系統角色",
                 "user_roles": "指派與移除使用者角色",
                 "permissions_user": "指派與移除使用者直接受權"
+            }
+        },
+        "users": {
+            "read": {
+                "profile": "檢視任何使用者個人資料"
+            },
+            "update": {
+                "profile": "更新任何使用者個人資料"
             }
         },
         "billing": {

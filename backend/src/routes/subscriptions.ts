@@ -1,3 +1,4 @@
+import express from "express";
 import { Router } from "express";
 import { pool } from "../db";
 import { requireAuth } from "../middleware/auth";
@@ -13,7 +14,12 @@ interface SubSplit {
 }
 
 // Create a subscription
-router.post("/", async (req, res) => {
+router.post("/", createSubscriptionHandler);
+
+// List user's subscriptions
+router.get("/", listSubscriptionsHandler);
+
+async function createSubscriptionHandler(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     const { serviceName, amount, cycle, nextPaymentDate, splits } = req.body;
 
@@ -49,10 +55,9 @@ router.post("/", async (req, res) => {
     } finally {
         client.release();
     }
-});
+}
 
-// List user's subscriptions
-router.get("/", async (req, res) => {
+async function listSubscriptionsHandler(req: express.Request, res: express.Response) {
     const userId = res.locals.user.id;
     try {
         const result = await pool.query(`
@@ -71,6 +76,6 @@ router.get("/", async (req, res) => {
         console.error(error);
         res.status(500).send("Server Error");
     }
-});
+}
 
 export default router;
