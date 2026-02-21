@@ -167,7 +167,9 @@ const canSettle = (split: any) => {
 
 const currentUserRole = computed(() => {
     const member = allMembers.value.find(m => m.user_id === authStore.user?.id);
-    return member?.role;
+    if (!member) return 'member';
+    const isAdmin = member.dynamicRoles?.some((r: any) => r.name === 'Group Admin' || r.name === 'Group Owner');
+    return isAdmin ? 'admin' : 'member';
 });
 const canManageMembers = computed(() => currentUserRole.value === 'admin');
 const canEditGroup = computed(() => currentUserRole.value === 'admin');
@@ -208,9 +210,15 @@ const cancelInvite = async (memberId: string) => {
     });
 };
 
-const updateMemberRole = async (memberId: string, role: string) => {
+const toggleAdminRole = async (memberId: string, isAdmin: boolean) => {
+    // Determine the action
     if (!await ui.confirm(t('groups.confirmRoleChange'))) return;
-    socket.emit('group:update_member_role', { groupId, memberId, role }, (res: any) => {
+
+    // We assume the system knows 'Group Admin' role ID, but since we don't have it on the frontend easily, 
+    // the backend will need to look it up by name for now, or we fetch all roles once on load.
+    // For simplicity, let's just use the old `updateMemberRole` to handle this mapping on the backend for this step, 
+    // or emit a new explicit action.
+    socket.emit('group:update_member_role', { groupId, memberId, role: isAdmin ? 'member' : 'admin' }, (res: any) => {
         if (res.status === 'ok') fetchData(true);
         else ui.alert(res.message);
     });
@@ -237,7 +245,7 @@ const removeMember = async (memberId: string) => {
             <p class="text-red-500 font-bold text-lg mb-2">{{ t('common.status.error') }}</p>
             <p class="text-slate-600">{{ error }}</p>
             <button @click="router.push('/groups')" class="mt-4 btn btn-primary">{{ t('groups.backToGroups')
-            }}</button>
+                }}</button>
         </div>
 
         <div class="group-detail animate-fade-in" v-else-if="group">
@@ -260,7 +268,7 @@ const removeMember = async (memberId: string) => {
                             class="w-full h-full object-cover" />
                         <span v-else class="text-2xl font-bold text-primary-500">{{
                             group.name.charAt(0).toUpperCase()
-                        }}</span>
+                            }}</span>
                     </div>
 
                     <div>
@@ -320,13 +328,13 @@ const removeMember = async (memberId: string) => {
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div class="glass-panel p-4 flex flex-col justify-center">
                             <span class="text-xs uppercase font-bold text-slate-400 mb-1">{{ t('groups.planName')
-                            }}</span>
+                                }}</span>
                             <span class="text-lg font-bold text-slate-800">{{ group.plan_name || '---' }}</span>
                         </div>
                         <div class="glass-panel p-4 flex flex-col justify-center">
                             <span class="text-xs uppercase font-bold text-slate-400 mb-1">{{
                                 t('groups.billingMethod')
-                            }}</span>
+                                }}</span>
                             <span class="text-lg font-bold text-slate-800 flex items-center gap-2">
                                 {{ t(`groups.methods.${group.billing_method}`) }}
                             </span>
@@ -388,13 +396,13 @@ const removeMember = async (memberId: string) => {
                                         class="glass-card p-4 border-l-4 border-yellow-400">
                                         <div class="text-sm mb-2">
                                             <span class="font-bold">{{ split.temp_name || split.real_username
-                                            }}</span>
+                                                }}</span>
                                             <span class="text-slate-400 mx-1">{{ t('groups.owe') }}</span>
                                             <span class="font-bold">{{ split.payer_name }}</span>
                                         </div>
                                         <div class="flex justify-between items-end">
                                             <span class="text-xl font-bold text-red-500">$ {{ split.amount_owed
-                                            }}</span>
+                                                }}</span>
                                             <button v-if="canSettle(split)"
                                                 @click="settleExpense(split.expense_id, split.user_id)"
                                                 class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded hover:bg-green-200 font-bold">
@@ -417,13 +425,13 @@ const removeMember = async (memberId: string) => {
                 <div v-show="currentTab === 'members'" class="animate-fade-in">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-xl font-bold text-slate-800">{{ t('groups.members') }} ({{ activeMembers.length
-                            }})</h2>
+                        }})</h2>
                     </div>
 
                     <!-- Enhanced Add Member Area -->
                     <div class="glass-panel p-6 mb-8 border border-primary-100">
                         <h3 class="text-sm font-bold text-primary-700 uppercase mb-4">{{ t('groups.inviteNewMember')
-                        }}</h3>
+                            }}</h3>
                         <div class="flex flex-col md:flex-row gap-4 items-end">
                             <div class="flex-1 w-full">
                                 <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{{
@@ -493,11 +501,18 @@ const removeMember = async (memberId: string) => {
                             </div>
                             <div class="flex-1">
                                 <p class="font-bold text-slate-800 text-lg">{{ member.username || member.temp_name
-                                }}</p>
+                                    }}</p>
                                 <div class="flex items-center gap-2 text-sm">
-                                    <span class="uppercase font-bold text-xs"
-                                        :class="member.role === 'admin' ? 'text-primary-600' : 'text-slate-500'">
-                                        {{ member.role }}
+                                    <span v-if="member.dynamicRoles && member.dynamicRoles.length > 0"
+                                        class="flex gap-1">
+                                        <span v-for="r in member.dynamicRoles" :key="r.id"
+                                            class="uppercase font-bold text-xs bg-slate-100 px-2 py-0.5 rounded-full"
+                                            :class="r.name === 'Group Admin' || r.name === 'Group Owner' ? 'text-primary-600 bg-primary-50' : 'text-slate-500'">
+                                            {{ r.name }}
+                                        </span>
+                                    </span>
+                                    <span v-else class="uppercase font-bold text-xs text-slate-500">
+                                        {{ t('groups.member') }}
                                     </span>
                                     <span v-if="member.temp_name"
                                         class="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-bold">
@@ -535,14 +550,15 @@ const removeMember = async (memberId: string) => {
                                 <div v-if="canManageMembers && member.user_id !== authStore.user?.id"
                                     class="flex gap-1">
                                     <!-- Role Toggle -->
-                                    <button v-if="member.role === 'member'"
-                                        @click="updateMemberRole(member.member_id, 'admin')"
+                                    <button
+                                        v-if="!member.dynamicRoles?.some((r: any) => r.name === 'Group Admin' || r.name === 'Group Owner')"
+                                        @click="toggleAdminRole(member.member_id, false)"
                                         class="text-xs font-bold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded border border-blue-100"
                                         :title="t('groups.promoteToAdmin')">
                                         Admin
                                     </button>
-                                    <button v-else-if="member.role === 'admin'"
-                                        @click="updateMemberRole(member.member_id, 'member')"
+                                    <button v-else-if="member.dynamicRoles?.some((r: any) => r.name === 'Group Admin')"
+                                        @click="toggleAdminRole(member.member_id, true)"
                                         class="text-xs font-bold text-slate-500 hover:bg-slate-100 px-2 py-1 rounded border border-slate-200"
                                         :title="t('groups.demoteToMember')">
                                         Member
@@ -658,7 +674,7 @@ const removeMember = async (memberId: string) => {
 
                 <div class="flex justify-end gap-3">
                     <button @click="showPermissionsModal = false" class="btn btn-ghost">{{ t('common.actions.cancel')
-                        }}</button>
+                    }}</button>
                     <button @click="savePermissions" class="btn btn-primary">{{ t('groups.savePermissions') }}</button>
                 </div>
             </div>

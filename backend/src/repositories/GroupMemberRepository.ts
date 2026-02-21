@@ -45,7 +45,13 @@ export class GroupMemberRepository extends BaseRepository {
     async getMembersByGroupId(groupId: string): Promise<any[]> {
         const res = await this.query(
             `SELECT gm.id as member_id, u.id as user_id, COALESCE(u.username, gm.temp_name) as username, 
-                    u.email, gm.role, gm.temp_name, gm.display_name, gm.joined_at, gm.invited_at, u.avatar_url
+                    u.email, gm.role, gm.temp_name, gm.display_name, gm.joined_at, gm.invited_at, u.avatar_url,
+                    (
+                        SELECT COALESCE(json_agg(json_build_object('id', gr.id, 'name', gr.name, 'is_system_role', gr.is_system_role)), '[]'::json)
+                        FROM group_member_roles gmr
+                        JOIN group_roles gr ON gmr.role_id = gr.id
+                        WHERE gmr.member_id = gm.id
+                    ) as "dynamicRoles"
              FROM group_members gm 
              LEFT JOIN users u ON gm.user_id = u.id 
              WHERE gm.group_id = $1`,

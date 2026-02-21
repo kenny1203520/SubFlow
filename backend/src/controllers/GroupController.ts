@@ -17,8 +17,12 @@ export class GroupController extends BaseController {
         this.socket.on("group:bind_member_invite", (payload, cb) => this.bindMemberInvite(payload, cb));
         this.socket.on("group:update", (payload, cb) => this.updateGroup(payload, cb));
         this.socket.on("group:update_member_role", (payload, cb) => this.updateMemberRole(payload, cb));
+        this.socket.on("group:assign_dynamic_role", (payload, cb) => this.assignDynamicRole(payload, cb));
+        this.socket.on("group:remove_dynamic_role", (payload, cb) => this.removeDynamicRole(payload, cb));
         this.socket.on("group:remove_member", (payload, cb) => this.removeMember(payload, cb));
         this.socket.on("group:cancel_invite", (payload, cb) => this.cancelInvite(payload, cb));
+        this.socket.on("group:list_roles", (payload, cb) => this.listRoles(payload, cb));
+        this.socket.on("group:create_role", (payload, cb) => this.createRole(payload, cb));
     }
 
     async createGroup(payload: any, cb: (res: any) => void) {
@@ -38,6 +42,25 @@ export class GroupController extends BaseController {
             this.success(cb, { groups });
         } catch (error: any) {
             this.error(cb, error.message || "Failed to list groups");
+        }
+    }
+
+    async listRoles(payload: any, cb: (res: any) => void) {
+        try {
+            const roles = await this.groupService.listRoles();
+            this.success(cb, roles);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to list group roles");
+        }
+    }
+
+    async createRole(payload: { name: string, description: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            const role = await this.groupService.createRole(userId, payload);
+            this.success(cb, role);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to create group role");
         }
     }
 
@@ -138,6 +161,26 @@ export class GroupController extends BaseController {
             this.success(cb);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to update role");
+        }
+    }
+
+    async assignDynamicRole(payload: { groupId: string, memberId: string, roleId: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.groupService.assignDynamicRole(userId, payload.groupId, payload.memberId, payload.roleId);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to assign dynamic role");
+        }
+    }
+
+    async removeDynamicRole(payload: { groupId: string, memberId: string, roleId: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            await this.groupService.removeDynamicRole(userId, payload.groupId, payload.memberId, payload.roleId);
+            this.success(cb);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to remove dynamic role");
         }
     }
 

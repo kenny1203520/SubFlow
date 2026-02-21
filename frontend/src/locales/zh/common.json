@@ -29,6 +29,8 @@
         "viewAll": "查看全部",
         "verify": "驗證並啟用",
         "confirm": "確認",
+        "ok": "確定",
+        "close": "關閉",
         "deleteConfirm": "您確定要刪除嗎？"
     },
     "status": {

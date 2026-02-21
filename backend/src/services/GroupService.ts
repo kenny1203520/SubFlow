@@ -2,6 +2,7 @@ import { GroupRepository, GroupRow } from '../repositories/GroupRepository';
 import { GroupMemberRepository } from '../repositories/GroupMemberRepository';
 import { GroupServiceRepository } from '../repositories/GroupServiceRepository';
 import { UserRepository } from '../repositories/UserRepository';
+import { GroupRoleRepository } from '../repositories/GroupRoleRepository';
 import { NotificationService } from './NotificationService';
 import { pool } from '../db';
 
@@ -10,6 +11,7 @@ export class GroupService {
     private memberRepo = new GroupMemberRepository();
     private groupServiceRepo = new GroupServiceRepository();
     private userRepo = new UserRepository();
+    private roleRepo = new GroupRoleRepository();
     private notifService = new NotificationService();
 
     async createGroup(userId: string, payload: any): Promise<GroupRow> {
@@ -119,8 +121,17 @@ export class GroupService {
         if (!role) throw new Error("Not a member of this group");
 
         const group = await this.groupRepo.findById(groupId);
-        const members = await this.memberRepo.getMembersByGroupId(groupId);
+        let members = await this.memberRepo.getMembersByGroupId(groupId);
         const services = await this.groupServiceRepo.findByGroupId(groupId);
+
+        // Fetch dynamic roles for members
+        members = await Promise.all(members.map(async (m) => {
+            const dynamicRoles = await this.roleRepo.getMemberRoles(m.member_id);
+            return {
+                ...m,
+                dynamicRoles
+            };
+        }));
 
         return { group, members, services };
     }
@@ -273,7 +284,38 @@ export class GroupService {
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
 
+        // 1. Update legacy column for backward compatibility
         await this.memberRepo.updateRole(memberId, newRole);
+
+        // 2. Update Dynamic Roles
+        const adminRole = await this.roleRepo.findByName('Group Admin');
+        if (adminRole) {
+            if (newRole === 'admin') {
+                await this.roleRepo.assignRoleToMember(memberId, adminRole.id, userId);
+            } else {
+                await this.roleRepo.removeRoleFromMember(memberId, adminRole.id);
+            }
+        }
+    }
+
+    async assignDynamicRole(userId: string, groupId: string, memberId: string, roleId: string) {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can manage dynamic roles");
+
+        const member = await this.memberRepo.findById(memberId);
+        if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
+
+        await this.roleRepo.assignRoleToMember(memberId, roleId, userId);
+    }
+
+    async removeDynamicRole(userId: string, groupId: string, memberId: string, roleId: string) {
+        const role = await this.memberRepo.checkRole(groupId, userId);
+        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can manage dynamic roles");
+
+        const member = await this.memberRepo.findById(memberId);
+        if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
+
+        await this.roleRepo.removeRoleFromMember(memberId, roleId);
     }
 
     async removeMember(userId: string, groupId: string, memberId: string) {
@@ -287,4 +329,13 @@ export class GroupService {
 
         await this.memberRepo.remove(memberId);
     }
+
+    async listRoles(): Promise<any[]> {
+        return await this.roleRepo.listAll();
+    }
+
+    async createRole(userId: string, payload: { name: string; description?: string }): Promise<any> {
+        return await this.roleRepo.create(payload.name, payload.description);
+    }
 }
+

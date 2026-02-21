@@ -29,6 +29,8 @@
         "viewAll": "View All",
         "verify": "Verify & Enable",
         "confirm": "Confirm",
+        "ok": "OK",
+        "close": "Close",
         "deleteConfirm": "Are you sure you want to delete this?"
     },
     "status": {

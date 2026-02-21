@@ -7,6 +7,7 @@ import { MailService } from "../services/MailService";
 import crypto from "crypto";
 import { z } from "zod";
 import { authLimiter } from "../middleware/rateLimit";
+import { SystemSettingsService } from "../services/SystemSettingsService";
 import { verify } from "otplib";
 import { logActivity, getDeviceFingerprint } from "../utils/audit";
 
@@ -230,8 +231,9 @@ router.post("/signin", authLimiter, async (req, res) => {
         const validPassword = await scrypt.verify(user.password_hash, getPepperedPassword(password));
         if (!validPassword) {
             // Increment failed attempts
-            const maxAttempts = parseInt(process.env.AUTH_MAX_FAILED_ATTEMPTS || '5');
-            const lockoutDuration = parseInt(process.env.AUTH_LOCKOUT_DURATION_MINS || '15');
+            const lockoutCfg = await SystemSettingsService.getSetting('security.auth_lockout');
+            const maxAttempts   = lockoutCfg?.maxFailedAttempts ?? 5;
+            const lockoutDuration = lockoutCfg?.lockoutDurationMins ?? 720;
             
             const newAttempts = (securitySettings.failed_login_attempts || 0) + 1;
             let updateSql = "UPDATE user_security SET failed_login_attempts = $1 WHERE user_id = $2";

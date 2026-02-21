@@ -14,7 +14,10 @@ import SubscriptionList from './views/SubscriptionList.vue'
 import WalletView from './views/WalletView.vue'
 import SecurityView from './views/SecurityView.vue'
 import ProfileView from './views/ProfileView.vue'
-import AdminDashboard from './views/AdminDashboard.vue'
+import AdminLayout from './views/admin/AdminLayout.vue'
+import AdminDashboard from './views/admin/AdminDashboard.vue'
+import UserManagement from './views/admin/UserManagement.vue'
+import SystemSettings from './views/admin/SystemSettings.vue'
 import ForgotPassword from './views/ForgotPassword.vue'
 import ResetPassword from './views/ResetPassword.vue'
 import VerifyEmail from './views/VerifyEmail.vue'
@@ -40,7 +43,16 @@ const routes = [
     { path: '/profile', component: ProfileView, meta: { requiresAuth: true, titleKey: 'profile.profile' } },
     { path: '/activity', component: ActivityLog, meta: { requiresAuth: true, titleKey: 'activity.title' } },
     { path: '/services', component: ServiceManagementView, meta: { requiresAuth: true, titleKey: 'services.title' } },
-    { path: '/admin', component: AdminDashboard, meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'admin.title' } },
+    { 
+        path: '/admin', 
+        component: AdminLayout, 
+        meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'admin.title' },
+        children: [
+            { path: '', component: AdminDashboard },
+            { path: 'users', component: UserManagement, meta: { titleKey: 'admin.users' } },
+            { path: 'settings', component: SystemSettings, meta: { titleKey: 'admin.settings' } }
+        ]
+    },
 ]
 
 const router = createRouter({

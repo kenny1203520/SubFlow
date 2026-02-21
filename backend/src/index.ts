@@ -14,6 +14,7 @@ import userRoutes from './routes/user';
 import uploadRoutes from './routes/upload';
 import exportRoutes from './routes/export';
 import auditRoutes from './routes/audit';
+import adminRoutes from './routes/admin';
 import helmet from 'helmet';
 import { verifySession } from './middleware/auth';
 import { apiLimiter } from './middleware/rateLimit';
@@ -55,6 +56,7 @@ app.use("/api/user", userRoutes);
 app.use("/api/files", uploadRoutes);
 app.use("/api/export", exportRoutes);
 app.use("/api/audit", auditRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Static for uploads
 app.use("/uploads", express.static(path.resolve(__dirname, '../../uploads')));
