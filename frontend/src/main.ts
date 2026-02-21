@@ -18,6 +18,8 @@ import AdminLayout from './views/admin/AdminLayout.vue'
 import AdminDashboard from './views/admin/AdminDashboard.vue'
 import UserManagement from './views/admin/UserManagement.vue'
 import SystemSettings from './views/admin/SystemSettings.vue'
+import IpBlocks from './views/admin/IpBlocks.vue'
+import RolesManagement from './views/admin/RolesManagement.vue'
 import ForgotPassword from './views/ForgotPassword.vue'
 import ResetPassword from './views/ResetPassword.vue'
 import VerifyEmail from './views/VerifyEmail.vue'
@@ -49,8 +51,10 @@ const routes = [
         meta: { requiresAuth: true, requiresAdmin: true, titleKey: 'admin.title' },
         children: [
             { path: '', component: AdminDashboard },
-            { path: 'users', component: UserManagement, meta: { titleKey: 'admin.users' } },
-            { path: 'settings', component: SystemSettings, meta: { titleKey: 'admin.settings' } }
+            { path: 'users', component: UserManagement, meta: { titleKey: 'admin.userManagement' } },
+            { path: 'settings', component: SystemSettings, meta: { titleKey: 'admin.systemSettings' } },
+            { path: 'ip-blocks', component: IpBlocks, meta: { titleKey: 'admin.ipBlocks' } },
+            { path: 'roles', component: RolesManagement, meta: { titleKey: 'admin.rolesManagement' } }
         ]
     },
 ]

@@ -489,7 +489,21 @@ router.get("/user", async (req, res) => {
         res.setHeader("Set-Cookie", sessionCookie.serialize());
     }
 
-    return res.status(200).json(user);
+    // Fetch system roles for this user
+    let systemRoles: string[] = [];
+    try {
+        const rolesRes = await pool.query(
+            `SELECT sr.name FROM user_roles ur JOIN system_roles sr ON ur.role_id = sr.id WHERE ur.user_id = $1`,
+            [user.id]
+        );
+        systemRoles = rolesRes.rows.map((r: any) => r.name);
+    } catch { /* no roles */ }
+
+    return res.status(200).json({
+        ...user,
+        system_roles: systemRoles,
+        isAdmin: systemRoles.length > 0
+    });
 });
 
 router.get("/verify-email/:token", async (req, res) => {

@@ -14,9 +14,15 @@ interface Setting {
     updated_at: string;
 }
 
+interface SystemRole {
+    id: string;
+    name: string;
+}
+
 const settingsRaw = ref<Setting[]>([]);
 const loading = ref(true);
 const saving = ref(false);
+const roles = ref<SystemRole[]>([]);
 
 const captchaConfig = ref({
     enabled: false,
@@ -34,38 +40,48 @@ const passwordPolicy = ref({
 });
 
 const twoFactor = ref({
-    enabled: false
+    enabled: false,
+    enforceRoles: [] as string[]
 });
 
 const securityConfig = ref({
     maxFailedAttempts: 5,
     lockoutDurationMins: 720,
-    authWindowMs: 900000,
+    authWindowMins: 15,
     authMax: 5,
-    apiWindowMs: 900000,
+    apiWindowMins: 15,
     apiMax: 100
 });
 
 const fetchSettings = async () => {
     loading.value = true;
     try {
-        const res = await http.get('/api/admin/settings');
-        if (res.data.status === 'ok') {
-            settingsRaw.value = res.data.list;
-            const settingsMap = res.data.settings;
+        const [settingsRes, rolesRes] = await Promise.all([
+            http.get('/api/admin/settings'),
+            http.get('/api/admin/roles/system')
+        ]);
 
-            if (settingsMap['auth.captcha']) captchaConfig.value = { ...captchaConfig.value, ...settingsMap['auth.captcha'] };
-            if (settingsMap['auth.password_policy']) passwordPolicy.value = { ...passwordPolicy.value, ...settingsMap['auth.password_policy'] };
-            if (settingsMap['auth.require_2fa']) twoFactor.value = { ...twoFactor.value, ...settingsMap['auth.require_2fa'] };
-            if (settingsMap['security.auth_lockout']) {
-                securityConfig.value.maxFailedAttempts = settingsMap['security.auth_lockout'].maxFailedAttempts ?? 5;
-                securityConfig.value.lockoutDurationMins = settingsMap['security.auth_lockout'].lockoutDurationMins ?? 720;
+        if (rolesRes.data.status === 'ok') roles.value = rolesRes.data.roles;
+
+        if (settingsRes.data.status === 'ok') {
+            settingsRaw.value = settingsRes.data.list;
+            const sm = settingsRes.data.settings;
+
+            if (sm['auth.captcha']) captchaConfig.value = { ...captchaConfig.value, ...sm['auth.captcha'] };
+            if (sm['auth.password_policy']) passwordPolicy.value = { ...passwordPolicy.value, ...sm['auth.password_policy'] };
+            if (sm['auth.require_2fa']) {
+                twoFactor.value.enabled = sm['auth.require_2fa'].enabled ?? false;
+                twoFactor.value.enforceRoles = sm['auth.require_2fa'].enforceRoles ?? [];
             }
-            if (settingsMap['security.rate_limit']) {
-                securityConfig.value.authWindowMs = settingsMap['security.rate_limit'].authWindowMs ?? 900000;
-                securityConfig.value.authMax = settingsMap['security.rate_limit'].authMax ?? 5;
-                securityConfig.value.apiWindowMs = settingsMap['security.rate_limit'].apiWindowMs ?? 900000;
-                securityConfig.value.apiMax = settingsMap['security.rate_limit'].apiMax ?? 100;
+            if (sm['security.auth_lockout']) {
+                securityConfig.value.maxFailedAttempts = sm['security.auth_lockout'].maxFailedAttempts ?? 5;
+                securityConfig.value.lockoutDurationMins = sm['security.auth_lockout'].lockoutDurationMins ?? 720;
+            }
+            if (sm['security.rate_limit']) {
+                securityConfig.value.authWindowMins = Math.round((sm['security.rate_limit'].authWindowMs ?? 900000) / 60000);
+                securityConfig.value.authMax = sm['security.rate_limit'].authMax ?? 5;
+                securityConfig.value.apiWindowMins = Math.round((sm['security.rate_limit'].apiWindowMs ?? 900000) / 60000);
+                securityConfig.value.apiMax = sm['security.rate_limit'].apiMax ?? 100;
             }
         }
     } catch (e) {
@@ -96,17 +112,23 @@ const saveSecurityConfig = async () => {
         lockoutDurationMins: securityConfig.value.lockoutDurationMins
     });
     await saveSetting('security.rate_limit', {
-        authWindowMs: securityConfig.value.authWindowMs,
+        authWindowMs: securityConfig.value.authWindowMins * 60000,
         authMax: securityConfig.value.authMax,
-        apiWindowMs: securityConfig.value.apiWindowMs,
+        apiWindowMs: securityConfig.value.apiWindowMins * 60000,
         apiMax: securityConfig.value.apiMax
     });
 };
 
-onMounted(() => {
-    fetchSettings();
-});
+const isRoleEnforced = (roleId: string) => twoFactor.value.enforceRoles.includes(roleId);
+const toggleRoleEnforce = (roleId: string) => {
+    if (isRoleEnforced(roleId)) {
+        twoFactor.value.enforceRoles = twoFactor.value.enforceRoles.filter(r => r !== roleId);
+    } else {
+        twoFactor.value.enforceRoles.push(roleId);
+    }
+};
 
+onMounted(() => { fetchSettings(); });
 </script>
 
 <template>
@@ -125,7 +147,7 @@ onMounted(() => {
 
         <div v-else class="space-y-8">
 
-            <!-- Global 2FA Settings -->
+            <!-- 2FA Settings -->
             <section class="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6">
                 <h3 class="text-lg font-semibold text-white mb-4">{{ t('admin.settings.twoFactor') }}</h3>
                 <div class="space-y-4">
@@ -134,6 +156,22 @@ onMounted(() => {
                             class="w-4 h-4 rounded border-neutral-700 bg-neutral-800 text-red-500 focus:ring-red-500 focus:ring-offset-neutral-900">
                         <span>{{ t('admin.settings.enforce2FA') }}</span>
                     </label>
+
+                    <!-- Per-role 2FA enforcement -->
+                    <div class="mt-4 pl-1">
+                        <p class="text-sm font-medium text-neutral-400 mb-3">{{ t('admin.settings.enforce2FAPerRole') }}
+                        </p>
+                        <div class="space-y-2">
+                            <label v-for="role in roles" :key="role.id"
+                                class="flex items-center space-x-3 text-sm text-neutral-300">
+                                <input type="checkbox" :checked="isRoleEnforced(role.id)"
+                                    @change="toggleRoleEnforce(role.id)"
+                                    class="w-4 h-4 rounded border-neutral-700 bg-neutral-800 text-red-500 focus:ring-red-500 focus:ring-offset-neutral-900">
+                                <span>{{ role.name }}</span>
+                            </label>
+                        </div>
+                    </div>
+
                     <div class="flex justify-end mt-4">
                         <button @click="saveSetting('auth.require_2fa', twoFactor)" :disabled="saving"
                             class="px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl hover:bg-red-500/20 font-medium transition disabled:opacity-50">
@@ -188,30 +226,54 @@ onMounted(() => {
             <section class="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6">
                 <h3 class="text-lg font-semibold text-white mb-1">{{ t('admin.settings.security') }}</h3>
                 <p class="text-sm text-neutral-500 mb-4">{{ t('admin.settings.securitySubtitle') }}</p>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                <h4 class="text-sm font-semibold text-neutral-300 mb-3">{{ t('admin.settings.lockoutSection') }}</h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                     <div>
                         <label class="block text-sm font-medium text-neutral-400 mb-2">{{
                             t('admin.settings.maxFailedAttempts') }}</label>
                         <input type="number" v-model="securityConfig.maxFailedAttempts" min="1" max="100"
-                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none transition">
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-neutral-400 mb-2">{{
                             t('admin.settings.lockoutDurationMins') }}</label>
                         <input type="number" v-model="securityConfig.lockoutDurationMins" min="1"
-                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none transition">
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
+                    </div>
+                </div>
+
+                <h4 class="text-sm font-semibold text-neutral-300 mb-3">{{ t('admin.settings.authRateLimitSection') }}
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{ t('admin.settings.windowMins')
+                            }}</label>
+                        <input type="number" v-model="securityConfig.authWindowMins" min="1"
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{ t('admin.settings.authMax')
-                            }}</label>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{
+                            t('admin.settings.maxRequests') }}</label>
                         <input type="number" v-model="securityConfig.authMax" min="1"
-                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none transition">
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
+                    </div>
+                </div>
+
+                <h4 class="text-sm font-semibold text-neutral-300 mb-3">{{ t('admin.settings.apiRateLimitSection') }}
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{ t('admin.settings.windowMins')
+                            }}</label>
+                        <input type="number" v-model="securityConfig.apiWindowMins" min="1"
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
                     </div>
                     <div>
-                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{ t('admin.settings.apiMax')
-                            }}</label>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{
+                            t('admin.settings.maxRequests') }}</label>
                         <input type="number" v-model="securityConfig.apiMax" min="1"
-                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 focus:border-red-500 outline-none transition">
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
                     </div>
                 </div>
                 <div class="flex justify-end mt-6">
@@ -239,9 +301,10 @@ onMounted(() => {
                                 t('admin.settings.provider') }}</label>
                             <select v-model="captchaConfig.provider"
                                 class="w-full bg-neutral-900/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none">
-                                <option value="none">None</option>
+                                <option value="none">{{ t('admin.settings.providerNone') }}</option>
                                 <option value="turnstile">Cloudflare Turnstile</option>
-                                <option value="recaptcha">Google reCAPTCHA v2</option>
+                                <option value="recaptcha_v2">Google reCAPTCHA v2</option>
+                                <option value="recaptcha_v3">Google reCAPTCHA v3</option>
                             </select>
                         </div>
 

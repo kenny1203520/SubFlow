@@ -6,6 +6,10 @@ export const useAuthStore = defineStore('auth', {
         user: null as any,
         isConnected: false
     }),
+    getters: {
+        isAdmin: (state) => state.user?.isAdmin === true,
+        systemRoles: (state) => state.user?.system_roles ?? []
+    },
     actions: {
         setUser(user: any) {
             this.user = user;
@@ -21,3 +25,4 @@ export const useAuthStore = defineStore('auth', {
         }
     }
 });
+

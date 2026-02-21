@@ -38,7 +38,13 @@ export const verifySession = async (req: Request, res: Response, next: NextFunct
             return res.status(403).json({ error: "Account is blocked." });
         }
         if (security.is_suspended) {
-            if (!security.suspended_until || new Date(security.suspended_until) > new Date()) {
+            if (security.suspended_until && new Date(security.suspended_until) <= new Date()) {
+                // Suspension expired, clear it in DB
+                await pool.query(
+                    "UPDATE user_security SET is_suspended = FALSE, suspended_until = NULL, failed_login_attempts = 0 WHERE user_id = $1",
+                    [user.id]
+                );
+            } else {
                 await lucia.invalidateSession(session.id);
                 res.setHeader("Set-Cookie", lucia.createBlankSessionCookie().serialize());
                 res.locals.user = null;
