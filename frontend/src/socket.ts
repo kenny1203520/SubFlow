@@ -1,9 +1,7 @@
 import { io } from "socket.io-client";
 import parser from "socket.io-msgpack-parser";
 
-const URL = import.meta.env.PROD ? undefined : "http://localhost:3000";
-
-export const socket = io(URL as string, {
+export const socket = io({
     parser,
     withCredentials: true,
     autoConnect: false // Connect only after login

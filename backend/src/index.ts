@@ -25,6 +25,7 @@ import { SchedulerService } from './scheduler';
 SchedulerService.init();
 
 const app = express();
+app.set('trust proxy', 1);
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
     parser,
@@ -35,7 +36,6 @@ const io = new Server(httpServer, {
 });
 
 const port = process.env.BACKEND_PORT || 3000;
-const frontendPath = path.resolve(__dirname, '../../frontend/dist');
 
 // Middleware
 app.use(express.json());
@@ -46,9 +46,6 @@ app.use(cors({
 }));
 app.use(apiLimiter);
 app.use(verifySession);
-
-// Serve static files
-app.use(express.static(frontendPath));
 
 // API Routes
 app.use("/auth", authRoutes);
@@ -175,14 +172,6 @@ io.on("connection", (socket) => {
     socket.on("disconnect", () => {
         // console.log(`User disconnected: ${socket.data.user.username}`);
     });
-});
-
-// Fallback for SPA (Regex matches everything except /auth)
-app.get(/^(?!\/auth).*/, (req, res, next) => {
-    if (req.path.includes('.')) {
-        return next();
-    }
-    res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 httpServer.listen(port, () => {

@@ -8,4 +8,29 @@ export default defineConfig({
         vue(),
         tailwindcss(),
     ],
+    server: {
+        proxy: {
+            '/api': {
+                target: 'http://localhost:3000',
+                changeOrigin: true,
+                xfwd: true
+            },
+            '/auth': {
+                target: 'http://localhost:3000',
+                changeOrigin: true,
+                xfwd: true
+            },
+            '/uploads': {
+                target: 'http://localhost:3000',
+                changeOrigin: true,
+                xfwd: true
+            },
+            '/socket.io': {
+                target: 'http://localhost:3000',
+                ws: true,
+                changeOrigin: true,
+                xfwd: true
+            }
+        }
+    }
 })
