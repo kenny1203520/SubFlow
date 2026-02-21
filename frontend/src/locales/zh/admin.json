@@ -112,7 +112,7 @@
         "assignFailed": "更新角色指派失敗",
         "permFailed": "更新權限失敗",
         "manageUsers": "管理使用者",
-        "directPermissions": "直接受權",
+        "directPermissions": "直接授權",
         "assign": "指派",
         "assigned": "已指派",
         "remove": "移除",
@@ -176,7 +176,7 @@
             "manage": {
                 "roles": "建立、更新與刪除系統角色",
                 "user_roles": "指派與移除使用者角色",
-                "permissions_user": "指派與移除使用者直接受權"
+                "permissions_user": "指派與移除使用者直接授權"
             }
         },
         "users": {
