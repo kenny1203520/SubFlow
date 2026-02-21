@@ -164,8 +164,8 @@ const handleSubmit = async () => {
 
                         <div v-if="!isLogin" class="form-group animate-slide-in">
                             <label class="form-label text-sm">{{ t('auth.email') }}</label>
-                            <input type="email" v-model="email" required class="glass-input bg-slate-50 focus:bg-white"
-                                :placeholder="t('auth.email')" />
+                            <input type="email" v-model="email" required :disabled="requires2FA"
+                                class="glass-input bg-slate-50 focus:bg-white" :placeholder="t('auth.email')" />
                         </div>
 
                         <div v-if="!requires2FA" class="form-group">
@@ -207,12 +207,12 @@ const handleSubmit = async () => {
                                 {{ t('security.twoFactorAuth',
                                     'Two-Factor Authentication') }}
                             </label>
-                            <input type="text" v-model="twoFactorCode" required maxlength="6"
-                                class="glass-input bg-slate-50 focus:bg-white text-center text-2xl tracking-[1rem] uppercase"
-                                placeholder="000000" />
+                            <input type="text" v-model="twoFactorCode" required maxlength="8"
+                                class="glass-input bg-slate-50 focus:bg-white text-center text-xl sm:text-2xl tracking-[0.5rem] sm:tracking-[1rem] uppercase font-mono"
+                                placeholder="______" />
                             <p class="text-xs text-slate-500 mt-2 text-center">
                                 {{ t('auth.enterTotp',
-                                    'Please enter your 6-digit TOTP code.') }}
+                                    'Please enter your 6-digit TOTP code or 8-char backup code.') }}
                             </p>
                         </div>
                     </div>

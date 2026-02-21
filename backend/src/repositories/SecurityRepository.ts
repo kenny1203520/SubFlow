@@ -15,6 +15,23 @@ export class SecurityRepository extends BaseRepository {
         `, [userId, secret, enabled]);
     }
 
+    async saveBackupCodes(userId: string, hashedCodes: string[]) {
+        await this.query(`
+            UPDATE user_security 
+            SET backup_codes = $2
+            WHERE user_id = $1
+        `, [userId, hashedCodes]);
+    }
+
+    async removeBackupCode(userId: string, hashedCodes: string[]) {
+        // We will just replace the array with the new one that has the used code filtered out
+        await this.query(`
+            UPDATE user_security
+            SET backup_codes = $2
+            WHERE user_id = $1
+        `, [userId, hashedCodes]);
+    }
+
     async logLogin(data: any) {
         await this.query(`
             INSERT INTO login_history (user_id, session_id, ip_address, user_agent, device_fingerprint, status, failure_reason)

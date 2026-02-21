@@ -377,11 +377,30 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
              return res.status(400).json({ message: "auth.errors.twoFactorNotEnabled" });
         }
 
-        // TOTP verification
-        const isValid = verify({ token: code, secret: settings.two_factor_secret });
+        // TOTP or Backup Code verification
+        let isValid = false;
+        let usedBackupCode = false;
+
+        if (code.length === 8 && settings.backup_codes && settings.backup_codes.length > 0) {
+            for (let i = 0; i < settings.backup_codes.length; i++) {
+                const isMatch = await scrypt.verify(settings.backup_codes[i], code);
+                if (isMatch) {
+                    isValid = true;
+                    usedBackupCode = true;
+                    // Remove used backup code from array and save
+                    const newBackupCodes = [...settings.backup_codes];
+                    newBackupCodes.splice(i, 1);
+                    await securityRepo.removeBackupCode(userId, newBackupCodes);
+                    break;
+                }
+            }
+        } else {
+            // @ts-ignore
+            isValid = verify({ token: code, secret: settings.two_factor_secret });
+        }
         
         if (!isValid) {
-             await logActivity(userId, 'auth', '2fa_failed', 'high', 'Invalid 2FA code', req, getDeviceFingerprint(req), { user_id: userId });
+             await logActivity(userId, 'auth', '2fa_failed', 'high', 'Invalid 2FA code', req, getDeviceFingerprint(req), { user_id: userId, used_backup_code: code.length === 8 });
              await securityRepo.logLogin({
                  user_id: userId,
                  session_id: null,
@@ -402,7 +421,7 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         });
         const sessionCookie = lucia.createSessionCookie(session.id);
         
-        await logActivity(user.id, 'auth', 'login_2fa', 'info', 'User logged in with 2FA', req, fingerprint, { username: user.username, session_id: session.id });
+        await logActivity(user.id, 'auth', 'login_2fa', 'info', `User logged in with 2FA${usedBackupCode ? ' (Backup Code)' : ''}`, req, fingerprint, { username: user.username, session_id: session.id, used_backup_code: usedBackupCode });
 
         await securityRepo.logLogin({
             user_id: user.id,

@@ -21,9 +21,12 @@ const showOldPassword = ref(false);
 const showNewPassword = ref(false);
 const showConfirmPassword = ref(false);
 
+const backupCodes = ref<string[]>([]);
+const showBackupCodesModal = ref(false);
+
 const fetchData = () => {
     loading.value = true;
-    socket.emit('security:settings', (res: any) => {
+    socket.emit('security:get_settings', (res: any) => {
         if (res.status === 'ok') settings.value = res.settings;
     });
     // Fetch active sessions instead of devices
@@ -72,10 +75,30 @@ const verifyAndEnable2FA = () => {
             isSettingUp2FA.value = false;
             setupCode.value = '';
             setupSecret.value = '';
+            backupCodes.value = res.backupCodes || [];
+            showBackupCodesModal.value = true;
         } else {
             errorMsg.value = res.message || "Verification failed";
         }
     });
+};
+
+const regenerateBackupCodes = () => {
+    if (confirm(t('security.confirmRegenBackupCodes', 'Are you sure you want to regenerate backup codes? Your old codes will immediately stop working.'))) {
+        socket.emit('security:regenerate_backup_codes', (res: any) => {
+            if (res.status === 'ok') {
+                backupCodes.value = res.backupCodes || [];
+                showBackupCodesModal.value = true;
+            } else {
+                alert(res.message || "Failed to regenerate backup codes");
+            }
+        });
+    }
+};
+
+const copyBackupCodes = () => {
+    navigator.clipboard.writeText(backupCodes.value.join('\n'))
+        .then(() => alert(t('security.copiedBackupCodes', 'Backup codes copied to clipboard!')));
 };
 
 const cancelSetup = () => {
@@ -234,6 +257,14 @@ onUnmounted(() => {
                                 'Two-factor authentication adds an extra layer of security to your account. \
                             To log in, you will also need to provide a 6 - digit code from your authenticator app.') }}
                         </p>
+
+                        <!-- Regenerate Backup Codes Action -->
+                        <div v-if="settings?.two_factor_enabled && !isSettingUp2FA" class="mb-6">
+                            <button @click="regenerateBackupCodes"
+                                class="text-sm font-semibold text-primary-600 hover:text-primary-700 underline underline-offset-2 transition-colors">
+                                {{ t('security.regenerateBackupCodes', 'Regenerate Backup Codes') }}
+                            </button>
+                        </div>
 
                         <!-- 2FA Setup Flow -->
                         <div v-if="isSettingUp2FA" class="animate-slide-in mt-auto">
@@ -568,6 +599,58 @@ onUnmounted(() => {
                             {{ t('common.actions.cancel', 'Cancel') }}
                         </button>
                     </div>
+                </div>
+            </div>
+        </div>
+        <!-- Backup Codes Modal -->
+        <div v-if="showBackupCodesModal"
+            class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+            <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 border border-slate-100 relative">
+                <button @click="showBackupCodesModal = false"
+                    class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24"
+                        stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                            d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+                <div class="mb-6 text-center">
+                    <div
+                        class="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mx-auto mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8" fill="none" viewBox="0 0 24 24"
+                            stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                    </div>
+                    <h3 class="text-2xl font-bold text-slate-800 mb-2">
+                        {{ t("security.backupCodesTitle", "Your Backup Codes") }}
+                    </h3>
+                    <p class="text-slate-500 text-sm">
+                        {{ t("security.backupCodesDesc",
+                            "Save these codes in a secure place. \
+                        If you lose access to your authenticator app, \
+                        you can use these 8 - character codes to sign in. \
+                        Each code can only be used once.") }}
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 mb-6 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div v-for="code in backupCodes" :key="code"
+                        class="text-center font-mono font-bold text-slate-700 tracking-wider">
+                        {{ code }}
+                    </div>
+                </div>
+
+                <div class="flex gap-4">
+                    <button @click="copyBackupCodes"
+                        class="btn bg-slate-800 text-white hover:bg-slate-700 flex-1 shadow-md">
+                        {{ t("security.copyCodes", "Copy Codes") }}
+                    </button>
+                    <button @click="showBackupCodesModal = false"
+                        class="btn bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 flex-1">
+                        {{ t('common.actions.done', 'Done') }}
+                    </button>
                 </div>
             </div>
         </div>
