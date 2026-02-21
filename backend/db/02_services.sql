@@ -10,3 +10,17 @@ CREATE TABLE IF NOT EXISTS services (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- Services
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_services_timestamp'
+    ) THEN 
+        CREATE TRIGGER update_services_timestamp 
+        BEFORE UPDATE ON services 
+        FOR EACH ROW EXECUTE FUNCTION update_timestamp();
+    END IF;
+END $$;

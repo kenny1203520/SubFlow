@@ -54,7 +54,6 @@ CREATE TABLE IF NOT EXISTS group_services (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
-
 -- Index for group services
 CREATE INDEX IF NOT EXISTS idx_group_services_group_id ON group_services(group_id);
 CREATE INDEX IF NOT EXISTS idx_group_services_service_id ON group_services(service_id);
@@ -87,7 +86,6 @@ CREATE TABLE IF NOT EXISTS group_members (
     -- Constraint: Either user_id OR temp_name must exist to identify the slot
     CONSTRAINT member_identity CHECK (user_id IS NOT NULL OR temp_name IS NOT NULL)
 );
-
 -- General query index for group members
 CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id);
 -- Unique index for members
@@ -114,16 +112,18 @@ CREATE TABLE IF NOT EXISTS group_service_members (
 
     UNIQUE(group_service_id, member_id)
 );
-
 -- Index for service members
 CREATE INDEX IF NOT EXISTS idx_group_service_members_service_id ON group_service_members(group_service_id);
 CREATE INDEX IF NOT EXISTS idx_group_service_members_member_id ON group_service_members(member_id);
 
--- Triggers for updated_at
-DO $$
-BEGIN
+-- Triggers for 'updated_at'
+DO $$ BEGIN
     -- Groups
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_groups_timestamp') THEN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_groups_timestamp'
+    ) THEN
         CREATE TRIGGER update_groups_timestamp
         BEFORE UPDATE ON groups
         FOR EACH ROW
@@ -131,7 +131,11 @@ BEGIN
     END IF;
 
     -- Group Services
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_group_services_timestamp') THEN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_group_services_timestamp'
+    ) THEN
         CREATE TRIGGER update_group_services_timestamp
         BEFORE UPDATE ON group_services
         FOR EACH ROW
@@ -139,7 +143,11 @@ BEGIN
     END IF;
 
     -- Group Members
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_group_members_timestamp') THEN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_group_members_timestamp'
+    ) THEN
         CREATE TRIGGER update_group_members_timestamp
         BEFORE UPDATE ON group_members
         FOR EACH ROW
@@ -147,7 +155,11 @@ BEGIN
     END IF;
 
     -- Group Service Members
-    IF NOT EXISTS (SELECT 1 FROM pg_trigger WHERE tgname = 'update_group_service_members_timestamp') THEN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_group_service_members_timestamp'
+    ) THEN
         CREATE TRIGGER update_group_service_members_timestamp
         BEFORE UPDATE ON group_service_members
         FOR EACH ROW

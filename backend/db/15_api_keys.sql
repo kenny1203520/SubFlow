@@ -19,7 +19,8 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 -- Index for fast lookup by hash
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys(key_hash);
--- Trigger for updated_at
+
+-- Trigger for 'updated_at'
 DO $$ BEGIN IF NOT EXISTS (
     SELECT 1
     FROM pg_trigger

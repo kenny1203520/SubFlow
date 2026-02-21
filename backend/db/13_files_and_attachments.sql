@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS attached_files (
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- Trigger for updated_at
+
+-- Trigger for 'updated_at'
 DO $$ BEGIN IF NOT EXISTS (
     SELECT 1
     FROM pg_trigger

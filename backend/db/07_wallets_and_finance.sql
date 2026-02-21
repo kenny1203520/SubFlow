@@ -111,12 +111,78 @@ CREATE TABLE IF NOT EXISTS auto_debit_rules (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(target_wallet_id, backup_wallet_id)
 );
--- Triggers
-DO $$ BEGIN IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_user_wallets_timestamp'
-) THEN CREATE TRIGGER update_user_wallets_timestamp BEFORE
-UPDATE ON user_wallets FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- Exchange Rates
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_exchange_rates_timestamp'
+    ) THEN
+        CREATE TRIGGER update_exchange_rates_timestamp
+        BEFORE UPDATE ON exchange_rates
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- User Wallets
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_user_wallets_timestamp'
+    ) THEN
+        CREATE TRIGGER update_user_wallets_timestamp
+        BEFORE UPDATE ON user_wallets
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Deposits
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_deposits_timestamp'
+    ) THEN
+        CREATE TRIGGER update_deposits_timestamp
+        BEFORE UPDATE ON deposits
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Wallet Transactions
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_wallet_transactions_timestamp'
+    ) THEN
+        CREATE TRIGGER update_wallet_transactions_timestamp
+        BEFORE UPDATE ON wallet_transactions
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Wallet Transfers
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_wallet_transfers_timestamp'
+    ) THEN
+        CREATE TRIGGER update_wallet_transfers_timestamp
+        BEFORE UPDATE ON wallet_transfers
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Auto Debit Rules
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_auto_debit_rules_timestamp'
+    ) THEN
+        CREATE TRIGGER update_auto_debit_rules_timestamp
+        BEFORE UPDATE ON auto_debit_rules
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
 END $$;

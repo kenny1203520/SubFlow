@@ -1,14 +1,27 @@
--- Roles (Dynamic definitions)
-CREATE TABLE IF NOT EXISTS roles (
+-- System Roles (Global definitions)
+CREATE TABLE IF NOT EXISTS system_roles (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL UNIQUE,
-    -- e.g., 'super_admin', 'group_owner', 'treasurer'
+    -- e.g., 'super_admin', 'support_agent'
+    description TEXT,
+    is_system_role BOOLEAN DEFAULT TRUE,
+    -- Cannot be deleted if true
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Group Roles (Group-level definitions)
+CREATE TABLE IF NOT EXISTS group_roles (
+    id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL UNIQUE,
+    -- e.g., 'group_owner', 'treasurer', 'auditor'
     description TEXT,
     is_system_role BOOLEAN DEFAULT FALSE,
     -- Cannot be deleted if true
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
 -- Permissions (Granular actions)
 CREATE TABLE IF NOT EXISTS permissions (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -19,24 +32,53 @@ CREATE TABLE IF NOT EXISTS permissions (
     resource TEXT NOT NULL,
     -- 'users', 'bills', 'settings'
     description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(scope, action, resource)
 );
--- RolePermissions (Many-to-Many)
-CREATE TABLE IF NOT EXISTS role_permissions (
-    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+
+-- System Role Permissions (Many-to-Many)
+CREATE TABLE IF NOT EXISTS permissions_system_role (
+    role_id TEXT NOT NULL REFERENCES system_roles(id) ON DELETE CASCADE,
     permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (role_id, permission_id)
 );
+
+-- Group Role Permissions (Many-to-Many)
+CREATE TABLE IF NOT EXISTS permissions_group_role (
+    role_id TEXT NOT NULL REFERENCES group_roles(id) ON DELETE CASCADE,
+    permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (role_id, permission_id)
+);
+
+-- User System Roles (Global role assignments)
+CREATE TABLE IF NOT EXISTS user_roles (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role_id TEXT NOT NULL REFERENCES system_roles(id) ON DELETE CASCADE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    assigned_by TEXT REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, role_id)
+);
+
 -- Group Member Roles (Replacing simple role column in group_members if needed, or enhancing it)
 -- We will keep group_members.role as a "Primary Role" for simplicity in code, 
 -- but this table allows assigning custom roles to members.
 CREATE TABLE IF NOT EXISTS group_member_roles (
     member_id TEXT NOT NULL REFERENCES group_members(id) ON DELETE CASCADE,
-    role_id TEXT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+    role_id TEXT NOT NULL REFERENCES group_roles(id) ON DELETE CASCADE,
     assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     assigned_by TEXT REFERENCES users(id),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id, role_id)
 );
+
 -- Member Service Status (Service-specific active periods within a group)
 CREATE TABLE IF NOT EXISTS member_service_status (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -54,19 +96,102 @@ CREATE TABLE IF NOT EXISTS member_service_status (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- Triggers
-DO $$ BEGIN IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_roles_timestamp'
-) THEN CREATE TRIGGER update_roles_timestamp BEFORE
-UPDATE ON roles FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
-IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_member_service_status_timestamp'
-) THEN CREATE TRIGGER update_member_service_status_timestamp BEFORE
-UPDATE ON member_service_status FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- System Roles
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_system_roles_timestamp'
+    ) THEN
+        CREATE TRIGGER update_system_roles_timestamp
+        BEFORE UPDATE ON system_roles
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Group Roles
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_group_roles_timestamp'
+    ) THEN
+        CREATE TRIGGER update_group_roles_timestamp
+        BEFORE UPDATE ON group_roles
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Permissions
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_permissions_timestamp'
+    ) THEN
+        CREATE TRIGGER update_permissions_timestamp
+        BEFORE UPDATE ON permissions
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Permissions System Role
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_permissions_system_role_timestamp'
+    ) THEN
+        CREATE TRIGGER update_permissions_system_role_timestamp
+        BEFORE UPDATE ON permissions_system_role
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Permissions Group Role
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_permissions_group_role_timestamp'
+    ) THEN
+        CREATE TRIGGER update_permissions_group_role_timestamp
+        BEFORE UPDATE ON permissions_group_role
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- User Roles
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_user_roles_timestamp'
+    ) THEN
+        CREATE TRIGGER update_user_roles_timestamp
+        BEFORE UPDATE ON user_roles
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Group Member Roles
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_group_member_roles_timestamp'
+    ) THEN
+        CREATE TRIGGER update_group_member_roles_timestamp
+        BEFORE UPDATE ON group_member_roles
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Member Service Status
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_member_service_status_timestamp'
+    ) THEN
+        CREATE TRIGGER update_member_service_status_timestamp
+        BEFORE UPDATE ON member_service_status
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
 END $$;

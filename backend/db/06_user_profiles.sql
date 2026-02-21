@@ -15,12 +15,18 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- Trigger for update timestamp
-DO $$ BEGIN IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_user_profiles_timestamp'
-) THEN CREATE TRIGGER update_user_profiles_timestamp BEFORE
-UPDATE ON user_profiles FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- User Profiles
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_user_profiles_timestamp'
+    ) THEN
+        CREATE TRIGGER update_user_profiles_timestamp
+        BEFORE UPDATE ON user_profiles
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
 END $$;

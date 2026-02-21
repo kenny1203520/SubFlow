@@ -34,12 +34,18 @@ ADD COLUMN exchange_rate DECIMAL(15, 6) DEFAULT 1,
 ADD COLUMN service_currency TEXT;
 END IF;
 END $$;
--- Triggers
-DO $$ BEGIN IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_billing_ledger_timestamp'
-) THEN CREATE TRIGGER update_billing_ledger_timestamp BEFORE
-UPDATE ON billing_ledger FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- Billing Ledger
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_billing_ledger_timestamp'
+    ) THEN
+        CREATE TRIGGER update_billing_ledger_timestamp
+        BEFORE UPDATE ON billing_ledger
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
 END $$;

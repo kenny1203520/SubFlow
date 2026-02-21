@@ -30,12 +30,30 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- Triggers
-DO $$ BEGIN IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_group_invites_timestamp'
-) THEN CREATE TRIGGER update_group_invites_timestamp BEFORE
-UPDATE ON group_invites FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- Group Invites
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_group_invites_timestamp'
+    ) THEN
+        CREATE TRIGGER update_group_invites_timestamp
+        BEFORE UPDATE ON group_invites
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Notifications
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_notifications_timestamp'
+    ) THEN
+        CREATE TRIGGER update_notifications_timestamp
+        BEFORE UPDATE ON notifications
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
 END $$;

@@ -88,3 +88,78 @@ CREATE TABLE IF NOT EXISTS bill_splits (
 );
 -- Index for bill splits
 CREATE INDEX IF NOT EXISTS idx_bill_splits_bill_id ON bill_splits(bill_id);
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- Expenses
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_expenses_timestamp'
+    ) THEN
+        CREATE TRIGGER update_expenses_timestamp
+        BEFORE UPDATE ON expenses
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Expense Splits
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_expense_splits_timestamp'
+    ) THEN
+        CREATE TRIGGER update_expense_splits_timestamp
+        BEFORE UPDATE ON expense_splits
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Subscriptions
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_subscriptions_timestamp'
+    ) THEN
+        CREATE TRIGGER update_subscriptions_timestamp
+        BEFORE UPDATE ON subscriptions
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Subscription Splits
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_subscription_splits_timestamp'
+    ) THEN
+        CREATE TRIGGER update_subscription_splits_timestamp
+        BEFORE UPDATE ON subscription_splits
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Bills
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_bills_timestamp'
+    ) THEN
+        CREATE TRIGGER update_bills_timestamp
+        BEFORE UPDATE ON bills
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- Bill Splits
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_bill_splits_timestamp'
+    ) THEN
+        CREATE TRIGGER update_bill_splits_timestamp
+        BEFORE UPDATE ON bill_splits
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+END $$;

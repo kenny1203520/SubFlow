@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS webhook_logs (
     attempt_count INTEGER DEFAULT 1,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- Trigger
+
+-- Trigger for 'updated_at'
 DO $$ BEGIN IF NOT EXISTS (
     SELECT 1
     FROM pg_trigger

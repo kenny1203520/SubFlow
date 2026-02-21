@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS user_security (
     last_password_change TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
 -- Login History
 CREATE TABLE IF NOT EXISTS login_history (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS login_history (
         status TEXT CHECK (status IN ('success', 'failed', '2fa_challenge')),
         failure_reason TEXT
 );
+
 -- User Devices (For session management and security)
 CREATE TABLE IF NOT EXISTS user_devices (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -53,19 +55,30 @@ CREATE TABLE IF NOT EXISTS user_devices (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
--- Triggers
-DO $$ BEGIN IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_user_security_timestamp'
-) THEN CREATE TRIGGER update_user_security_timestamp BEFORE
-UPDATE ON user_security FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
-IF NOT EXISTS (
-    SELECT 1
-    FROM pg_trigger
-    WHERE tgname = 'update_user_devices_timestamp'
-) THEN CREATE TRIGGER update_user_devices_timestamp BEFORE
-UPDATE ON user_devices FOR EACH ROW EXECUTE FUNCTION update_timestamp();
-END IF;
+
+-- Triggers for 'updated_at'
+DO $$ BEGIN
+    -- User Security
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_user_security_timestamp'
+    ) THEN
+        CREATE TRIGGER update_user_security_timestamp
+        BEFORE UPDATE ON user_security
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
+
+    -- User Devices
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_trigger
+        WHERE tgname = 'update_user_devices_timestamp'
+    ) THEN
+        CREATE TRIGGER update_user_devices_timestamp
+        BEFORE UPDATE ON user_devices
+        FOR EACH ROW
+        EXECUTE FUNCTION update_timestamp();
+    END IF;
 END $$;
