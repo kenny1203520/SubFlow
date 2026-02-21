@@ -199,7 +199,7 @@
         "requireUppercase": "要求大寫字母",
         "requireLowercase": "要求小寫字母",
         "requireNumbers": "要求數字",
-        "requireSymbols": "要求特殊符號 (!@#$%)",
+        "requireSymbols": "要求特殊符號 (!{'@'}#$%)",
         "savePasswordPolicy": "儲存密碼策略",
         "captcha": "驗證碼設定（機器人防護）",
         "enableCaptcha": "在登入/註冊時啟用驗證碼",

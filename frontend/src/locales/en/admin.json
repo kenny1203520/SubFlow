@@ -199,7 +199,7 @@
         "requireUppercase": "Require Uppercase Letters",
         "requireLowercase": "Require Lowercase Letters",
         "requireNumbers": "Require Numbers",
-        "requireSymbols": "Require Symbols (!@#$%)",
+        "requireSymbols": "Require Symbols (!{'@'}#$%)",
         "savePasswordPolicy": "Save Password Policy",
         "captcha": "Captcha Settings (Bot Protection)",
         "enableCaptcha": "Enable Captcha on Login/Register",
