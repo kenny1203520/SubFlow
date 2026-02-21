@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import http from '../http';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useI18n } from 'vue-i18n';
+import PasswordRequirements from '../components/PasswordRequirements.vue';
+import CaptchaWidget from '../components/CaptchaWidget.vue';
 
 const router = useRouter();
 const authStore = useAuthStore();
@@ -19,6 +21,25 @@ const requires2FA = ref(false);
 const twoFactorCode = ref('');
 const pendingUserId = ref('');
 const showPassword = ref(false);
+
+const captchaProvider = ref<'none' | 'turnstile' | 'recaptcha'>('none');
+const captchaSiteKey = ref('');
+const captchaToken = ref('');
+const captchaRef = ref<any>(null);
+
+const onCaptchaVerify = (token: string) => {
+    captchaToken.value = token;
+};
+
+onMounted(async () => {
+    try {
+        const res = await http.get('/auth/config');
+        captchaProvider.value = res.data.captchaProvider;
+        captchaSiteKey.value = res.data.captchaSiteKey;
+    } catch (e) {
+        console.error("Failed to load captcha config", e);
+    }
+});
 
 const toggleMode = () => {
     isLogin.value = !isLogin.value;
@@ -47,7 +68,8 @@ const handleSubmit = async () => {
         if (isLogin.value) {
             const res = await http.post('/auth/signin', {
                 username: username.value,
-                password: password.value
+                password: password.value,
+                captchaToken: captchaToken.value
             });
 
             if (res.data.requires2FA) {
@@ -62,7 +84,8 @@ const handleSubmit = async () => {
             const res = await http.post('/auth/signup', {
                 username: username.value,
                 email: email.value,
-                password: password.value
+                password: password.value,
+                captchaToken: captchaToken.value
             });
             authStore.setUser(res.data.user);
             router.push('/dashboard');
@@ -74,6 +97,8 @@ const handleSubmit = async () => {
         } else {
             errorMsg.value = t('common.status.error');
         }
+        if (captchaRef.value) captchaRef.value.reset();
+        captchaToken.value = '';
     } finally {
         isLoading.value = false;
     }
@@ -131,8 +156,10 @@ const handleSubmit = async () => {
                     <div class="space-y-4">
                         <div class="form-group">
                             <label class="form-label text-sm">{{ t('auth.username') }}</label>
-                            <input type="text" v-model="username" required minlength="3"
-                                class="glass-input bg-slate-50 focus:bg-white" :placeholder="t('auth.username')" />
+                            <input type="text" v-model="username" required minlength="3" :disabled="requires2FA"
+                                class="glass-input bg-slate-50 focus:bg-white"
+                                :class="{ 'opacity-60 cursor-not-allowed': requires2FA }"
+                                :placeholder="t('auth.username')" />
                         </div>
 
                         <div v-if="!isLogin" class="form-group animate-slide-in">
@@ -164,6 +191,8 @@ const handleSubmit = async () => {
                                 </button>
                             </div>
 
+                            <PasswordRequirements v-if="!isLogin" :password="password" />
+
                             <div v-if="isLogin" class="flex justify-end mt-1">
                                 <span @click="router.push('/auth/forgot-password')"
                                     class="text-xs text-primary-600 hover:text-primary-700 cursor-pointer font-medium">
@@ -174,22 +203,33 @@ const handleSubmit = async () => {
 
                         <!-- 2FA Input -->
                         <div v-if="requires2FA" class="form-group animate-slide-in">
-                            <label class="form-label text-sm">{{ t('security.twoFactorAuth', 'Two-Factor Authentication') }}</label>
+                            <label class="form-label text-sm">
+                                {{ t('security.twoFactorAuth',
+                                    'Two-Factor Authentication') }}
+                            </label>
                             <input type="text" v-model="twoFactorCode" required maxlength="6"
                                 class="glass-input bg-slate-50 focus:bg-white text-center text-2xl tracking-[1rem] uppercase"
                                 placeholder="000000" />
-                            <p class="text-xs text-slate-500 mt-2 text-center">{{ t('auth.enterTotp', 'Please enter your 6-digit TOTP code.') }}</p>
+                            <p class="text-xs text-slate-500 mt-2 text-center">
+                                {{ t('auth.enterTotp',
+                                    'Please enter your 6-digit TOTP code.') }}
+                            </p>
                         </div>
                     </div>
 
                     <div v-if="errorMsg"
-                        class="p-3 rounded-lg bg-red-50 text-red-600 text-sm flex items-center gap-2 animate-pulse">
+                        class="p-3 rounded-lg bg-red-50 text-red-600 text-sm flex items-center gap-2 animate-pulse mt-4">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24"
                             stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                                 d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                         </svg>
                         {{ errorMsg }}
+                    </div>
+
+                    <div class="mt-6 mb-4">
+                        <CaptchaWidget ref="captchaRef" :provider="captchaProvider" :siteKey="captchaSiteKey"
+                            @verify="onCaptchaVerify" />
                     </div>
 
                     <button type="submit"

@@ -25,24 +25,75 @@ const getPepperedPassword = (password: string) => {
 };
 
 // Validation Schemas
+const verifyCaptcha = async (token: string, ip: string) => {
+    const provider = process.env.CAPTCHA_PROVIDER || "none";
+    if (provider === "none") return true;
+
+    const secret = process.env.CAPTCHA_SECRET_KEY;
+    if (!secret) {
+        console.warn("CAPTCHA_SECRET_KEY is missing. CAPTCHA validation skipped but could be a security risk.");
+        return true; 
+    }
+
+    if (!token) return false;
+
+    let verifyUrl = "";
+    if (provider === "turnstile") {
+        verifyUrl = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
+    } else if (provider === "recaptcha") {
+        verifyUrl = "https://www.google.com/recaptcha/api/siteverify";
+    } else {
+        return true; // Unknown provider
+    }
+
+    try {
+        const formData = new URLSearchParams();
+        formData.append("secret", secret);
+        formData.append("response", token);
+        formData.append("remoteip", ip);
+
+        const response = await fetch(verifyUrl, {
+            method: "POST",
+            body: formData,
+            headers: { "Content-Type": "application/x-www-form-urlencoded" }
+        });
+
+        const data = await response.json();
+        return data.success;
+    } catch (e) {
+        console.error("Captcha verification error", e);
+        return false;
+    }
+};
+
 const signupSchema = z.object({
     username: z.string().min(3).max(255).regex(/^[a-zA-Z0-9_-]+$/, "auth.errors.usernameFormat"),
     email: z.string().email().max(255).regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, "auth.errors.invalidEmail").transform(v => v.toLowerCase()),
     password: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
+    captchaToken: z.string().optional(),
 });
 
 const signinSchema = z.object({
     username: z.string().max(255).regex(/^[a-zA-Z0-9_-]+$/, "auth.errors.usernameFormat"),
     password: z.string().max(255),
+    captchaToken: z.string().optional(),
 });
 
 const resetSchema = z.object({
     password: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
+    captchaToken: z.string().optional(),
 });
 
 const changePasswordSchema = z.object({
     oldPassword: z.string().max(255),
     newPassword: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
+});
+
+router.get("/config", (req, res) => {
+    res.json({
+        captchaProvider: process.env.CAPTCHA_PROVIDER || "none",
+        captchaSiteKey: process.env.CAPTCHA_SITE_KEY || ""
+    });
 });
 
 router.post("/signup", authLimiter, async (req, res) => {
@@ -129,7 +180,12 @@ router.post("/signup", authLimiter, async (req, res) => {
 
 router.post("/signin", authLimiter, async (req, res) => {
     try {
-        const { username, password } = signinSchema.parse(req.body);
+        const { username, password, captchaToken } = signinSchema.parse(req.body);
+
+        const isCaptchaValid = await verifyCaptcha(captchaToken || "", req.ip || "");
+        if (!isCaptchaValid) {
+            return res.status(400).json({ message: "auth.errors.captchaFailed" });
+        }
 
         const result = await pool.query("SELECT * FROM users WHERE username = $1", [username]);
         const user = result.rows[0];
@@ -463,7 +519,12 @@ router.post("/password-reset", authLimiter, async (req, res) => {
 router.post("/password-reset/:token", authLimiter, async (req, res) => {
     try {
         const { token } = req.params;
-        const { password } = resetSchema.parse(req.body);
+        const { password, captchaToken } = resetSchema.parse(req.body);
+
+        const isCaptchaValid = await verifyCaptcha(captchaToken || "", req.ip || "");
+        if (!isCaptchaValid) {
+            return res.status(400).json({ message: "auth.errors.captchaFailed" });
+        }
 
         const tokenHash = crypto.createHash("sha256").update(token as string).digest("hex");
 
