@@ -1,6 +1,8 @@
 {
     "appName": "SubFlow",
     "all": "All",
+    "notice": "Notice",
+    "confirm": "Confirm",
     "actions": {
         "create": "Create",
         "add": "Add",

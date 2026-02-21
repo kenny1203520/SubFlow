@@ -12,7 +12,7 @@ export const useUIStore = defineStore('ui', () => {
   const alertTitle = ref('');
   const alertResolve = ref<(() => void) | null>(null);
 
-  const confirm = (message: string, title: string = 'Confirm') => {
+  const confirm = (message: string, title: string = 'common.confirm') => {
     confirmMessage.value = message;
     confirmTitle.value = title;
     isConfirmOpen.value = true;
@@ -21,7 +21,7 @@ export const useUIStore = defineStore('ui', () => {
     });
   };
 
-  const alert = (message: string, title: string = 'Notice') => {
+  const alert = (message: string, title: string = 'common.notice') => {
     alertMessage.value = message;
     alertTitle.value = title;
     isAlertOpen.value = true;

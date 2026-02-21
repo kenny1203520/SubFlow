@@ -1,6 +1,8 @@
 {
     "appName": "SubFlow",
     "all": "全部",
+    "notice": "通知",
+    "confirm": "確認",
     "actions": {
         "create": "新建",
         "add": "添加",
