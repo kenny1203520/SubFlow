@@ -27,7 +27,7 @@ VALUES
   ('auth.password_policy', '{"minLength": 8, "requireUppercase": true, "requireLowercase": true, "requireNumbers": true, "requireSymbols": true}'::jsonb, 'Global password complexity requirements'),
   ('auth.require_2fa', '{"enabled": false}'::jsonb, 'Whether 2FA is globally enforced for all users'),
   ('security.auth_lockout', '{"maxFailedAttempts": 5, "lockoutDurationMins": 720}'::jsonb, 'Account lockout policy after failed login attempts'),
-  ('security.rate_limit', '{"authWindowMs": 900000, "authMax": 5, "apiWindowMs": 900000, "apiMax": 100}'::jsonb, 'Rate limiting configuration for auth and API endpoints')
+  ('security.rate_limit', '{"authWindowMs": 900000, "authMax": 5, "apiWindowMs": 300000, "apiMax": 100}'::jsonb, 'Rate limiting configuration for auth and API endpoints')
 ON CONFLICT (key) DO NOTHING;
 
 -- Triggers for 'updated_at'
