@@ -26,23 +26,23 @@ const getPepperedPassword = (password: string) => {
 
 // Validation Schemas
 const signupSchema = z.object({
-    username: z.string().min(3).max(255).regex(/^[a-zA-Z0-9_-]+$/, "Only letters, numbers, hyphens, and underscores allowed"),
-    email: z.string().email().max(255).regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, "Invalid email format").transform(v => v.toLowerCase()),
-    password: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+    username: z.string().min(3).max(255).regex(/^[a-zA-Z0-9_-]+$/, "auth.errors.usernameFormat"),
+    email: z.string().email().max(255).regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, "auth.errors.invalidEmail").transform(v => v.toLowerCase()),
+    password: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
 });
 
 const signinSchema = z.object({
-    username: z.string().max(255).regex(/^[a-zA-Z0-9_-]+$/, "Only letters, numbers, hyphens, and underscores allowed"),
-    password: z.string().max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+    username: z.string().max(255).regex(/^[a-zA-Z0-9_-]+$/, "auth.errors.usernameFormat"),
+    password: z.string().max(255),
 });
 
 const resetSchema = z.object({
-    password: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+    password: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
 });
 
 const changePasswordSchema = z.object({
-    oldPassword: z.string().max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
-    newPassword: z.string().min(8).max(255).regex(/[A-Z]/, "Must contain uppercase").regex(/[0-9]/, "Must contain number").regex(/[^A-Za-z0-9]/, "Must contain symbol"),
+    oldPassword: z.string().max(255),
+    newPassword: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
 });
 
 router.post("/signup", authLimiter, async (req, res) => {
@@ -113,17 +113,17 @@ router.post("/signup", authLimiter, async (req, res) => {
         });
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: error.issues });
+            return res.status(400).json({ message: "auth.errors.invalidInput", details: error.issues });
         }
         if (error.code === '23505') {
             // Generic message to prevent enumeration
             const { username, email } = signupSchema.parse(req.body);
             await logActivity(null, 'auth', 'signup_failed', 'medium', `Failed signup for user: ${username} or email: ${email} already exists`, req);
-            return res.status(400).send("Invalid input"); 
+            return res.status(400).json({ message: "auth.errors.invalidInput" }); 
         }
         await logActivity(null, 'auth', 'system_error', 'high', `Signup error: ${error.message}`, req);
         console.error(error);
-        return res.status(500).send("Unknown error");
+        return res.status(500).json({ message: "auth.errors.unknownError" });
     }
 });
 
@@ -136,7 +136,7 @@ router.post("/signin", authLimiter, async (req, res) => {
 
         if (!user) {
             await logActivity(null, 'auth', 'login_failed', 'medium', `Failed login for user: ${username}`, req);
-            return res.status(400).send("Invalid credentials");
+            return res.status(400).json({ message: "auth.errors.invalidCredentials" });
         }
 
         const fingerprint = getDeviceFingerprint(req);
@@ -153,7 +153,7 @@ router.post("/signin", authLimiter, async (req, res) => {
 
         if (securitySettings.is_blocked) {
              await logActivity(user.id, 'auth', 'login_blocked', 'critical', 'Login attempted on blocked account', req, fingerprint);
-             return res.status(403).send("Account is blocked. Please contact support.");
+             return res.status(403).json({ message: "auth.errors.accountBlocked" });
         }
 
         if (securitySettings.is_suspended) {
@@ -163,7 +163,7 @@ router.post("/signin", authLimiter, async (req, res) => {
                 securitySettings.is_suspended = false;
             } else {
                  await logActivity(user.id, 'auth', 'login_suspended', 'high', 'Login attempted on suspended account', req, fingerprint);
-                 return res.status(403).send("Account is temporarily suspended due to multiple failed login attempts. Please try again later.");
+                 return res.status(403).json({ message: "auth.errors.accountSuspended" });
             }
         }
 
@@ -196,7 +196,7 @@ router.post("/signin", authLimiter, async (req, res) => {
                 reason: 'Invalid password'
             });
 
-            return res.status(400).send("Invalid credentials");
+            return res.status(400).json({ message: "auth.errors.invalidCredentials" });
         }
 
         // Reset failed attempts on success (or partial success like 2FA)
@@ -210,7 +210,7 @@ router.post("/signin", authLimiter, async (req, res) => {
                 // Should not happen if enabled is true, but fail safe
                 console.error("2FA enabled but no secret found for user", user.id);
                  // Fallback to normal login or error? Let's error secure.
-                return res.status(500).send("Security configuration error");
+                return res.status(500).json({ message: "auth.errors.securityConfig" });
             }
             
             // Generate a temporary token to prove first factor passed
@@ -231,7 +231,7 @@ router.post("/signin", authLimiter, async (req, res) => {
              const jwtSecret = process.env.JWT_SECRET;
              if (!jwtSecret) {
                 console.error("JWT_SECRET is not defined in environment variables");
-                return res.status(500).send("Security configuration error");
+                return res.status(500).json({ message: "auth.errors.securityConfig" });
              }
              const hmac = crypto.createHmac('sha256', jwtSecret);
              const preAuthToken = hmac.update(user.id + Date.now().toString()).digest('hex');
@@ -285,11 +285,11 @@ router.post("/signin", authLimiter, async (req, res) => {
         });
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-             return res.status(400).json({ error: error.issues });
+             return res.status(400).json({ message: "auth.errors.invalidInput", details: error.issues });
         }
         await logActivity(null, 'auth', 'system_error', 'high', `Signin error: ${error.message}`, req);
         console.error(error);
-        return res.status(500).send("Internal Server Error");
+        return res.status(500).json({ message: "auth.errors.internalServer" });
     }
 });
 
@@ -298,19 +298,19 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         const { userId, code } = req.body;
         
         if (typeof userId !== "string" || typeof code !== "string") {
-            return res.status(400).send("Invalid input");
+            return res.status(400).json({ message: "auth.errors.invalidInput" });
         }
 
         // fetch user and secret
         const userRes = await pool.query("SELECT * FROM users WHERE id = $1", [userId]);
         const user = userRes.rows[0];
-        if (!user) return res.status(400).send("Invalid credentials");
+        if (!user) return res.status(400).json({ message: "auth.errors.invalidCredentials" });
 
         const securityRes = await pool.query("SELECT * FROM user_security WHERE user_id = $1", [userId]);
         const settings = securityRes.rows[0];
 
         if (!settings || !settings.two_factor_enabled || !settings.two_factor_secret) {
-             return res.status(400).send("2FA not enabled");
+             return res.status(400).json({ message: "auth.errors.twoFactorNotEnabled" });
         }
 
         // TOTP verification
@@ -318,7 +318,7 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
         
         if (!isValid) {
              await logActivity(userId, 'auth', '2fa_failed', 'high', 'Invalid 2FA code', req);
-             return res.status(400).send("Invalid 2FA code");
+             return res.status(400).json({ message: "auth.errors.invalidTwoFactor" });
         }
 
         const fingerprint = getDeviceFingerprint(req);
@@ -346,14 +346,14 @@ router.post("/signin/2fa", authLimiter, async (req, res) => {
     } catch (error: any) {
         await logActivity(null, 'auth', 'system_error', 'high', `2FA error: ${error.message}`, req);
         console.error(error);
-        return res.status(500).send("Server Error");
+        return res.status(500).json({ message: "auth.errors.internalServer" });
     }
 });
 
 router.post("/signout", async (req, res) => {
     const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
     if (!sessionId) {
-        return res.status(401).send("Not authenticated");
+        return res.status(401).json({ message: "auth.errors.notAuthenticated" });
     }
 
     const { session } = await lucia.validateSession(sessionId);
@@ -370,14 +370,14 @@ router.post("/signout", async (req, res) => {
 router.get("/user", async (req, res) => {
     const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
     if (!sessionId) {
-        return res.status(401).send("Not authenticated");
+        return res.status(401).json({ message: "auth.errors.notAuthenticated" });
     }
 
     const { session, user } = await lucia.validateSession(sessionId);
     if (!session) {
         const sessionCookie = lucia.createBlankSessionCookie();
         res.setHeader("Set-Cookie", sessionCookie.serialize());
-        return res.status(401).send("Not authenticated");
+        return res.status(401).json({ message: "auth.errors.notAuthenticated" });
     }
 
     if (session && session.fresh) {
@@ -400,7 +400,7 @@ router.get("/verify-email/:token", async (req, res) => {
         const verificationToken = tokenRes.rows[0];
 
         if (!verificationToken) {
-            return res.status(400).send("Invalid or expired verification token");
+            return res.status(400).json({ message: "auth.errors.invalidToken" });
         }
 
         await pool.query("BEGIN");
@@ -419,14 +419,14 @@ router.get("/verify-email/:token", async (req, res) => {
         await pool.query("ROLLBACK");
         await logActivity(null, 'auth', 'system_error', 'high', `Email verification error: ${error.message}`, req);
         console.error(error);
-        return res.status(500).send("Server Error");
+        return res.status(500).json({ message: "auth.errors.internalServer" });
     }
 });
 
 router.post("/password-reset", authLimiter, async (req, res) => {
     let { email } = req.body;
     if (typeof email !== "string" || !email.includes("@")) {
-        return res.status(400).send("Invalid email");
+        return res.status(400).json({ message: "auth.errors.invalidEmail" });
     }
     email = email.toLowerCase().trim();
 
@@ -456,7 +456,7 @@ router.post("/password-reset", authLimiter, async (req, res) => {
     } catch (error: any) {
         await logActivity(null, 'auth', 'system_error', 'high', `Password reset request error: ${error.message}`, req);
         console.error(error);
-        return res.status(500).send("Server Error");
+        return res.status(500).json({ message: "auth.errors.internalServer" });
     }
 });
 
@@ -490,30 +490,30 @@ router.post("/password-reset/:token", authLimiter, async (req, res) => {
     } catch (error: any) {
         await pool.query("ROLLBACK");
         if (error instanceof z.ZodError) {
-             return res.status(400).json({ error: error.issues });
+             return res.status(400).json({ message: "auth.errors.invalidInput", details: error.issues });
         }
         await logActivity(null, 'auth', 'system_error', 'high', `Password reset execution error: ${error.message}`, req);
         console.error(error);
-        return res.status(500).send("Server Error");
+        return res.status(500).json({ message: "auth.errors.internalServer" });
     }
 });
 
 router.post("/change-password", authLimiter, async (req, res) => {
     const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "");
     if (!sessionId) {
-        return res.status(401).send("Not authenticated");
+        return res.status(401).json({ message: "auth.errors.notAuthenticated" });
     }
 
     const { session, user } = await lucia.validateSession(sessionId);
     if (!session) {
-        return res.status(401).send("Not authenticated");
+        return res.status(401).json({ message: "auth.errors.notAuthenticated" });
     }
 
     try {
         const { oldPassword, newPassword } = changePasswordSchema.parse(req.body);
 
         const userRes = await pool.query("SELECT password_hash FROM users WHERE id = $1", [user.id]);
-        if (userRes.rows.length === 0) return res.status(404).send("User not found");
+        if (userRes.rows.length === 0) return res.status(404).json({ message: "auth.errors.userNotFound" });
         
         const currentHash = userRes.rows[0].password_hash;
         const validPassword = await scrypt.verify(currentHash, getPepperedPassword(oldPassword));
@@ -532,11 +532,11 @@ router.post("/change-password", authLimiter, async (req, res) => {
 
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-             return res.status(400).json({ error: error.issues });
+             return res.status(400).json({ message: "auth.errors.invalidInput", details: error.issues });
         }
         await logActivity(user.id, 'auth', 'system_error', 'high', `Password change error: ${error.message}`, req);
         console.error(error);
-        return res.status(500).send("Server Error");
+        return res.status(500).json({ message: "auth.errors.internalServer" });
     }
 });
 

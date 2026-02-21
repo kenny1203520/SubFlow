@@ -32,7 +32,7 @@ const toggleLanguage = () => {
 const handleSubmit = async () => {
     errorMsg.value = '';
     isLoading.value = true;
-    
+
     try {
         if (requires2FA.value) {
             const res = await http.post('/auth/signin/2fa', {
@@ -49,7 +49,7 @@ const handleSubmit = async () => {
                 username: username.value,
                 password: password.value
             });
-            
+
             if (res.data.requires2FA) {
                 requires2FA.value = true;
                 pendingUserId.value = res.data.userId;
@@ -68,7 +68,12 @@ const handleSubmit = async () => {
             router.push('/dashboard');
         }
     } catch (err: any) {
-        errorMsg.value = err.response?.data?.message || err.response?.data || t('common.status.error');
+        const msg = err.response?.data?.message || err.response?.data;
+        if (typeof msg === 'string') {
+            errorMsg.value = t(msg, msg);
+        } else {
+            errorMsg.value = t('common.status.error');
+        }
     } finally {
         isLoading.value = false;
     }
@@ -139,16 +144,22 @@ const handleSubmit = async () => {
                         <div v-if="!requires2FA" class="form-group">
                             <label class="form-label text-sm">{{ t('auth.password') }}</label>
                             <div class="relative">
-                                <input :type="showPassword ? 'text' : 'password'" v-model="password" required minlength="8"
-                                    class="glass-input bg-slate-50 focus:bg-white pr-12" :placeholder="t('auth.password')" />
-                                <button type="button" @click="showPassword = !showPassword" 
+                                <input :type="showPassword ? 'text' : 'password'" v-model="password" required
+                                    minlength="8" class="glass-input bg-slate-50 focus:bg-white pr-12"
+                                    :placeholder="t('auth.password')" />
+                                <button type="button" @click="showPassword = !showPassword"
                                     class="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-slate-600 transition-colors">
-                                    <svg v-if="showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
+                                    <svg v-if="showPassword" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5"
+                                        fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
                                     </svg>
-                                    <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    <svg v-else xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
+                                        viewBox="0 0 24 24" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                            d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                     </svg>
                                 </button>
                             </div>
@@ -165,7 +176,7 @@ const handleSubmit = async () => {
                         <div v-if="requires2FA" class="form-group animate-slide-in">
                             <label class="form-label text-sm">{{ t('security.twoFactorAuth', 'Two-Factor Authentication') }}</label>
                             <input type="text" v-model="twoFactorCode" required maxlength="6"
-                                class="glass-input bg-slate-50 focus:bg-white text-center text-2xl tracking-[1rem] uppercase" 
+                                class="glass-input bg-slate-50 focus:bg-white text-center text-2xl tracking-[1rem] uppercase"
                                 placeholder="000000" />
                             <p class="text-xs text-slate-500 mt-2 text-center">{{ t('auth.enterTotp', 'Please enter your 6-digit TOTP code.') }}</p>
                         </div>
@@ -192,7 +203,8 @@ const handleSubmit = async () => {
                                 d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
                             </path>
                         </svg>
-                        {{ isLoading ? t('common.status.loading') : (requires2FA ? t('common.actions.verify', 'Verify') : (isLogin ? t('auth.loginBtn') : t('auth.signupBtn')))
+                        {{ isLoading ? t('common.status.loading') : (requires2FA ? t('common.actions.verify', 'Verify')
+                            : (isLogin ? t('auth.loginBtn') : t('auth.signupBtn')))
                         }}
                     </button>
 
