@@ -100,17 +100,26 @@ const initApp = async () => {
 
 // Better Route Guard
 router.beforeEach(async (to, _from, next) => {
+    // Check Auth
     if (to.meta.requiresAuth && !authStore.user) {
         // Try one last time to check auth if user is null
         try {
             const res = await http.get('/auth/user');
             if (res.data) {
                 authStore.setUser(res.data);
-                return next();
+            } else {
+                return next('/auth');
             }
-        } catch (e) { }
-        return next('/auth');
+        } catch (e) { 
+            return next('/auth');
+        }
     }
+
+    // Check Admin
+    if (to.meta.requiresAdmin && !authStore.isAdmin) {
+        return next('/dashboard'); // Unauthorized admin access, return to dashboard
+    }
+
     next();
 });
 
