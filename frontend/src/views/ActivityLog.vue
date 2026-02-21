@@ -28,7 +28,8 @@ const fetchLogs = async () => {
         }
     } catch (err: any) {
         console.error(err);
-        error.value = err.response?.data?.message || err.message || 'Failed to load activity logs';
+        const msg = err.response?.data?.message || err.message || 'auth.errors.unknownError';
+        error.value = t(msg, msg);
     } finally {
         loading.value = false;
     }

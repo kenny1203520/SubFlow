@@ -21,7 +21,8 @@ const handleSubmit = async () => {
         await api.post('/auth/password-reset', { email: email.value });
         message.value = t('auth.resetLinkSent', 'Reset link sent to your email.');
     } catch (err: any) {
-        error.value = err.response?.data || 'Error sending reset link';
+        const msg = err.response?.data?.message || 'auth.errors.unknownError';
+        error.value = t(msg, msg);
     } finally {
         loading.value = false;
     }

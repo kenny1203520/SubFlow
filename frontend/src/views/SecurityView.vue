@@ -185,7 +185,8 @@ const changePassword = async () => {
         if (errorData?.error && Array.isArray(errorData.error)) {
             passwordMsg.value = { type: 'error', text: errorData.error[0].message };
         } else {
-            passwordMsg.value = { type: 'error', text: errorData?.message || errorData || 'Failed to change password' };
+            const msg = errorData?.message || errorData || 'auth.errors.unknownError';
+            passwordMsg.value = { type: 'error', text: t(msg, msg) };
         }
     } finally {
         isChangingPassword.value = false;

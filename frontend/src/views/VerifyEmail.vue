@@ -22,7 +22,8 @@ onMounted(async () => {
         }, 3000);
     } catch (err: any) {
         status.value = 'error';
-        message.value = err.response?.data || 'Verification failed';
+        const msg = err.response?.data?.message || 'auth.errors.unknownError';
+        message.value = t(msg, msg);
     }
 });
 </script>
