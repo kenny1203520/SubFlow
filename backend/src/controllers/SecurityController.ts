@@ -101,7 +101,8 @@ export class SecurityController extends BaseController {
                 'medium', 
                 `User revoked session`, 
                 this.socket,
-                fingerprint
+                fingerprint,
+                { revoked_session_id: payload.sessionId }
             );
 
             this.success(cb);

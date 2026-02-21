@@ -17,9 +17,9 @@ export class SecurityRepository extends BaseRepository {
 
     async logLogin(data: any) {
         await this.query(`
-            INSERT INTO login_history (user_id, ip_address, device_fingerprint, status, failure_reason)
-            VALUES ($1, $2, $3, $4, $5)
-        `, [data.user_id, data.ip, data.fingerprint, data.status, data.reason]);
+            INSERT INTO login_history (user_id, session_id, ip_address, user_agent, device_fingerprint, status, failure_reason)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `, [data.user_id, data.session_id, data.ip, data.user_agent, data.fingerprint, data.status, data.reason]);
     }
 
     async getDevices(userId: string) {

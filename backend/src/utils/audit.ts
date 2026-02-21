@@ -9,17 +9,23 @@ export const getDeviceFingerprint = (req: any) => {
     return crypto.createHash('sha256').update(`${ua}|${ip}`).digest('hex');
 };
 
-export const logActivity = async (userId: string | null, behaviorType: string, action: string, risk: 'info' | 'low' | 'medium' | 'high' | 'critical', description: string, req: any, deviceFingerprint?: string) => {
+export const logActivity = async (userId: string | null, behaviorType: string, action: string, risk: 'info' | 'low' | 'medium' | 'high' | 'critical', description: string, req: any, deviceFingerprint?: string, details?: any) => {
     try {
         const fp = deviceFingerprint || getDeviceFingerprint(req);
         // Handle socket request objects which might be different structure
         const ip = req.ip || req.handshake?.address || '';
         const userAgent = req.headers?.['user-agent'] || req.handshake?.headers?.['user-agent'] || '';
 
+        const mergedDetails = {
+            request_method: req?.method,
+            request_path: req?.originalUrl || req?.url,
+            ...details
+        };
+
         await pool.query(
-            `INSERT INTO activity_logs (user_id, action, behavior_type, risk_level, description, ip_address, user_agent, device_fingerprint)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [userId, action, behaviorType, risk, description, ip, userAgent, fp]
+            `INSERT INTO activity_logs (user_id, action, behavior_type, risk_level, description, ip_address, user_agent, device_fingerprint, details)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [userId, action, behaviorType, risk, description, ip, userAgent, fp, JSON.stringify(mergedDetails)]
         );
     } catch (e) {
         console.error("Failed to log activity:", e);
