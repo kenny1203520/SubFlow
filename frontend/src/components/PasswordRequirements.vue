@@ -1,5 +1,5 @@
 <template>
-    <div class="mt-2 text-xs bg-slate-50/80 p-3 rounded-xl border border-slate-200 shadow-sm animate-fade-in text-left">
+    <div class="mt-2 text-xs bg-slate-50/80 p-3 rounded-xl border border-slate-200 shadow-sm text-left">
         <div class="flex items-center justify-between mb-2">
             <p class="font-semibold text-slate-700">{{ t('auth.requirements.title', 'Password Requirements:') }}</p>
             <span v-if="password" class="font-bold text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full"

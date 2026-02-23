@@ -98,7 +98,7 @@ onUnmounted(() => {
         </button>
 
         <Transition name="fade-slide">
-            <div v-if="isOpen" class="dropdown glass-panel animate-fade-in">
+            <div v-if="isOpen" class="dropdown glass-panel">
                 <div class="dropdown-header">
                     <h3>{{ t('notifications.title', 'Notifications') }}</h3>
                     <button class="text-btn" @click="markAllRead">{{ t('notifications.mark_all_read', 'Mark all read')

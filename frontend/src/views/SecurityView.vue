@@ -208,7 +208,7 @@ onUnmounted(() => {
 
 <template>
     <MainLayout>
-        <div class="security-view max-w-6xl mx-auto px-4 py-8 animate-fade-in">
+        <div class="security-view max-w-6xl mx-auto px-4 py-8">
             <!-- Header Section -->
             <div class="mb-10 text-center md:text-left">
                 <h1 class="text-4xl font-extrabold text-slate-800 tracking-tight mb-2">
@@ -571,7 +571,7 @@ onUnmounted(() => {
 
         <!-- Disable 2FA Modal -->
         <div v-if="showDisable2FAModal"
-            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in">
+            class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
             <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-slide-up">
                 <div class="p-6">
                     <div class="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center text-red-600 mb-4">
@@ -605,7 +605,7 @@ onUnmounted(() => {
         </div>
         <!-- Backup Codes Modal -->
         <div v-if="showBackupCodesModal"
-            class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+            class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div class="bg-white rounded-2xl shadow-xl max-w-md w-full p-8 border border-slate-100 relative">
                 <button @click="showBackupCodesModal = false"
                     class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors">

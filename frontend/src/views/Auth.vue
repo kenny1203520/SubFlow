@@ -115,7 +115,7 @@ const handleSubmit = async () => {
         </div>
 
         <div
-            class="w-full max-w-4xl grid md:grid-cols-2 shadow-2xl rounded-3xl overflow-hidden glass-panel animate-fade-in">
+            class="w-full max-w-4xl grid md:grid-cols-2 shadow-2xl rounded-3xl overflow-hidden glass-panel">
             <!-- Left Side: Brand Area -->
             <div
                 class="hidden md:flex flex-col justify-center items-center p-12 bg-primary-gradient relative text-white">

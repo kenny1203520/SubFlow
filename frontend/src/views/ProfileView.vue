@@ -147,7 +147,7 @@ onMounted(fetchProfile);
 
 <template>
     <MainLayout>
-        <div class="profile-container max-w-4xl mx-auto animate-fade-in pb-12">
+        <div class="profile-container max-w-4xl mx-auto">
             <!-- Header -->
             <header class="flex justify-between items-center py-8 mb-4">
                 <h1 class="page-title text-4xl font-extrabold text-slate-800">{{ t('profile.title', 'Profile') }}</h1>

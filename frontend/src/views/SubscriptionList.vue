@@ -43,7 +43,7 @@ onMounted(() => {
 
 <template>
     <MainLayout>
-        <div class="flex flex-col gap-8 animate-fade-in">
+        <div class="flex flex-col gap-8">
             <div
                 class="flex justify-between items-center bg-white/40 sticky top-0 z-10 backdrop-blur-md p-4 rounded-2xl border border-white/50 shadow-sm">
                 <div>

@@ -136,8 +136,7 @@ const handleSubmit = () => {
 
 <template>
     <Teleport to="body">
-        <Transition name="fade" appear>
-            <div class="modal-overlay" @click.self="$emit('close')">
+        <div class="modal-overlay" @click.self="$emit('close')" v-if="true">
                 <div class="modal-content glass-panel">
                     <div class="flex justify-between items-center mb-6">
                         <h2 class="text-2xl font-bold text-slate-800">
@@ -162,7 +161,7 @@ const handleSubmit = () => {
                     <form @submit.prevent="handleSubmit" class="scrollable-form space-y-6 pr-2">
 
                         <!-- STEP 1: Basic Info & Members -->
-                        <div v-show="step === 1" class="space-y-6 animate-fade-in">
+                        <div v-show="step === 1" class="space-y-6">
                             <!-- Group Name -->
                             <div class="form-group">
                                 <label class="field-label">{{ t('groups.groupName') }} <span
@@ -219,7 +218,7 @@ const handleSubmit = () => {
                         </div>
 
                         <!-- STEP 2: Service & Billing -->
-                        <div v-show="step === 2" class="space-y-6 animate-fade-in">
+                        <div v-show="step === 2" class="space-y-6">
                             <div class="bg-blue-50 text-blue-700 p-3 rounded-lg text-sm flex items-start gap-2">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 flex-shrink-0"
                                     viewBox="0 0 20 20" fill="currentColor">
@@ -351,7 +350,7 @@ const handleSubmit = () => {
                     </form>
                 </div>
             </div>
-        </Transition>
+
     </Teleport>
 </template>
 
@@ -412,16 +411,5 @@ const handleSubmit = () => {
 
 .form-group {
     margin-bottom: 1rem;
-}
-
-/* Transition Styles */
-.fade-enter-active,
-.fade-leave-active {
-    transition: opacity 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
 }
 </style>

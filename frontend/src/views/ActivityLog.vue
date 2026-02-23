@@ -107,7 +107,7 @@ const getRiskColor = (level: string) => {
 
 <template>
     <MainLayout>
-        <div class="activity-log-view animate-fade-in max-w-4xl mx-auto">
+        <div class="activity-log-view o">
             <header class="mb-8 flex flex-col md:flex-row md:items-end justify-between gap-4">
                 <div>
                     <h1 class="text-3xl font-extrabold text-slate-800">{{ t('activity.title', 'Activity Log') }}</h1>

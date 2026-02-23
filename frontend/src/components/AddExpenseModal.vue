@@ -46,8 +46,7 @@ const handleSubmit = () => {
 </script>
 
 <template>
-    <Transition name="fade" appear>
-        <div class="modal-overlay" @click.self="$emit('close')">
+    <div class="modal-overlay" @click.self="$emit('close')" v-if="true">
             <div class="modal-content glass-panel">
                 <h2 class="text-xl font-bold text-slate-800 mb-6">{{ t('groups.addExpense') }}</h2>
                 <form @submit.prevent="handleSubmit" class="space-y-6">
@@ -86,9 +85,8 @@ const handleSubmit = () => {
                         </button>
                     </div>
                 </form>
-            </div>
         </div>
-    </Transition>
+    </div>
 </template>
 
 <style scoped>
@@ -116,14 +114,4 @@ const handleSubmit = () => {
     max-width: 450px;
 }
 
-/* Transition Styles */
-.fade-enter-active,
-.fade-leave-active {
-    transition: opacity 0.3s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-    opacity: 0;
-}
 </style>

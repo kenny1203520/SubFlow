@@ -46,7 +46,7 @@ onMounted(async () => {
     <MainLayout>
         <div class="dashboard-wrapper space-y-8">
             <!-- Welcome Banner -->
-            <header class="relative overflow-hidden rounded-3xl p-8 text-white shadow-lg animate-fade-in"
+            <header class="relative overflow-hidden rounded-3xl p-8 text-white shadow-lg"
                 style="background: var(--primary-gradient);">
                 <div class="absolute top-0 right-0 p-4 opacity-10">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-64 w-64" fill="currentColor" viewBox="0 0 24 24">
@@ -63,7 +63,7 @@ onMounted(async () => {
             </header>
 
             <!-- Stats Grid -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-fade-in"
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
                 style="animation-delay: 0.1s">
                 <!-- Owe Card -->
                 <div class="glass-card p-6 flex items-center gap-4 relative overflow-hidden group">
@@ -148,7 +148,7 @@ onMounted(async () => {
             </div>
 
             <!-- Recent Activity & Quick Actions -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-fade-in" style="animation-delay: 0.2s">
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8" style="animation-delay: 0.2s">
                 <div class="lg:col-span-2 space-y-6">
                     <h3 class="text-xl font-bold text-slate-800 flex items-center gap-2">
                         <div

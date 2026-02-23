@@ -89,7 +89,7 @@ onMounted(() => {
 
 <template>
     <MainLayout>
-        <div class="flex flex-col gap-8 animate-fade-in relative z-10">
+        <div class="flex flex-col gap-8 relative z-10">
             <header>
                 <h1 class="text-3xl font-extrabold text-slate-800">{{ t('wallet.wallet', 'My Wallets') }}</h1>
                 <p class="text-slate-500 text-sm mt-1">{{ t('wallet.walletDesc', 'Manage your wallets and transactions')

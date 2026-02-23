@@ -96,7 +96,7 @@ onMounted(() => {
 
 <template>
     <MainLayout>
-        <div class="flex flex-col gap-8 animate-fade-in relative z-10">
+        <div class="flex flex-col gap-8 relative z-10">
             <header class="flex justify-between items-end">
                 <div>
                     <h1 class="text-3xl font-extrabold text-slate-800">{{ t('services.title', 'Services Management') }}
@@ -149,7 +149,7 @@ onMounted(() => {
             <!-- Modal -->
             <Teleport to="body">
                 <div v-if="showModal"
-                    class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in"
+                    class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
                     @click.self="showModal = false">
                     <div
                         class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-6 transform transition-all scale-100">

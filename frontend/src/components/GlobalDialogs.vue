@@ -14,7 +14,7 @@ const safeT = (str: string) => {
 <template>
     <!-- Confirm Dialog -->
     <div v-if="ui.isConfirmOpen"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in p-4">
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
         <div
             class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 border border-slate-100 transform transition-all">
             <h3 class="text-xl font-bold text-slate-800 mb-3">{{ safeT(ui.confirmTitle) }}</h3>
@@ -34,7 +34,7 @@ const safeT = (str: string) => {
 
     <!-- Alert Dialog -->
     <div v-if="ui.isAlertOpen"
-        class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-fade-in p-4">
+        class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
         <div
             class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 border border-slate-100 transform transition-all">
             <h3 class="text-xl font-bold text-slate-800 mb-3">{{ safeT(ui.alertTitle) }}</h3>
