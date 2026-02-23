@@ -33,31 +33,19 @@ VALUES
   ('system', 'manage', 'roles',            'admin.permissions.system.manage.roles'),
   ('system', 'manage', 'user_roles',       'admin.permissions.system.manage.user_roles'),
   ('system', 'manage', 'permissions_user', 'admin.permissions.system.manage.permissions_user')
-ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
 
 -- Audit Permissions
-INSERT INTO permissions (scope, action, resource, description)
-VALUES
   ('audit', 'read',   'user_activity', 'audit.permissions.audit.read.user_activity')
-ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
 
 -- Users Permissions
-INSERT INTO permissions (scope, action, resource, description)
-VALUES
   ('users', 'read',   'profile', 'users.permissions.users.read.profile'),
   ('users', 'update', 'profile', 'users.permissions.users.update.profile')
-ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
 
 -- Billing Permissions
-INSERT INTO permissions (scope, action, resource, description)
-VALUES
   ('billing','read',   'all',      'billing.permissions.billing.read.all'),
   ('billing','update', 'all',      'billing.permissions.billing.update.all')
-ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
 
 -- Group Permissions
-INSERT INTO permissions (scope, action, resource, description)
-VALUES
   ('groups', 'create', 'groups',   'groups.permissions.groups.create.groups'),
   ('groups', 'query',  'groups',   'groups.permissions.groups.query.groups'),
   ('groups', 'read',   'groups',   'groups.permissions.groups.read.groups'),
@@ -67,11 +55,8 @@ VALUES
   ('groups', 'read',   'expenses', 'groups.permissions.groups.read.expenses'),
   ('groups', 'update', 'expenses', 'groups.permissions.groups.update.expenses'),
   ('groups', 'delete', 'expenses', 'groups.permissions.groups.delete.expenses')
-ON CONFLICT (scope, action, resource) DO UPDATE SET description = EXCLUDED.description;
 
 -- User Permissions
-INSERT INTO permissions (scope, action, resource, description)
-VALUES
   ('user', 'read',   'profile', 'user.permissions.user.read.profile'),
   ('user', 'update', 'profile', 'user.permissions.user.update.profile'),
   ('user', 'upload', 'avatar', 'user.permissions.user.upload.avatar'),

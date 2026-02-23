@@ -53,6 +53,12 @@ const securityConfig = ref({
     apiMax: 100
 });
 
+const groupsConfig = ref({
+    groupLimit: 100,
+    roleLimit: 20,
+    memberLimit: 1000
+})
+
 const fetchSettings = async () => {
     loading.value = true;
     try {
@@ -83,6 +89,9 @@ const fetchSettings = async () => {
                 securityConfig.value.apiWindowMins = Math.round((sm['security.rate_limit'].apiWindowMs ?? 900000) / 60000);
                 securityConfig.value.apiMax = sm['security.rate_limit'].apiMax ?? 100;
             }
+            if (sm['groups.group_limit']) groupsConfig.value.groupLimit = sm['groups.group_limit'].max ?? 100;
+            if (sm['groups.role_limit']) groupsConfig.value.roleLimit = sm['groups.role_limit'].max ?? 20;
+            if (sm['groups.member_limit']) groupsConfig.value.memberLimit = sm['groups.member_limit'].max ?? 1000;
         }
     } catch (e) {
         ui.alert(t('admin.settings.loadFailed'));
@@ -117,6 +126,12 @@ const saveSecurityConfig = async () => {
         apiWindowMs: securityConfig.value.apiWindowMins * 60000,
         apiMax: securityConfig.value.apiMax
     });
+};
+
+const saveGroupsConfig = async () => {
+    await saveSetting('groups.group_limit', { max: groupsConfig.value.groupLimit });
+    await saveSetting('groups.role_limit', { max: groupsConfig.value.roleLimit });
+    await saveSetting('groups.member_limit', { max: groupsConfig.value.memberLimit });
 };
 
 const isRoleEnforced = (roleId: string) => twoFactor.value.enforceRoles.includes(roleId);
@@ -327,6 +342,42 @@ onMounted(() => { fetchSettings(); });
                     <button @click="saveSetting('auth.captcha', captchaConfig)" :disabled="saving"
                         class="px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl hover:bg-red-500/20 font-medium transition disabled:opacity-50">
                         {{ t('admin.settings.saveCaptcha') }}
+                    </button>
+                </div>
+            </section>
+
+            <!-- Future sections for group/role limits, etc. can be added here following the same pattern -->
+            <section class="bg-neutral-900/50 border border-neutral-800 rounded-2xl p-6">
+                <h3 class="text-lg font-semibold text-white mb-4">{{ t('admin.settings.groups') }}</h3>
+                <h4 class="text-sm font-semibold text-neutral-300 mb-3">{{ t('admin.settings.groupsLimits') }}
+                </h4>
+                <div class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{
+                            t('admin.settings.groupLimit') }}</label>
+                        <input type="number" v-model="groupsConfig.groupLimit" min="1"
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{
+                            t('admin.settings.roleLimit') }}</label>
+                        <input type="number" v-model="groupsConfig.roleLimit" min="1"
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-neutral-400 mb-2">{{
+                            t('admin.settings.memberLimit') }}</label>
+                        <input type="number" v-model="groupsConfig.memberLimit" min="1"
+                            class="w-full bg-neutral-950/50 border border-neutral-800 rounded-xl px-4 py-2.5 text-neutral-200 focus:ring-2 focus:ring-red-500/50 outline-none transition">
+                    </div>
+                </div>
+                </div>
+
+                <div class="flex justify-end mt-6">
+                    <button @click="saveGroupsConfig()" :disabled="saving"
+                        class="px-4 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl hover:bg-red-500/20 font-medium transition disabled:opacity-50">
+                        {{ t('admin.settings.saveGroupsSettings') }}
                     </button>
                 </div>
             </section>

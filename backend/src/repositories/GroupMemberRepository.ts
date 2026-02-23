@@ -60,6 +60,14 @@ export class GroupMemberRepository extends BaseRepository {
         return res.rows;
     }
 
+    async findByGroupAndUser(groupId: string, userId: string): Promise<GroupMemberRow | null> {
+        const res = await this.query(
+            `SELECT * FROM group_members WHERE group_id = $1 AND user_id = $2`,
+            [groupId, userId]
+        );
+        return res.rows[0] || null;
+    }
+
     async checkRole(groupId: string, userId: string): Promise<string | null> {
         const res = await this.query(
             "SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2",

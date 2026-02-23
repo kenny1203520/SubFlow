@@ -80,6 +80,8 @@ io.use(async (socket, next) => {
 });
 
 import { GroupController } from './controllers/GroupController';
+import { GroupRoleController } from './controllers/GroupRoleController';
+import { GroupPermissionController } from './controllers/GroupPermissionController';
 import { BillController } from './controllers/BillController';
 import { WalletController } from './controllers/WalletController';
 import { SecurityController } from './controllers/SecurityController';
@@ -93,6 +95,8 @@ io.on("connection", (socket) => {
     // console.log(`User connected: ${socket.data.user.username}`);
 
     new GroupController(io, socket).register();
+    new GroupRoleController(io, socket).register();
+    new GroupPermissionController(io, socket).register();
     new BillController(io, socket).register();
     new WalletController(io, socket).register();
     new SecurityController(io, socket).register();

@@ -12,7 +12,6 @@
     "addMember": "添加成員",
     "addExpense": "添加費用",
     "members": "成員",
-    "expenses": "費用",
     "unpaidDebts": "未付債務",
     "settled": "全部結清！ 沒有未償債務。",
     "owe": "欠",
@@ -20,6 +19,9 @@
     "settle": "結算",
     "backToGroups": "返回",
     "overview": "概覽",
+    "invite": "邀請",
+    "assign": "分配",
+    "manage": "管理",
     "inviteNewMember": "邀請新成員",
     "memberEmail": "成員電子郵件",
     "confirmSettle": "確定標記為已結清？",
@@ -43,8 +45,14 @@
     "methods": {
         "equal": "等額分攤",
         "fixed": "固定金額",
-        "percentage": "百分比"
+        "percentage": "百分比",
+        "undefined": "未設定"
     },
+    "expenses": "分帳記錄",
+    "transfer": "轉移",
+    "transferTitle": "轉移擁有權",
+    "transferDesc": "將群組擁有權轉移給另一位成員",
+    "permissionsGranted": "個權限已授予",
     "bindAccount": "綁定帳號",
     "nonMember": "非會員參與者",
     "viewBill": "查看票據",
@@ -103,7 +111,207 @@
     "promoteToAdmin": "升級為管理員",
     "demoteToMember": "降級為普通成員",
     "kickMember": "從群組移除",
+    "tabs": {
+        "overview": "概覽",
+        "members": "成員",
+        "roles": "角色管理",
+        "services": "服務",
+        "subscriptions": "訂閱",
+        "expenses": "分帳"
+    },    "subscriptions": {
+        "title": "訂閱管理",
+        "subtitle": "管理群組內的所有訂閱",
+        "active": "使用中",
+        "paused": "已暫停",
+        "empty": "尚無訂閱"
+    },
+    "services": {
+        "title": "服務管理",
+        "subtitle": "管理群組內的所有訂閱服務",
+        "addService": "新增服務",
+        "editService": "編輯服務",
+        "serviceName": "服務名稱",
+        "planName": "方案名稱",
+        "website": "網站",
+        "amount": "金額",
+        "currency": "貨幣",
+        "billingType": "計費類型",
+        "billingCycle": "計費週期",
+        "billingMethod": "計費方式",
+        "intervalValue": "週期數值",
+        "intervalUnit": "週期單位",
+        "status": {
+            "active": "使用中",
+            "paused": "已暫停",
+            "cancelled": "已取消"
+        },
+        "active": "使用中",
+        "paused": "已暫停",
+        "cancelled": "已取消",
+        "pause": "暫停",
+        "resume": "恢復",
+        "empty": "尚未新增任何服務",
+        "method": {
+            "equal": "平均分攤",
+            "fixed": "固定金額",
+            "percentage": "按比例分攤"
+        }
+    },
+    "expenses": {
+        "title": "分帳管理",
+        "subtitle": "管理群組內的費用分攤",
+        "addExpense": "新增費用",
+        "description": "描述",
+        "amount": "金額",
+        "paidBy": "支付者",
+        "splitType": "分攤方式",
+        "splitEqual": "平均分攤",
+        "splitCustom": "自訂分攤",
+        "splitDetails": "分攤明細",
+        "settle": "結算",
+        "viewSplits": "查看分攤",
+        "totalExpenses": "總費用",
+        "transactions": "筆交易",
+        "empty": "尚未新增任何費用記錄",
+        "splitMismatch": "分攤總額與費用金額不符",
+        "pending": "待結算",
+        "paid": "已結算"
+    },
+    "roles": {
+        "title": "角色管理",
+        "groupOwner": "群組擁有者",
+        "groupAdmin": "群組管理員",
+        "groupTreasurer": "群組財務",
+        "groupMember": "群組成員",
+        "groupViewer": "群組檢視者",
+        "createRole": "新增角色",
+        "editRole": "編輯角色",
+        "deleteRole": "刪除角色",
+        "roleName": "角色名稱",
+        "roleDescription": "角色描述",
+        "rolePermissions": "角色權限",
+        "systemRole": "系統角色",
+        "customRole": "自訂角色",
+        "cannotDeleteSystemRole": "無法刪除系統角色",
+        "cannotEditSystemRole": "無法編輯系統角色",
+        "confirmDeleteRole": "確定要刪除此角色嗎？此操作無法撤銷。",
+        "assignRole": "指派角色",
+        "removeRole": "移除角色",
+        "noRolesAssigned": "尚未指派任何角色",
+        "owner": "擁有者",
+        "admin": "管理員",
+        "treasurer": "財務",
+        "member": "成員",
+        "viewer": "檢視者",
+        "emptyStateTitle": "尚未設定任何角色",
+        "emptyStateDesc": "新增自訂角色以開始管理權限",
+        "total": "共 {count} 個角色",
+        "stats": {
+            "totalRoles": "總角色",
+            "systemRoles": "系統",
+            "customRoles": "自訂",
+            "remainingRoles": "剩餘可建立",
+            "readOnly": "唯讀"
+        },
+        "system": "系統",
+        "custom": "自訂",
+        "systemRoleReadOnly": "系統角色（僅讀取）",
+        "customRoleEditable": "自訂角色(可編輯)",
+        "duplicateRoleName": "該角色名稱已存在於此群組。請使用不同的名稱。",
+        "roleNameRequired": "角色名稱是必填項目"
+    },
+    "ownership": {
+        "transfer": "轉移擁有者",
+        "transferTitle": "轉移群組擁有權",
+        "transferDesc": "將群組擁有權轉移給另一位成員。轉移後，您將成為管理員。",
+        "selectNewOwner": "選擇新擁有者",
+        "noEligibleMembers": "沒有符合條件的成員可以轉移擁有權",
+        "confirmTransfer": "確定要將擁有權轉移給 {name} 嗎？",
+        "transferSuccess": "擁有權已成功轉移",
+        "onlyOwnerCanTransfer": "只有擁有者可以轉移擁有權",
+        "currentOwner": "目前擁有者"
+    },
+    "selectNewOwner": "選擇新擁有者",
+    "noEligibleMembers": "沒有符合條件的成員可以轉移擁有權",
     "permissions": {
+        "title": "權限管理",
+        "grant": "授予權限",
+        "revoke": "撤銷權限",
+        "direct": "直接權限",
+        "fromRoles": "來自角色",
+        "manage": "管理權限",
+        "editPermissions": "編輯權限",
+        "permissionsGranted": "個權限已授予",
+        "groupOwnerReadOnly": "群組擁有者角色的權限為唯讀，無法修改。",
+        "systemRoleReadOnly": "系統角色為只讀狀態,無法修改其權限。",
+        "group": {
+            "read": {
+                "details": "檢視群組詳情",
+                "members": "檢視成員列表",
+                "roles": "檢視角色",
+                "permissions": "檢視權限設定",
+                "services": "檢視服務",
+                "subscriptions": "檢視訂閱",
+                "expenses": "檢視分帳記錄",
+                "finance": "檢視財務報表",
+                "files": "檢視群組檔案"
+            },
+            "create": {
+                "roles": "新增自訂角色",
+                "services": "新增服務",
+                "subscriptions": "新增訂閱",
+                "expenses": "新增分帳"
+            },
+            "update": {
+                "details": "編輯群組資訊",
+                "roles": "更新角色定義",
+                "members": "更新成員資訊",
+                "services": "更新服務詳情",
+                "subscriptions": "更新訂閱詳情",
+                "expenses": "更新分帳記錄",
+                "settings": "更新群組設定"
+            },
+            "delete": {
+                "group": "刪除群組",
+                "roles": "刪除自訂角色",
+                "services": "移除服務",
+                "subscriptions": "刪除訂閱",
+                "expenses": "刪除分帳",
+                "files": "刪除群組檔案"
+            },
+            "invite": {
+                "members": "邀請新成員"
+            },
+            "remove": {
+                "members": "移除成員",
+                "role_assignment": "移除角色指派"
+            },
+            "assign": {
+                "roles": "指派角色給成員"
+            },
+            "grant": {
+                "permissions": "授予特定權限"
+            },
+            "revoke": {
+                "permissions": "撤銷特定權限"
+            },
+            "transfer": {
+                "ownership": "轉移群組擁有權"
+            },
+            "manage": {
+                "billing": "管理帳單週期",
+                "finance": "管理財務設定"
+            },
+            "settle": {
+                "expenses": "結算分帳款項"
+            },
+            "export": {
+                "finance": "匯出財務資料"
+            },
+            "upload": {
+                "files": "上傳檔案"
+            }
+        },
         "groups": {
             "create": {
                 "expenses": "新增支出項目",

@@ -3,6 +3,8 @@
     "all": "全部",
     "notice": "通知",
     "confirm": "確認",
+    "create": "新建",
+    "cancel": "取消",
     "actions": {
         "create": "新建",
         "add": "添加",
@@ -35,17 +37,22 @@
         "close": "關閉",
         "refresh": "刷新",
         "autoRefresh": "自動刷新",
-        "deleteConfirm": "您確定要刪除嗎？"
+        "deleteConfirm": "您確定要刪除嗎?",
+        "done": "完成",
+        "view": "檢視",
+        "remove": "移除"
     },
     "status": {
         "loading": "加載中...",
         "success": "成功",
         "error": "錯誤",
-        "empty": "暫無數據",
+        "empty": "暫無資訊",
         "loadingMore": "加載更多...",
         "all": "全部",
         "saving": "保存中..."
     },
+    "monthly": "每月",
+    "yearly": "每年",
     "cycles": {
         "monthly": "按月",
         "yearly": "按年",

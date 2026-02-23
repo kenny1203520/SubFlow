@@ -7,7 +7,14 @@ import { useI18n } from 'vue-i18n';
 import MainLayout from './MainLayout.vue';
 import AddExpenseModal from '../components/AddExpenseModal.vue';
 import FileManager from '../components/FileManager.vue';
+import TransferOwnershipModal from '../components/TransferOwnershipModal.vue';
 import { useUIStore } from '../stores/ui';
+// New Tab Components
+import GroupMembersTab from '../components/GroupMembersTab.vue';
+import GroupRolesTab from '../components/GroupRolesTab.vue';
+import GroupServicesTab from '../components/GroupServicesTab.vue';
+import GroupSubscriptionsTab from '../components/GroupSubscriptionsTab.vue';
+import GroupExpensesTab from '../components/GroupExpensesTab.vue';
 
 const { t } = useI18n();
 const authStore = useAuthStore();
@@ -22,26 +29,28 @@ const error = ref('');
 const group = ref<any>(null);
 const allMembers = ref<any[]>([]);
 const activeMembers = computed(() => allMembers.value.filter(m => m.status === 'active' || !m.status));
-const pendingMembers = computed(() => allMembers.value.filter(m => m.status === 'invited'));
 const expenses = ref<any[]>([]);
 const splits = ref<any[]>([]);
-const currentTab = ref('overview');
-
-// Invite State
-const inviteType = ref('username');
-const inviteValue = ref('');
+const services = ref<any[]>([]);
+const subscriptions = ref<any[]>([]);
+const userPermissions = ref<any>({});
+const currentTab = ref(route.query.tab ? String(route.query.tab) : 'overview');
 
 // Modals
 const showAddExpense = ref(false);
+const showTransferOwnershipModal = ref(false);
 
 const fetchData = (isRefreshing = false) => {
     if (!isRefreshing) initialLoading.value = true;
 
-    // Parallel fetch
-    socket.emit('group:get', { groupId }, (res: any) => {
+    // Fetch group overview with all related data
+    socket.emit('group:get_overview', { groupId }, (res: any) => {
         if (res.status === 'ok') {
             group.value = res.group;
             allMembers.value = res.members;
+            services.value = res.services || [];
+            subscriptions.value = res.subscriptions || [];
+            userPermissions.value = res.userPermissions || {};
         } else {
             error.value = res.message;
         }
@@ -68,47 +77,13 @@ const handleExpenseAdded = () => {
     fetchData(true); // Refresh without full loader
 };
 
-const inviteMember = () => {
-    if (!inviteValue.value) return;
-
-    const payload: any = { groupId };
-    if (inviteType.value === 'temp') {
-        payload.name = inviteValue.value;
-        // Backend expects 'name' for temp, 'username'/'email' for invite
-        socket.emit('group:add_member', payload, (res: any) => {
-            if (res.status === 'ok') {
-                inviteValue.value = '';
-                fetchData(true);
-            } else {
-                ui.alert(res.message);
-            }
-        });
-    } else {
-        // Invite logic (username/email)
-        payload[inviteType.value] = inviteValue.value;
-        socket.emit('group:add_member', payload, (res: any) => {
-            if (res.status === 'ok') {
-                ui.alert(t('groups.inviteSent', 'Invitation sent!'));
-                inviteValue.value = '';
-            } else {
-                ui.alert(res.message);
-            }
-        });
-    }
+const handleTabRefresh = () => {
+    fetchData(true);
 };
 
-const bindAccount = (memberId: string) => {
-    const input = prompt(t('groups.bindAccountPrompt', 'Enter username or email:'));
-    if (!input) return;
-
-    const payload: any = { groupId, memberId };
-    if (input.includes('@')) payload.email = input;
-    else payload.username = input;
-
-    socket.emit('group:bind_member_invite', payload, (res: any) => {
-        if (res.status === 'ok') ui.alert(t('groups.inviteSent'));
-        else ui.alert(res.message);
-    });
+const onTabChange = (tab: string) => {
+    currentTab.value = tab;
+    router.push({ ...route, query: { tab } });
 };
 
 const settleExpense = async (expenseId: string, userId: string) => {
@@ -171,66 +146,7 @@ const currentUserRole = computed(() => {
     const isAdmin = member.dynamicRoles?.some((r: any) => r.name === 'Group Admin' || r.name === 'Group Owner');
     return isAdmin ? 'admin' : 'member';
 });
-const canManageMembers = computed(() => currentUserRole.value === 'admin');
 const canEditGroup = computed(() => currentUserRole.value === 'admin');
-
-// Permission Modal
-const showPermissionsModal = ref(false);
-const selectedMember = ref<any>(null);
-const editingPermissions = ref<any>({});
-
-const openPermissionsModal = (member: any) => {
-    selectedMember.value = member;
-    editingPermissions.value = { ...member.permissions };
-    showPermissionsModal.value = true;
-};
-
-const savePermissions = () => {
-    if (!selectedMember.value) return;
-
-    socket.emit('group:update_member_permissions', {
-        groupId,
-        memberId: selectedMember.value.member_id,
-        permissions: editingPermissions.value
-    }, (res: any) => {
-        if (res.status === 'ok') {
-            showPermissionsModal.value = false;
-            fetchData(true);
-        } else {
-            ui.alert(res.message);
-        }
-    });
-};
-
-const cancelInvite = async (memberId: string) => {
-    if (!await ui.confirm(t('groups.confirmKick'))) return;
-    socket.emit('group:cancel_invite', { groupId, memberId }, (res: any) => {
-        if (res.status === 'ok') fetchData(true);
-        else ui.alert(res.message);
-    });
-};
-
-const toggleAdminRole = async (memberId: string, isAdmin: boolean) => {
-    // Determine the action
-    if (!await ui.confirm(t('groups.confirmRoleChange'))) return;
-
-    // We assume the system knows 'Group Admin' role ID, but since we don't have it on the frontend easily, 
-    // the backend will need to look it up by name for now, or we fetch all roles once on load.
-    // For simplicity, let's just use the old `updateMemberRole` to handle this mapping on the backend for this step, 
-    // or emit a new explicit action.
-    socket.emit('group:update_member_role', { groupId, memberId, role: isAdmin ? 'member' : 'admin' }, (res: any) => {
-        if (res.status === 'ok') fetchData(true);
-        else ui.alert(res.message);
-    });
-};
-
-const removeMember = async (memberId: string) => {
-    if (!await ui.confirm(t('groups.confirmKick'))) return;
-    socket.emit('group:remove_member', { groupId, memberId }, (res: any) => {
-        if (res.status === 'ok') fetchData(true);
-        else ui.alert(res.message);
-    });
-};
 </script>
 
 <template>
@@ -248,7 +164,7 @@ const removeMember = async (memberId: string) => {
                 }}</button>
         </div>
 
-        <div class="group-detail animate-fade-in" v-else-if="group">
+        <div class="group-detail" v-else-if="group">
             <!-- Header Area -->
             <header class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
                 <div class="flex items-center gap-4">
@@ -305,25 +221,41 @@ const removeMember = async (memberId: string) => {
             </header>
 
             <!-- Tabs Navigation -->
-            <div class="border-b border-slate-200 mb-6 flex gap-6">
-                <button @click="currentTab = 'overview'"
-                    :class="['pb-3 px-2 text-sm font-bold transition-all border-b-2', currentTab === 'overview' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
-                    {{ t('groups.overview', 'Overview') }}
+            <div class="border-b border-slate-200 mb-6 flex gap-1 overflow-x-auto">
+                <button @click="onTabChange('overview')"
+                    :class="['pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap', currentTab === 'overview' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+                    {{ t('groups.tabs.overview') }}
                 </button>
-                <button @click="currentTab = 'members'"
-                    :class="['pb-3 px-2 text-sm font-bold transition-all border-b-2', currentTab === 'members' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
-                    {{ t('groups.members', 'Members') }}
+                <button @click="onTabChange('members')"
+                    :class="['pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap', currentTab === 'members' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+                    {{ t('groups.tabs.members') }}
                 </button>
-                <button @click="currentTab = 'settings'"
-                    :class="['pb-3 px-2 text-sm font-bold transition-all border-b-2', currentTab === 'settings' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
-                    {{ t('groups.settings', 'Settings') }}
+                <button @click="onTabChange('roles')"
+                    :class="['pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap', currentTab === 'roles' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+                    {{ t('groups.tabs.roles') }}
+                </button>
+                <button @click="onTabChange('services')"
+                    :class="['pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap', currentTab === 'services' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+                    {{ t('groups.tabs.services') }}
+                </button>
+                <button @click="onTabChange('subscriptions')"
+                    :class="['pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap', currentTab === 'subscriptions' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+                    {{ t('groups.tabs.subscriptions') }}
+                </button>
+                <button @click="onTabChange('expenses')"
+                    :class="['pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap', currentTab === 'expenses' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+                    {{ t('groups.tabs.expenses') }}
+                </button>
+                <button @click="onTabChange('settings')"
+                    :class="['pb-3 px-4 text-sm font-bold transition-all border-b-2 whitespace-nowrap', currentTab === 'settings' ? 'border-primary-500 text-primary-600' : 'border-transparent text-slate-500 hover:text-slate-700']">
+                    {{ t('groups.settings') }}
                 </button>
             </div>
 
             <!-- Tab Content -->
             <div class="min-h-[400px]">
                 <!-- TAB: OVERVIEW -->
-                <div v-show="currentTab === 'overview'" class="animate-fade-in space-y-8">
+                <div v-show="currentTab === 'overview'" class="space-y-8">
                     <!-- Info Cards -->
                     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                         <div class="glass-panel p-4 flex flex-col justify-center">
@@ -356,7 +288,7 @@ const removeMember = async (memberId: string) => {
                             <!-- Expenses List -->
                             <section>
                                 <div class="flex justify-between items-center mb-4">
-                                    <h2 class="text-xl font-bold text-slate-800">{{ t('groups.expenses') }}</h2>
+                                    <h2 class="text-xl font-bold text-slate-800">{{ t('groups.expenses.title') }}</h2>
                                     <button @click="showAddExpense = true"
                                         class="text-sm font-bold text-primary-600 hover:underline">
                                         {{ t('common.actions.add') }}
@@ -422,162 +354,63 @@ const removeMember = async (memberId: string) => {
                 </div>
 
                 <!-- TAB: MEMBERS -->
-                <div v-show="currentTab === 'members'" class="animate-fade-in">
-                    <div class="flex justify-between items-center mb-6">
-                        <h2 class="text-xl font-bold text-slate-800">{{ t('groups.members') }} ({{ activeMembers.length
-                        }})</h2>
-                    </div>
+                <div v-show="currentTab === 'members'">
+                    <GroupMembersTab 
+                        :key="`members-${group?.id}`"
+                        :group-id="groupId" 
+                        :members="allMembers" 
+                        :current-user-role="currentUserRole"
+                        :permissions="userPermissions"
+                        @refresh="handleTabRefresh"
+                    />
+                </div>
 
-                    <!-- Enhanced Add Member Area -->
-                    <div class="glass-panel p-6 mb-8 border border-primary-100">
-                        <h3 class="text-sm font-bold text-primary-700 uppercase mb-4">{{ t('groups.inviteNewMember')
-                            }}</h3>
-                        <div class="flex flex-col md:flex-row gap-4 items-end">
-                            <div class="flex-1 w-full">
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{{
-                                    t('common.fields.type') }}</label>
-                                <select v-model="inviteType" class="glass-input w-full">
-                                    <option value="username">{{ t('common.fields.username') }}</option>
-                                    <option value="email">{{ t('common.fields.email') }}</option>
-                                    <option value="temp">{{ t('common.fields.tempMember') }}</option>
-                                </select>
-                            </div>
-                            <div class="flex-[2] w-full">
-                                <label class="block text-xs font-bold text-slate-500 uppercase mb-1 ml-1">{{
-                                    t('common.fields.value') }}</label>
-                                <input v-model="inviteValue" type="text"
-                                    :placeholder="inviteType === 'temp' ? t('groups.tempNamePlaceholder') : t('groups.invitePlaceholder')"
-                                    class="glass-input w-full" @keyup.enter="inviteMember" />
-                            </div>
-                            <button @click="inviteMember" :disabled="!inviteValue"
-                                class="btn btn-primary w-full md:w-auto h-[42px]">
-                                {{ inviteType === 'temp' ? t('common.actions.add') : t('common.actions.invite') }}
-                            </button>
-                        </div>
-                        <p class="text-xs text-slate-400 mt-2">
-                            <span v-if="inviteType === 'temp'">{{ t('groups.tempMemberDesc') }}</span>
-                            <span v-else>{{ t('groups.inviteDesc') }}</span>
-                        </p>
-                    </div>
+                <!-- TAB: ROLES -->
+                <div v-show="currentTab === 'roles'">
+                    <GroupRolesTab 
+                        :key="`roles-${group?.id}`"
+                        :group-id="groupId"
+                        :permissions="userPermissions"
+                        @refresh="handleTabRefresh"
+                    />
+                </div>
 
-                    <!-- Pending Invitations -->
-                    <div v-if="pendingMembers.length > 0" class="mb-8">
-                        <h3 class="text-md font-bold text-slate-500 mb-4">{{ t('groups.pendingInvitations') }}</h3>
-                        <div class="space-y-3">
-                            <div v-for="member in pendingMembers" :key="member.member_id"
-                                class="glass-card p-4 flex items-center justify-between opacity-75">
-                                <div class="flex items-center gap-4">
-                                    <div
-                                        class="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
-                                            viewBox="0 0 24 24" stroke="currentColor">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                                        </svg>
-                                    </div>
-                                    <div>
-                                        <p class="font-bold text-slate-700">{{ member.temp_name || member.username }}
-                                        </p>
-                                        <p class="text-xs text-slate-500">{{ member.email }}</p>
-                                    </div>
-                                </div>
-                                <button v-if="canManageMembers" @click="cancelInvite(member.member_id)"
-                                    class="text-xs text-red-500 hover:text-red-700 font-bold">
-                                    {{ t('groups.cancelInvite') }}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
+                <!-- TAB: SERVICES -->
+                <div v-show="currentTab === 'services'">
+                    <GroupServicesTab 
+                        :key="`services-${group?.id}`"
+                        :group-id="groupId"
+                        :services="services"
+                        :permissions="userPermissions"
+                        @refresh="handleTabRefresh"
+                    />
+                </div>
 
-                    <!-- Member List -->
-                    <div class="space-y-3">
-                        <div v-for="member in activeMembers" :key="member.member_id"
-                            class="glass-card p-4 flex items-center gap-4">
-                            <div
-                                class="w-12 h-12 rounded-full bg-slate-200 flex items-center justify-center font-bold text-slate-500 text-lg">
-                                <img v-if="member.avatar_url" :src="member.avatar_url"
-                                    class="w-full h-full rounded-full object-cover" />
-                                <span v-else>{{ (member.username || member.temp_name || '?')[0].toUpperCase() }}</span>
-                            </div>
-                            <div class="flex-1">
-                                <p class="font-bold text-slate-800 text-lg">{{ member.username || member.temp_name
-                                    }}</p>
-                                <div class="flex items-center gap-2 text-sm">
-                                    <span v-if="member.dynamicRoles && member.dynamicRoles.length > 0"
-                                        class="flex gap-1">
-                                        <span v-for="r in member.dynamicRoles" :key="r.id"
-                                            class="uppercase font-bold text-xs bg-slate-100 px-2 py-0.5 rounded-full"
-                                            :class="r.name === 'Group Admin' || r.name === 'Group Owner' ? 'text-primary-600 bg-primary-50' : 'text-slate-500'">
-                                            {{ r.name }}
-                                        </span>
-                                    </span>
-                                    <span v-else class="uppercase font-bold text-xs text-slate-500">
-                                        {{ t('groups.member') }}
-                                    </span>
-                                    <span v-if="member.temp_name"
-                                        class="bg-yellow-100 text-yellow-700 text-xs px-2 py-0.5 rounded-full font-bold">
-                                        {{ t('groups.nonMember') }}
-                                    </span>
-                                    <span v-if="member.user_id === authStore.user?.id" class="text-slate-400 italic">({{
-                                        t('common.you') }})</span>
-                                </div>
-                            </div>
+                <!-- TAB: SUBSCRIPTIONS -->
+                <div v-show="currentTab === 'subscriptions'">
+                    <GroupSubscriptionsTab 
+                        :key="`subscriptions-${group?.id}`"
+                        :group-id="groupId"
+                        :subscriptions="subscriptions"
+                        :permissions="userPermissions"
+                        @refresh="handleTabRefresh"
+                    />
+                </div>
 
-                            <!-- Actions -->
-                            <div class="flex items-center gap-2">
-                                <button v-if="canManageMembers" @click="openPermissionsModal(member)"
-                                    class="p-2 text-slate-400 hover:text-primary-600 transition-colors"
-                                    :title="t('groups.managePermissions')">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
-                                        viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                                    </svg>
-                                </button>
-
-                                <button v-if="member.temp_name" @click="bindAccount(member.member_id)"
-                                    class="p-2 text-primary-500 hover:bg-primary-50 rounded-lg transition-colors"
-                                    :title="t('groups.bindAccount')">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
-                                        viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101" />
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                                            d="M10.172 13.828a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.102 1.101" />
-                                    </svg>
-                                </button>
-
-                                <div v-if="canManageMembers && member.user_id !== authStore.user?.id"
-                                    class="flex gap-1">
-                                    <!-- Role Toggle -->
-                                    <button
-                                        v-if="!member.dynamicRoles?.some((r: any) => r.name === 'Group Admin' || r.name === 'Group Owner')"
-                                        @click="toggleAdminRole(member.member_id, false)"
-                                        class="text-xs font-bold text-blue-600 hover:bg-blue-50 px-2 py-1 rounded border border-blue-100"
-                                        :title="t('groups.promoteToAdmin')">
-                                        Admin
-                                    </button>
-                                    <button v-else-if="member.dynamicRoles?.some((r: any) => r.name === 'Group Admin')"
-                                        @click="toggleAdminRole(member.member_id, true)"
-                                        class="text-xs font-bold text-slate-500 hover:bg-slate-100 px-2 py-1 rounded border border-slate-200"
-                                        :title="t('groups.demoteToMember')">
-                                        Member
-                                    </button>
-
-                                    <!-- Kick -->
-                                    <button @click="removeMember(member.member_id)"
-                                        class="text-xs font-bold text-red-600 hover:bg-red-50 px-2 py-1 rounded border border-red-100 ml-1"
-                                        :title="t('groups.kickMember')">
-                                        {{ t('common.actions.remove') }}
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                <!-- TAB: EXPENSES -->
+                <div v-show="currentTab === 'expenses'">
+                    <GroupExpensesTab 
+                        :key="`expenses-${group?.id}`"
+                        :group-id="groupId"
+                        :expenses="expenses"
+                        :members="allMembers"
+                        :permissions="userPermissions"
+                        @refresh="handleTabRefresh"
+                    />
                 </div>
 
                 <!-- TAB: SETTINGS -->
-                <div v-show="currentTab === 'settings'" class="animate-fade-in space-y-8">
+                <div v-show="currentTab === 'settings'" class="space-y-8">
                     <!-- Basic Info Form -->
                     <section class="glass-panel p-6">
                         <div class="flex justify-between items-center mb-6">
@@ -630,6 +463,18 @@ const removeMember = async (memberId: string) => {
                         </div>
                     </section>
 
+                    <!-- Transfer Ownership -->
+                    <section v-if="group?.created_by === authStore.user?.id" class="glass-panel p-6 border-l-4 border-amber-500">
+                        <h3 class="text-lg font-bold text-amber-700 mb-2">{{ t('groups.ownership.transferTitle') }}</h3>
+                        <p class="text-sm text-slate-600 mb-4">{{ t('groups.ownership.transferDesc') }}</p>
+                        <button 
+                            @click="showTransferOwnershipModal = true"
+                            class="btn bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
+                        >
+                            {{ t('groups.ownership.transfer') }}
+                        </button>
+                    </section>
+
                     <!-- Danger Zone -->
                     <section class="glass-panel p-6 border-l-4 border-red-500">
                         <h3 class="text-lg font-bold text-red-600 mb-4">{{ t('groups.dangerZone') }}</h3>
@@ -655,33 +500,22 @@ const removeMember = async (memberId: string) => {
         </div>
 
         <!-- Modals -->
-        <div v-if="showPermissionsModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-            <div class="bg-white rounded-2xl w-full max-w-md p-6 animate-scale-in">
-                <h3 class="text-xl font-bold text-slate-800 mb-4">{{ t('groups.permissionsModalTitle') }}</h3>
+        <AddExpenseModal 
+            v-if="showAddExpense" 
+            :groupId="groupId" 
+            :members="activeMembers"
+            @close="showAddExpense = false" 
+            @added="handleExpenseAdded" 
+        />
 
-                <div class="space-y-4 mb-6">
-                    <div class="flex items-center justify-between">
-                        <span class="font-bold text-slate-700">{{ t('groups.perm_add_member') }}</span>
-                        <input type="checkbox" v-model="editingPermissions.can_add_member"
-                            class="toggle toggle-primary" />
-                    </div>
-                    <div class="flex items-center justify-between">
-                        <span class="font-bold text-slate-700">{{ t('groups.perm_add_expense') }}</span>
-                        <input type="checkbox" v-model="editingPermissions.can_add_expense"
-                            class="toggle toggle-primary" />
-                    </div>
-                </div>
-
-                <div class="flex justify-end gap-3">
-                    <button @click="showPermissionsModal = false" class="btn btn-ghost">{{ t('common.actions.cancel')
-                    }}</button>
-                    <button @click="savePermissions" class="btn btn-primary">{{ t('groups.savePermissions') }}</button>
-                </div>
-            </div>
-        </div>
-
-        <AddExpenseModal v-if="showAddExpense" :group-id="groupId" :members="activeMembers"
-            @close="showAddExpense = false" @added="handleExpenseAdded" />
+        <TransferOwnershipModal
+            v-if="showTransferOwnershipModal && group"
+            :groupId="groupId"
+            :members="allMembers"
+            :currentOwnerId="group.created_by"
+            @close="showTransferOwnershipModal = false"
+            @transferred="handleTabRefresh"
+        />
 
     </MainLayout>
 </template>

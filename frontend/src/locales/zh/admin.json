@@ -229,6 +229,12 @@
         "saveSecurity": "儲存安全策略",
         "settingsSaved": "設定儲存成功。",
         "saveSettingFailed": "儲存設定 {key} 失敗",
-        "loadFailed": "載入系統設定失敗"
+        "loadFailed": "載入系統設定失敗",
+        "groups": "群組設定",
+        "groupsLimits": "群組角色與成員限制",
+        "saveGroupsSettings": "儲存群組設定",
+        "groupLimit": "每個使用者可創建的最大群組數",
+        "roleLimit": "每個群組的最大角色數",
+        "memberLimit": "每個群組的最大成員數"
     }
 }

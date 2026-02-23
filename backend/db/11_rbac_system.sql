@@ -13,13 +13,15 @@ CREATE TABLE IF NOT EXISTS system_roles (
 -- Group Roles (Group-level definitions)
 CREATE TABLE IF NOT EXISTS group_roles (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL UNIQUE,
+    group_id TEXT NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
     -- e.g., 'group_owner', 'treasurer', 'auditor'
     description TEXT,
     is_system_role BOOLEAN DEFAULT FALSE,
     -- Cannot be deleted if true
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (group_id, name)
 );
 
 -- Permissions (Granular actions)

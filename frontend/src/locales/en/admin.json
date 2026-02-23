@@ -229,6 +229,12 @@
         "saveSecurity": "Save Security Policy",
         "settingsSaved": "Settings saved successfully.",
         "saveSettingFailed": "Failed to save setting {key}",
-        "loadFailed": "Failed to load system settings"
+        "loadFailed": "Failed to load system settings",
+        "groups": "Group Settings",
+        "groupsLimits": "Group Role and Member Limits",
+        "saveGroupsSettings": "Save Group Settings",
+        "groupLimit": "Maximum number of groups a user can create",
+        "roleLimit": "Maximum number of roles in a group",
+        "memberLimit": "Maximum number of members in a group"
     }
 }

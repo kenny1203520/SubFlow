@@ -8,6 +8,7 @@ export class GroupController extends BaseController {
         this.socket.on("group:create", (payload, cb) => this.createGroup(payload, cb));
         this.socket.on("group:list", (cb) => this.listGroups(cb));
         this.socket.on("group:get", (payload, cb) => this.getGroup(payload, cb));
+        this.socket.on("group:get_overview", (payload, cb) => this.getOverview(payload, cb));
         this.socket.on("group:add_member", (payload, cb) => this.addMember(payload, cb));
         this.socket.on("group:bind_member", (payload, cb) => this.bindMember(payload, cb));
         this.socket.on("group:delete", (payload, cb) => this.deleteGroup(payload, cb));
@@ -47,7 +48,10 @@ export class GroupController extends BaseController {
 
     async listRoles(payload: any, cb: (res: any) => void) {
         try {
-            const roles = await this.groupService.listRoles();
+            if (!payload?.groupId) {
+                return this.error(cb, "Group ID is required");
+            }
+            const roles = await this.groupService.listRoles(payload.groupId);
             this.success(cb, roles);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to list group roles");
@@ -57,7 +61,10 @@ export class GroupController extends BaseController {
     async createRole(payload: { name: string, description: string }, cb: (res: any) => void) {
         try {
             const userId = this.socket.data.user.id;
-            const role = await this.groupService.createRole(userId, payload);
+            if (!payload || !(payload as any).groupId) {
+                return this.error(cb, "Group ID is required");
+            }
+            const role = await this.groupService.createRole(userId, (payload as any).groupId, payload);
             this.success(cb, role);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to create group role");
@@ -71,6 +78,16 @@ export class GroupController extends BaseController {
             this.success(cb, detail);
         } catch (error: any) {
             this.error(cb, error.message || "Failed to get group details");
+        }
+    }
+
+    async getOverview(payload: { groupId: string }, cb: (res: any) => void) {
+        try {
+            const userId = this.socket.data.user.id;
+            const overview = await this.groupService.getGroupOverview(userId, payload.groupId);
+            this.success(cb, overview);
+        } catch (error: any) {
+            this.error(cb, error.message || "Failed to get group overview");
         }
     }
 
