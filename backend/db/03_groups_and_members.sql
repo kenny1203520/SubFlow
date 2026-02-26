@@ -74,9 +74,6 @@ CREATE TABLE IF NOT EXISTS group_members (
     display_name TEXT,
     can_self_edit_nickname BOOLEAN DEFAULT TRUE,
     
-    -- Roles (Primary group role)
-    role TEXT CHECK (role IN ('owner', 'admin', 'treasurer', 'member', 'viewer')) DEFAULT 'member',
-    
     joined_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
     invited_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_by TEXT REFERENCES users(id),

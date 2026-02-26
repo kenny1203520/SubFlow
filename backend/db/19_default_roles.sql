@@ -1,10 +1,10 @@
 -- Insert Default System Roles
-INSERT INTO system_roles (name, description, is_system_role)
+INSERT INTO system_roles (name, description, is_system_role, role_level)
 VALUES 
-  ('Administrator', 'Full access to all system resources - has every permission automatically', true),
-  ('Support Agent', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true),
-  ('User', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true),
-  ('Guest', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true)
+  ('Administrator', 'Full access to all system resources - has every permission automatically', true, 1),
+  ('Support Agent', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true, 5),
+  ('User', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true, 10),
+  ('Guest', 'Can view user accounts and revoke sessions, but cannot modify security settings or bans', true, 50)
 ON CONFLICT (name) DO NOTHING;
 
 -- Seed default permissions for all scopes

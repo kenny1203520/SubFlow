@@ -1,22 +1,61 @@
 import { RBACRepository, RoleRow, PermissionRow } from '../repositories/RBACRepository';
-import { GroupMemberRepository } from '../repositories/GroupMemberRepository';
 import { SystemSettingsService } from './SystemSettingsService';
 
 export class RBACService {
     private rbacRepo = new RBACRepository();
-    private memberRepo = new GroupMemberRepository();
 
     /**
-     * Check if a user has a specific permission in a group
+     * List all available permissions (optionally filtered by scope)
+     * @param scope 
+     * @returns 
      */
-    async hasPermission(userId: string, groupId: string, action: string, resource: string): Promise<boolean> {
-        const permissionString = `group:${action}:${resource}`;
-        const permissions = await this.rbacRepo.getMemberPermissions(groupId, userId);
+    async listAllPermissions(scope?: string): Promise<any[]> {
+        const permissions = await this.rbacRepo.listAllPermissions(scope);
+        // Add computed name field for frontend
+        return permissions.map(p => ({
+            ...p,
+            name: `${p.scope}:${p.action}:${p.resource}`
+        }));
+    }
+
+    /**
+     * Get all roles assigned to a user
+     * @param userId 
+     * @returns 
+     */
+    async getUserRoles(userId: string): Promise<RoleRow[]> {
+        return await this.rbacRepo.getUserRoles(userId);
+    }
+
+    /**
+     * Check if a user has a specific permission in a group or system-wide
+     * @param userId 
+     * @param scope
+     * @param action 
+     * @param resource 
+     * @param groupId Optional; For 'group' scope, groupId is required.
+     * @returns 
+     */
+    async hasPermission(userId: string, scope: string, action: string, resource: string, groupId?: string): Promise<boolean> {
+        if (scope === 'group') {
+            if (!groupId) {
+                throw new Error('Group ID is required for group-scoped permissions');
+            }
+            const permissionString = `group:${action}:${resource}`;
+            const permissions = await this.rbacRepo.getMemberPermissions(groupId, userId);
+            return permissions.includes(permissionString);
+        }
+        const permissionString = `${scope}:${action}:${resource}`;
+        const permissions = await this.rbacRepo.getUserPermissions(userId);
         return permissions.includes(permissionString);
     }
 
     /**
      * Check permission and throw error if not allowed
+     * @param userId 
+     * @param groupId 
+     * @param action 
+     * @param resource 
      */
     async checkPermission(userId: string, groupId: string, action: string, resource: string): Promise<void> {
         const allowed = await this.hasPermission(userId, groupId, action, resource);
@@ -27,10 +66,29 @@ export class RBACService {
 
     /**
      * Check if user is the group owner
+     * @param userId 
+     * @param groupId 
+     * @returns 
      */
     async isGroupOwner(userId: string, groupId: string): Promise<boolean> {
-        const member = await this.memberRepo.findByGroupAndUser(groupId, userId);
-        return member?.role === 'owner';
+        return await this.rbacRepo.hasMemberRole(groupId, userId, 'Group Owner');
+    }
+
+    async getMemberRoles(groupId: string, memberId: string): Promise<RoleRow[]> {
+        return await this.rbacRepo.getMemberRoles(groupId, memberId);
+    }
+
+    async hasMemberRole(userId: string, groupId: string, roleName: string): Promise<boolean> {
+        return await this.rbacRepo.hasMemberRole(groupId, userId, roleName);
+    }
+
+    async hasAnyRole(userId: string, groupId: string, roleNames: string[]): Promise<boolean> {
+        for (const roleName of roleNames) {
+            if (await this.rbacRepo.hasMemberRole(groupId, userId, roleName)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -69,7 +127,7 @@ export class RBACService {
         }
         
         // Check if role name already exists in this group
-        const existingRole = await this.rbacRepo.findGroupRoleByName(groupId, name);
+        const existingRole = await this.rbacRepo.getGroupRoleByName(groupId, name);
         if (existingRole) {
             throw new Error('A role with this name already exists in this group');
         }
@@ -81,7 +139,7 @@ export class RBACService {
      * Update an existing custom role
      */
     async updateGroupRole(userId: string, groupId: string, roleId: string, name: string, description: string): Promise<RoleRow> {
-        const role = await this.rbacRepo.findGroupRoleById(roleId);
+        const role = await this.rbacRepo.getGroupRoleById(roleId);
         if (!role) {
             throw new Error('Role not found');
         }
@@ -94,7 +152,7 @@ export class RBACService {
         
         // Check if new name conflicts with other roles (case-insensitive)
         if (name.toLowerCase() !== role.name.toLowerCase()) {
-            const existingRole = await this.rbacRepo.findGroupRoleByName(groupId, name);
+            const existingRole = await this.rbacRepo.getGroupRoleByName(groupId, name);
             if (existingRole) {
                 throw new Error('A role with this name already exists in this group');
             }
@@ -104,10 +162,37 @@ export class RBACService {
     }
 
     /**
+     * Update role priority level (only for custom roles)
+     */
+    async updateGroupRoleLevel(userId: string, groupId: string, roleId: string, roleLevel: number): Promise<RoleRow> {
+        const role = await this.rbacRepo.getGroupRoleById(roleId);
+        if (!role) {
+            throw new Error('Role not found');
+        }
+        if (role.group_id && role.group_id !== groupId) {
+            throw new Error('Role does not belong to this group');
+        }
+        
+        // Validate role level range
+        // System roles: 1-49 (reserved for high-priority roles)
+        // Custom roles: 50-999
+        if (roleLevel < 1 || roleLevel > 999) {
+            throw new Error('Invalid role level. Must be between 1 and 999');
+        }
+        
+        // Warn if trying to set system-level priority for custom role
+        if (!role.is_system_role && roleLevel < 50) {
+            throw new Error('Custom roles cannot have priority below 50');
+        }
+        
+        return await this.rbacRepo.updateGroupRole(roleId, groupId, undefined, undefined, roleLevel);
+    }
+
+    /**
      * Delete a custom role
      */
     async deleteGroupRole(userId: string, groupId: string, roleId: string): Promise<boolean> {
-        const role = await this.rbacRepo.findGroupRoleById(roleId);
+        const role = await this.rbacRepo.getGroupRoleById(roleId);
         if (!role) {
             throw new Error('Role not found');
         }
@@ -124,7 +209,7 @@ export class RBACService {
      * List all permissions for a specific role
      */
     async listRolePermissions(roleId: string): Promise<PermissionRow[]> {
-        return await this.rbacRepo.listRolePermissions(roleId);
+        return await this.rbacRepo.listGroupRolePermissions(roleId);
     }
 
     /**
@@ -132,14 +217,14 @@ export class RBACService {
      */
     async grantPermissionToRole(userId: string, roleId: string, permissionId: string): Promise<void> {
         // Prevent modifying Group Owner role permissions
-        const role = await this.rbacRepo.findGroupRoleById(roleId);
+        const role = await this.rbacRepo.getGroupRoleById(roleId);
         if (!role) {
             throw new Error('Role not found');
         }
         if (role.name === 'Group Owner') {
             throw new Error('Cannot modify Group Owner role permissions');
         }
-        await this.rbacRepo.grantPermissionToRole(roleId, permissionId);
+        await this.rbacRepo.grantPermissionToGroupRole(roleId, permissionId);
     }
 
     /**
@@ -147,21 +232,14 @@ export class RBACService {
      */
     async revokePermissionFromRole(userId: string, roleId: string, permissionId: string): Promise<void> {
         // Prevent modifying Group Owner role permissions
-        const role = await this.rbacRepo.findGroupRoleById(roleId);
+        const role = await this.rbacRepo.getGroupRoleById(roleId);
         if (!role) {
             throw new Error('Role not found');
         }
         if (role.name === 'Group Owner') {
             throw new Error('Cannot modify Group Owner role permissions');
         }
-        await this.rbacRepo.revokePermissionFromRole(roleId, permissionId);
-    }
-
-    /**
-     * List all available permissions (optionally filtered by scope)
-     */
-    async listAllPermissions(scope?: string): Promise<PermissionRow[]> {
-        return await this.rbacRepo.listAllPermissions(scope);
+        await this.rbacRepo.revokePermissionFromGroupRole(roleId, permissionId);
     }
 
     /**
@@ -169,6 +247,13 @@ export class RBACService {
      */
     async assignRoleToMember(userId: string, groupId: string, memberId: string, roleId: string): Promise<void> {
         await this.checkPermission(userId, groupId, 'assign', 'roles');
+        
+        // Check if actor can manage the target role (hierarchy check)
+        const canManage = await this.rbacRepo.canManageRoleInGroup(userId, groupId, roleId);
+        if (!canManage) {
+            throw new Error('Cannot assign role: Target role is at or above your privilege level');
+        }
+        
         await this.rbacRepo.assignRoleToMember(memberId, roleId, userId);
     }
 
@@ -177,6 +262,13 @@ export class RBACService {
      */
     async removeRoleFromMember(userId: string, groupId: string, memberId: string, roleId: string): Promise<void> {
         await this.checkPermission(userId, groupId, 'remove', 'role_assignment');
+        
+        // Check if actor can manage the target role (hierarchy check)
+        const canManage = await this.rbacRepo.canManageRoleInGroup(userId, groupId, roleId);
+        if (!canManage) {
+            throw new Error('Cannot remove role: Target role is at or above your privilege level');
+        }
+        
         await this.rbacRepo.removeRoleFromMember(memberId, roleId);
     }
 
@@ -195,4 +287,73 @@ export class RBACService {
         await this.checkPermission(actorUserId, groupId, 'revoke', 'permissions');
         await this.rbacRepo.revokeDirectPermissionFromUser(targetUserId, permissionId);
     }
-}
+
+    /**
+     * Grant a direct permission to a group member
+     * Permission is constrained by member's role level
+     */
+    async grantDirectPermissionToGroupMember(
+        actorUserId: string,
+        groupId: string,
+        memberId: string,
+        permissionId: string
+    ): Promise<void> {
+        // Check if actor has permission to grant member permissions
+        await this.checkPermission(actorUserId, groupId, 'grant', 'member_permissions');
+        
+        // Check hierarchy: actor must have higher privilege than target member
+        const canGrant = await this.rbacRepo.canManagePermissionToMember(
+            actorUserId,
+            groupId,
+            memberId,
+        );
+        
+        if (!canGrant) {
+            throw new Error('Cannot grant permission: Target member has equal or higher privilege level');
+        }
+        
+        await this.rbacRepo.grantDirectPermissionToGroupMember(
+            groupId,
+            memberId,
+            permissionId,
+            actorUserId
+        );
+    }
+
+    /**
+     * Revoke a direct permission from a group member
+     */
+    async revokeDirectPermissionFromGroupMember(
+        actorUserId: string,
+        groupId: string,
+        memberId: string,
+        permissionId: string
+    ): Promise<void> {
+        // Check if actor has permission
+        await this.checkPermission(actorUserId, groupId, 'revoke', 'member_permissions');
+        
+        // Check hierarchy
+        const canRevoke = await this.rbacRepo.canManagePermissionToMember(
+            actorUserId,
+            groupId,
+            memberId,
+        );
+        
+        if (!canRevoke) {
+            throw new Error('Cannot revoke permission: Target member has equal or higher privilege level');
+        }
+        
+        await this.rbacRepo.revokeDirectPermissionFromGroupMember(groupId, memberId, permissionId);
+    }
+
+    /**
+     * Get all direct permissions for a group member
+     */
+    async getDirectPermissionsForMember(groupId: string, memberId: string): Promise<any[]> {
+        const permissions = await this.rbacRepo.getDirectPermissionsForMember(groupId, memberId);
+        // Add computed name field for frontend
+        return permissions.map(p => ({
+            ...p,
+            name: `${p.scope}:${p.action}:${p.resource}`
+        }));
+    }}

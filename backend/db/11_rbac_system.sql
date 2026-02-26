@@ -4,7 +4,9 @@ CREATE TABLE IF NOT EXISTS system_roles (
     name TEXT NOT NULL UNIQUE,
     -- e.g., 'super_admin', 'support_agent'
     description TEXT,
-    is_system_role BOOLEAN DEFAULT TRUE,
+    is_system_role BOOLEAN DEFAULT FALSE,
+    -- Lower number = higher privilege; default to 999 for custom roles without defined level
+    role_level INTEGER NOT NULL DEFAULT 999,
     -- Cannot be deleted if true
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -18,11 +20,16 @@ CREATE TABLE IF NOT EXISTS group_roles (
     -- e.g., 'group_owner', 'treasurer', 'auditor'
     description TEXT,
     is_system_role BOOLEAN DEFAULT FALSE,
+    -- Lower number = higher privilege; default to 999 for custom roles without defined level
+    role_level INTEGER NOT NULL DEFAULT 999,
     -- Cannot be deleted if true
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (group_id, name)
 );
+-- Index
+CREATE INDEX IF NOT EXISTS idx_group_roles_group_id
+ON group_roles(group_id);
 
 -- Permissions (Granular actions)
 CREATE TABLE IF NOT EXISTS permissions (
@@ -47,6 +54,11 @@ CREATE TABLE IF NOT EXISTS permissions_system_role (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (role_id, permission_id)
 );
+-- Index
+CREATE INDEX IF NOT EXISTS idx_permissions_system_role_role
+ON permissions_system_role(role_id);
+CREATE INDEX IF NOT EXISTS idx_permissions_system_role_permission
+ON permissions_system_role(permission_id);
 
 -- Group Role Permissions (Many-to-Many)
 CREATE TABLE IF NOT EXISTS permissions_group_role (
@@ -56,17 +68,44 @@ CREATE TABLE IF NOT EXISTS permissions_group_role (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (role_id, permission_id)
 );
+-- Index
+CREATE INDEX IF NOT EXISTS idx_permissions_group_role_role
+ON permissions_group_role(role_id);
+CREATE INDEX IF NOT EXISTS idx_permissions_group_role_permission
+ON permissions_group_role(permission_id);
 
 -- User Permissions (Direct assignment of granular permissions to users)
 CREATE TABLE IF NOT EXISTS permissions_user (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
-    granted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     granted_by TEXT REFERENCES users(id),
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, permission_id)
 );
+-- Index
+CREATE INDEX IF NOT EXISTS idx_permissions_user_user
+ON permissions_user(user_id);
+CREATE INDEX IF NOT EXISTS idx_permissions_user_permission
+ON permissions_user(permission_id);
+
+-- Group Member Permissions (Direct permission assignment for members)
+-- This allows granting specific permissions to members, constrained by their role hierarchy level
+CREATE TABLE IF NOT EXISTS permissions_group_member (
+    member_id TEXT NOT NULL REFERENCES group_members(id) ON DELETE CASCADE,
+    permission_id TEXT NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+    granted_by TEXT NOT NULL REFERENCES users(id),
+    granted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(group_id, member_id, permission_id)
+);
+-- Index
+CREATE INDEX IF NOT EXISTS idx_permissions_group_member_member 
+ON permissions_group_member(member_id);
+CREATE INDEX IF NOT EXISTS idx_permissions_group_member_permission 
+ON permissions_group_member(permission_id);
 
 -- User System Roles (Global role assignments)
 CREATE TABLE IF NOT EXISTS user_roles (
@@ -78,10 +117,13 @@ CREATE TABLE IF NOT EXISTS user_roles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (user_id, role_id)
 );
+-- Index
+CREATE INDEX IF NOT EXISTS idx_user_roles_user
+ON user_roles(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_roles_role
+ON user_roles(role_id);
 
--- Group Member Roles (Replacing simple role column in group_members if needed, or enhancing it)
--- We will keep group_members.role as a "Primary Role" for simplicity in code, 
--- but this table allows assigning custom roles to members.
+-- Group Member Roles (replaces group_members.role; all roles are managed here)
 CREATE TABLE IF NOT EXISTS group_member_roles (
     member_id TEXT NOT NULL REFERENCES group_members(id) ON DELETE CASCADE,
     role_id TEXT NOT NULL REFERENCES group_roles(id) ON DELETE CASCADE,
@@ -91,6 +133,11 @@ CREATE TABLE IF NOT EXISTS group_member_roles (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (member_id, role_id)
 );
+-- Index
+CREATE INDEX IF NOT EXISTS idx_group_member_roles_member
+ON group_member_roles(member_id);
+CREATE INDEX IF NOT EXISTS idx_group_member_roles_role
+ON group_member_roles(role_id);
 
 -- Member Service Status (Service-specific active periods within a group)
 CREATE TABLE IF NOT EXISTS member_service_status (
