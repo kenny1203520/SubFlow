@@ -29,31 +29,31 @@ export interface UserProfilesRow {
 export class UserRepository extends BaseRepository {
     
     /**
-     * Find user by ID
+     * Get user by ID
      * @param id 
      * @returns 
      */
-    async findById(id: string): Promise<UserRow | null> {
+    async getById(id: string): Promise<UserRow | null> {
         const res = await this.query('SELECT * FROM users WHERE id = $1', [id]);
         return res.rows[0] || null;
     }
 
     /**
-     * Find user by email
+     * Get user by email
      * @param email 
      * @returns 
      */
-    async findByEmail(email: string): Promise<UserRow | null> {
+    async getByEmail(email: string): Promise<UserRow | null> {
         const res = await this.query('SELECT * FROM users WHERE email = $1', [email]);
         return res.rows[0] || null;
     }
 
     /**
-     * Find user by username
+     * Get user by username
      * @param username 
      * @returns 
      */
-    async findByUsername(username: string): Promise<UserRow | null> {
+    async getByUsername(username: string): Promise<UserRow | null> {
         const res = await this.query('SELECT * FROM users WHERE username = $1', [username]);
         return res.rows[0] || null;
     }

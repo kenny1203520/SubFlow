@@ -21,14 +21,20 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Sessions table
-CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    ip_address TEXT,
-    user_agent TEXT,
-    device_fingerprint TEXT,
-    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+-- User Profiles table
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    first_name TEXT,
+    middle_name TEXT,
+    last_name TEXT,
+    nickname TEXT,
+    birthday DATE,
+    id_number TEXT,
+    -- Consider encryption for sensitive data
+    passport_number TEXT,
+    -- Consider encryption for sensitive data
+    mobile_phone TEXT,
+    address TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -47,14 +53,14 @@ DO $$ BEGIN
         EXECUTE FUNCTION update_timestamp();
     END IF;
 
-    -- Sessions
+    -- User Profiles
     IF NOT EXISTS (
         SELECT 1
         FROM pg_trigger
-        WHERE tgname = 'update_sessions_timestamp'
+        WHERE tgname = 'update_user_profiles_timestamp'
     ) THEN
-        CREATE TRIGGER update_sessions_timestamp
-        BEFORE UPDATE ON sessions
+        CREATE TRIGGER update_user_profiles_timestamp
+        BEFORE UPDATE ON user_profiles
         FOR EACH ROW
         EXECUTE FUNCTION update_timestamp();
     END IF;

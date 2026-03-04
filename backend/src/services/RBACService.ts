@@ -206,10 +206,21 @@ export class RBACService {
     }
 
     /**
-     * List all permissions for a specific role
+     * Get all permissions for a specific role
+     * @param roleId 
+     * @returns 
      */
-    async listRolePermissions(roleId: string): Promise<PermissionRow[]> {
+    async getRolePermissions(roleId: string): Promise<PermissionRow[]> {
         return await this.rbacRepo.listGroupRolePermissions(roleId);
+    }
+
+    /**
+     * Get all permissions for a user (both direct and via roles)
+     * @param userId 
+     * @returns 
+     */
+    async getUserPermissions(userId: string): Promise<string[]> {
+        return await this.rbacRepo.getUserPermissions(userId);
     }
 
     /**
@@ -255,6 +266,10 @@ export class RBACService {
         }
         
         await this.rbacRepo.assignRoleToMember(memberId, roleId, userId);
+    }
+
+    async assignRoleToUser(userId: string, roleId: string): Promise<void> {
+        
     }
 
     /**

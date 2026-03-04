@@ -90,10 +90,12 @@ import { SubscriptionController } from './controllers/SubscriptionController';
 import { NotificationController } from './controllers/NotificationController';
 import { FileController } from './controllers/FileController';
 import { ServiceController } from './controllers/ServiceController';
+import { AuthController } from './controllers/AuthController';
 
 io.on("connection", (socket) => {
     // console.log(`User connected: ${socket.data.user.username}`);
 
+    new AuthController(io, socket).register();
     new GroupController(io, socket).register();
     new GroupRoleController(io, socket).register();
     new GroupPermissionController(io, socket).register();

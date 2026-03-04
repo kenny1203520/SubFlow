@@ -1,7 +1,3 @@
--- Ensure group role names are unique within each group
-ALTER TABLE group_roles DROP CONSTRAINT IF EXISTS group_roles_name_key;
-ALTER TABLE group_roles ADD CONSTRAINT group_roles_group_id_name_key UNIQUE (group_id, name);
-
 -- Seed default permissions for group roles
 
 -- Group-specific Permissions (Granular control within a group context)

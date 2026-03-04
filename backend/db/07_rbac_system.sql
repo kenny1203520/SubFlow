@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS permissions_group_member (
     granted_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(group_id, member_id, permission_id)
+    UNIQUE(member_id, permission_id)
 );
 -- Index
 CREATE INDEX IF NOT EXISTS idx_permissions_group_member_member 

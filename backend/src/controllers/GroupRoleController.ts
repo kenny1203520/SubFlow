@@ -24,14 +24,19 @@ export class GroupRoleController extends BaseController {
     register(): void {
         this.socket.on('group:role:list', this.handleListRoles.bind(this));
         this.socket.on('group:role:quantity_limit', this.handleQuantityLimit.bind(this));
+        this.socket.on('group:user:max_role_level', this.handleGetUserMaxRoleLevel.bind(this));
         this.socket.on('group:role:get_permissions', this.handleGetRolePermissions.bind(this));
         this.socket.on('group:role:create', this.handleCreateRole.bind(this));
         this.socket.on('group:role:update', this.handleUpdateRole.bind(this));
+        this.socket.on('group:role:update_level', this.handleUpdateRoleLevel.bind(this));
         this.socket.on('group:role:delete', this.handleDeleteRole.bind(this));
         this.socket.on('group:role:assign', this.handleAssignRole.bind(this));
         this.socket.on('group:role:remove', this.handleRemoveRole.bind(this));
         this.socket.on('group:role:grant_permission', this.handleGrantPermissionToRole.bind(this));
         this.socket.on('group:role:revoke_permission', this.handleRevokePermissionFromRole.bind(this));
+        this.socket.on('group:member:grant_permission', this.handleGrantDirectPermissionToMember.bind(this));
+        this.socket.on('group:member:revoke_permission', this.handleRevokeDirectPermissionFromMember.bind(this));
+        this.socket.on('group:member:list_direct_permissions', this.handleListDirectPermissionsForMember.bind(this));
         this.socket.on('group:permissions:list', this.handleListAllPermissions.bind(this));
         this.socket.on('group:ownership:transfer', this.handleTransferOwnership.bind(this));
     }
@@ -55,7 +60,10 @@ export class GroupRoleController extends BaseController {
                 return callback({ status: 'error', message: 'Group ID is required' });
             }
 
-            await this.rbacService.checkPermission(userId, groupId, 'read', 'roles');
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'read', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
             
             const roles = await this.rbacService.listGroupRoles(groupId);
             
@@ -82,7 +90,10 @@ export class GroupRoleController extends BaseController {
             if (!groupId) {
                 return callback({ status: 'error', message: 'Group ID is required' });
             }
-            await this.rbacService.checkPermission(userId, groupId, 'read', 'roles');
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'read', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
             
             const roles = await this.rbacService.listGroupRoles(groupId);
             const systemRolesCount = roles.filter(r => r.is_system_role).length;
@@ -118,7 +129,7 @@ export class GroupRoleController extends BaseController {
                 return callback({ status: 'error', message: 'Role ID is required' });
             }
 
-            const permissions = await this.rbacService.listRolePermissions(roleId);
+            const permissions = await this.rbacService.getRolePermissions(roleId);
 
             callback({
                 status: 'ok',
@@ -146,7 +157,10 @@ export class GroupRoleController extends BaseController {
             }
 
             // Check if user has permission to create roles in this group
-            await this.rbacService.checkPermission(userId, groupId, 'create', 'roles');
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'create', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
 
             // Check if role amount limit is reached
             const existingRoles = await this.rbacService.listGroupRoles(groupId);
@@ -186,7 +200,10 @@ export class GroupRoleController extends BaseController {
             }
 
             // Check permission
-            await this.rbacService.checkPermission(userId, groupId, 'update', 'roles');
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'update', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
 
             const role = await this.rbacService.updateGroupRole(userId, groupId, roleId, name, description);
 
@@ -205,6 +222,40 @@ export class GroupRoleController extends BaseController {
     }
 
     /**
+     * Update role priority level
+     */
+    async handleUpdateRoleLevel(payload: any, callback: Function) {
+        try {
+            const userId = this.getUserId();
+            const { groupId, roleId, roleLevel } = payload;
+
+            if (!groupId || !roleId || roleLevel === undefined) {
+                return callback({ status: 'error', message: 'Group ID, Role ID, and role level are required' });
+            }
+
+            // Check permission
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'update', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
+
+            const role = await this.rbacService.updateGroupRoleLevel(userId, groupId, roleId, roleLevel);
+
+            callback({
+                status: 'ok',
+                role,
+                message: 'Role priority updated successfully'
+            });
+        } catch (error: any) {
+            console.error('[GroupRoleController] Update role level error:', error);
+            callback({
+                status: 'error',
+                message: error.message || 'Failed to update role priority'
+            });
+        }
+    }
+
+    /**
      * Delete a custom role
      */
     async handleDeleteRole(payload: any, callback: Function) {
@@ -217,7 +268,10 @@ export class GroupRoleController extends BaseController {
             }
 
             // Check permission
-            await this.rbacService.checkPermission(userId, groupId, 'delete', 'roles');
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'delete', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
 
             const success = await this.rbacService.deleteGroupRole(userId, groupId, roleId);
 
@@ -305,7 +359,10 @@ export class GroupRoleController extends BaseController {
             }
 
             // Check if user can manage role permissions
-            await this.rbacService.checkPermission(userId, groupId, 'update', 'roles');
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'update', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
 
             await this.rbacService.grantPermissionToRole(userId, roleId, permissionId);
 
@@ -335,7 +392,10 @@ export class GroupRoleController extends BaseController {
             }
 
             // Check if user can manage role permissions
-            await this.rbacService.checkPermission(userId, groupId, 'update', 'roles');
+            const hasPremission = await this.rbacService.hasPermission(userId, groupId, 'update', 'roles');
+            if (!hasPremission) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
 
             await this.rbacService.revokePermissionFromRole(userId, roleId, permissionId);
 
@@ -404,4 +464,138 @@ export class GroupRoleController extends BaseController {
             });
         }
     }
+
+    /**
+     * Get user's highest role level in a group
+     */
+    async handleGetUserMaxRoleLevel(payload: any, callback: Function) {
+        try {
+            const userId = this.getUserId();
+            const { groupId } = payload;
+
+            if (!groupId) {
+                return callback({ status: 'error', message: 'Group ID is required' });
+            }
+
+            const maxLevel = await this.groupService.getUserMaxRoleLevel(userId, groupId);
+
+            callback({
+                status: 'ok',
+                maxLevel
+            });
+        } catch (error: any) {
+            console.error('[GroupRoleController] Get user max role level error:', error);
+            callback({
+                status: 'error',
+                message: error.message || 'Failed to get user max role level'
+            });
+        }
+    }
+
+    /**
+     * Grant a direct permission to a group member
+     */
+    async handleGrantDirectPermissionToMember(payload: any, callback: Function) {
+        try {
+            const userId = this.getUserId();
+            const { groupId, memberId, permissionId } = payload;
+
+            if (!groupId || !memberId || !permissionId) {
+                return callback({ status: 'error', message: 'Group ID, member ID, and permission ID are required' });
+            }
+
+            await this.rbacService.grantDirectPermissionToGroupMember(
+                userId,
+                groupId,
+                memberId,
+                permissionId
+            );
+
+            callback({
+                status: 'ok',
+                message: 'Permission granted successfully'
+            });
+        } catch (error: any) {
+            console.error('[GroupRoleController] Grant direct permission error:', error);
+            callback({
+                status: 'error',
+                message: error.message || 'Failed to grant permission'
+            });
+        }
+    }
+
+    /**
+     * Revoke a direct permission from a group member
+     */
+    async handleRevokeDirectPermissionFromMember(payload: any, callback: Function) {
+        try {
+            const userId = this.getUserId();
+            const { groupId, memberId, permissionId } = payload;
+
+            if (!groupId || !memberId || !permissionId) {
+                return callback({ status: 'error', message: 'Group ID, member ID, and permission ID are required' });
+            }
+
+            await this.rbacService.revokeDirectPermissionFromGroupMember(
+                userId,
+                groupId,
+                memberId,
+                permissionId
+            );
+
+            callback({
+                status: 'ok',
+                message: 'Permission revoked successfully'
+            });
+        } catch (error: any) {
+            console.error('[GroupRoleController] Revoke direct permission error:', error);
+            callback({
+                status: 'error',
+                message: error.message || 'Failed to revoke permission'
+            });
+        }
+    }
+
+    /**
+     * List all direct permissions for a group member
+     */
+    async handleListDirectPermissionsForMember(payload: any, callback: Function) {
+        try {
+            const userId = this.getUserId();
+            const { groupId, memberId } = payload;
+
+            if (!groupId || !memberId) {
+                return callback({ status: 'error', message: 'Group ID and member ID are required' });
+            }
+
+            // Check if requester has permission to view member permissions
+            const hasPermission = await this.rbacService.hasPermission(
+                userId,
+                groupId,
+                'read',
+                'member_permissions'
+            );
+
+            if (!hasPermission && userId !== memberId) {
+                return callback({ status: 'error', message: 'Permission denied' });
+            }
+
+            const directPermissions = await this.rbacService.getDirectPermissionsForMember(
+                groupId,
+                memberId
+            );
+
+            callback({
+                status: 'ok',
+                permissions: directPermissions
+            });
+        } catch (error: any) {
+            console.error('[GroupRoleController] List direct permissions error:', error);
+            callback({
+                status: 'error',
+                message: error.message || 'Failed to list direct permissions'
+            });
+        }
+    }
 }
+

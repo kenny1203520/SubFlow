@@ -3,10 +3,12 @@ import { GroupMemberRepository } from '../repositories/GroupMemberRepository';
 import { GroupServiceRepository } from '../repositories/GroupServiceRepository';
 import { UserRepository } from '../repositories/UserRepository';
 import { GroupRoleRepository } from '../repositories/GroupRoleRepository';
+import { RBACRepository } from '../repositories/RBACRepository';
 import { NotificationService } from './NotificationService';
 import { SystemSettingsService } from './SystemSettingsService';
 import { pool } from '../db';
 import { PoolClient } from 'pg';
+import { RBACService } from './RBACService';
 
 export class GroupService {
     private groupRepo = new GroupRepository();
@@ -14,27 +16,55 @@ export class GroupService {
     private groupServiceRepo = new GroupServiceRepository();
     private userRepo = new UserRepository();
     private roleRepo = new GroupRoleRepository();
+    private rbacRepo = new RBACRepository();
     private notifService = new NotificationService();
+    private rbacService = new RBACService();
 
+    /**
+     * Create default system roles for a new group.  
+     * This will be called during group creation to ensure every group starts with a standard set of roles and permissions.
+     * If the roles already exist (e.g. due to a previous failed creation), it will skip creating duplicates and just ensure the permissions are set correctly.
+     * @param client PostgreSQL client to use for transaction. This should be called within an existing transaction when creating a group.
+     * @param groupId ID of the group for which to create default roles.
+     * @returns List of created or existing default roles for the group.
+     */
     private async createDefaultGroupRoles(client: PoolClient, groupId: string): Promise<any[]> {
         const defaultRoles = [
-            { name: 'Group Owner', description: 'Full control over the group, including billing and deletion.' },
-            { name: 'Group Admin', description: 'Can manage group settings and members.' },
-            { name: 'Group Treasurer', description: 'Can manage expenses and group balances.' },
-            { name: 'Group Member', description: 'Basic member with read-only access and expense creation rights.' },
-            { name: 'Group Viewer', description: 'Read-only access to group information.' }
+            {
+                name: 'Group Owner',
+                description: 'Full control over the group, including billing and deletion.',
+                role_level: 1
+            },
+            {
+                name: 'Group Admin',
+                description: 'Can manage group settings and members.',
+                role_level: 2
+            },
+            {
+                name: 'Group Treasurer',
+                description: 'Can manage expenses and group balances.',
+                role_level: 3
+            },
+            { name: 'Group Member',
+                description: 'Basic member with read-only access and expense creation rights.',
+                role_level: 10
+            },
+            { name: 'Group Viewer',
+                description: 'Read-only access to group information.',
+                role_level: 50
+            }
         ];
 
         const createdRoles: any[] = [];
         for (const role of defaultRoles) {
             try {
                 const result = await client.query(
-                    `INSERT INTO group_roles (group_id, name, description, is_system_role)
-                     VALUES ($1, $2, $3, true)
+                    `INSERT INTO group_roles (group_id, name, description, is_system_role, role_level)
+                     VALUES ($1, $2, $3, true, $4)
                      ON CONFLICT (group_id, name)
-                     DO UPDATE SET description = EXCLUDED.description, is_system_role = true
+                     DO UPDATE SET description = EXCLUDED.description, is_system_role = true, role_level = EXCLUDED.role_level
                      RETURNING *`,
-                    [groupId, role.name, role.description]
+                    [groupId, role.name, role.description, role.role_level]
                 );
                 if (result.rows[0]) {
                     createdRoles.push(result.rows[0]);
@@ -118,6 +148,13 @@ export class GroupService {
         return createdRoles;
     }
 
+    /**
+     * Create a new group, optionally with an associated service, and add the creator as the owner. 
+     * It also supports adding initial members by email/username or as temp members.
+     * @param userId User ID of the group creator
+     * @param payload Group creation payload, which can include: name, description, max_members, service details (service_id, service_name, billing info), and initial members (array of {email?, username?, name?})
+     * @returns The created group details
+     */
     async createGroup(userId: string, payload: any): Promise<GroupRow> {
         const client = await pool.connect();
         try {
@@ -157,16 +194,14 @@ export class GroupService {
             const createdRoles = await this.createDefaultGroupRoles(client, group.id);
 
             // 3. Add the creator as Owner
-            await this.memberRepo.addMember({
+            const memberOwner = await this.memberRepo.addMember({
                 group_id: group.id,
                 user_id: userId,
-                role: 'owner',
                 joined_at: new Date(),
                 created_by: userId
             });
 
             // 3.1 Assign Group Owner role to the creator
-            const memberOwner = await this.memberRepo.findByGroupAndUser(group.id, userId);
             const ownerRole = createdRoles.find(r => r.name === 'Group Owner');
             if (ownerRole && ownerRole.id && memberOwner && memberOwner.id) {
                 try {
@@ -182,19 +217,16 @@ export class GroupService {
                 for (const member of payload.initial_members) {
                     if (member.email || member.username) {
                         let user = null;
-                        if (member.email) user = await this.userRepo.findByEmail(member.email);
-                        else if (member.username) user = await this.userRepo.findByUsername(member.username);
+                        if (member.email) user = await this.userRepo.getByEmail(member.email);
+                        else if (member.username) user = await this.userRepo.getByUsername(member.username);
 
                         if (user) {
                             // Invite via Notification
-                            await this.memberRepo.addMember({
+                            const memberX = await this.memberRepo.addMember({
                                 group_id: group.id,
                                 user_id: user.id,
-                                role: 'member',
                                 created_by: userId
                             });
-
-                            const memberX = await this.memberRepo.findByGroupAndUser(group.id, user.id);
                             if (memberRole && memberRole.id && memberX && memberX.id) {
                                 try {
                                     await this.roleRepo.assignRoleToMember(memberX.id, memberRole.id, userId, client);
@@ -212,20 +244,32 @@ export class GroupService {
                             );
                         } else {
                             // Fallback to temp member
-                            await this.memberRepo.addMember({
+                            const memberX = await this.memberRepo.addMember({
                                 group_id: group.id,
                                 temp_name: member.email || member.username,
-                                role: 'member',
                                 created_by: userId
                             });
+                            if (memberRole && memberRole.id && memberX && memberX.id) {
+                                try {
+                                    await this.roleRepo.assignRoleToMember(memberX.id, memberRole.id, userId, client);
+                                } catch (err: any) {
+                                    throw new Error(err?.message);
+                                }
+                            }
                         }
                     } else if (member.name) {
-                        await this.memberRepo.addMember({
+                        const memberX = await this.memberRepo.addMember({
                             group_id: group.id,
                             temp_name: member.name,
-                            role: 'member',
                             created_by: userId
                         });
+                        if (memberRole && memberRole.id && memberX && memberX.id) {
+                            try {
+                                await this.roleRepo.assignRoleToMember(memberX.id, memberRole.id, userId, client);
+                            } catch (err: any) {
+                                throw new Error(err?.message);
+                            }
+                        }
                     }
                 }
             }
@@ -240,13 +284,20 @@ export class GroupService {
         }
     }
 
+    /**
+     * List groups that the user is a member of.  
+     * This will be used for the "My Groups" page.
+     * It returns basic group info and can be extended to include membership details or service status if needed.
+     * @param userId 
+     * @returns 
+     */
     async listGroups(userId: string): Promise<GroupRow[]> {
         return await this.groupRepo.findByUserId(userId);
     }
 
     async getGroupDetail(userId: string, groupId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (!role) throw new Error("Not a member of this group");
+        const member = await this.memberRepo.findByGroupAndUser(groupId, userId);
+        if (!member) throw new Error("Not a member of this group");
 
         const group = await this.groupRepo.findById(groupId);
         let members = await this.memberRepo.getMembersByGroupId(groupId);
@@ -264,27 +315,40 @@ export class GroupService {
         return { group, members, services };
     }
 
+    /**
+     * Add member to group.
+     * If email/username provided and user exists, send invite notification.
+     * Otherwise, add as temp member.
+     * @param adminId 
+     * @param groupId 
+     * @param payload 
+     * @returns 
+     */
     async addMember(adminId: string, groupId: string, payload: { email?: string, name?: string, username?: string }) {
-        const role = await this.memberRepo.checkRole(groupId, adminId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can add members");
+        await this.requireAdminOrOwner(adminId, groupId, "Only admins can add members");
+
+        const memberRole = await this.roleRepo.findByName(groupId, 'Group Member');
 
         if (payload.email || payload.username) {
             let user = null;
-            if (payload.email) user = await this.userRepo.findByEmail(payload.email);
-            else if (payload.username) user = await this.userRepo.findByUsername(payload.username);
+            if (payload.email) user = await this.userRepo.getByEmail(payload.email);
+            else if (payload.username) user = await this.userRepo.getByUsername(payload.username);
 
             if (user) {
-                const existingRole = await this.memberRepo.checkRole(groupId, user.id);
-                if (existingRole) throw new Error("User is already a member of this group");
+                const existingMember = await this.memberRepo.findByGroupAndUser(groupId, user.id);
+                if (existingMember) throw new Error("User is already a member of this group");
 
                 const group = await this.groupRepo.findById(groupId);
 
-                await this.memberRepo.addMember({
+                const newMember = await this.memberRepo.addMember({
                     group_id: groupId,
                     user_id: user.id,
-                    role: 'member',
                     created_by: adminId
                 });
+
+                if (memberRole && newMember?.id) {
+                    await this.roleRepo.assignRoleToMember(newMember.id, memberRole.id, adminId);
+                }
 
                 await this.notifService.createNotification(
                     user.id,
@@ -295,37 +359,49 @@ export class GroupService {
                 );
                 return { status: 'invited' };
             } else {
-                await this.memberRepo.addMember({
+                const newMember = await this.memberRepo.addMember({
                     group_id: groupId,
                     temp_name: payload.email || payload.username,
-                    role: 'member',
                     created_by: adminId
                 });
+                if (memberRole && newMember?.id) {
+                    await this.roleRepo.assignRoleToMember(newMember.id, memberRole.id, adminId);
+                }
                 return { status: 'added_temp' };
             }
         } else if (payload.name) {
-            await this.memberRepo.addMember({
+            const newMember = await this.memberRepo.addMember({
                 group_id: groupId,
                 temp_name: payload.name,
-                role: 'member',
                 created_by: adminId
             });
+            if (memberRole && newMember?.id) {
+                await this.roleRepo.assignRoleToMember(newMember.id, memberRole.id, adminId);
+            }
             return { status: 'added_temp' };
         }
     }
 
+    /**
+     * Bind a temp member to a real user account.  
+     * This is typically called when a user accepts an invite and we want to link their account to the temp member entry.
+     * It can also be used by admins to manually bind members if needed.
+     * @param adminId 
+     * @param groupId 
+     * @param memberId 
+     * @param payload 
+     */
     async bindMemberInvite(adminId: string, groupId: string, memberId: string, payload: { email?: string, username?: string }) {
-        const role = await this.memberRepo.checkRole(groupId, adminId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can bind members");
+        await this.requireAdminOrOwner(adminId, groupId, "Only admins can bind members");
 
         let user = null;
-        if (payload.email) user = await this.userRepo.findByEmail(payload.email);
-        else if (payload.username) user = await this.userRepo.findByUsername(payload.username);
+        if (payload.email) user = await this.userRepo.getByEmail(payload.email);
+        else if (payload.username) user = await this.userRepo.getByUsername(payload.username);
 
         if (!user) throw new Error("User not found");
 
-        const existingRole = await this.memberRepo.checkRole(groupId, user.id);
-        if (existingRole) throw new Error("User is already a member of this group");
+        const existingMember = await this.memberRepo.findByGroupAndUser(groupId, user.id);
+        if (existingMember) throw new Error("User is already a member of this group");
 
         const group = await this.groupRepo.findById(groupId);
 
@@ -338,7 +414,14 @@ export class GroupService {
         );
     }
 
-
+    /**
+     * Accept a group invite.  
+     * This can be called by the user when they accept an invite notification, or by an admin when they bind a member to a user.
+     * It will link the user account to the member entry and mark them as joined.
+     * @param userId 
+     * @param groupId 
+     * @param memberId 
+     */
     async acceptInvite(userId: string, groupId: string, memberId?: string) {
         const members = await this.memberRepo.getMembersByGroupId(groupId);
         const existingMember = members.find(m => m.user_id === userId);
@@ -352,18 +435,27 @@ export class GroupService {
         } else if (existingMember) {
             await this.memberRepo.updateStatus(existingMember.member_id, new Date());
         } else {
-             await this.memberRepo.addMember({
+             const newMember = await this.memberRepo.addMember({
                 group_id: groupId,
                 user_id: userId,
-                role: 'member',
                 joined_at: new Date()
             });
+            const memberRole = await this.roleRepo.findByName(groupId, 'Group Member');
+            if (memberRole && newMember?.id) {
+                await this.roleRepo.assignRoleToMember(newMember.id, memberRole.id, userId);
+            }
         }
     }
 
+    /**
+     * Cancel a group invite.  
+     * This is called when an admin cancels an invite or when a user rejects an invite.
+     * @param userId 
+     * @param groupId 
+     * @param memberId 
+     */
     async cancelInvite(userId: string, groupId: string, memberId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can cancel invites");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can cancel invites");
 
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found");
@@ -372,50 +464,95 @@ export class GroupService {
         await this.memberRepo.remove(memberId);
     }
 
+    /**
+     * Bind a temp member to a real user account.  
+     * This is typically called when a user accepts an invite and we want to link their account to the temp member entry.
+     * It can also be used by admins to manually bind members if needed.
+     * @param userId 
+     * @param memberId 
+     */
     async bindMember(userId: string, memberId: string) {
         // Validation logic here
         await this.memberRepo.bindMember(memberId, userId);
     }
 
+    /**
+     * Reject a group invite.  
+     * This can be called by the user when they reject an invite notification.
+     * It will simply remove the member entry if it's a temp member or if the user hasn't joined yet.
+     * If the user has already joined, it will throw an error.
+     * @param userId 
+     * @param groupId 
+     * @returns 
+     */
     async rejectInvite(userId: string, groupId: string) {
         // Just acknowledging the rejection. 
         // In the future, we might want to mark the notification as 'rejected/solved'
         return true;
     }
 
+    /**
+     * Delete a group.  
+     * Only the owner or admins can delete the group.
+     * This will remove all group data including members, services, and roles.
+     * It will also send notifications to all members about the deletion.
+     * @param userId 
+     * @param groupId 
+     */
     async deleteGroup(userId: string, groupId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can delete the group");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can delete the group");
 
         await this.groupRepo.delete(groupId);
     }
 
+    /**
+     * Leave a group.  
+     * This is called when a user leaves a group they are a member of.
+     * @param userId 
+     * @param groupId 
+     */
     async leaveGroup(userId: string, groupId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (!role) throw new Error("You are not a member of this group");
-        if (role === 'admin' || role === 'owner') throw new Error("Admins/Owners cannot leave the group. Delete it instead.");
+        const member = await this.memberRepo.findByGroupAndUser(groupId, userId);
+        if (!member) throw new Error("You are not a member of this group");
+        const isOwner = await this.rbacService.isGroupOwner(userId, groupId);
+        if (isOwner) throw new Error("Owner cannot leave the group. Delete it instead.");
 
         await this.memberRepo.removeMember(groupId, userId);
     }
 
+    /**
+     * Update group details.  
+     * Only the owner or admins can update group settings.
+     * This can be used to change the group name, description, or other metadata.
+     * It will not allow changing membership or service details - those should be handled by separate methods.
+     * @param userId 
+     * @param groupId 
+     * @param payload 
+     * @returns 
+     */
     async updateGroup(userId: string, groupId: string, payload: any) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can update group settings");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can update group settings");
 
         return await this.groupRepo.update(groupId, payload);
     }
 
+    /**
+     * Update a member's role.  
+     * Only the owner or admins can change member roles.
+     * This can be used to promote/demote members to/from admin or to assign/remove dynamic roles.
+     * It will check the current user's permissions and ensure they cannot modify the owner's role.
+     * @param userId 
+     * @param groupId 
+     * @param memberId 
+     * @param newRole 
+     */
     async updateMemberRole(userId: string, groupId: string, memberId: string, newRole: any) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can manage roles");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can manage roles");
 
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
 
-        // 1. Update legacy column for backward compatibility
-        await this.memberRepo.updateRole(memberId, newRole);
-
-        // 2. Update Dynamic Roles
+        // Update Dynamic Roles
         const adminRole = await this.roleRepo.findByName(groupId, 'Group Admin');
         if (adminRole) {
             if (newRole === 'admin') {
@@ -426,9 +563,17 @@ export class GroupService {
         }
     }
 
+    /**
+     * Assign or remove a dynamic role to/from a member.  
+     * This allows admins to grant specific permissions to members without making them full admins.
+     * The method will check that the current user has admin rights, validate the target member and role, and then perform the assignment or removal.
+     * @param userId 
+     * @param groupId 
+     * @param memberId 
+     * @param roleId 
+     */
     async assignDynamicRole(userId: string, groupId: string, memberId: string, roleId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can manage dynamic roles");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can manage dynamic roles");
 
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
@@ -439,9 +584,17 @@ export class GroupService {
         await this.roleRepo.assignRoleToMember(memberId, roleId, userId);
     }
 
+    /**
+     * Remove a dynamic role from a member.  
+     * This is the counterpart to assignDynamicRole and allows admins to revoke specific permissions from members.
+     * It will perform similar checks to ensure the user has admin rights and that the member and role are valid before removing the role assignment.
+     * @param userId 
+     * @param groupId 
+     * @param memberId 
+     * @param roleId 
+     */
     async removeDynamicRole(userId: string, groupId: string, memberId: string, roleId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can manage dynamic roles");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can manage dynamic roles");
 
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
@@ -452,9 +605,17 @@ export class GroupService {
         await this.roleRepo.removeRoleFromMember(memberId, roleId);
     }
 
+    /**
+     * Remove a member from the group.  
+     * Only the owner or admins can remove members.
+     * This will check that the current user has the necessary permissions, validate the target member, and then remove them from the group.
+     * If the member being removed is currently bound to a user account, it will also send a notification about their removal.
+     * @param userId 
+     * @param groupId 
+     * @param memberId 
+     */
     async removeMember(userId: string, groupId: string, memberId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can remove members");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can remove members");
 
         const member = await this.memberRepo.findById(memberId);
         if (!member || member.group_id !== groupId) throw new Error("Member not found in this group");
@@ -464,13 +625,30 @@ export class GroupService {
         await this.memberRepo.remove(memberId);
     }
 
+    /**
+     * List all roles for a group.  
+     * This can be used to display the available roles when managing member permissions or when showing member details.
+     * It will return both system-defined roles (like Owner/Admin) and any custom roles that have been created for the group.
+     * @param groupId 
+     * @returns 
+     */
     async listRoles(groupId: string): Promise<any[]> {
         return await this.roleRepo.listAll(groupId);
     }
 
+    /**
+     * Create a new custom role for the group.  
+     * Only the owner or admins can create new roles.
+     * This allows groups to define their own roles with specific permissions beyond the default system roles.
+     * The method will check permissions, validate the input, and then create the new role in the database.
+     * It will also enforce any limits on the number of custom roles if such limits are defined in the system settings.
+     * @param userId 
+     * @param groupId 
+     * @param payload 
+     * @returns 
+     */
     async createRole(userId: string, groupId: string, payload: { name: string; description?: string }): Promise<any> {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (role !== 'admin' && role !== 'owner') throw new Error("Only admins can create roles");
+        await this.requireAdminOrOwner(userId, groupId, "Only admins can create roles");
 
         const cfg = await SystemSettingsService.getSetting('groups.role_limit');
         const maxRoles = typeof cfg === 'number' ? cfg : (cfg?.max ?? null);
@@ -483,16 +661,19 @@ export class GroupService {
 
         return await this.roleRepo.create(groupId, payload.name, payload.description);
     }
-    
 
     /**
-     * Transfer group ownership from current owner to another member
-     * Only the current owner can transfer ownership
+     * Transfer group ownership from current owner to another member.  
+     * Only the current owner can transfer ownership.
+     * @param currentOwnerId
+     * @param groupId
+     * @param newOwnerId
      */
     async transferOwnership(currentOwnerId: string, groupId: string, newOwnerId: string): Promise<void> {
         // 1. Verify the current user is the owner
         const currentOwnerMember = await this.memberRepo.findByGroupAndUser(groupId, currentOwnerId);
-        if (!currentOwnerMember || currentOwnerMember.role !== 'owner') {
+        const isOwner = await this.rbacService.isGroupOwner(currentOwnerId, groupId);
+        if (!currentOwnerMember || !isOwner) {
             throw new Error('Only the group owner can transfer ownership');
         }
 
@@ -511,19 +692,18 @@ export class GroupService {
         try {
             await client.query('BEGIN');
 
-            // Demote current owner to admin
-            await client.query(
-                `UPDATE group_members SET role = 'admin', updated_at = CURRENT_TIMESTAMP 
-                 WHERE id = $1`,
-                [currentOwnerMember.id]
-            );
+            const ownerRole = await this.roleRepo.findByName(groupId, 'Group Owner', client);
+            const adminRole = await this.roleRepo.findByName(groupId, 'Group Admin', client);
+            if (!ownerRole) {
+                throw new Error('Group Owner role not found');
+            }
 
-            // Promote new owner
-            await client.query(
-                `UPDATE group_members SET role = 'owner', updated_at = CURRENT_TIMESTAMP 
-                 WHERE id = $1`,
-                [newOwnerMember.id]
-            );
+            await this.roleRepo.removeRoleFromMember(currentOwnerMember.id, ownerRole.id, client);
+            if (adminRole) {
+                await this.roleRepo.assignRoleToMember(currentOwnerMember.id, adminRole.id, currentOwnerId, client);
+            }
+
+            await this.roleRepo.assignRoleToMember(newOwnerMember.id, ownerRole.id, currentOwnerId, client);
 
             // Update group's created_by to reflect new owner
             await client.query(
@@ -559,7 +739,22 @@ export class GroupService {
     }
 
     /**
-     * Get comprehensive group overview including services, subscriptions, and expenses
+     * Check if a user has admin or owner role in a group.
+     * @param userId 
+     * @param groupId 
+     * @param message 
+     */
+    private async requireAdminOrOwner(userId: string, groupId: string, message: string) {
+        const allowed = await this.rbacService.hasAnyRole(userId, groupId, ['Group Admin', 'Group Owner']);
+        if (!allowed) throw new Error(message);
+    }
+
+    /**
+     * Get comprehensive group overview including services, subscriptions, and expenses.  
+     * This can be used for the group dashboard to provide a summary of the group's status and activity.
+     * @param userId 
+     * @param groupId 
+     * @returns 
      */
     async getGroupOverview(userId: string, groupId: string): Promise<any> {
         // Check read permission
@@ -572,6 +767,22 @@ export class GroupService {
         const services = await this.groupServiceRepo.findByGroupId(groupId);
         const members = await this.memberRepo.getMembersByGroupId(groupId);
 
+        const permissions = await this.rbacRepo.getMemberPermissions(groupId, userId);
+        const userPermissions: Record<string, any> = {};
+        const memberMaxRoleLevel = await this.rbacRepo.getUserMaxRoleLevelInGroup(groupId, userId);
+        for (const permission of permissions) {
+            userPermissions[permission] = true;
+            const parts = permission.split(':');
+            if (parts.length === 3) {
+                const action = parts[1];
+                const resource = parts[2];
+                if (!userPermissions[action]) {
+                    userPermissions[action] = {};
+                }
+                userPermissions[action][resource] = true;
+            }
+        }
+
         // Get expenses (assuming you have an ExpenseRepository)
         // const expenses = await this.expenseRepo.findByGroupId(groupId);
 
@@ -579,6 +790,8 @@ export class GroupService {
             group,
             services,
             members,
+            userPermissions,
+            memberMaxRoleLevel,
             // expenses,
             summary: {
                 totalMembers: members.length,
@@ -587,6 +800,17 @@ export class GroupService {
                 activeServices: services.filter(s => s.status === 'active').length,
             }
         };
+    }
+
+    /**
+     * Get the current user's highest role level in a group 
+     * Lower numeric values = higher privilege
+     * @param userId 
+     * @param groupId 
+     * @returns 
+     */
+    async getUserMaxRoleLevel(userId: string, groupId: string): Promise<number> {
+        return await this.rbacRepo.getUserMaxRoleLevelInGroup(groupId, userId);
     }
 }
 

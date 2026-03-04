@@ -135,7 +135,7 @@ export class RBACRepository extends BaseRepository {
      * @param assignedBy 
      * @param client 
      */
-    async assignRoleToUser(userId: string, roleId: string, assignedBy: string, client?: PoolClient): Promise<void> {
+    async assignRoleToUser(userId: string, roleId: string, assignedBy?: string, client?: PoolClient): Promise<void> {
         const queryFn = client ? (sql: string, params: any[]) => client.query(sql, params) : (sql: string, params: any[]) => this.query(sql, params);
         await queryFn(`
             INSERT INTO user_roles (user_id, role_id, assigned_by)
@@ -420,7 +420,7 @@ export class RBACRepository extends BaseRepository {
      * @param assignedBy 
      * @param client 
      */
-    async assignRoleToMember(memberId: string, roleId: string, assignedBy: string, client?: PoolClient): Promise<void> {
+    async assignRoleToMember(memberId: string, roleId: string, assignedBy?: string, client?: PoolClient): Promise<void> {
         const queryFn = client ? (sql: string, params: any[]) => client.query(sql, params) : (sql: string, params: any[]) => this.query(sql, params);
         await queryFn(`
             INSERT INTO group_member_roles (member_id, role_id, assigned_by)
@@ -783,6 +783,26 @@ export class RBACRepository extends BaseRepository {
             ORDER BY p.scope, p.action, p.resource
         `, [groupId, memberId]);
         return res.rows;
+    }
+
+    /**
+     * Get the maximum (highest privilege) role level for a user in a group
+     * Lower numeric values = higher privilege
+     * @param groupId 
+     * @param userId 
+     * @param client 
+     * @returns The minimum role_level (highest privilege)
+     */
+    async getUserMaxRoleLevelInGroup(groupId: string, userId: string, client?: PoolClient): Promise<number> {
+        const queryFn = client ? (sql: string, params: any[]) => client.query(sql, params) : (sql: string, params: any[]) => this.query(sql, params);
+        const res = await queryFn(`
+            SELECT MIN(gr.role_level) as max_role_level
+            FROM group_members gm
+            JOIN group_member_roles gmr ON gmr.member_id = gm.id
+            JOIN group_roles gr ON gr.id = gmr.role_id
+            WHERE gm.group_id = $1 AND gm.user_id = $2
+        `, [groupId, userId]);
+        return res.rows[0]?.max_role_level ?? 999; // 999 = no role
     }
 }
 

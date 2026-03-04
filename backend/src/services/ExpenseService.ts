@@ -7,8 +7,8 @@ export class ExpenseService {
     private memberRepo = new GroupMemberRepository();
 
     async addExpense(userId: string, payload: { groupId: string, amount: number, description: string, splits: { memberId: string, amount: number }[] }) {
-        const role = await this.memberRepo.checkRole(payload.groupId, userId);
-        if (!role) throw new Error("Not a member");
+        const member = await this.memberRepo.findByGroupAndUser(payload.groupId, userId);
+        if (!member) throw new Error("Not a member");
 
         const client = await pool.connect();
         try {
@@ -40,15 +40,15 @@ export class ExpenseService {
     }
 
     async listExpenses(userId: string, groupId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (!role) throw new Error("Not a member");
+        const member = await this.memberRepo.findByGroupAndUser(groupId, userId);
+        if (!member) throw new Error("Not a member");
 
         return await this.expenseRepo.findByGroupId(groupId);
     }
 
     async getPendingSplits(userId: string, groupId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (!role) throw new Error("Not a member");
+        const member = await this.memberRepo.findByGroupAndUser(groupId, userId);
+        if (!member) throw new Error("Not a member");
 
         return await this.expenseRepo.findPendingSplitsByGroupId(groupId);
     }

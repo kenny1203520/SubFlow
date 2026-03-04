@@ -32,18 +32,18 @@ VALUES
   ('system', 'read',   'logs',     'admin.permissions.system.read.logs'),
   ('system', 'manage', 'roles',            'admin.permissions.system.manage.roles'),
   ('system', 'manage', 'user_roles',       'admin.permissions.system.manage.user_roles'),
-  ('system', 'manage', 'permissions_user', 'admin.permissions.system.manage.permissions_user')
+  ('system', 'manage', 'permissions_user', 'admin.permissions.system.manage.permissions_user'),
 
 -- Audit Permissions
-  ('audit', 'read',   'user_activity', 'audit.permissions.audit.read.user_activity')
+  ('audit', 'read',   'user_activity', 'audit.permissions.audit.read.user_activity'),
 
 -- Users Permissions
   ('users', 'read',   'profile', 'users.permissions.users.read.profile'),
-  ('users', 'update', 'profile', 'users.permissions.users.update.profile')
+  ('users', 'update', 'profile', 'users.permissions.users.update.profile'),
 
 -- Billing Permissions
   ('billing','read',   'all',      'billing.permissions.billing.read.all'),
-  ('billing','update', 'all',      'billing.permissions.billing.update.all')
+  ('billing','update', 'all',      'billing.permissions.billing.update.all'),
 
 -- Group Permissions
   ('groups', 'create', 'groups',   'groups.permissions.groups.create.groups'),
@@ -54,7 +54,7 @@ VALUES
   ('groups', 'create', 'expenses', 'groups.permissions.groups.create.expenses'),
   ('groups', 'read',   'expenses', 'groups.permissions.groups.read.expenses'),
   ('groups', 'update', 'expenses', 'groups.permissions.groups.update.expenses'),
-  ('groups', 'delete', 'expenses', 'groups.permissions.groups.delete.expenses')
+  ('groups', 'delete', 'expenses', 'groups.permissions.groups.delete.expenses'),
 
 -- User Permissions
   ('user', 'read',   'profile', 'user.permissions.user.read.profile'),

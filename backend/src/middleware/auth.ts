@@ -67,6 +67,20 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
     next();
 };
 
+/**
+ * Middleware to attach user to req object for easier access
+ * Works with existing verifySession middleware
+ */
+export const authenticateSession = (req: Request, res: Response, next: NextFunction) => {
+    if (!res.locals.session || !res.locals.user) {
+        return res.status(401).json({ error: "Unauthorized" });
+    }
+    // Attach user to request for easier access in controllers
+    (req as any).user = res.locals.user;
+    (req as any).session = res.locals.session;
+    next();
+};
+
 export const requirePermission = (scope: string, action: string, resource: string) => {
     return async (req: Request, res: Response, next: NextFunction) => {
         if (!res.locals.session || !res.locals.user) {
