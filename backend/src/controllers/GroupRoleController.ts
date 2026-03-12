@@ -2,6 +2,7 @@ import { Socket, Server } from 'socket.io';
 import { SocketController } from './SocketController';
 import { RBACService } from '../services/RBACService';
 import { GroupService } from '../services/GroupService';
+import { groupRoleSocketEvents } from '../socket/events';
 
 /**
  * GroupRoleController
@@ -23,23 +24,23 @@ export class GroupRoleController extends SocketController {
      */
     register(): void {
         if (!this.socket) return;
-        this.socket.on('group:role:list', this.handleListRoles.bind(this));
-        this.socket.on('group:role:quantity_limit', this.handleQuantityLimit.bind(this));
-        this.socket.on('group:user:max_role_level', this.handleGetUserMaxRoleLevel.bind(this));
-        this.socket.on('group:role:get_permissions', this.handleGetRolePermissions.bind(this));
-        this.socket.on('group:role:create', this.handleCreateRole.bind(this));
-        this.socket.on('group:role:update', this.handleUpdateRole.bind(this));
-        this.socket.on('group:role:update_level', this.handleUpdateRoleLevel.bind(this));
-        this.socket.on('group:role:delete', this.handleDeleteRole.bind(this));
-        this.socket.on('group:role:assign', this.handleAssignRole.bind(this));
-        this.socket.on('group:role:remove', this.handleRemoveRole.bind(this));
-        this.socket.on('group:role:grant_permission', this.handleGrantPermissionToRole.bind(this));
-        this.socket.on('group:role:revoke_permission', this.handleRevokePermissionFromRole.bind(this));
-        this.socket.on('group:member:grant_permission', this.handleGrantDirectPermissionToMember.bind(this));
-        this.socket.on('group:member:revoke_permission', this.handleRevokeDirectPermissionFromMember.bind(this));
-        this.socket.on('group:member:list_direct_permissions', this.handleListDirectPermissionsForMember.bind(this));
-        this.socket.on('group:permissions:list', this.handleListAllPermissions.bind(this));
-        this.socket.on('group:ownership:transfer', this.handleTransferOwnership.bind(this));
+        this.socket.on(groupRoleSocketEvents.LIST, this.handleListRoles.bind(this));
+        this.socket.on(groupRoleSocketEvents.QUANTITY_LIMIT, this.handleQuantityLimit.bind(this));
+        this.socket.on(groupRoleSocketEvents.USER_MAX_ROLE_LEVEL, this.handleGetUserMaxRoleLevel.bind(this));
+        this.socket.on(groupRoleSocketEvents.GET_PERMISSIONS, this.handleGetRolePermissions.bind(this));
+        this.socket.on(groupRoleSocketEvents.CREATE, this.handleCreateRole.bind(this));
+        this.socket.on(groupRoleSocketEvents.UPDATE, this.handleUpdateRole.bind(this));
+        this.socket.on(groupRoleSocketEvents.UPDATE_LEVEL, this.handleUpdateRoleLevel.bind(this));
+        this.socket.on(groupRoleSocketEvents.DELETE, this.handleDeleteRole.bind(this));
+        this.socket.on(groupRoleSocketEvents.ASSIGN, this.handleAssignRole.bind(this));
+        this.socket.on(groupRoleSocketEvents.REMOVE, this.handleRemoveRole.bind(this));
+        this.socket.on(groupRoleSocketEvents.GRANT_PERMISSION, this.handleGrantPermissionToRole.bind(this));
+        this.socket.on(groupRoleSocketEvents.REVOKE_PERMISSION, this.handleRevokePermissionFromRole.bind(this));
+        this.socket.on(groupRoleSocketEvents.MEMBER_GRANT_PERMISSION, this.handleGrantDirectPermissionToMember.bind(this));
+        this.socket.on(groupRoleSocketEvents.MEMBER_REVOKE_PERMISSION, this.handleRevokeDirectPermissionFromMember.bind(this));
+        this.socket.on(groupRoleSocketEvents.MEMBER_LIST_DIRECT_PERMISSIONS, this.handleListDirectPermissionsForMember.bind(this));
+        this.socket.on(groupRoleSocketEvents.LIST_ALL_PERMISSIONS, this.handleListAllPermissions.bind(this));
+        this.socket.on(groupRoleSocketEvents.TRANSFER_OWNERSHIP, this.handleTransferOwnership.bind(this));
     }
 
     /**

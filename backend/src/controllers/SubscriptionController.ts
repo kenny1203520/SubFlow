@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { SubscriptionService } from '../services/SubscriptionService';
+import { subscriptionSocketEvents } from '../socket/events';
 
 export class SubscriptionController extends SocketController {
     private subService = new SubscriptionService();
@@ -10,10 +11,10 @@ export class SubscriptionController extends SocketController {
     }
 
     register() {
-        this.socket.on("subscription:add", (payload, cb) => this.addSubscription(payload, cb));
-        this.socket.on("subscription:list", (payload, cb) => this.listSubscriptions(payload, cb));
-        this.socket.on("subscription:all", (...args: any[]) => this.listAllSubscriptions(this.resolveAck(...args) as any));
-        this.socket.on("subscription:update_status", (payload, cb) => this.updateStatus(payload, cb));
+        this.socket.on(subscriptionSocketEvents.ADD, (payload, cb) => this.addSubscription(payload, cb));
+        this.socket.on(subscriptionSocketEvents.LIST, (payload, cb) => this.listSubscriptions(payload, cb));
+        this.socket.on(subscriptionSocketEvents.ALL, (...args: any[]) => this.listAllSubscriptions(this.resolveAck(...args) as any));
+        this.socket.on(subscriptionSocketEvents.UPDATE_STATUS, (payload, cb) => this.updateStatus(payload, cb));
     }
 
     async addSubscription(payload: any, cb: (res: any) => void) {

@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { SecurityService } from '../services/SecurityService';
 import { logActivity } from '../utils/audit';
+import { securitySocketEvents } from '../socket/events';
 
 export class SecurityController extends SocketController {
     private securityService = new SecurityService();
@@ -11,16 +12,16 @@ export class SecurityController extends SocketController {
     }
 
     register() {
-        this.socket.on("security:get_settings", (...args: any[]) => this.getSettings(this.resolveAck(...args) as any));
-        this.socket.on("security:generate_2fa_secret", (...args: any[]) => this.generate2FASecret(this.resolveAck(...args) as any));
-        this.socket.on("security:enable_2fa", (payload, cb) => this.enable2FA(payload, cb));
-        this.socket.on("security:disable_2fa", (...args: any[]) => this.disable2FA(this.resolveAck(...args) as any));
-        this.socket.on("security:regenerate_backup_codes", (...args: any[]) => this.regenerateBackupCodes(this.resolveAck(...args) as any));
+        this.socket.on(securitySocketEvents.GET_SETTINGS, (...args: any[]) => this.getSettings(this.resolveAck(...args) as any));
+        this.socket.on(securitySocketEvents.GENERATE_2FA_SECRET, (...args: any[]) => this.generate2FASecret(this.resolveAck(...args) as any));
+        this.socket.on(securitySocketEvents.ENABLE_2FA, (payload, cb) => this.enable2FA(payload, cb));
+        this.socket.on(securitySocketEvents.DISABLE_2FA, (...args: any[]) => this.disable2FA(this.resolveAck(...args) as any));
+        this.socket.on(securitySocketEvents.REGENERATE_BACKUP_CODES, (...args: any[]) => this.regenerateBackupCodes(this.resolveAck(...args) as any));
         
-        this.socket.on("security:list_devices", (...args: any[]) => this.listDevices(this.resolveAck(...args) as any));
-        this.socket.on("security:revoke_device", (payload, cb) => this.revokeDevice(payload, cb));
-        this.socket.on("security:sessions", (...args: any[]) => this.getSessions(this.resolveAck(...args) as any));
-        this.socket.on("security:revoke_session", (payload, cb) => this.revokeSession(payload, cb));
+        this.socket.on(securitySocketEvents.LIST_DEVICES, (...args: any[]) => this.listDevices(this.resolveAck(...args) as any));
+        this.socket.on(securitySocketEvents.REVOKE_DEVICE, (payload, cb) => this.revokeDevice(payload, cb));
+        this.socket.on(securitySocketEvents.SESSIONS, (...args: any[]) => this.getSessions(this.resolveAck(...args) as any));
+        this.socket.on(securitySocketEvents.REVOKE_SESSION, (payload, cb) => this.revokeSession(payload, cb));
     }
 
     async getSettings(cb: (res: any) => void) {

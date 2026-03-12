@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { FileService } from '../services/FileService';
+import { fileSocketEvents } from '../socket/events';
 
 export class FileController extends SocketController {
     private fileService = new FileService();
@@ -10,8 +11,8 @@ export class FileController extends SocketController {
     }
 
     register() {
-        this.socket.on("file:get", (payload, cb) => this.getFile(payload, cb));
-        this.socket.on("file:delete", (payload, cb) => this.deleteFile(payload, cb));
+        this.socket.on(fileSocketEvents.GET, (payload, cb) => this.getFile(payload, cb));
+        this.socket.on(fileSocketEvents.DELETE, (payload, cb) => this.deleteFile(payload, cb));
     }
 
     async getFile(payload: { fileId: string }, cb: (res: any) => void) {

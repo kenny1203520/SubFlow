@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { ServiceService } from '../services/ServiceService';
+import { serviceSocketEvents } from '../socket/events';
 
 export class ServiceController extends SocketController {
     private serviceService = new ServiceService();
@@ -10,11 +11,11 @@ export class ServiceController extends SocketController {
     }
 
     register() {
-        this.socket.on("service:search", (payload, cb) => this.searchServices(payload, cb));
-        this.socket.on("service:create", (payload, cb) => this.createService(payload, cb));
-        this.socket.on("service:list", (...args: any[]) => this.listServices(this.resolveAck(...args) as any));
-        this.socket.on("service:update", (payload, cb) => this.updateService(payload, cb));
-        this.socket.on("service:delete", (payload, cb) => this.deleteService(payload, cb));
+        this.socket.on(serviceSocketEvents.SEARCH, (payload, cb) => this.searchServices(payload, cb));
+        this.socket.on(serviceSocketEvents.CREATE, (payload, cb) => this.createService(payload, cb));
+        this.socket.on(serviceSocketEvents.LIST, (...args: any[]) => this.listServices(this.resolveAck(...args) as any));
+        this.socket.on(serviceSocketEvents.UPDATE, (payload, cb) => this.updateService(payload, cb));
+        this.socket.on(serviceSocketEvents.DELETE, (payload, cb) => this.deleteService(payload, cb));
     }
 
     async searchServices(payload: { query: string }, cb: (res: any) => void) {

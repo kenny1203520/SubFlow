@@ -17,6 +17,9 @@ VALUES
   ('auth.require_2fa', '{"enabled": false}'::jsonb, 'Whether 2FA is globally enforced for all users'),
   ('security.auth_lockout', '{"maxFailedAttempts": 5, "lockoutDurationMins": 720}'::jsonb, 'Account lockout policy after failed login attempts'),
   ('security.rate_limit', '{"authWindowMs": 900000, "authMax": 6, "apiWindowMs": 300000, "apiMax": 1000}'::jsonb, 'Rate limiting configuration for auth and API endpoints'),
+  ('security.socket_rate_limit', 
+  '{"default": {"requestsPerMinute": 60, "requestsPerHour": 1000}, "events": {"group:create": {"requestsPerMinute": 10, "requestsPerHour": 100}, "group:delete": {"requestsPerMinute": 5, "requestsPerHour": 50}, "expense:add": {"requestsPerMinute": 20, "requestsPerHour": 200}, "expense:settle": {"requestsPerMinute": 10, "requestsPerHour": 100}, "ping": {"requestsPerMinute": 600, "requestsPerHour": 10000}}}'::jsonb, 
+  'Socket.IO rate limit config. Supports default + per-event overrides for Admin Panel.'),
   ('groups.settings', '{"groupsLimit": 100, "roleLimitPerGroup": 10, "memberLimitPerGroup": 1000}'::jsonb, 'Maximum number of groups a user can create or be a member of')
 ON CONFLICT (key) DO NOTHING;
 

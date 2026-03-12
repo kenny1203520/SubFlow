@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { NotificationService } from '../services/NotificationService';
+import { notificationSocketEvents } from '../socket/events';
 
 export class NotificationController extends SocketController {
     private notifService = new NotificationService();
@@ -10,9 +11,9 @@ export class NotificationController extends SocketController {
     }
 
     register() {
-        this.socket.on("notification:list", (payload, cb) => this.listNotifications(payload, cb));
-        this.socket.on("notification:mark_read", (payload, cb) => this.markRead(payload, cb));
-        this.socket.on("notification:mark_all_read", (...args: any[]) => this.markAllRead(this.resolveAck(...args) as any));
+        this.socket.on(notificationSocketEvents.LIST, (payload, cb) => this.listNotifications(payload, cb));
+        this.socket.on(notificationSocketEvents.MARK_READ, (payload, cb) => this.markRead(payload, cb));
+        this.socket.on(notificationSocketEvents.MARK_ALL_READ, (...args: any[]) => this.markAllRead(this.resolveAck(...args) as any));
     }
 
     async listNotifications(payload: { page?: number }, cb: (res: any) => void) {

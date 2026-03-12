@@ -1,10 +1,12 @@
 import { BillRepository } from '../repositories/BillRepository';
 import { GroupMemberRepository } from '../repositories/GroupMemberRepository';
+import { RBACService } from './RBACService';
 import { pool } from '../db';
 
 export class BillService {
     private billRepo = new BillRepository();
     private memberRepo = new GroupMemberRepository();
+    private rbacService = new RBACService();
 
     async createBill(userId: string, payload: { groupId: string, title: string, description: string, amount: number, currency: string, dueDate: string, splits: { userId: string, amount: number }[] }) {
         // Logic to create bill using repo
@@ -69,8 +71,8 @@ export class BillService {
     }
 
     async listBills(userId: string, groupId: string) {
-        const role = await this.memberRepo.checkRole(groupId, userId);
-        if (!role) throw new Error("Not a member");
+        const member = await this.memberRepo.findByGroupAndUser(groupId, userId);
+        if (!member) throw new Error("Not a member");
 
         return await this.billRepo.findByGroupId(groupId);
     }
@@ -79,8 +81,8 @@ export class BillService {
         const bill = await this.billRepo.getBillWithGroupInfo(billId);
         if (!bill) throw new Error("Bill not found");
 
-        const role = await this.memberRepo.checkRole(bill.group_id, userId);
-        if (!role) throw new Error("Not a member");
+        const member = await this.memberRepo.findByGroupAndUser(bill.group_id, userId);
+        if (!member) throw new Error("Not a member");
 
         const splits = await this.billRepo.getSplitsByBillId(billId);
         return { bill, splits };
@@ -90,8 +92,9 @@ export class BillService {
         const split = await this.billRepo.findSplitById(splitId);
         if (!split) throw new Error("Split not found");
 
-        const role = await this.memberRepo.checkRole(split.group_id, userId);
-        if (role !== 'admin') throw new Error("Only admins can edit bills");
+        const isAdmin = await this.rbacService.hasMemberRole(userId, split.group_id, 'Group Admin');
+        const isOwner = await this.rbacService.hasMemberRole(userId, split.group_id, 'Group Owner');
+        if (!isAdmin && !isOwner) throw new Error("Only admins can edit bills");
 
         const client = await pool.connect();
         try {

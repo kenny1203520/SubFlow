@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from "express";
+import { Socket } from 'socket.io';
 import { lucia } from "../auth/lucia";
 import { runWithContext } from "../utils/context";
 import { pool } from "../db";
@@ -6,6 +7,9 @@ import { logActivity, getDeviceFingerprint } from '../utils/audit';
 import { SystemSettingService } from "../services/SystemSettingService";
 import { AuthRepository } from "../repositories/AuthRepository";
 import { RBACService } from "../services/RBACService";
+import { parse } from 'cookie';
+import { SOCKET_ERROR_CODES, SocketEventResponse } from '../types/socket-protocol';
+import { socketPolicyRegistry } from '../socket/registry/SocketPolicyRegistry';
 
 /**
  * Enhanced authentication and security middleware for Express routes, including:
@@ -280,6 +284,118 @@ class AuthMiddleware {
  * Export middleware functions for use in route definitions.
  */
 const authMiddleware = new AuthMiddleware();
+
+function extractSocketAck(args: any[]): ((response: any) => void) | null {
+    const maybeAck = args[args.length - 1];
+    return typeof maybeAck === 'function' ? maybeAck : null;
+}
+
+async function checkSocketPermission(
+    userId: string,
+    permission: {
+        scope: string;
+        action: string;
+        resource: string;
+    },
+    groupId?: string
+): Promise<boolean> {
+    const rbacService = new RBACService();
+
+    try {
+        return await rbacService.hasPermission(
+            userId,
+            permission.scope,
+            permission.action,
+            permission.resource,
+            groupId
+        );
+    } catch (error) {
+        console.error('Permission check failed:', error);
+        return false;
+    }
+}
+
+export function createSocketAuthenticationMiddleware() {
+    return async (socket: Socket, next: (err?: Error) => void) => {
+        try {
+            const cookieHeader = socket.handshake.headers.cookie;
+            if (!cookieHeader) {
+                return next(new Error('Unauthorized'));
+            }
+
+            const cookies = parse(cookieHeader);
+            const sessionId = cookies[lucia.sessionCookieName];
+            if (!sessionId) {
+                return next(new Error('Unauthorized'));
+            }
+
+            const { session, user } = await lucia.validateSession(sessionId);
+            if (!session) {
+                return next(new Error('Unauthorized'));
+            }
+
+            socket.data.user = user;
+            socket.data.session = session;
+            next();
+        } catch (error) {
+            next(new Error('Authentication error'));
+        }
+    };
+}
+
+export function createSocketAuthorizationMiddleware() {
+    return async (socket: Socket, next: (err?: Error) => void) => {
+        socket.onAny(async (eventName: string, ...args) => {
+            const rule = socketPolicyRegistry.getAuthRule(eventName);
+            const ack = extractSocketAck(args);
+
+            if (!rule) {
+                ack?.(SocketEventResponse.error(
+                    SOCKET_ERROR_CODES.INTERNAL_ERROR,
+                    'Event not recognized'
+                ));
+                return;
+            }
+
+            if (rule.requiresAuthentication && !socket.data.user) {
+                ack?.(SocketEventResponse.unauthorized());
+                return;
+            }
+
+            if (!rule.requiredPermission || !socket.data.user) {
+                return;
+            }
+
+            const hasPermission = await checkSocketPermission(
+                socket.data.user.id,
+                rule.requiredPermission,
+                args[0]?.groupId
+            );
+
+            if (hasPermission) {
+                return;
+            }
+
+            ack?.(SocketEventResponse.forbidden());
+
+            await logActivity(
+                socket.data.user.id,
+                'socket_auth_failed',
+                'unauthorized_socket_access',
+                'medium',
+                `Unauthorized Socket.IO access attempt for event: ${eventName}`,
+                socket.request,
+                undefined,
+                {
+                    event: eventName,
+                    timestamp: new Date()
+                }
+            );
+        });
+
+        next();
+    };
+}
 
 export const checkIpBlocked = authMiddleware.checkIpBlocked;
 export const verifyCaptcha = authMiddleware.verifyCaptcha;

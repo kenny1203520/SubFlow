@@ -6,6 +6,7 @@ import { getDeviceFingerprint } from '../utils/audit';
 import { AuthError, SecurityContext, AuthService } from "../services/AuthService";
 import { Server, Socket } from 'socket.io';
 import { SystemSettingService } from '../services/SystemSettingService';
+import { authSocketEvents } from '../socket/events';
 
 /**
  * AuthController handles advanced authentication methods:
@@ -29,7 +30,7 @@ export class AuthController extends BaseController {
     register() {
         if (!this.socket) return;
 
-        this.socket.on("auth:user", async (_payload: any, cb: (res: any) => void) => {
+        this.socket.on(authSocketEvents.USER, async (_payload: any, cb: (res: any) => void) => {
             try {
                 const sessionId = this.socket?.data?.session?.id || "";
                 const result = await this.authService.userHandler(sessionId, this.buildSocketContext());

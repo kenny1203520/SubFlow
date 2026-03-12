@@ -6,8 +6,6 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { pool } from './db';
 import parser from 'socket.io-msgpack-parser';
-import { lucia } from './auth/lucia';
-import { parse } from 'cookie';
 
 import authRoutes from './routes/auth';
 import userRoutes from './routes/user';
@@ -16,8 +14,10 @@ import exportRoutes from './routes/export';
 import auditRoutes from './routes/audit';
 import adminRoutes from './routes/admin';
 import helmet from 'helmet';
-import { verifySession } from './middleware/auth';
-import { apiLimiter } from './middleware/rateLimit';
+import { verifySession, createSocketAuthenticationMiddleware, createSocketAuthorizationMiddleware } from './middleware/auth';
+import { apiLimiter, createSocketRateLimitMiddleware } from './middleware/rateLimit';
+import { SocketEventResponse, SOCKET_ERROR_CODES } from './types/socket-protocol';
+import { systemSocketEvents } from './socket/events';
 
 dotenv.config();
 
@@ -58,26 +58,9 @@ app.use("/api/admin", adminRoutes);
 // Static for uploads
 app.use("/uploads", express.static(path.resolve(__dirname, '../../uploads')));
 
-// Socket.IO Auth
-io.use(async (socket, next) => {
-    try {
-        const cookieHeader = socket.handshake.headers.cookie;
-        if (!cookieHeader) return next(new Error("Unauthorized"));
-
-        const cookies = parse(cookieHeader);
-        const sessionId = cookies[lucia.sessionCookieName];
-        if (!sessionId) return next(new Error("Unauthorized"));
-
-        const { session, user } = await lucia.validateSession(sessionId);
-        if (!session) return next(new Error("Unauthorized"));
-
-        socket.data.user = user;
-        socket.data.session = session;
-        next();
-    } catch (e) {
-        next(new Error("Authentication error"));
-    }
-});
+io.use(createSocketAuthenticationMiddleware());
+io.use(createSocketRateLimitMiddleware());
+io.use(createSocketAuthorizationMiddleware());
 
 import { GroupController } from './controllers/GroupController';
 import { GroupRoleController } from './controllers/GroupRoleController';
@@ -95,11 +78,17 @@ import { AuthController } from './controllers/AuthController';
 io.on("connection", (socket) => {
     // console.log(`User connected: ${socket.data.user.username}`);
 
+    // ========================================================================================
+    // 輔助函數：解析 Socket.IO 事件參數中的 callback (Helper to resolve ack callback)
+    // ========================================================================================
     const resolveAck = (...args: any[]) => {
         const maybeAck = args[args.length - 1];
         return typeof maybeAck === 'function' ? maybeAck : null;
     };
 
+    // ========================================================================================
+    // 控制器初始化 (Controller Initialization)
+    // ========================================================================================
     new AuthController(io, socket).register();
     new GroupController(io, socket).register();
     new GroupRoleController(io, socket).register();
@@ -113,15 +102,17 @@ io.on("connection", (socket) => {
     new FileController(io, socket).register();
     new ServiceController(io, socket).register();
 
-    socket.on("dashboard:stats", async (...args: any[]) => {
+    // ========================================================================================
+    // 系統事件：儀表板統計 (System Event: Dashboard Stats)
+    // ========================================================================================
+    socket.on(systemSocketEvents.DASHBOARD_STATS, async (...args: any[]) => {
         const cb = resolveAck(...args);
         if (!cb) return;
 
         try {
             const userId = socket.data.user.id;
 
-            // Total Owed TO you (people owe you money)
-            // Includes expenses you paid and bills you created
+            // 查詢用戶應收數額 (Query: total owed to user)
             const owedToMeRes = await pool.query(
                 `SELECT 
                     (SELECT COALESCE(SUM(es.amount_owed), 0)
@@ -140,8 +131,7 @@ io.on("connection", (socket) => {
                 [userId]
             );
 
-            // Total YOU owe (you owe people money)
-            // Includes expense splits and bill splits where you are the member
+            // 查詢用戶應付數額 (Query: total owed by user)
             const iOweRes = await pool.query(
                 `SELECT 
                     (SELECT COALESCE(SUM(es.amount_owed), 0)
@@ -158,38 +148,52 @@ io.on("connection", (socket) => {
                 [userId]
             );
 
-            // Active subscriptions count
+            // 查詢活躍訂閱數 (Query: active subscriptions count)
             const subCountRes = await pool.query(
                 `SELECT COUNT(*) as count FROM subscriptions
                  WHERE owner_id = $1 AND status = 'active'`,
                 [userId]
             );
 
-            cb({
-                status: "ok",
-                stats: {
-                    totalOwedToMe: parseFloat(owedToMeRes.rows[0].total || 0),
-                    totalIOwe: parseFloat(iOweRes.rows[0].total || 0),
-                    activeSubscriptions: parseInt(subCountRes.rows[0].count || 0)
-                }
-            });
+            // 返回成功響應 (Return success response)
+            cb(
+                SocketEventResponse.success({
+                    stats: {
+                        totalOwedToMe: parseFloat(owedToMeRes.rows[0].total || 0),
+                        totalIOwe: parseFloat(iOweRes.rows[0].total || 0),
+                        activeSubscriptions: parseInt(subCountRes.rows[0].count || 0)
+                    }
+                })
+            );
         } catch (error) {
             console.error("Error getting dashboard stats:", error);
-            cb({ status: "error", message: "Failed to fetch stats" });
+            cb(
+                SocketEventResponse.error(
+                    SOCKET_ERROR_CODES.INTERNAL_ERROR,
+                    "Failed to fetch stats"
+                )
+            );
         }
     });
 
-    socket.on("ping", (...args: any[]) => {
+    // ========================================================================================
+    // 系統事件：心跳檢測 (System Event: Ping)
+    // ========================================================================================
+    socket.on(systemSocketEvents.PING, (...args: any[]) => {
         const cb = resolveAck(...args);
-        if (cb) cb("pong");
+        if (cb) cb(SocketEventResponse.success({ pong: true }));
     });
 
+    // ========================================================================================
+    // 連線事件：用戶斷開連接 (Connection Event: User Disconnect)
+    // ========================================================================================
     socket.on("disconnect", () => {
         // console.log(`User disconnected: ${socket.data.user.username}`);
     });
 });
 
 httpServer.listen(port, () => {
-    // console.log(`BFF Server running at http://localhost:${port}`);
-    // console.log(`Serving frontend from: ${frontendPath}`);
+    // console.log(`[BFF Server] 運行在 http://localhost:${port}`);
+    // console.log(`[Socket.IO] 安全通訊層已啟用`);
+    // Serving frontend from: ${frontendPath}
 });

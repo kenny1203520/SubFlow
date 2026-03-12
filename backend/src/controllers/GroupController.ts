@@ -1,6 +1,7 @@
 import { Socket, Server } from 'socket.io';
 import { SocketController } from './SocketController';
 import { GroupService } from '../services/GroupService';
+import { groupSocketEvents } from '../socket/events';
 
 export class GroupController extends SocketController {
     private groupService: GroupService;
@@ -15,25 +16,25 @@ export class GroupController extends SocketController {
      */
     register(): void {
         if (!this.socket) return;
-        this.socket.on("group:create", (payload, cb) => this.createGroup(payload, cb));
-        this.socket.on("group:list", (...args: any[]) => this.listGroups(this.resolveAck(...args) as any));
-        this.socket.on("group:get", (payload, cb) => this.getGroup(payload, cb));
-        this.socket.on("group:get_overview", (payload, cb) => this.getOverview(payload, cb));
-        this.socket.on("group:add_member", (payload, cb) => this.addMember(payload, cb));
-        this.socket.on("group:bind_member", (payload, cb) => this.bindMember(payload, cb));
-        this.socket.on("group:delete", (payload, cb) => this.deleteGroup(payload, cb));
-        this.socket.on("group:leave", (payload, cb) => this.leaveGroup(payload, cb));
-        this.socket.on("group:accept_invite", (payload, cb) => this.acceptInvite(payload, cb));
-        this.socket.on("group:reject_invite", (payload, cb) => this.rejectInvite(payload, cb));
-        this.socket.on("group:bind_member_invite", (payload, cb) => this.bindMemberInvite(payload, cb));
-        this.socket.on("group:update", (payload, cb) => this.updateGroup(payload, cb));
-        this.socket.on("group:update_member_role", (payload, cb) => this.updateMemberRole(payload, cb));
-        this.socket.on("group:assign_dynamic_role", (payload, cb) => this.assignDynamicRole(payload, cb));
-        this.socket.on("group:remove_dynamic_role", (payload, cb) => this.removeDynamicRole(payload, cb));
-        this.socket.on("group:remove_member", (payload, cb) => this.removeMember(payload, cb));
-        this.socket.on("group:cancel_invite", (payload, cb) => this.cancelInvite(payload, cb));
-        this.socket.on("group:list_roles", (payload, cb) => this.listRoles(payload, cb));
-        this.socket.on("group:create_role", (payload, cb) => this.createRole(payload, cb));
+        this.socket.on(groupSocketEvents.CREATE, (payload, cb) => this.createGroup(payload, cb));
+        this.socket.on(groupSocketEvents.LIST, (...args: any[]) => this.listGroups(this.resolveAck(...args) as any));
+        this.socket.on(groupSocketEvents.GET, (payload, cb) => this.getGroup(payload, cb));
+        this.socket.on(groupSocketEvents.GET_OVERVIEW, (payload, cb) => this.getOverview(payload, cb));
+        this.socket.on(groupSocketEvents.ADD_MEMBER, (payload, cb) => this.addMember(payload, cb));
+        this.socket.on(groupSocketEvents.BIND_MEMBER, (payload, cb) => this.bindMember(payload, cb));
+        this.socket.on(groupSocketEvents.DELETE, (payload, cb) => this.deleteGroup(payload, cb));
+        this.socket.on(groupSocketEvents.LEAVE, (payload, cb) => this.leaveGroup(payload, cb));
+        this.socket.on(groupSocketEvents.ACCEPT_INVITE, (payload, cb) => this.acceptInvite(payload, cb));
+        this.socket.on(groupSocketEvents.REJECT_INVITE, (payload, cb) => this.rejectInvite(payload, cb));
+        this.socket.on(groupSocketEvents.BIND_MEMBER_INVITE, (payload, cb) => this.bindMemberInvite(payload, cb));
+        this.socket.on(groupSocketEvents.UPDATE, (payload, cb) => this.updateGroup(payload, cb));
+        this.socket.on(groupSocketEvents.UPDATE_MEMBER_ROLE, (payload, cb) => this.updateMemberRole(payload, cb));
+        this.socket.on(groupSocketEvents.ASSIGN_DYNAMIC_ROLE, (payload, cb) => this.assignDynamicRole(payload, cb));
+        this.socket.on(groupSocketEvents.REMOVE_DYNAMIC_ROLE, (payload, cb) => this.removeDynamicRole(payload, cb));
+        this.socket.on(groupSocketEvents.REMOVE_MEMBER, (payload, cb) => this.removeMember(payload, cb));
+        this.socket.on(groupSocketEvents.CANCEL_INVITE, (payload, cb) => this.cancelInvite(payload, cb));
+        this.socket.on(groupSocketEvents.LIST_ROLES, (payload, cb) => this.listRoles(payload, cb));
+        this.socket.on(groupSocketEvents.CREATE_ROLE, (payload, cb) => this.createRole(payload, cb));
     }
 
     async createGroup(payload: any, cb: (res: any) => void) {

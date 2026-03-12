@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { ExpenseService } from '../services/ExpenseService';
+import { expenseSocketEvents } from '../socket/events';
 
 export class ExpenseController extends SocketController {
     private expenseService = new ExpenseService();
@@ -10,10 +11,10 @@ export class ExpenseController extends SocketController {
     }
 
     register() {
-        this.socket.on("expense:add", (payload, cb) => this.addExpense(payload, cb));
-        this.socket.on("expense:list", (payload, cb) => this.listExpenses(payload, cb));
-        this.socket.on("expense:get_splits", (payload, cb) => this.getPendingSplits(payload, cb));
-        this.socket.on("expense:settle", (payload, cb) => this.settleExpense(payload, cb));
+        this.socket.on(expenseSocketEvents.ADD, (payload, cb) => this.addExpense(payload, cb));
+        this.socket.on(expenseSocketEvents.LIST, (payload, cb) => this.listExpenses(payload, cb));
+        this.socket.on(expenseSocketEvents.GET_SPLITS, (payload, cb) => this.getPendingSplits(payload, cb));
+        this.socket.on(expenseSocketEvents.SETTLE, (payload, cb) => this.settleExpense(payload, cb));
     }
 
     async addExpense(payload: any, cb: (res: any) => void) {

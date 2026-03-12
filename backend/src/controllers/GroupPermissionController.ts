@@ -1,6 +1,7 @@
 import { Socket, Server } from 'socket.io';
 import { SocketController } from './SocketController';
 import { RBACService } from '../services/RBACService';
+import { groupPermissionSocketEvents } from '../socket/events';
 
 /**
  * GroupPermissionController
@@ -19,9 +20,9 @@ export class GroupPermissionController extends SocketController {
      * Register all socket event handlers for permission management
      */
     register(): void {
-        this.socket.on('group:permission:grant', this.handleGrantPermission.bind(this));
-        this.socket.on('group:permission:revoke', this.handleRevokePermission.bind(this));
-        this.socket.on('group:permission:check', this.handleCheckPermission.bind(this));
+        this.socket.on(groupPermissionSocketEvents.GRANT, this.handleGrantPermission.bind(this));
+        this.socket.on(groupPermissionSocketEvents.REVOKE, this.handleRevokePermission.bind(this));
+        this.socket.on(groupPermissionSocketEvents.CHECK, this.handleCheckPermission.bind(this));
     }
 
     /**

@@ -27,19 +27,21 @@ export class SchedulerService {
         try {
             await client.query('BEGIN');
 
-            // Find active groups due for payment today or earlier
+            // Find active group services due for payment today or earlier
             const dueGroups = await client.query(`
-                SELECT * FROM groups 
-                WHERE status = 'active' 
-                AND next_payment_date IS NOT NULL 
-                AND next_payment_date <= CURRENT_DATE
-                AND billing_type = 'recurring'
-                AND interval_unit IN ('month', 'year')
+                SELECT gs.*, g.name as group_name
+                FROM group_services gs
+                JOIN groups g ON g.id = gs.group_id
+                WHERE gs.status = 'active' 
+                AND gs.next_payment_date IS NOT NULL 
+                AND gs.next_payment_date <= CURRENT_DATE
+                AND gs.billing_type = 'recurring'
+                AND gs.interval_unit IN ('month', 'year')
             `);
 
             // console.log(`Found ${dueGroups.rows.length} groups due for billing.`);
 
-            for (const group of dueGroups.rows) {
+            for (const groupService of dueGroups.rows) {
                 const issueDate = new Date();
                 const dueDate = new Date();
                 dueDate.setDate(dueDate.getDate() + 7);
@@ -55,13 +57,13 @@ export class SchedulerService {
                     // For this refactor, let's just use BillService.createBill to ensure consistency in bill creation.
 
                     // Helper to get members
-                    const membersRes = await client.query(`SELECT * FROM group_members WHERE group_id = $1`, [group.id]);
+                    const membersRes = await client.query(`SELECT * FROM group_members WHERE group_id = $1`, [groupService.group_id]);
                     const members = membersRes.rows;
                     if (members.length === 0) continue;
 
                     let splitAmount = 0;
-                    if (group.billing_method === 'equal') {
-                        splitAmount = parseFloat((group.amount / members.length).toFixed(2));
+                    if (groupService.billing_method === 'equal') {
+                        splitAmount = parseFloat((groupService.amount / members.length).toFixed(2));
                     }
 
                     const splits = members.map((m: any) => ({
@@ -72,39 +74,39 @@ export class SchedulerService {
                     }));
 
                     // We need a userId for 'createdBy'. System generated? 
-                    // Let's use group.created_by or a system ID.
-                    const creatorId = group.created_by;
+                    // Let's use groupService.created_by or a system ID.
+                    const creatorId = groupService.created_by;
 
                     await billService.createBill(creatorId, {
-                        groupId: group.id,
-                        title: `${group.name} - ${issueDate.toLocaleDateString()}`,
-                        description: `Automated bill for ${group.billing_cycle} subscription`,
-                        amount: group.amount,
-                        currency: group.currency,
+                        groupId: groupService.group_id,
+                        title: `${groupService.group_name} - ${groupService.service_name || 'Service'} - ${issueDate.toLocaleDateString()}`,
+                        description: `Automated bill for ${groupService.interval_unit} subscription`,
+                        amount: groupService.amount,
+                        currency: groupService.payment_currency,
                         dueDate: dueDate.toISOString(),
                         splits: splits
                     });
 
-                    // Update Group Next Payment Date
-                    let nextDate = new Date(group.next_payment_date);
-                    if (group.interval_unit === 'month') {
-                        nextDate.setMonth(nextDate.getMonth() + group.interval_value);
-                    } else if (group.interval_unit === 'year') {
-                        nextDate.setFullYear(nextDate.getFullYear() + group.interval_value);
-                    } else if (group.interval_unit === 'week') {
-                        nextDate.setDate(nextDate.getDate() + (7 * group.interval_value));
-                    } else if (group.interval_unit === 'day') {
-                        nextDate.setDate(nextDate.getDate() + group.interval_value);
+                    // Update Group Service Next Payment Date
+                    let nextDate = new Date(groupService.next_payment_date);
+                    if (groupService.interval_unit === 'month') {
+                        nextDate.setMonth(nextDate.getMonth() + groupService.interval_value);
+                    } else if (groupService.interval_unit === 'year') {
+                        nextDate.setFullYear(nextDate.getFullYear() + groupService.interval_value);
+                    } else if (groupService.interval_unit === 'week') {
+                        nextDate.setDate(nextDate.getDate() + (7 * groupService.interval_value));
+                    } else if (groupService.interval_unit === 'day') {
+                        nextDate.setDate(nextDate.getDate() + groupService.interval_value);
                     }
 
                     await client.query(`
-                        UPDATE groups 
+                        UPDATE group_services 
                         SET next_payment_date = $1, updated_at = NOW()
                         WHERE id = $2
-                    `, [nextDate, group.id]);
+                    `, [nextDate, groupService.id]);
 
                 } catch (err) {
-                    console.error(`Failed to generate bill for group ${group.id}:`, err);
+                    console.error(`Failed to generate bill for group service ${groupService.id}:`, err);
                 }
             }
 

@@ -9,7 +9,7 @@ export const registerBillHandlers = (io: Server, socket: Socket) => {
 
             // Check membership
             const memberCheck = await pool.query(
-                "SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2",
+                "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
                 [payload.groupId, userId]
             );
 
@@ -50,7 +50,7 @@ export const registerBillHandlers = (io: Server, socket: Socket) => {
 
             // Check membership
             const memberCheck = await pool.query(
-                "SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2",
+                "SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2",
                 [bill.group_id, userId]
             );
 
@@ -100,7 +100,13 @@ export const registerBillHandlers = (io: Server, socket: Socket) => {
                 const groupId = splitRes.rows[0].group_id;
 
                 const adminCheck = await client.query(
-                    "SELECT role FROM group_members WHERE group_id = $1 AND user_id = $2 AND role = 'admin'",
+                    `SELECT 1
+                     FROM group_members gm
+                     JOIN group_member_roles gmr ON gmr.member_id = gm.id
+                     JOIN group_roles gr ON gr.id = gmr.role_id
+                     WHERE gm.group_id = $1 AND gm.user_id = $2
+                     AND gr.name IN ('Group Admin', 'Group Owner')
+                     LIMIT 1`,
                     [groupId, userId]
                 );
 

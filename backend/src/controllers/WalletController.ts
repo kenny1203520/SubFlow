@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { WalletService } from '../services/WalletService';
+import { walletSocketEvents } from '../socket/events';
 
 export class WalletController extends SocketController {
     private walletService = new WalletService();
@@ -10,10 +11,10 @@ export class WalletController extends SocketController {
     }
 
     register() {
-        this.socket.on("wallet:list", (...args: any[]) => this.listWallets(this.resolveAck(...args) as any));
-        this.socket.on("wallet:details", (payload, cb) => this.getWalletDetails(payload, cb));
-        this.socket.on("wallet:deposit", (payload, cb) => this.deposit(payload, cb));
-        this.socket.on("wallet:transfer", (payload, cb) => this.transfer(payload, cb));
+        this.socket.on(walletSocketEvents.LIST, (...args: any[]) => this.listWallets(this.resolveAck(...args) as any));
+        this.socket.on(walletSocketEvents.DETAILS, (payload, cb) => this.getWalletDetails(payload, cb));
+        this.socket.on(walletSocketEvents.DEPOSIT, (payload, cb) => this.deposit(payload, cb));
+        this.socket.on(walletSocketEvents.TRANSFER, (payload, cb) => this.transfer(payload, cb));
     }
 
     async listWallets(cb: (res: any) => void) {

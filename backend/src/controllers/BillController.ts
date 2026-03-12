@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import { SocketController } from './SocketController';
 import { BillService } from '../services/BillService';
+import { billSocketEvents } from '../socket/events';
 
 export class BillController extends SocketController {
     private billService = new BillService();
@@ -10,9 +11,9 @@ export class BillController extends SocketController {
     }
 
     register() {
-        this.socket.on("bill:list", (payload, cb) => this.listBills(payload, cb));
-        this.socket.on("bill:get", (payload, cb) => this.getBill(payload, cb));
-        this.socket.on("bill:update_split", (payload, cb) => this.updateSplit(payload, cb));
+        this.socket.on(billSocketEvents.LIST, (payload, cb) => this.listBills(payload, cb));
+        this.socket.on(billSocketEvents.GET, (payload, cb) => this.getBill(payload, cb));
+        this.socket.on(billSocketEvents.UPDATE_SPLIT, (payload, cb) => this.updateSplit(payload, cb));
     }
 
     async listBills(payload: { groupId: string }, cb: (res: any) => void) {
