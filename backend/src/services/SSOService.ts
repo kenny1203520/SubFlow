@@ -434,7 +434,7 @@ export class SSOService extends BaseRepository {
         for (const provider of providers) {
             if (provider.enabled) {
                 await this.upsertProvider(provider);
-                console.log(`[SSO] Initialized provider: ${provider.name}`);
+                // console.log(`[SSO] Initialized provider: ${provider.name}`);
             }
         }
     }

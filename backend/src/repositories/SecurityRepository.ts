@@ -534,30 +534,24 @@ export class SecurityRepository extends BaseRepository {
         }
         const res = await this.query(`
             UPDATE user_devices
-            SET user_id = COALESCE($1, user_id),
-                device_name = COALESCE($2, device_name),
-                user_agent = COALESCE($3, user_agent),
-                ip_address = COALESCE($4, ip_address),
-                device_fingerprint = COALESCE($5, device_fingerprint),
-                last_active_at = COALESCE($6, last_active_at),
-                is_trusted = COALESCE($7, is_trusted),
-                trusted_at = CASE 
-                    WHEN $7 = true THEN CURRENT_TIMESTAMP 
-                    WHEN $7 = false THEN null 
-                    ELSE trusted_at 
-                END,
-                is_blocked = COALESCE($8, is_blocked)
-                blocked_at = CASE
-                    WHEN $8 = true THEN CURRENT_TIMESTAMP
-                    WHEN $8 = false THEN null
-                    ELSE blocked_at
-                END
-            WHERE id = $1
+            SET 
+                device_name = COALESCE($3, device_name),
+                user_agent = COALESCE($4, user_agent),
+                ip_address = COALESCE($5, ip_address),
+                device_fingerprint = COALESCE($6, device_fingerprint),
+                device_token = COALESCE($7, device_token),
+                last_active_at = COALESCE($8, last_active_at),
+                is_trusted = COALESCE($9, is_trusted),
+                trusted_at = CASE WHEN $9 = true THEN COALESCE(trusted_at, CURRENT_TIMESTAMP) ELSE trusted_at END,
+                is_blocked = COALESCE($10, is_blocked),
+                blocked_at = CASE WHEN $10 = true THEN COALESCE(blocked_at, CURRENT_TIMESTAMP) ELSE blocked_at END
+            WHERE id = $1 AND (user_id = $2 OR $2 IS NULL)
             RETURNING *
         `, [
             deviceId, userId || null, data?.name || null,
             data?.user_agent || null, data?.ip_address || null,
-            data?.fingerprint || null, data?.lastActiveAt || null,
+            data?.fingerprint || null, data?.token || null,
+            data?.lastActiveAt || null,
             data?.isTrusted || false, data?.isBlocked || false
         ]);
         return res.rows[0];

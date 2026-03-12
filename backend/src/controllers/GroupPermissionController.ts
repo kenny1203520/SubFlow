@@ -1,5 +1,5 @@
-import { Socket } from 'socket.io';
-import { BaseController } from './BaseController';
+import { Socket, Server } from 'socket.io';
+import { SocketController } from './SocketController';
 import { RBACService } from '../services/RBACService';
 
 /**
@@ -7,10 +7,10 @@ import { RBACService } from '../services/RBACService';
  * Handles direct permission assignments to individual users within groups
  * Following OOP/SOLID principles
  */
-export class GroupPermissionController extends BaseController {
+export class GroupPermissionController extends SocketController {
     private rbacService: RBACService;
 
-    constructor(io: any, socket: Socket) {
+    constructor(io: Server, socket: Socket) {
         super(io, socket);
         this.rbacService = new RBACService();
     }

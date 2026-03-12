@@ -1,19 +1,28 @@
 import { Server, Socket } from 'socket.io';
 
-export abstract class BaseController {
-    protected io: Server;
-    protected socket: Socket;
+type AckFn = (res: any) => void;
 
-    constructor(io: Server, socket: Socket) {
+export abstract class BaseController {
+    protected io?: Server;
+    protected socket?: Socket;
+
+    constructor(io?: Server, socket?: Socket) {
         this.io = io;
         this.socket = socket;
     }
 
-    protected success(cb: (res: any) => void, data?: any) {
+    protected resolveAck(...args: any[]): AckFn | null {
+        const maybeAck = args[args.length - 1];
+        return typeof maybeAck === 'function' ? maybeAck : null;
+    }
+
+    protected success(cb: unknown, data?: any) {
+        if (typeof cb !== 'function') return;
         cb({ status: 'ok', ...data });
     }
 
-    protected error(cb: (res: any) => void, message: string) {
+    protected error(cb: unknown, message: string) {
+        if (typeof cb !== 'function') return;
         cb({ status: 'error', message });
     }
 

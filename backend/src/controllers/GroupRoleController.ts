@@ -1,5 +1,5 @@
-import { Socket } from 'socket.io';
-import { BaseController } from './BaseController';
+import { Socket, Server } from 'socket.io';
+import { SocketController } from './SocketController';
 import { RBACService } from '../services/RBACService';
 import { GroupService } from '../services/GroupService';
 
@@ -8,11 +8,11 @@ import { GroupService } from '../services/GroupService';
  * Handles all role management operations within groups
  * Following OOP/SOLID principles with clear separation of concerns
  */
-export class GroupRoleController extends BaseController {
+export class GroupRoleController extends SocketController {
     private rbacService: RBACService;
     private groupService: GroupService;
 
-    constructor(io: any, socket: Socket) {
+    constructor(io: Server, socket: Socket) {
         super(io, socket);
         this.rbacService = new RBACService();
         this.groupService = new GroupService();
@@ -22,6 +22,7 @@ export class GroupRoleController extends BaseController {
      * Register all socket event handlers for role management
      */
     register(): void {
+        if (!this.socket) return;
         this.socket.on('group:role:list', this.handleListRoles.bind(this));
         this.socket.on('group:role:quantity_limit', this.handleQuantityLimit.bind(this));
         this.socket.on('group:user:max_role_level', this.handleGetUserMaxRoleLevel.bind(this));
@@ -45,6 +46,9 @@ export class GroupRoleController extends BaseController {
      * Helper to extract user ID from socket data
      */
     getUserId(): string {
+        if (!this.socket || !this.socket.data || !this.socket.data.user) {
+            throw new Error('User not authenticated');
+        }
         return this.socket.data.user.id;
     }
 

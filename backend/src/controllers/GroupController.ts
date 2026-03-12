@@ -1,12 +1,22 @@
-import { BaseController } from './BaseController';
+import { Socket, Server } from 'socket.io';
+import { SocketController } from './SocketController';
 import { GroupService } from '../services/GroupService';
 
-export class GroupController extends BaseController {
-    private groupService = new GroupService();
+export class GroupController extends SocketController {
+    private groupService: GroupService;
+    
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+        this.groupService = new GroupService();
+    }
 
-    register() {
+    /**
+     * Register all socket event handlers for role management
+     */
+    register(): void {
+        if (!this.socket) return;
         this.socket.on("group:create", (payload, cb) => this.createGroup(payload, cb));
-        this.socket.on("group:list", (cb) => this.listGroups(cb));
+        this.socket.on("group:list", (...args: any[]) => this.listGroups(this.resolveAck(...args) as any));
         this.socket.on("group:get", (payload, cb) => this.getGroup(payload, cb));
         this.socket.on("group:get_overview", (payload, cb) => this.getOverview(payload, cb));
         this.socket.on("group:add_member", (payload, cb) => this.addMember(payload, cb));
@@ -27,6 +37,7 @@ export class GroupController extends BaseController {
     }
 
     async createGroup(payload: any, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             const group = await this.groupService.createGroup(userId, payload);
@@ -37,6 +48,7 @@ export class GroupController extends BaseController {
     }
 
     async listGroups(cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             const groups = await this.groupService.listGroups(userId);
@@ -47,6 +59,7 @@ export class GroupController extends BaseController {
     }
 
     async listRoles(payload: any, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             if (!payload?.groupId) {
                 return this.error(cb, "Group ID is required");
@@ -59,6 +72,7 @@ export class GroupController extends BaseController {
     }
 
     async createRole(payload: { name: string, description: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             if (!payload || !(payload as any).groupId) {
@@ -72,6 +86,7 @@ export class GroupController extends BaseController {
     }
 
     async getGroup(payload: { groupId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             const detail = await this.groupService.getGroupDetail(userId, payload.groupId);
@@ -82,6 +97,7 @@ export class GroupController extends BaseController {
     }
 
     async getOverview(payload: { groupId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             const overview = await this.groupService.getGroupOverview(userId, payload.groupId);
@@ -92,6 +108,7 @@ export class GroupController extends BaseController {
     }
 
     async addMember(payload: any, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.addMember(userId, payload.groupId, payload);
@@ -102,6 +119,7 @@ export class GroupController extends BaseController {
     }
 
     async bindMember(payload: { memberId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.bindMember(userId, payload.memberId);
@@ -112,6 +130,7 @@ export class GroupController extends BaseController {
     }
 
     async deleteGroup(payload: { groupId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.deleteGroup(userId, payload.groupId);
@@ -122,6 +141,7 @@ export class GroupController extends BaseController {
     }
 
     async leaveGroup(payload: { groupId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.leaveGroup(userId, payload.groupId);
@@ -132,6 +152,7 @@ export class GroupController extends BaseController {
     }
 
     async acceptInvite(payload: { groupId: string, memberId?: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.acceptInvite(userId, payload.groupId, payload.memberId);
@@ -142,6 +163,7 @@ export class GroupController extends BaseController {
     }
 
     async rejectInvite(payload: { groupId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.rejectInvite(userId, payload.groupId);
@@ -152,6 +174,7 @@ export class GroupController extends BaseController {
     }
 
     async bindMemberInvite(payload: { groupId: string, memberId: string, email?: string, username?: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.bindMemberInvite(userId, payload.groupId, payload.memberId, { email: payload.email, username: payload.username });
@@ -162,6 +185,7 @@ export class GroupController extends BaseController {
     }
 
     async updateGroup(payload: any, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             const group = await this.groupService.updateGroup(userId, payload.id, payload);
@@ -172,6 +196,7 @@ export class GroupController extends BaseController {
     }
 
     async updateMemberRole(payload: { groupId: string, memberId: string, role: 'admin' | 'member' }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.updateMemberRole(userId, payload.groupId, payload.memberId, payload.role);
@@ -182,6 +207,7 @@ export class GroupController extends BaseController {
     }
 
     async assignDynamicRole(payload: { groupId: string, memberId: string, roleId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.assignDynamicRole(userId, payload.groupId, payload.memberId, payload.roleId);
@@ -192,6 +218,7 @@ export class GroupController extends BaseController {
     }
 
     async removeDynamicRole(payload: { groupId: string, memberId: string, roleId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.removeDynamicRole(userId, payload.groupId, payload.memberId, payload.roleId);
@@ -202,6 +229,7 @@ export class GroupController extends BaseController {
     }
 
     async removeMember(payload: { groupId: string, memberId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.removeMember(userId, payload.groupId, payload.memberId);
@@ -212,6 +240,7 @@ export class GroupController extends BaseController {
     }
 
     async cancelInvite(payload: { groupId: string, memberId: string }, cb: (res: any) => void) {
+        if (!this.socket) return;
         try {
             const userId = this.socket.data.user.id;
             await this.groupService.cancelInvite(userId, payload.groupId, payload.memberId);

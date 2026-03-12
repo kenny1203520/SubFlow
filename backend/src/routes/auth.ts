@@ -1,41 +1,123 @@
 import { Router } from "express";
 import { authLimiter } from "../middleware/rateLimit";
-import { requireAuth, authenticateSession } from "../middleware/auth";
+import { checkIpBlocked, verifyCaptcha, injectSecurityContext, requireAuth, authenticateSession } from "../middleware/auth";
 import { AuthController } from "../controllers/AuthController";
 
 const router = Router();
+const authController = new AuthController();
 
 // ===================== Authentication Routes =====================
 
-// Get captcha config
-router.get("/config", AuthController.getCaptchaConfig);
+/**
+ * Get captcha config
+ */
+router.get(
+    "/config", 
+    checkIpBlocked, 
+    (req, res) => authController.getCaptchaConfig(req, res)
+);
 
-// Signup
-router.post("/signup", authLimiter, AuthController.signupHandler);
+/**
+ * Signup
+ */
+router.post(
+    "/signup", 
+    checkIpBlocked, 
+    authLimiter, 
+    verifyCaptcha, 
+    injectSecurityContext, 
+    (req, res) => authController.signupHandler(req, res)
+);
 
-// Signin
-router.post("/signin", authLimiter, AuthController.signinHandler);
+/**
+ * Signin
+ */
+router.post(
+    "/signin", 
+    checkIpBlocked, 
+    authLimiter, 
+    verifyCaptcha, 
+    injectSecurityContext, 
+    (req, res) => authController.signinHandler(req, res)
+);
 
-// 2FA Signin
-router.post("/signin/2fa", authLimiter, AuthController.signin2faHandler);
+/**
+ * 2FA Signin
+ */
+router.post(
+    "/signin/2fa", 
+    checkIpBlocked, 
+    authLimiter, 
+    verifyCaptcha, 
+    injectSecurityContext, 
+    (req, res) => authController.signin2faHandler(req, res)
+);
 
-// Signout
-router.post("/signout", AuthController.signoutHandler);
+/**
+ * Signout
+ */
+router.post(
+    "/signout", 
+    checkIpBlocked,
+    injectSecurityContext, 
+    (req, res) => authController.signoutHandler(req, res)
+);
 
-// Get user
-router.get("/user", AuthController.userHandler);
+/**
+ * Get user
+ */
+router.get(
+    "/user", 
+    checkIpBlocked, 
+    injectSecurityContext, 
+    (req, res) => authController.userHandler(req, res)
+);
 
-// Verify email
-router.get("/verify-email/:token", AuthController.verifyEmailHandler);
+/**
+ * Verify email
+ */
+router.get(
+    "/verify-email/:token", 
+    checkIpBlocked, 
+    injectSecurityContext, 
+    (req, res) => authController.verifyEmailHandler(req, res)
+);
 
-// Password reset
-router.post("/password-reset", authLimiter, AuthController.passwordResetHandler);
+/**
+ * Password reset
+ */
+router.post(
+    "/password-reset", 
+    checkIpBlocked, 
+    authLimiter, 
+    verifyCaptcha, 
+    injectSecurityContext, 
+    (req, res) => authController.passwordResetHandler(req, res)
+);
 
-// Password reset token
-router.post("/password-reset/:token", authLimiter, AuthController.passwordResetTokenHandler);
+/**
+ * Password reset token
+ */
+router.post(
+    "/password-reset/:token", 
+    checkIpBlocked, 
+    authLimiter, 
+    verifyCaptcha, 
+    injectSecurityContext, 
+    (req, res) => authController.passwordResetTokenHandler(req, res)
+);
 
-// Change password
-router.post("/change-password", requireAuth, authLimiter, AuthController.changePasswordHandler);
+/**
+ * Change password
+ */
+router.post(
+    "/change-password", 
+    checkIpBlocked, 
+    requireAuth, 
+    authLimiter, 
+    injectSecurityContext, 
+    (req, res) => authController.changePasswordHandler(req, res)
+);
 
 // ===================== PassKey/WebAuthn Routes =====================
 
@@ -45,14 +127,16 @@ router.post("/change-password", requireAuth, authLimiter, AuthController.changeP
  */
 router.post(
     '/passkey/register/options',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.generatePassKeyRegistrationOptions(req, res)
+    (req, res) => authController.generatePassKeyRegistrationOptions(req, res)
 );
 
 router.post(
     '/passkey/register/verify',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.verifyPassKeyRegistration(req, res)
+    (req, res) => authController.verifyPassKeyRegistration(req, res)
 );
 
 /**
@@ -61,12 +145,14 @@ router.post(
  */
 router.post(
     '/passkey/authenticate/options',
-    (req, res) => AuthController.generatePassKeyAuthenticationOptions(req, res)
+    checkIpBlocked, 
+    (req, res) => authController.generatePassKeyAuthenticationOptions(req, res)
 );
 
 router.post(
     '/passkey/authenticate/verify',
-    (req, res) => AuthController.verifyPassKeyAuthentication(req, res)
+    checkIpBlocked, 
+    (req, res) => authController.verifyPassKeyAuthentication(req, res)
 );
 
 /**
@@ -75,14 +161,16 @@ router.post(
  */
 router.get(
     '/passkey/list',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.listPassKeys(req, res)
+    (req, res) => authController.listPassKeys(req, res)
 );
 
 router.delete(
     '/passkey/:id',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.deletePassKey(req, res)
+    (req, res) => authController.deletePassKey(req, res)
 );
 
 // ===================== LDAP Routes =====================
@@ -93,7 +181,11 @@ router.delete(
  */
 router.post(
     '/ldap/signin',
-    (req, res) => AuthController.ldapSignin(req, res)
+    checkIpBlocked,
+    authLimiter,
+    verifyCaptcha,
+    injectSecurityContext,
+    (req, res) => authController.ldapSignin(req, res)
 );
 
 // ===================== SSO Routes =====================
@@ -104,7 +196,8 @@ router.post(
  */
 router.get(
     '/sso/providers',
-    (req, res) => AuthController.getSSOProviders(req, res)
+    checkIpBlocked, 
+    (req, res) => authController.getSSOProviders(req, res)
 );
 
 /**
@@ -113,7 +206,8 @@ router.get(
  */
 router.get(
     '/sso/:provider',
-    (req, res) => AuthController.initiateSSOLogin(req, res)
+    checkIpBlocked, 
+    (req, res) => authController.initiateSSOLogin(req, res)
 );
 
 /**
@@ -122,7 +216,9 @@ router.get(
  */
 router.get(
     '/sso/callback/:provider',
-    (req, res) => AuthController.handleSSOCallback(req, res)
+    checkIpBlocked, 
+    injectSecurityContext,
+    (req, res) => authController.handleSSOCallback(req, res)
 );
 
 // ===================== Device Management Routes =====================
@@ -133,8 +229,9 @@ router.get(
  */
 router.get(
     '/devices',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.getDevices(req, res)
+    (req, res) => authController.getDevices(req, res)
 );
 
 /**
@@ -143,8 +240,10 @@ router.get(
  */
 router.post(
     '/devices/:id/trust',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.trustDevice(req, res)
+    injectSecurityContext,
+    (req, res) => authController.trustDevice(req, res)
 );
 
 /**
@@ -153,8 +252,10 @@ router.post(
  */
 router.post(
     '/devices/:id/revoke',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.revokeDevice(req, res)
+    injectSecurityContext,
+    (req, res) => authController.revokeDevice(req, res)
 );
 
 /**
@@ -163,8 +264,9 @@ router.post(
  */
 router.get(
     '/devices/notifications',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.getDeviceNotifications(req, res)
+    (req, res) => authController.getDeviceNotifications(req, res)
 );
 
 /**
@@ -173,8 +275,9 @@ router.get(
  */
 router.post(
     '/devices/notifications/:id/acknowledge',
+    checkIpBlocked, 
     authenticateSession,
-    (req, res) => AuthController.acknowledgeNotification(req, res)
+    (req, res) => authController.acknowledgeNotification(req, res)
 );
 
 export default router;

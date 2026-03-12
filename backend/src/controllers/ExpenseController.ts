@@ -1,8 +1,13 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { ExpenseService } from '../services/ExpenseService';
 
-export class ExpenseController extends BaseController {
+export class ExpenseController extends SocketController {
     private expenseService = new ExpenseService();
+
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
 
     register() {
         this.socket.on("expense:add", (payload, cb) => this.addExpense(payload, cb));

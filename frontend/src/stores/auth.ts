@@ -9,8 +9,13 @@ export const useAuthStore = defineStore('auth', {
     getters: {
         systemRoles: (state) => state.user?.system_roles ?? [],
         permissions: (state) => state.user?.permissions ?? [],
+        systemPermissions: (state) => state.user?.systemPermissions ?? {},
         hasPermission: (state) => (scope: string, action: string, resource: string) => {
             return state.user?.permissions?.includes(`${scope}:${action}:${resource}`);
+        },
+        hasSystemPermission: (state) => (action: string, resource: string) => {
+            return Boolean(state.user?.systemPermissions?.[`${'system'}:${action}:${resource}`])
+                || Boolean(state.user?.systemPermissions?.[action]?.[resource]);
         }
     },
     actions: {

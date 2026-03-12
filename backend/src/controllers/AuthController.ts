@@ -1,9 +1,10 @@
 import { BaseController } from './BaseController';
-import { AuthError, AuthService } from "../services/AuthService";
 import express from 'express';
 import { z } from 'zod';
-import { getDeviceFingerprint } from '../utils/audit';
 import { lucia } from '../auth/lucia';
+import { getDeviceFingerprint } from '../utils/audit';
+import { AuthError, SecurityContext, AuthService } from "../services/AuthService";
+import { Server, Socket } from 'socket.io';
 import { SystemSettingService } from '../services/SystemSettingService';
 
 /**
@@ -16,65 +17,58 @@ import { SystemSettingService } from '../services/SystemSettingService';
  * - Device Management
  */
 export class AuthController extends BaseController {
-    private static authService = new AuthService();
-    private static systemSettingService = new SystemSettingService();
+    private authService: AuthService;
+    private systemSettingService: SystemSettingService;
 
-    register() {
-
+    constructor(io?: Server, socket?: Socket) {
+        super(io, socket);
+        this.authService = new AuthService();
+        this.systemSettingService = new SystemSettingService();
     }
 
-    // Validation Schemas
-    private static verifyCaptcha = async (token: string, ip: string) => {
-        const captcha = await this.systemSettingService.getCaptchaSettings();
-        if (captcha.provider === "none") return true;
+    register() {
+        if (!this.socket) return;
 
-        if (!captcha.secretKey) {
-            console.warn("CAPTCHA_SECRET_KEY is missing. CAPTCHA validation skipped but could be a security risk.");
-            return true; 
-        }
+        this.socket.on("auth:user", async (_payload: any, cb: (res: any) => void) => {
+            try {
+                const sessionId = this.socket?.data?.session?.id || "";
+                const result = await this.authService.userHandler(sessionId, this.buildSocketContext());
+                this.success(cb, result);
+            } catch (error: any) {
+                this.error(cb, error?.message || "auth.errors.internalServer");
+            }
+        });
+    }
 
-        if (!token) return false;
+    private buildSocketContext(): SecurityContext {
+        const ipAddress = this.socket?.handshake.address || '';
+        const userAgent = String(this.socket?.handshake.headers['user-agent'] || '');
+        const deviceFingerprint = `${ipAddress}|${userAgent}`;
+        return { ipAddress, userAgent, deviceFingerprint };
+    }
 
-        let verifyUrl = "";
-        if (captcha.provider === "turnstile") {
-            verifyUrl = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
-        } else if (captcha.provider === "recaptcha") {
-            verifyUrl = "https://www.google.com/recaptcha/api/siteverify";
-        } else {
-            return true; // Unknown provider
-        }
-
+    async getCaptchaConfig(_req: express.Request, res: express.Response) {
         try {
-            const formData = new URLSearchParams();
-            formData.append("secret", captcha.secretKey);
-            formData.append("response", token);
-            formData.append("remoteip", ip);
-
-            const response = await fetch(verifyUrl, {
-                method: "POST",
-                body: formData,
-                headers: { "Content-Type": "application/x-www-form-urlencoded" }
+            const settings = await this.systemSettingService.getCaptchaSettings();
+            return res.status(200).json({
+                provider: settings.provider,
+                siteKey: settings.siteKey || null,
+                enabled: settings.provider !== 'none'
             });
-
-            const data = await response.json();
-            return data.success;
-        } catch (e) {
-            console.error("Captcha verification error", e);
-            return false;
+        } catch (error: any) {
+            return this.handleError(res, error);
         }
-    };
+    }
 
-    private static buildContext(req: express.Request) {
+    private buildContext(req: express.Request): SecurityContext {
         return {
-            ip_address: req.ip || '',
-            user_agent: (req.headers['user-agent'] || '') as string,
-            device_fingerprint: getDeviceFingerprint(req),
-            method: req.method,
-            path: req.originalUrl
+            ipAddress: req.ip || '',
+            userAgent: (req.headers['user-agent'] || '') as string,
+            deviceFingerprint: getDeviceFingerprint(req),
         };
     }
 
-    private static handleError(res: express.Response, error: any) {
+    private handleError(res: express.Response, error: any) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ message: "auth.errors.invalidInput", details: error.issues });
         }
@@ -90,20 +84,11 @@ export class AuthController extends BaseController {
         return res.status(500).json({ message: "auth.errors.internalServer" });
     }
 
-    static async getCaptchaConfig(req: express.Request, res: express.Response) {
+    async signupHandler(req: express.Request, res: express.Response) {
         try {
-            const config = await this.authService.getCaptchaConfig();
-            res.json(config);
-        } catch (error: any) {
-            return this.handleError(res, error);
-        }
-    }
-
-    static async signupHandler(req: express.Request, res: express.Response) {
-        try {
-            const { username, email, password, captchaToken } = this.authService.signupSchema.parse(req.body);
+            const { username, email, password } = this.authService.signupSchema.parse(req.body);
             const ctx = this.buildContext(req);
-            const result = await this.authService.signupHandler(username, email, password, { captchaT: captchaToken, ...ctx });
+            const result = await this.authService.signupHandler(username, email, password, ctx);
 
             res.setHeader("Set-Cookie", result.sessionCookie?.serialize() || "");
             return res.status(201).json({
@@ -116,17 +101,12 @@ export class AuthController extends BaseController {
         }
     }
 
-    static async signinHandler(req: express.Request, res: express.Response) {
+    async signinHandler(req: express.Request, res: express.Response) {
         try {
-            const { username, password, captchaToken } = this.authService.signinSchema.parse(req.body);
-
-            const isCaptchaValid = await this.verifyCaptcha(captchaToken || "", req.ip || "");
-            if (!isCaptchaValid) {
-                return res.status(400).json({ success: false, message: "auth.errors.captchaFailed" });
-            }
+            const { username, password } = this.authService.signinSchema.parse(req.body);
 
             const ctx = this.buildContext(req);
-            const result = await this.authService.signinHandler(username, password, { captchaT: captchaToken, ...ctx });
+            const result = await this.authService.signinHandler(username, password, ctx );
 
             if (result.requires2FA) {
                 return res.status(200).json({
@@ -153,21 +133,16 @@ export class AuthController extends BaseController {
         }
     }
 
-    static async signin2faHandler(req: express.Request, res: express.Response) {
+    async signin2faHandler(req: express.Request, res: express.Response) {
         try {
-            const { userId, code, captchaToken } = req.body;
-
-            const isCaptchaValid = await this.verifyCaptcha(captchaToken || "", req.ip || "");
-            if (!isCaptchaValid) {
-                return res.status(400).json({ success: false, message: "auth.errors.captchaFailed" });
-            }
+            const { userId, code } = req.body;
 
             if (typeof userId !== "string" || typeof code !== "string") {
                 return res.status(400).json({ success: false, message: "auth.errors.invalidInput" });
             }
 
             const ctx = this.buildContext(req);
-            const result = await this.authService.signin2faHandler(userId, code, { captchaT: captchaToken, ...ctx });
+            const result = await this.authService.signin2faHandler(userId, code, ctx);
 
             if (result.success === false) {
                 return res.status(400).json({ success: result.success, message: result.message || "auth.errors.invalidTwoFactor" });
@@ -186,11 +161,11 @@ export class AuthController extends BaseController {
         }
     }
 
-    static async signoutHandler(req: express.Request, res: express.Response) {
+    async signoutHandler(req: express.Request, res: express.Response) {
         try {
             const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "") || "";
             const ctx = this.buildContext(req);
-            const result = await this.authService.signoutHandler(sessionId, { ...ctx });
+            const result = await this.authService.signoutHandler(sessionId, ctx );
             if (result.success === false) {
                 return res.status(400).json({ success: result.success, message: result.message || "auth.errors.signoutFailed" });
             }
@@ -201,11 +176,11 @@ export class AuthController extends BaseController {
         }
     }
 
-    static async userHandler(req: express.Request, res: express.Response) {
+    async userHandler(req: express.Request, res: express.Response) {
         try {
             const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "") || "";
             const ctx = this.buildContext(req);
-            const result = await this.authService.userHandler(sessionId, { ...ctx });
+            const result = await this.authService.userHandler(sessionId, ctx );
 
             if (result.sessionCookie) {
                 res.setHeader("Set-Cookie", result.sessionCookie.serialize());
@@ -213,15 +188,15 @@ export class AuthController extends BaseController {
 
             return res.status(200).json({
                 ...result.user,
-                system_roles: result.meta.system_roles,
-                permissions: result.meta.permissions,
+                system_roles: result.meta?.system_roles || [],
+                permissions: result.meta?.permissions || [],
             });
         } catch (error: any) {
             return this.handleError(res, error);
         }
     }
 
-    static async verifyEmailHandler(req: express.Request, res: express.Response) {
+    async verifyEmailHandler(req: express.Request, res: express.Response) {
         try {
             const { token } = req.params;
             const ctx = this.buildContext(req);
@@ -233,7 +208,7 @@ export class AuthController extends BaseController {
         }
     }
 
-    static async passwordResetHandler(req: express.Request, res: express.Response) {
+    async passwordResetHandler(req: express.Request, res: express.Response) {
         try {
             let { email } = req.body;
             if (typeof email !== "string" || !email.includes("@")) {
@@ -249,20 +224,20 @@ export class AuthController extends BaseController {
         }
     }
 
-    static async passwordResetTokenHandler(req: express.Request, res: express.Response) {
+    async passwordResetTokenHandler(req: express.Request, res: express.Response) {
         try {
             const { token } = req.params;
-            const { password, captchaToken } = this.authService.resetSchema.parse(req.body);
+            const { password } = this.authService.resetSchema.parse(req.body);
             const ctx = this.buildContext(req);
             const normalizedToken = Array.isArray(token) ? token[0] : token;
-            const result = await this.authService.passwordResetTokenHandler(normalizedToken, password, { captchaT: captchaToken, ...ctx });
+            const result = await this.authService.passwordResetTokenHandler(normalizedToken, password, ctx);
             return res.status(200).json(result);
         } catch (error: any) {
             return this.handleError(res, error);
         }
     }
 
-    static async changePasswordHandler(req: express.Request, res: express.Response) {
+    async changePasswordHandler(req: express.Request, res: express.Response) {
         try {
             const sessionId = lucia.readSessionCookie(req.headers.cookie ?? "") || "";
             const { oldPassword, newPassword } = this.authService.changePasswordSchema.parse(req.body);
@@ -279,7 +254,7 @@ export class AuthController extends BaseController {
     /**
      * Generate PassKey registration options
      */
-    static async generatePassKeyRegistrationOptions(req: express.Request, res: express.Response) {
+    async generatePassKeyRegistrationOptions(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -296,7 +271,7 @@ export class AuthController extends BaseController {
     /**
      * Verify and register PassKey
      */
-    static async verifyPassKeyRegistration(req: express.Request, res: express.Response) {
+    async verifyPassKeyRegistration(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -304,7 +279,8 @@ export class AuthController extends BaseController {
             }
 
             const { credential, deviceName } = req.body;
-            const result = await this.authService.verifyPassKeyRegistration(userId, credential, deviceName, req);
+            const ctx = this.buildContext(req);
+            const result = await this.authService.verifyPassKeyRegistration(userId, credential, deviceName, ctx);
             return res.json(result);
         } catch (error: any) {
             return this.handleError(res, error);
@@ -314,7 +290,7 @@ export class AuthController extends BaseController {
     /**
      * Generate PassKey authentication options
      */
-    static async generatePassKeyAuthenticationOptions(req: express.Request, res: express.Response) {
+    async generatePassKeyAuthenticationOptions(req: express.Request, res: express.Response) {
         try {
             const { userId } = req.body; // Optional - for user-specific credentials
             const options = await this.authService.generatePassKeyAuthenticationOptions(userId);
@@ -327,10 +303,11 @@ export class AuthController extends BaseController {
     /**
      * Verify PassKey authentication and create session
      */
-    static async verifyPassKeyAuthentication(req: express.Request, res: express.Response) {
+    async verifyPassKeyAuthentication(req: express.Request, res: express.Response) {
         try {
             const { assertion } = req.body;
-            const result = await this.authService.verifyPassKeyAuthentication(assertion, req);
+            const ctx = this.buildContext(req);
+            const result = await this.authService.verifyPassKeyAuthentication(assertion, ctx);
             if (result.sessionCookie) {
                 res.setHeader("Set-Cookie", result.sessionCookie.serialize());
             }
@@ -343,7 +320,7 @@ export class AuthController extends BaseController {
     /**
      * List user's PassKeys
      */
-    static async listPassKeys(req: express.Request, res: express.Response) {
+    async listPassKeys(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -360,7 +337,7 @@ export class AuthController extends BaseController {
     /**
      * Delete a PassKey
      */
-    static async deletePassKey(req: express.Request, res: express.Response) {
+    async deletePassKey(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -369,7 +346,8 @@ export class AuthController extends BaseController {
 
             const { id } = req.params;
             const credentialId = Array.isArray(id) ? id[0] : id;
-            const result = await this.authService.deletePassKey(userId, credentialId, req);
+            const ctx = this.buildContext(req);
+            const result = await this.authService.deletePassKey(userId, credentialId, ctx);
             return res.json(result);
         } catch (error: any) {
             return this.handleError(res, error);
@@ -381,10 +359,11 @@ export class AuthController extends BaseController {
     /**
      * LDAP Login
      */
-    static async ldapSignin(req: express.Request, res: express.Response) {
+    async ldapSignin(req: express.Request, res: express.Response) {
         try {
             const { username, password } = req.body;
-            const result = await this.authService.ldapSignin(username, password, req);
+            const ctx = this.buildContext(req);
+            const result = await this.authService.ldapSignin(username, password, ctx);
             if (result.sessionCookie) {
                 res.setHeader("Set-Cookie", result.sessionCookie.serialize());
             }
@@ -399,7 +378,7 @@ export class AuthController extends BaseController {
     /**
      * Get available SSO providers
      */
-    static async getSSOProviders(req: express.Request, res: express.Response) {
+    async getSSOProviders(req: express.Request, res: express.Response) {
         try {
             const result = await this.authService.getSSOProviders();
             return res.json(result);
@@ -411,7 +390,7 @@ export class AuthController extends BaseController {
     /**
      * Initiate SSO login
      */
-    static async initiateSSOLogin(req: express.Request, res: express.Response) {
+    async initiateSSOLogin(req: express.Request, res: express.Response) {
         try {
             const { provider } = req.params;
             const providerName = Array.isArray(provider) ? provider[0] : provider;
@@ -433,7 +412,7 @@ export class AuthController extends BaseController {
     /**
      * Handle SSO callback
      */
-    static async handleSSOCallback(req: express.Request, res: express.Response) {
+    async handleSSOCallback(req: express.Request, res: express.Response) {
         try {
             const { provider } = req.params;
             const { code, state } = req.query;
@@ -450,7 +429,8 @@ export class AuthController extends BaseController {
 
             const providerName = Array.isArray(provider) ? provider[0] : provider;
             const codeStr = (Array.isArray(code) ? code[0] : code) as string || '';
-            const result = await this.authService.handleSSOCallback(providerName, codeStr, req);
+            const ctx = this.buildContext(req);
+            const result = await this.authService.handleSSOCallback(providerName, codeStr, ctx);
             if (result.sessionCookie) {
                 res.setHeader("Set-Cookie", result.sessionCookie.serialize());
             }
@@ -469,7 +449,7 @@ export class AuthController extends BaseController {
     /**
      * Get user's devices
      */
-    static async getDevices(req: express.Request, res: express.Response) {
+    async getDevices(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -486,7 +466,7 @@ export class AuthController extends BaseController {
     /**
      * Trust a device
      */
-    static async trustDevice(req: express.Request, res: express.Response) {
+    async trustDevice(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -495,7 +475,8 @@ export class AuthController extends BaseController {
 
             const { id } = req.params;
             const deviceId = Array.isArray(id) ? id[0] : id;
-            const result = await this.authService.trustDevice(userId, deviceId, req);
+            const ctx = this.buildContext(req);
+            const result = await this.authService.trustDevice(userId, deviceId, ctx);
             return res.json(result);
         } catch (error: any) {
             return this.handleError(res, error);
@@ -505,7 +486,7 @@ export class AuthController extends BaseController {
     /**
      * Revoke a device
      */
-    static async revokeDevice(req: express.Request, res: express.Response) {
+    async revokeDevice(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -514,7 +495,8 @@ export class AuthController extends BaseController {
 
             const { id } = req.params;
             const deviceId = Array.isArray(id) ? id[0] : id;
-            const result = await this.authService.revokeDevice(userId, deviceId, req);
+            const ctx = this.buildContext(req);
+            const result = await this.authService.revokeDevice(userId, deviceId, ctx);
             return res.json(result);
         } catch (error: any) {
             return this.handleError(res, error);
@@ -524,7 +506,7 @@ export class AuthController extends BaseController {
     /**
      * Get device notifications
      */
-    static async getDeviceNotifications(req: express.Request, res: express.Response) {
+    async getDeviceNotifications(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {
@@ -542,7 +524,7 @@ export class AuthController extends BaseController {
     /**
      * Acknowledge device notification
      */
-    static async acknowledgeNotification(req: express.Request, res: express.Response) {
+    async acknowledgeNotification(req: express.Request, res: express.Response) {
         try {
             const userId = req.user?.id;
             if (!userId) {

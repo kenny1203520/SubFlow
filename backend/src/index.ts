@@ -95,6 +95,11 @@ import { AuthController } from './controllers/AuthController';
 io.on("connection", (socket) => {
     // console.log(`User connected: ${socket.data.user.username}`);
 
+    const resolveAck = (...args: any[]) => {
+        const maybeAck = args[args.length - 1];
+        return typeof maybeAck === 'function' ? maybeAck : null;
+    };
+
     new AuthController(io, socket).register();
     new GroupController(io, socket).register();
     new GroupRoleController(io, socket).register();
@@ -108,7 +113,10 @@ io.on("connection", (socket) => {
     new FileController(io, socket).register();
     new ServiceController(io, socket).register();
 
-    socket.on("dashboard:stats", async (cb: (res: any) => void) => {
+    socket.on("dashboard:stats", async (...args: any[]) => {
+        const cb = resolveAck(...args);
+        if (!cb) return;
+
         try {
             const userId = socket.data.user.id;
 
@@ -171,8 +179,9 @@ io.on("connection", (socket) => {
         }
     });
 
-    socket.on("ping", (cb) => {
-        cb("pong");
+    socket.on("ping", (...args: any[]) => {
+        const cb = resolveAck(...args);
+        if (cb) cb("pong");
     });
 
     socket.on("disconnect", () => {

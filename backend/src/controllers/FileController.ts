@@ -1,8 +1,13 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { FileService } from '../services/FileService';
 
-export class FileController extends BaseController {
+export class FileController extends SocketController {
     private fileService = new FileService();
+
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
 
     register() {
         this.socket.on("file:get", (payload, cb) => this.getFile(payload, cb));

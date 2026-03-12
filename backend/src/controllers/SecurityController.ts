@@ -1,20 +1,25 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { SecurityService } from '../services/SecurityService';
 import { logActivity } from '../utils/audit';
 
-export class SecurityController extends BaseController {
+export class SecurityController extends SocketController {
     private securityService = new SecurityService();
 
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
+
     register() {
-        this.socket.on("security:get_settings", (cb) => this.getSettings(cb));
-        this.socket.on("security:generate_2fa_secret", (cb) => this.generate2FASecret(cb));
+        this.socket.on("security:get_settings", (...args: any[]) => this.getSettings(this.resolveAck(...args) as any));
+        this.socket.on("security:generate_2fa_secret", (...args: any[]) => this.generate2FASecret(this.resolveAck(...args) as any));
         this.socket.on("security:enable_2fa", (payload, cb) => this.enable2FA(payload, cb));
-        this.socket.on("security:disable_2fa", (cb) => this.disable2FA(cb));
-        this.socket.on("security:regenerate_backup_codes", (cb) => this.regenerateBackupCodes(cb));
+        this.socket.on("security:disable_2fa", (...args: any[]) => this.disable2FA(this.resolveAck(...args) as any));
+        this.socket.on("security:regenerate_backup_codes", (...args: any[]) => this.regenerateBackupCodes(this.resolveAck(...args) as any));
         
-        this.socket.on("security:list_devices", (cb) => this.listDevices(cb));
+        this.socket.on("security:list_devices", (...args: any[]) => this.listDevices(this.resolveAck(...args) as any));
         this.socket.on("security:revoke_device", (payload, cb) => this.revokeDevice(payload, cb));
-        this.socket.on("security:sessions", (cb) => this.getSessions(cb));
+        this.socket.on("security:sessions", (...args: any[]) => this.getSessions(this.resolveAck(...args) as any));
         this.socket.on("security:revoke_session", (payload, cb) => this.revokeSession(payload, cb));
     }
 

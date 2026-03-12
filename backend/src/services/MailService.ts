@@ -16,9 +16,9 @@ export class MailService {
 
     private static async sendMail(to: string, subject: string, html: string): Promise<boolean> {
         if (process.env.ENABLE_EMAIL_SERVICE !== 'true') {
-            console.log(`[MailService] Email to ${to} skipped (ENABLE_EMAIL_SERVICE is not true).`);
-            console.log(`[MailService] Subject: ${subject}`);
-            console.log(`[MailService] Content: ${html}`);
+            // console.log(`[MailService] Email to ${to} skipped (ENABLE_EMAIL_SERVICE is not true).`);
+            // console.log(`[MailService] Subject: ${subject}`);
+            // console.log(`[MailService] Content: ${html}`);
             return true; // Pretend success
         }
 
@@ -29,7 +29,7 @@ export class MailService {
                 subject,
                 html,
             });
-            console.log(`[MailService] Email sent to ${to}: ${info.messageId}`);
+            // console.log(`[MailService] Email sent to ${to}: ${info.messageId}`);
             return true;
         } catch (error) {
             console.error(`[MailService] Failed to send email to ${to}:`, error);

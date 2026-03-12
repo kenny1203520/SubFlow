@@ -1,13 +1,18 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { SubscriptionService } from '../services/SubscriptionService';
 
-export class SubscriptionController extends BaseController {
+export class SubscriptionController extends SocketController {
     private subService = new SubscriptionService();
+
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
 
     register() {
         this.socket.on("subscription:add", (payload, cb) => this.addSubscription(payload, cb));
         this.socket.on("subscription:list", (payload, cb) => this.listSubscriptions(payload, cb));
-        this.socket.on("subscription:all", (cb) => this.listAllSubscriptions(cb));
+        this.socket.on("subscription:all", (...args: any[]) => this.listAllSubscriptions(this.resolveAck(...args) as any));
         this.socket.on("subscription:update_status", (payload, cb) => this.updateStatus(payload, cb));
     }
 

@@ -1,13 +1,18 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { ServiceService } from '../services/ServiceService';
 
-export class ServiceController extends BaseController {
+export class ServiceController extends SocketController {
     private serviceService = new ServiceService();
+
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
 
     register() {
         this.socket.on("service:search", (payload, cb) => this.searchServices(payload, cb));
         this.socket.on("service:create", (payload, cb) => this.createService(payload, cb));
-        this.socket.on("service:list", (cb) => this.listServices(cb));
+        this.socket.on("service:list", (...args: any[]) => this.listServices(this.resolveAck(...args) as any));
         this.socket.on("service:update", (payload, cb) => this.updateService(payload, cb));
         this.socket.on("service:delete", (payload, cb) => this.deleteService(payload, cb));
     }

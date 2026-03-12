@@ -1,4 +1,3 @@
-import express from "express";
 import { lucia } from "../auth/lucia";
 import { Scrypt } from "oslo/password";
 import { pool } from "../db";
@@ -7,7 +6,7 @@ import crypto from "crypto";
 import { z } from "zod";
 import { SystemSettingsService } from "../services/SystemSettingsService";
 import { verify } from "otplib";
-import { logActivity, getDeviceFingerprint } from "../utils/audit";
+import { logActivity } from "../utils/audit";
 import { SecurityRepository } from "../repositories/SecurityRepository";
 import { SecurityService } from "./SecurityService";
 import { RBACService } from "./RBACService";
@@ -18,7 +17,6 @@ import { PassKeyService } from "./PassKeyService";
 import { LDAPService } from "./LDAPService";
 import { SSOService } from "./SSOService";
 import { 
-    getClientIpAddress, 
     parseUserAgent, 
     calculateLoginRiskScore 
 } from "../utils/deviceFingerprint";
@@ -33,6 +31,12 @@ const getPepperedPassword = (password: string) => {
     }
     return crypto.createHmac('sha256', authSecret).update(password).digest('hex');
 };
+
+export interface SecurityContext {
+    ipAddress: string;
+    userAgent: string;
+    deviceFingerprint: string;
+}
 
 export interface AuthResult {
     success: boolean;
@@ -79,13 +83,11 @@ export class AuthService {
         username: z.string().min(3).max(255).regex(/^[a-zA-Z0-9_-]+$/, "auth.errors.usernameFormat"),
         email: z.email().max(255).regex(/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, "auth.errors.invalidEmail").transform(v => v.toLowerCase()),
         password: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
-        captchaToken: z.string().optional(),
     });
 
     public signinSchema = z.object({
         username: z.string().max(255).regex(/^[a-zA-Z0-9_-]+$/, "auth.errors.usernameFormat"),
         password: z.string().max(255),
-        captchaToken: z.string().optional(),
     });
 
     public signin2FASchema = z.object({
@@ -95,140 +97,91 @@ export class AuthService {
 
     public resetSchema = z.object({
         password: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
-        captchaToken: z.string().optional(),
     });
 
     public changePasswordSchema = z.object({
         oldPassword: z.string().max(255),
         newPassword: z.string().min(8).max(255).regex(/[A-Z]/, "auth.errors.passwordUppercase").regex(/[0-9]/, "auth.errors.passwordNumber").regex(/[^A-Za-z0-9]/, "auth.errors.passwordSymbol"),
     });
-    
-    getCaptchaConfig(): Promise<any> {
-        const captchaProvider =  process.env.CAPTCHA_PROVIDER || "none"
-        const captchaSiteKey = process.env.CAPTCHA_SITE_KEY || ""
-        return Promise.resolve({
-            captchaProvider: captchaProvider,
-            captchaSiteKey: captchaSiteKey
-        });
-    }
 
-    /**
+    /**     
      * Signup handler to create a new user, send verification email, and auto-login
      * With device tracking and risk-based notifications
-     * @param un 
-     * @param eMail 
-     * @param pass 
-     * @param data 
+     * @param username 
+     * @param email 
+     * @param password 
+     * @param context 
      * @returns 
      */
     async signupHandler(
-        un: string, eMail: string, pass: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        username: string,
+        email: string,
+        password: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
-
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_username: un }
-                );
+            // Step 1: Validate input
+            const { username: validUsername, email: validEmail, password: validPassword } = 
+                this.signupSchema.parse({ username, email, password });
 
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
+            // Step 2: Create user with hashed password
+            const passwordHash = await scrypt.hash(getPepperedPassword(validPassword));
+            const user = await this.userRepo.createUser(validUsername, validEmail, passwordHash, false);
 
-            const { username, email, password, captchaToken } = this.signupSchema.parse({
-                username: un,
-                email: eMail,
-                password: pass,
-                captchaToken: data?.captchaT
-            });
-
-            const passwordHash = await scrypt.hash(getPepperedPassword(password));
-
-            // Create user
-            const user = await this.userRepo.createUser(username, email, passwordHash, false);
-            const userId = user.id;
-
-            // Generate Verification Token
+            // Step 3: Create email verification token
             const token = crypto.randomBytes(32).toString("hex");
             const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
             const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24 hours
 
-            // Create email verification record
-            await this.authRepo.createEmailVerificationToken(userId, email, tokenHash, expiresAt);
+            await this.authRepo.createEmailVerificationToken(user.id, validEmail, tokenHash, expiresAt);
             
-            // Initialize User Security (with local auth provider)
-            await this.securityRepo.createSecuritySettings(userId);
-            await this.securityRepo.updateAuthProvider(userId, 'local', '');
+            // Step 4: Initialize User Security (with local auth provider)
+            await this.securityRepo.createSecuritySettings(user.id);
+            await this.securityRepo.updateAuthProvider(user.id, 'local', '');
             
-            // Assign 'Guest' role
+            // Step 5: Assign Guest Role
             const guestRole = await this.rbacRepo.getSystemRoleByName("Guest");
-            if (guestRole) await this.rbacRepo.assignRoleToUser(userId, guestRole.id);
+            if (guestRole) {
+                await this.rbacRepo.assignRoleToUser(user.id, guestRole.id);
+            }
 
-            // Send verification email
-            await MailService.sendVerificationEmail(email, token);
+            // Step 6: Send verification email
+            await MailService.sendVerificationEmail(validEmail, token);
 
-            // Extract device information
-            const fingerprint = data?.device_fingerprint || '';
-            const ipAddress = data?.ip_address || data?.req?.ip || '';
-            const userAgent = data?.user_agent || data?.req?.headers['user-agent'] || '';
-
-            // Create session and cookie for auto-login after signup
-            const session = await lucia.createSession(userId, {
-                ip_address: ipAddress,
-                user_agent: userAgent,
-                device_fingerprint: fingerprint
+            // Step 7: Create session (auto-login after signup)
+            const session = await lucia.createSession(user.id, {
+                ip_address: context.ipAddress,
+                user_agent: context.userAgent,
+                device_fingerprint: context.deviceFingerprint
             });
-            const sessionCookie = lucia.createSessionCookie(session.id);
 
-            // Register device using new SecurityService method
+            // Step 8: Register or update device information
             const { device, isNewDevice } = await this.securityService.registerOrUpdateDevice(
-                userId,
+                user.id,
                 {
-                    fingerprint,
-                    userAgent,
-                    ipAddress
+                    fingerprint: context.deviceFingerprint,
+                    userAgent: context.userAgent,
+                    ipAddress: context.ipAddress
                 }
             );
 
-            // Link device to session
+            // Step 9: Create login history record for signup event
             await this.authRepo.createLoginHistory(
-                userId, 
+                user.id, 
                 session.id, 
                 new Date(),
-                ipAddress, 
-                userAgent,
-                fingerprint,
+                context.ipAddress, 
+                context.userAgent,
+                context.deviceFingerprint,
                 device.id, 
                 'success'
             );
-
-            // Log signup activity
-            await logActivity(
-                userId, 'auth', 'signup', 'low',
-                'User signed up and auto-logged in',
-                data?.req, fingerprint, 
-                { username, email, device_id: device.id }
-            );
-
-            // Send new device notification (for first device after signup, always send)
+            
+            // Step 10: Send new device login notification (if applicable)
             if (isNewDevice) {
-                await this.securityService.notifyNewDeviceLogin(userId, device.id, {
+                await this.securityService.notifyNewDeviceLogin(user.id, device.id, {
                     deviceName: device.device_name || 'Unknown Device',
-                    ipAddress,
+                    ipAddress: context.ipAddress,
                     location: device.location
                 });
             }
@@ -236,222 +189,125 @@ export class AuthService {
             return {
                 success: true,
                 user: {
-                    id: userId,
-                    username: username,
-                    email: email,
+                    id: user.id,
+                    username: validUsername,
+                    email: validEmail,
                     is_verified: false
                 },
-                sessionCookie,
-                message: "Signup successful. Please verify your email.",
-            }
+                sessionCookie: lucia.createSessionCookie(session.id),
+                message: "auth.signup.success"
+            };
         } catch (error: any) {
             console.error("Signup error:", error);
-            await logActivity(
-                null, 'auth', 'signup_failed', 'high',
-                `Signup failed for user: ${un}`,
-                data?.req, data?.device_fingerprint, 
-                { error: error.message }
-            );
-            return {
-                success: false,
-                message: "auth.errors.internalServer"
-            };
+            if (error instanceof z.ZodError) {
+                throw new AuthError("auth.signup.validationFailed", 400, error.issues);
+            }
+            throw new AuthError("auth.signup.failed", 500);
         }
     }
 
     /**
-     * Signin handler with enhanced device tracking and risk-based authentication
-     * @param un 
-     * @param pass 
-     * @param data 
+     * Signin handler to authenticate user, enforce security policies, and create session
+     * @param username 
+     * @param password 
+     * @param context 
      * @returns 
      */
     async signinHandler(
-        un: string, pass: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        username: string,
+        password: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
-
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_username: un }
-                );
+            // Step 1: Validate input
+            const { username: validUsername, password: validPasswordInput } = 
+                this.signinSchema.parse({ username, password });
 
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
-
-            const { username, password, captchaToken } = this.signinSchema.parse({
-                username: un,
-                password: pass,
-                captchaToken: data?.captchaT
-            });
-
-            // Extract device information
-            const fingerprint = data?.device_fingerprint || '';
-            const ipAddress = data?.ip_address || data?.req?.ip || '';
-            const userAgent = data?.user_agent || data?.req?.headers['user-agent'] || '';
-            const req = data?.req;
-
-            // Fetch user by username
-            const user = await this.userRepo.getByUsername(username);
-
+            // Step 2: Query user by username (case-insensitive)
+            const user = await this.userRepo.getByUsername(validUsername);
             if (!user) {
+                // 記錄但返回統一錯誤（不暴露用戶存在性）
                 await logActivity(
-                    null, 'auth', 'login_failed', 'medium',
-                    `Failed login for user: ${username}`,
-                    req, fingerprint, 
-                    { attempted_username: username }
+                    null, 'auth', 'login_failed_nonexistent', 'medium',
+                    `Login attempt for non-existent user`,
+                    undefined, 
+                    context.deviceFingerprint,
+                    { attempted_username: validUsername }
                 );
-                // Always return the same error message for security
                 return { 
                     success: false,
                     message: "auth.errors.invalidCredentials"
                 };
             }
-            
-            // Check Account Lockout Status
-            const securitySettings = await this.securityRepo.getSecuritySettings(user.id);
-            if (!securitySettings) await this.securityRepo.createSecuritySettings(user.id);
 
-            // Check if account is blocked or suspended before verifying password
-            if (await this.securityRepo.isUserBlocked(user.id)) {
+            // 確保安全設定存在
+            const securitySettings = await this.securityRepo.getSecuritySettings(user.id);
+            if (!securitySettings) {
+                await this.securityRepo.createSecuritySettings(user.id);
+            }
+
+            // Step 3: 檢查帳戶狀態（BEFORE 密碼驗證）
+            const accountStatus = await this.getAccountSecurityStatus(user.id);
+            
+            if (accountStatus.isBlocked || accountStatus.isSuspended) {
+                // 內部記錄詳細信息
                 await logActivity(
-                    user.id, 'auth', 'login_blocked', 'critical',
-                    'Login attempted on blocked account',
-                    req, fingerprint, 
-                    { attempted_username: username }
+                    user.id, 'auth', 'login_blocked_or_suspended', 'critical',
+                    `Login blocked - Status: ${accountStatus.isBlocked ? 'BLOCKED' : 'SUSPENDED'}`,
+                    undefined, 
+                    context.deviceFingerprint,
+                    {
+                        user_id: user.id,
+                        is_blocked: accountStatus.isBlocked,
+                        is_suspended: accountStatus.isSuspended,
+                        suspended_until: accountStatus.suspendedUntil
+                    }
                 );
+                
+                // 對外返回統一的模糊消息（與用戶不存在相同）
                 return {
                     success: false,
-                    message: "auth.errors.accountBlocked" 
+                    message: "auth.errors.invalidCredentials"
                 };
             }
 
-            if (await this.securityRepo.isUserSuspended(user.id)) {
-                await logActivity(
-                    user.id, 'auth', 'login_suspended', 'high',
-                    'Login attempted on suspended account',
-                    req, fingerprint, 
-                    { attempted_username: username }
-                );
-                return { 
-                    success: false,
-                    message: "auth.errors.accountSuspended" 
-                };
-            }
-
-            // Check if user is using the correct auth provider (e.g. local vs ldap vs sso)
+            // Step 4: 檢查認證提供者
             const authProvider = await this.securityRepo.getAuthProvider(user.id);
             if (authProvider && authProvider.auth_provider !== 'local') {
                 await logActivity(
-                    user.id, 'auth', 'login_failed', 'medium',
-                    `Login attempted with local provider on account registered with ${authProvider.auth_provider}`,
-                    req, fingerprint, 
-                    { attempted_username: username }
+                    user.id, 'auth', 'login_wrong_provider', 'medium',
+                    `Login attempted with local provider on ${authProvider.auth_provider} account`,
+                    undefined, 
+                    context.deviceFingerprint,
+                    { attempted_username: validUsername }
                 );
                 return {
                     success: false,
                     message: `auth.errors.use${authProvider.auth_provider}`
-                }
-            }
-
-            // Calculate risk score before password validation
-            const existingDevices = await this.securityRepo.getDevices(user.id);
-            const previousDevice = existingDevices.find(d => d.device_fingerprint === fingerprint);
-            const isNewDevice = !previousDevice;
-            const isNewLocation = !existingDevices.some(d => 
-                d.ip_address && ipAddress && d.ip_address.split('.').slice(0, 3).join('.') === ipAddress.split('.').slice(0, 3).join('.')
-            );
-            
-            const accountAgeInDays = user.created_at 
-                ? Math.floor((Date.now() - user.created_at.getTime()) / (1000 * 60 * 60 * 24))
-                : 0;
-            const lastDevice = existingDevices
-                .filter(d => d.last_active_at)
-                .sort((a, b) => 
-                    new Date(b.last_active_at!).getTime() - new Date(a.last_active_at!).getTime()
-                )[0];
-            const timeSinceLastLoginHours = lastDevice && lastDevice.last_active_at
-                ? Math.floor((Date.now() - new Date(lastDevice.last_active_at).getTime()) / (1000 * 60 * 60))
-                : 99999;
-            
-            const fingerprintSimilarity = previousDevice ? 1.0 : 0.0;
-            
-            const loginRiskScore = calculateLoginRiskScore({
-                isNewDevice,
-                isNewLocation,
-                fingerprintSimilarity,
-                failedAttemptsRecently: securitySettings?.failed_login_attempts || 0,
-                accountAge: accountAgeInDays,
-                timeSinceLastLogin: timeSinceLastLoginHours
-            });
-
-            const validPassword = await scrypt.verify(user.password_hash, getPepperedPassword(password));
-            if (!validPassword) {
-                // Increment failed attempts
-                const lockoutCfg = await SystemSettingsService.getSetting('security.auth_lockout');
-                const maxAttempts   = lockoutCfg?.maxFailedAttempts ?? 5;
-                const lockoutDurationMins = lockoutCfg?.lockoutDurationMins ?? 720;
-                
-                await this.securityRepo.incrementFailedLoginAttempts(user.id);
-                const newAttempts = await this.securityRepo.getFailedLoginAttempts(user.id);
-                if (newAttempts >= maxAttempts) {
-                    const suspendUntil = new Date(Date.now() + lockoutDurationMins * 60 * 1000);
-                    await this.securityRepo.suspendUser(user.id, suspendUntil);
-                    await logActivity(
-                        user.id, 'auth', 'account_lockout', 'critical',
-                        `Account locked out after ${newAttempts} failed attempts`,
-                        req, fingerprint, 
-                        { attempted_username: username, failed_attempts: newAttempts }
-                    );
-                }
-                
-                await logActivity(
-                    user.id, 'auth', 'login_failed', 'medium',
-                    `Invalid password for user: ${username}`,
-                    req, fingerprint,
-                    { attempted_username: username, risk_score: loginRiskScore }
-                );
-                
-                // Log security event
-                await this.authRepo.createLoginHistory(
-                    user.id, '', new Date(),
-                    ipAddress,
-                    userAgent,
-                    fingerprint,
-                    '', // no device_id yet
-                    'failed', 
-                    'Invalid password'
-                );
-
-                return { 
-                    success: false,
-                    message: "auth.errors.invalidCredentials" 
                 };
             }
 
-            // Reset failed attempts on success (or partial success like 2FA)
+            // Step 5: 計算登入風險分數
+            const loginRiskScore = await this.calculateLoginRiskScore(user.id, context);
+
+            // Step 6: 驗證密碼
+            const isValidPassword = await scrypt.verify(user.password_hash, getPepperedPassword(validPasswordInput));
+            
+            if (!isValidPassword) {
+                await this.handleFailedLoginAttempt(user.id, validUsername, context);
+                return {
+                    success: false,
+                    message: "auth.errors.invalidCredentials"
+                };
+            }
+
+            // Step 7: 重設失敗計數
             await this.securityRepo.resetFailedLoginAttempts(user.id);
 
-            // Check if 2FA is enabled or required by risk score
+            // Step 8: 檢查 2FA
             const shouldRequire2FA = securitySettings?.two_factor_enabled || loginRiskScore >= 40;
             
             if (shouldRequire2FA && securitySettings?.two_factor_enabled) {
-                // Validate that we have a secret to check against
                 if (!securitySettings.two_factor_secret) {
                     console.error("2FA enabled but no secret found for user", user.id);
                     return {
@@ -463,8 +319,9 @@ export class AuthService {
                 await logActivity(
                     user.id, 'auth', '2fa_required', 'low', 
                     `2FA code required for login (risk score: ${loginRiskScore})`, 
-                    req, fingerprint,
-                    { username, risk_score: loginRiskScore }
+                    undefined, 
+                    context.deviceFingerprint,
+                    { username: validUsername, risk_score: loginRiskScore }
                 );
                 
                 return {
@@ -479,122 +336,241 @@ export class AuthService {
                 };
             }
 
-            // Register or update device
-            const { device, isNewDevice: isNewDeviceFlag } = await this.securityService.registerOrUpdateDevice(
-                user.id,
-                {
-                    fingerprint,
-                    userAgent,
-                    ipAddress
-                }
-            );
+            // Step 9: 建立 session（無需 2FA）
+            return await this.createSessionAndNotify(user, context, loginRiskScore, validUsername);
 
-            // Create session
-            const session = await lucia.createSession(user.id, {
-                ip_address: ipAddress,
-                user_agent: userAgent,
-                device_fingerprint: fingerprint
-            });
-            const sessionCookie = lucia.createSessionCookie(session.id);
-            
-            await logActivity(
-                user.id, 'auth', 'login', 'info', 
-                'User logged in', 
-                req, fingerprint, 
-                { username, session_id: session.id, device_id: device.id, is_new_device: isNewDevice, risk_score: loginRiskScore }
-            );
-
-            // Link device to session
-            await this.authRepo.createLoginHistory(
-                user.id, 
-                session.id, 
-                new Date(),
-                ipAddress,
-                userAgent,
-                fingerprint,
-                device.id, 
-                'success',
-                undefined
-            );
-
-            // Send notification for new device or suspicious activity
-            if (isNewDeviceFlag) {
-                await this.securityService.notifyNewDeviceLogin(user.id, device.id, {
-                    deviceName: device.device_name || 'Unknown Device',
-                    ipAddress,
-                    location: device.location
-                });
-            } else if (loginRiskScore >= 30) {
-                // High risk login from known device
-                const userAgentInfo = parseUserAgent(userAgent);
-                await MailService.sendSuspiciousActivityAlert(
-                    user.email,
-                    {
-                        activityType: 'High Risk Login Detected',
-                        details: `Login from ${userAgentInfo.browser} on ${userAgentInfo.os} with risk score ${loginRiskScore}`,
-                        ipAddress: ipAddress,
-                        timestamp: new Date()
-                    }
-                );
-            }
-
-            return {
-                success: true,
-                user: {
-                    id: user.id,
-                    username: user.username,
-                    email: user.email,
-                    is_verified: user.is_verified ?? false
-                },
-                sessionCookie,
-            };
         } catch (error: any) {
             console.error("Signin error:", error);
-            await logActivity(
-                null, 'auth', 'system_error', 'high', 
-                `Signin error: ${error.message}`, 
-                data?.req, data?.device_fingerprint, 
-                { error: error.message, stack: error.stack, attempted_username: un }
-            );
+            if (error instanceof AuthError) throw error;
             return {
                 success: false,
-                message: "auth.errors.internalServer"
+                message: "auth.errors.invalidCredentials"
             };
         }
     }
 
-    async signin2faHandler(
-        uId: string, co: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
+    /**
+     * 私有方法：建立 session 和通知
+     */
+    private async createSessionAndNotify(
+        user: any,
+        context: SecurityContext,
+        loginRiskScore: number,
+        validUsername: string
+    ): Promise<AuthResult> {
+        // 註冊或更新設備
+        const { device, isNewDevice } = await this.securityService.registerOrUpdateDevice(
+            user.id,
+            {
+                fingerprint: context.deviceFingerprint,
+                userAgent: context.userAgent,
+                ipAddress: context.ipAddress
+            }
+        );
+
+        // 建立 session
+        const session = await lucia.createSession(user.id, {
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+            device_fingerprint: context.deviceFingerprint
+        });
+
+        // 建立登入歷史
+        await this.authRepo.createLoginHistory(
+            user.id, 
+            session.id, 
+            new Date(),
+            context.ipAddress,
+            context.userAgent,
+            context.deviceFingerprint,
+            device.id, 
+            'success'
+        );
+
+        // 審計日誌
+        await logActivity(
+            user.id, 'auth', 'login', 'info', 
+            'User logged in', 
+            undefined, 
+            context.deviceFingerprint, 
+            { 
+                username: validUsername, 
+                session_id: session.id, 
+                device_id: device.id, 
+                is_new_device: isNewDevice, 
+                risk_score: loginRiskScore 
+            }
+        );
+
+        // 發送通知
+        if (isNewDevice) {
+            await this.securityService.notifyNewDeviceLogin(user.id, device.id, {
+                deviceName: device.device_name || 'Unknown Device',
+                ipAddress: context.ipAddress,
+                location: device.location
+            });
+        } else if (loginRiskScore >= 30) {
+            // 高風險登入（已知設備）
+            const userAgentInfo = parseUserAgent(context.userAgent);
+            await MailService.sendSuspiciousActivityAlert(
+                user.email,
+                {
+                    activityType: 'High Risk Login Detected',
+                    details: `Login from ${userAgentInfo.browser} on ${userAgentInfo.os} with risk score ${loginRiskScore}`,
+                    ipAddress: context.ipAddress,
+                    timestamp: new Date()
+                }
+            );
         }
+
+        return {
+            success: true,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                is_verified: user.is_verified ?? false
+            },
+            sessionCookie: lucia.createSessionCookie(session.id)
+        };
+    }
+
+    /**
+     * Get account security status including block and suspension state, with automatic expiration handling
+     */
+    private async getAccountSecurityStatus(userId: string) {
+        const security = await this.securityRepo.getSecuritySettings(userId);
+        
+        if (!security) {
+            return {
+                isBlocked: false,
+                isSuspended: false,
+                suspendedUntil: null
+            };
+        }
+
+        let isSuspended = false;
+        let suspendedUntil = security.suspended_until;
+
+        // 檢查 suspension 是否已過期
+        if (security.is_suspended && suspendedUntil) {
+            if (new Date(suspendedUntil) <= new Date()) {
+                // 自動清除過期的 suspension
+                await this.securityRepo.unSuspendUser(userId);
+                isSuspended = false;
+                suspendedUntil = undefined;
+            } else {
+                isSuspended = true;
+            }
+        }
+
+        return {
+            isBlocked: security.is_blocked,
+            isSuspended: isSuspended,
+            suspendedUntil: suspendedUntil
+        };
+    }
+
+    /**
+     * Failed login attempt handler to increment counters, apply lockout if necessary, and log activity
+     */
+    private async handleFailedLoginAttempt(
+        userId: string,
+        attemptedUsername: string,
+        context: SecurityContext
+    ) {
+        const lockoutCfg = await SystemSettingsService.getSetting('security.auth_lockout');
+        const maxAttempts = lockoutCfg?.maxFailedAttempts ?? 5;
+        const lockoutDurationMins = lockoutCfg?.lockoutDurationMins ?? 720;
+
+        await this.securityRepo.incrementFailedLoginAttempts(userId);
+        const failedCount = await this.securityRepo.getFailedLoginAttempts(userId);
+
+        if (failedCount >= maxAttempts) {
+            const suspendUntil = new Date(Date.now() + lockoutDurationMins * 60 * 1000);
+            await this.securityRepo.suspendUser(userId, suspendUntil);
+
+            await logActivity(
+                userId, 'auth', 'account_lockout', 'critical',
+                `Account auto-locked after ${failedCount} failed attempts`,
+                undefined, 
+                context.deviceFingerprint,
+                { attempted_username: attemptedUsername, failed_attempts: failedCount }
+            );
+        } else {
+            await logActivity(
+                userId, 'auth', 'login_failed', 'medium',
+                `Failed login attempt (${failedCount}/${maxAttempts})`,
+                undefined, 
+                context.deviceFingerprint,
+                { attempted_username: attemptedUsername, failed_attempts: failedCount }
+            );
+        }
+    }
+
+    /**
+     * Count login risk score based on device familiarity, location, and recent activity
+     */
+    private async calculateLoginRiskScore(userId: string, context: SecurityContext): Promise<number> {
+        const existingDevices = await this.securityRepo.getDevices(userId);
+        const previousDevice = existingDevices.find(d => d.device_fingerprint === context.deviceFingerprint);
+        const isNewDevice = !previousDevice;
+        const isNewLocation = !existingDevices.some(d => 
+            this.isSameLocation(d.ip_address ?? null, context.ipAddress)
+        );
+
+        const user = await this.userRepo.getById(userId);
+        const accountAgeInDays = user?.created_at 
+            ? Math.floor((Date.now() - user.created_at.getTime()) / (1000 * 60 * 60 * 24))
+            : 0;
+
+        const security = await this.securityRepo.getSecuritySettings(userId);
+        const failedAttempts = security?.failed_login_attempts || 0;
+        const timeSinceLastLogin = this.getTimeSinceLastLogin(existingDevices);
+
+        return calculateLoginRiskScore({
+            isNewDevice,
+            isNewLocation,
+            fingerprintSimilarity: previousDevice ? 1.0 : 0.0,
+            failedAttemptsRecently: failedAttempts,
+            accountAge: accountAgeInDays,
+            timeSinceLastLogin: timeSinceLastLogin
+        });
+    }
+
+    /**
+     * Check if two IP addresses are from the same location (basic check based on first 3 octets)
+     */
+    private isSameLocation(ip1: string | null, ip2: string): boolean {
+        if (!ip1) return false;
+        return ip1.split('.').slice(0, 3).join('.') === ip2.split('.').slice(0, 3).join('.');
+    }
+
+    /**
+     * Get hours since last login based on device activity
+     */
+    private getTimeSinceLastLogin(devices: any[]): number {
+        const lastDevice = devices
+            .filter(d => d.last_active_at)
+            .sort((a, b) => 
+                new Date(b.last_active_at!).getTime() - new Date(a.last_active_at!).getTime()
+            )[0];
+        
+        return lastDevice && lastDevice.last_active_at
+            ? Math.floor((Date.now() - new Date(lastDevice.last_active_at).getTime()) / (1000 * 60 * 60))
+            : 99999;
+    }
+
+    async signin2faHandler(
+        uId: string,
+        co: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
 
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_user_id: uId }
-                );
-
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
-
             const { userId, code } = this.signin2FASchema.parse({
                 userId: uId,
-                code: co,
-                captchaT: data?.captchaT
+                code: co
             });
             
             if (typeof userId !== "string" || typeof code !== "string") {
@@ -644,15 +620,15 @@ export class AuthService {
                 isValid = verify({ token: code, secret: securitySettings.two_factor_secret });
             }
 
-            const fingerprint = data?.device_fingerprint || getDeviceFingerprint(data?.req);
-            const ipAddress = data?.ip_address || data?.req?.ip || '';
-            const userAgent = data?.user_agent || data?.req?.headers['user-agent'] || '';
+            const fingerprint = context.deviceFingerprint;
+            const ipAddress = context.ipAddress;
+            const userAgent = context.userAgent;
             
             if (!isValid) {
                 await logActivity(
                     userId, 'auth', '2fa_failed', 'high',
                     'Invalid 2FA code', 
-                    data?.req, fingerprint, 
+                    undefined, fingerprint, 
                     { user_id: userId, used_backup_code: code.length === 8 }
                 );
                 await logActivity(
@@ -661,7 +637,7 @@ export class AuthService {
                     '2fa_failed',
                     'high',
                     'Invalid 2FA code',
-                    data?.req,
+                    undefined,
                     fingerprint,
                     { used_backup_code: code.length === 8 }
                 );
@@ -680,7 +656,7 @@ export class AuthService {
             await logActivity(
                 user.id, 'auth', 'login_2fa', 'info', 
                 `User logged in with 2FA${usedBackupCode ? ' (Backup Code)' : ''}`, 
-                data?.req, fingerprint, 
+                undefined, fingerprint, 
                 { username: user.username, session_id: session.id, used_backup_code: usedBackupCode }
             );
 
@@ -700,7 +676,7 @@ export class AuthService {
             await logActivity(
                 null, 'auth', 'system_error', 'high', 
                 `2FA error: ${error.message}`, 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { error: error.message, stack: error.stack, attempted_user_id: uId }
             );
             console.error(error);
@@ -711,14 +687,12 @@ export class AuthService {
         }
     }
 
+    /**
+     * Signout handler to invalidate session and log activity.
+     */
     async signoutHandler(
-        sessionId: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        sessionId: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
         if (!sessionId) {
             return {
@@ -727,16 +701,16 @@ export class AuthService {
             }
         }
 
-        const ipAddress = data?.ip_address || data?.req?.ip || '';
-        const userAgent = data?.user_agent || data?.req?.headers['user-agent'] || '';
-        const fingerprint = data?.device_fingerprint || getDeviceFingerprint(data?.req);
+        const ipAddress = context.ipAddress;
+        const userAgent = context.userAgent;
+        const fingerprint = context.deviceFingerprint;
 
         const { session } = await lucia.validateSession(sessionId);
         if (session) {
             await logActivity(
                 session.userId, 'auth', 'signout', 'low', 
                 'User signed out', 
-                data?.req, fingerprint, 
+                undefined, fingerprint, 
                 { session_id: sessionId, ip_address: ipAddress, user_agent: userAgent }
             );
             await lucia.invalidateSession(session.id);
@@ -749,34 +723,18 @@ export class AuthService {
         };
     }
 
+    /**
+     * User handler to return current user info, system roles, and permissions based on session.
+     * @param sessionId 
+     * @param context 
+     * @returns 
+     */
     async userHandler(
-        sessionId: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        sessionId: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
         
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_session_id: sessionId}
-                );
-
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
-            
             if (!sessionId) {
                 return {
                     success: false,
@@ -824,7 +782,7 @@ export class AuthService {
             await logActivity(
                 null, 'auth', 'system_error', 'high',
                 `User handler error: ${error.message}`,
-                data?.req, data?.device_fingerprint,
+                undefined, context.deviceFingerprint,
                 { error: error.message, stack: error.stack, attempted_session_id: sessionId }
             );
             console.error(error);
@@ -835,34 +793,18 @@ export class AuthService {
         }
     }
 
+    /**
+     * Email verification handler to validate token, update user verification status, and promote role if necessary
+     * @param token
+     * @param context
+     * @returns
+    */
     async verifyEmailHandler(
-        token: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        token: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
         
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_token: token }
-                );
-
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
-
             const tokenHash = crypto.createHash("sha256").update(token as string).digest("hex");
 
             try {
@@ -890,7 +832,7 @@ export class AuthService {
                 await logActivity(
                     verificationToken.user_id, 'auth', 'email_verified', 'low', 
                     'Email verified successfully', 
-                    data?.req, data?.device_fingerprint, 
+                    undefined, context.deviceFingerprint, 
                     { email: verificationToken.email, user_id: verificationToken.user_id }
                 );
 
@@ -908,8 +850,8 @@ export class AuthService {
                 await logActivity(
                     null, 'auth', 'system_error', 'high', 
                     `Email verification error: ${error.message}`, 
-                    data?.req, data?.device_fingerprint, 
-                    { error: error.message, stack: error.stack, params: data?.req?.params }
+                    undefined, context.deviceFingerprint, 
+                    { error: error.message, stack: error.stack }
                 );
                 console.error(error);
                 return { 
@@ -921,7 +863,7 @@ export class AuthService {
             await logActivity(
                 null, 'auth', 'system_error', 'high', 
                 `Email verification handler error: ${error.message}`, 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { error: error.message, stack: error.stack }
             );
             console.error(error);
@@ -932,14 +874,15 @@ export class AuthService {
         }
     }
 
+    /**
+     * Password reset request handler to validate email, create reset token, send email, and log activity
+     * @param eMail 
+     * @param context 
+     * @returns 
+     */
     async passwordResetHandler(
-        eMail: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        eMail: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
         
         if (typeof eMail !== "string" || !eMail.includes("@")) {
@@ -951,23 +894,6 @@ export class AuthService {
         const email = z.email().parse(eMail).toLowerCase(); // Validate email format
 
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_email: email }
-                );
-
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
-
             const user = await this.userRepo.getByEmail(email);
             
             // Always return success to prevent enumeration
@@ -975,7 +901,7 @@ export class AuthService {
                 await logActivity(
                     null, 'auth', 'reset_request_unknown', 'low', 
                     `Reset requested for non-existent: ${email}`, 
-                    data?.req, data?.device_fingerprint, 
+                    undefined, context.deviceFingerprint, 
                     { attempted_email: email }
                 );
                 return {
@@ -994,7 +920,7 @@ export class AuthService {
             await logActivity(
                 user.id, 'auth', 'reset_request', 'info', 
                 'Password reset requested', 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { email: user.email }
             );
 
@@ -1003,7 +929,7 @@ export class AuthService {
             await logActivity(
                 null, 'auth', 'system_error', 'high', 
                 `Password reset request error: ${error.message}`, 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { error: error.message, stack: error.stack, attempted_email: email }
             );
             console.error(error);
@@ -1012,36 +938,14 @@ export class AuthService {
     }
 
     async passwordResetTokenHandler(
-        token: string, pass: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        token: string,
+        pass: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
 
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_token: token }
-                );
-
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
-            
-            const { password, captchaToken } = this.resetSchema.parse({
-                password: pass,
-                captchaToken: data?.captchaT
+            const { password } = this.resetSchema.parse({
+                password: pass
             });
 
             const tokenHash = crypto.createHash("sha256").update(token as string).digest("hex");
@@ -1072,7 +976,7 @@ export class AuthService {
             await logActivity(
                 resetToken.user_id, 'auth', 'password_reset', 'high', 
                 'Password reset successfully', 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { user_id: resetToken.user_id }
             );
 
@@ -1092,7 +996,7 @@ export class AuthService {
             await logActivity(
                 null, 'auth', 'system_error', 'high', 
                 `Password reset execution error: ${error.message}`, 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { error: error.message, stack: error.stack, token: token }
             );
             console.error(error);
@@ -1113,7 +1017,7 @@ export class AuthService {
         userId: string,
         credential: any,
         deviceName: string | undefined,
-        req: express.Request
+        context: SecurityContext
     ) {
         if (!credential) {
             throw new AuthError("auth.errors.missingCredential", 400);
@@ -1132,8 +1036,8 @@ export class AuthService {
                 "passkey_registered",
                 "info",
                 "User registered a new PassKey",
-                req,
-                getDeviceFingerprint(req)
+                undefined,
+                context.deviceFingerprint
             );
 
             return {
@@ -1151,8 +1055,8 @@ export class AuthService {
                 "passkey_registration_failed",
                 "medium",
                 `PassKey registration failed: ${error.message}`,
-                req,
-                getDeviceFingerprint(req)
+                undefined,
+                context.deviceFingerprint
             );
             throw new AuthError(error.message || "auth.errors.registrationFailed", 400);
         }
@@ -1162,7 +1066,7 @@ export class AuthService {
         return this.passKeyService.generateAuthenticationOptions(userId);
     }
 
-    async verifyPassKeyAuthentication(assertion: any, req: express.Request) {
+    async verifyPassKeyAuthentication(assertion: any, context: SecurityContext) {
         if (!assertion) {
             throw new AuthError("auth.errors.missingAssertion", 400);
         }
@@ -1183,9 +1087,9 @@ export class AuthService {
                 throw new AuthError("auth.errors.accountSuspended", 403);
             }
 
-            const fingerprint = getDeviceFingerprint(req);
-            const ipAddress = getClientIpAddress(req);
-            const userAgent = String(req.headers["user-agent"] || "");
+            const fingerprint = context.deviceFingerprint;
+            const ipAddress = context.ipAddress;
+            const userAgent = context.userAgent;
 
             const session = await lucia.createSession(userId, {
                 ip_address: ipAddress,
@@ -1199,7 +1103,7 @@ export class AuthService {
                 "passkey_login",
                 "info",
                 "User logged in with PassKey",
-                req,
+                undefined,
                 fingerprint
             );
 
@@ -1224,8 +1128,8 @@ export class AuthService {
                 "passkey_login_failed",
                 "medium",
                 `PassKey authentication failed: ${error.message}`,
-                req,
-                getDeviceFingerprint(req)
+                undefined,
+                context.deviceFingerprint
             );
             throw new AuthError(error.message || "auth.errors.authenticationFailed", 400);
         }
@@ -1244,7 +1148,7 @@ export class AuthService {
         };
     }
 
-    async deletePassKey(userId: string, credentialId: string, req: express.Request) {
+    async deletePassKey(userId: string, credentialId: string, context: SecurityContext) {
         await this.passKeyService.deleteCredential(credentialId, userId);
 
         await logActivity(
@@ -1253,14 +1157,14 @@ export class AuthService {
             "passkey_deleted",
             "info",
             "User deleted a PassKey",
-            req,
-            getDeviceFingerprint(req)
+            undefined,
+            context.deviceFingerprint
         );
 
         return { success: true, message: "PassKey deleted successfully" };
     }
 
-    async ldapSignin(username: string, password: string, req: express.Request) {
+    async ldapSignin(username: string, password: string, context: SecurityContext) {
         if (!username || !password) {
             throw new AuthError("auth.errors.missingCredentials", 400);
         }
@@ -1277,9 +1181,9 @@ export class AuthService {
 
             await this.ldapService.syncUser(localUserId, ldapUser);
 
-            const fingerprint = getDeviceFingerprint(req);
-            const ipAddress = getClientIpAddress(req);
-            const userAgent = String(req.headers["user-agent"] || "");
+            const fingerprint = context.deviceFingerprint;
+            const ipAddress = context.ipAddress;
+            const userAgent = context.userAgent;
 
             const session = await lucia.createSession(localUserId, {
                 ip_address: ipAddress,
@@ -1293,7 +1197,7 @@ export class AuthService {
                 "ldap_login",
                 "info",
                 "User logged in with LDAP",
-                req,
+                undefined,
                 fingerprint
             );
 
@@ -1319,8 +1223,8 @@ export class AuthService {
                 "ldap_login_failed",
                 "medium",
                 `LDAP login failed: ${error.message}`,
-                req,
-                getDeviceFingerprint(req),
+                undefined,
+                context.deviceFingerprint,
                 { attempted_username: username }
             );
             throw new AuthError("auth.errors.invalidCredentials", 401);
@@ -1343,7 +1247,7 @@ export class AuthService {
         return { authUrl };
     }
 
-    async handleSSOCallback(providerName: string, code: string, req: express.Request) {
+    async handleSSOCallback(providerName: string, code: string, context: SecurityContext) {
         const codeStr = code || "";
         if (!codeStr) {
             throw new AuthError("auth.errors.missingCode", 400);
@@ -1372,9 +1276,9 @@ export class AuthService {
 
         await this.ssoService.linkUser(localUserId, ssoProvider.id, userInfo.id, userInfo, tokens);
 
-        const fingerprint = getDeviceFingerprint(req);
-        const ipAddress = getClientIpAddress(req);
-        const userAgent = String(req.headers["user-agent"] || "");
+        const fingerprint = context.deviceFingerprint;
+        const ipAddress = context.ipAddress;
+        const userAgent = context.userAgent;
 
         const session = await lucia.createSession(localUserId, {
             ip_address: ipAddress,
@@ -1388,7 +1292,7 @@ export class AuthService {
             "sso_login",
             "info",
             `User logged in with SSO (${providerName})`,
-            req,
+            undefined,
             fingerprint
         );
 
@@ -1416,7 +1320,7 @@ export class AuthService {
         };
     }
 
-    async trustDevice(userId: string, deviceId: string, req: express.Request) {
+    async trustDevice(userId: string, deviceId: string, context: SecurityContext) {
         await this.securityService.trustDevice(userId, deviceId);
 
         await logActivity(
@@ -1425,15 +1329,15 @@ export class AuthService {
             "device_trusted",
             "info",
             "User trusted a device",
-            req,
-            getDeviceFingerprint(req),
+            undefined,
+            context.deviceFingerprint,
             { device_id: deviceId }
         );
 
         return { success: true, message: "Device trusted successfully" };
     }
 
-    async revokeDevice(userId: string, deviceId: string, req: express.Request) {
+    async revokeDevice(userId: string, deviceId: string, context: SecurityContext) {
         await this.securityService.revokeDevice(userId, deviceId);
 
         await logActivity(
@@ -1442,8 +1346,8 @@ export class AuthService {
             "device_revoked",
             "medium",
             "User revoked a device",
-            req,
-            getDeviceFingerprint(req),
+            undefined,
+            context.deviceFingerprint,
             { device_id: deviceId }
         );
 
@@ -1461,33 +1365,13 @@ export class AuthService {
     }
 
     async changePasswordHandler(
-        sessionId: string, oldPass: string, newPass: string, data?: {
-            captchaT?: string,
-            ip_address?: string,
-            user_agent?: string,
-            device_fingerprint?: string,
-            req?: express.Request
-        }
+        sessionId: string,
+        oldPass: string,
+        newPass: string,
+        context: SecurityContext
     ): Promise<AuthResult> {
 
         try {
-            // Check if IP is blocked before anything else (for security and to prevent user enumeration)
-            const isBlocked = await this.authRepo.isIpBlocked(data?.ip_address || '');
-            if (isBlocked) {
-                await logActivity(
-                    null, 'auth', 'ip_blocked', 'critical',
-                    `Blocked signup attempt from IP: ${data?.ip_address}`,
-                    data?.req, 
-                    data?.device_fingerprint, 
-                    { attempted_session_id: sessionId }
-                );
-
-                return {
-                    success: false,
-                    message: "auth.errors.invalidCredentials"
-                };
-            }
-
             const { session } = await lucia.validateSession(sessionId);
             if (!session) {
                 return { 
@@ -1516,19 +1400,19 @@ export class AuthService {
                 await logActivity(
                     user.id, 'auth', 'password_change_failed', 'medium', 
                     'Invalid old password during change attempt', 
-                    data?.req, data?.device_fingerprint, 
+                    undefined, context.deviceFingerprint, 
                     { user_id: user.id }
                 );
                 return { success: false, message: "auth.errors.invalidOldPassword" };
             }
 
             const newPasswordHash = await scrypt.hash(getPepperedPassword(newPassword));
-            await pool.query("UPDATE users SET password_hash = $1 WHERE id = $2", [newPasswordHash, user.id]);
+            await this.userRepo.updatePassword(user.id, newPasswordHash);
 
             await logActivity(
                 user.id, 'auth', 'password_complete', 'high', 
                 'Password changed successfully', 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { user_id: user.id }
             );
 
@@ -1545,7 +1429,7 @@ export class AuthService {
             await logActivity(
                 null, 'auth', 'system_error', 'high', 
                 `Password change error: ${error.message}`, 
-                data?.req, data?.device_fingerprint, 
+                undefined, context.deviceFingerprint, 
                 { error: error.message, stack: error.stack, attempted_session_id: sessionId }
             );
             console.error(error);

@@ -149,7 +149,7 @@ export class LDAPService extends BaseRepository {
          */
 
         // PLACEHOLDER IMPLEMENTATION FOR DEMO
-        console.log(`[LDAP] Authenticating user: ${username} against ${this.config.url}`);
+        // console.log(`[LDAP] Authenticating user: ${username} against ${this.config.url}`);
         
         // Simulate LDAP authentication
         // In production, this would connect to actual LDAP server
@@ -287,7 +287,7 @@ export class LDAPService extends BaseRepository {
          * }
          */
         
-        console.log(`[LDAP] Testing connection to ${this.config.url}`);
+        // console.log(`[LDAP] Testing connection to ${this.config.url}`);
         throw new Error('LDAP connection test not implemented');
     }
 

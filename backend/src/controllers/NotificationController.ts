@@ -1,13 +1,18 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { NotificationService } from '../services/NotificationService';
 
-export class NotificationController extends BaseController {
+export class NotificationController extends SocketController {
     private notifService = new NotificationService();
+
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
 
     register() {
         this.socket.on("notification:list", (payload, cb) => this.listNotifications(payload, cb));
         this.socket.on("notification:mark_read", (payload, cb) => this.markRead(payload, cb));
-        this.socket.on("notification:mark_all_read", (cb) => this.markAllRead(cb));
+        this.socket.on("notification:mark_all_read", (...args: any[]) => this.markAllRead(this.resolveAck(...args) as any));
     }
 
     async listNotifications(payload: { page?: number }, cb: (res: any) => void) {

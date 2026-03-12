@@ -41,7 +41,6 @@ export class AdminController {
     }
 
     // --- User Management ---
-
     static async getUsers(req: Request, res: Response) {
         try {
             const result = await pool.query(`
@@ -129,9 +128,7 @@ export class AdminController {
         }
     }
 
-
     // --- System Settings Management ---
-
     static async getSettings(req: Request, res: Response) {
         try {
             const result = await pool.query('SELECT key, value, description, updated_at FROM system_settings');
@@ -166,7 +163,6 @@ export class AdminController {
     }
 
     // --- Role and Permission Management ---
-
     static async getSystemRoles(req: Request, res: Response) {
         try {
             const roles = await pool.query('SELECT * FROM system_roles ORDER BY name');
@@ -193,18 +189,58 @@ export class AdminController {
 
     static async updateRole(req: Request, res: Response) {
         const { id } = req.params;
-        const { name, description } = req.body;
+        const { name, description, role_level } = req.body;
         try {
-            const check = await pool.query('SELECT is_system_role FROM system_roles WHERE id = $1', [id]);
+            const check = await pool.query('SELECT is_system_role, name FROM system_roles WHERE id = $1', [id]);
             if (check.rowCount === 0) return res.status(404).json({ status: 'error', message: 'Role not found' });
             
-            // Allow updating description even for system roles, but maybe not name if it's crucial. 
-            // For now, let's allow it if it's not a system role.
-            if (check.rows[0].is_system_role) {
-                await pool.query('UPDATE system_roles SET description = $1 WHERE id = $2', [description, id]);
-            } else {
-                await pool.query('UPDATE system_roles SET name = $1, description = $2 WHERE id = $3', [name, description, id]);
+            const isSystemRole = check.rows[0].is_system_role;
+            const roleName = check.rows[0].name;
+            
+            // Administrator role is protected: cannot change priority level
+            if (roleName === 'Administrator' && role_level !== undefined) {
+                return res.status(403).json({ status: 'error', message: 'Cannot modify Administrator role priority level' });
             }
+            
+            // Validate role_level if provided
+            if (role_level !== undefined) {
+                const numLevel = parseInt(role_level);
+                if (isNaN(numLevel) || numLevel < 1 || numLevel > 999) {
+                    return res.status(400).json({ status: 'error', message: 'Invalid role level. Must be between 1 and 999' });
+                }
+                // Custom roles cannot have priority below 50 (system-level priorities)
+                if (!isSystemRole && numLevel < 50) {
+                    return res.status(400).json({ status: 'error', message: 'Custom roles cannot have priority below 50' });
+                }
+            }
+            
+            // Build update query dynamically
+            const updates: string[] = [];
+            const values: any[] = [];
+            let paramCount = 1;
+            
+            if (description !== undefined) {
+                updates.push(`description = $${paramCount++}`);
+                values.push(description);
+            }
+            
+            if (role_level !== undefined) {
+                updates.push(`role_level = $${paramCount++}`);
+                values.push(parseInt(role_level));
+            }
+            
+            // Only allow name changes for custom roles
+            if (name !== undefined && !isSystemRole) {
+                updates.push(`name = $${paramCount++}`);
+                values.push(name);
+            }
+            
+            if (updates.length > 0) {
+                values.push(id);
+                const sql = `UPDATE system_roles SET ${updates.join(', ')} WHERE id = $${paramCount}`;
+                await pool.query(sql, values);
+            }
+            
             res.json({ status: 'ok' });
         } catch (error) {
             res.status(500).json({ status: 'error', message: 'Internal Server Error' });

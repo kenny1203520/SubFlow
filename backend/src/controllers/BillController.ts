@@ -1,8 +1,13 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { BillService } from '../services/BillService';
 
-export class BillController extends BaseController {
+export class BillController extends SocketController {
     private billService = new BillService();
+
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
 
     register() {
         this.socket.on("bill:list", (payload, cb) => this.listBills(payload, cb));

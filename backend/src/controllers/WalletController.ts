@@ -1,11 +1,16 @@
-import { BaseController } from './BaseController';
+import { Server, Socket } from 'socket.io';
+import { SocketController } from './SocketController';
 import { WalletService } from '../services/WalletService';
 
-export class WalletController extends BaseController {
+export class WalletController extends SocketController {
     private walletService = new WalletService();
 
+    constructor(io: Server, socket: Socket) {
+        super(io, socket);
+    }
+
     register() {
-        this.socket.on("wallet:list", (cb) => this.listWallets(cb));
+        this.socket.on("wallet:list", (...args: any[]) => this.listWallets(this.resolveAck(...args) as any));
         this.socket.on("wallet:details", (payload, cb) => this.getWalletDetails(payload, cb));
         this.socket.on("wallet:deposit", (payload, cb) => this.deposit(payload, cb));
         this.socket.on("wallet:transfer", (payload, cb) => this.transfer(payload, cb));
