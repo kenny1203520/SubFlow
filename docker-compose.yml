@@ -1,85 +1,42 @@
 name: subflow
+
 services:
   web:
     build: ./frontend
-    image: subflow
-    container_name: subflow
+    image: subflow-web
+    container_name: subflow-web
     restart: unless-stopped
-    environment:
-      - PORT=4173
-      - BACKEND_URL=http://backend:3000
     ports:
-      - "4173:4173"
+      - "4173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - subflow
 
   backend:
-    build: ./backend
-    image: subflow_backend
-    container_name: subflow_backend
-    restart: unless-stopped
-    environment:
-      - BACKEND_PORT=3000
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/subflow
-      - FRONTEND_URL=https://example.com
-      - JWT_SECRET=your_jwt_secret_here
-      - AUTH_SECRET=your_auth_pepper_secret_here
-      - ENABLE_EMAIL_SERVICE=true
-      - SMTP_HOST=smtp.example.com
-      - SMTP_PORT=587
-      - SMTP_USER=your_email@example.com
-      - SMTP_PASS=your_password
-      - SMTP_SECURE=false
-      - SMTP_FROM="SubFlow <no-reply@example.com>"
-    #   AUTH_SECRET_FILE: /run/secrets/auth_secret
-    #   JWT_SECRET_FILE: /run/secrets/jwt_secret
-    #   SMTP_PASS_FILE: /run/secrets/smtp_pass
-    # secrets:
-    #   - auth_secret
-    #   - jwt_secret
-    #   - smtp_pass
-    depends_on:
-      - db
-    networks:
-      - subflow
-
-  db:
-    image: postgres:18
-    container_name: subflow_db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: subflow
-    # ports:
-    #   - "5432:5432"
-    volumes:
-      - db_data:/var/lib/postgresql
-      - ./backend/db:/docker-entrypoint-initdb.d
-    networks:
-      - subflow
-
-  adminer:
-    image: adminer
-    container_name: subflow_adminer
+    build:
+      context: ./backend
+      args:
+        PB_VERSION: 0.39.9
+    image: subflow-pocketbase
+    container_name: subflow-pocketbase
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "8090:8090"
+    volumes:
+      - pocketbase_data:/pb/pb_data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     networks:
       - subflow
 
-# secrets:
-#   auth_secret:
-#     file: ./backend/secrets/auth_secret
-#   jwt_secret:
-#     file: ./backend/secrets/jwt_secret
-#   smtp_pass:
-#     file: ./backend/secrets/smtp_pass
-
 volumes:
-  db_data:
+  pocketbase_data:
 
 networks:
   subflow:

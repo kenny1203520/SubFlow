@@ -1,5 +1,20 @@
-# Vue 3 + TypeScript + Vite
+# SubFlow frontend
 
-This template should help get you started developing with Vue 3 and TypeScript in Vite. The template uses Vue 3 `<script setup>` SFCs, check out the [script setup docs](https://v3.vuejs.org/api/sfc-script-setup.html#sfc-script-setup) to learn more.
+Vue 3 + TypeScript 單頁應用，直接透過官方 PocketBase JavaScript SDK 使用驗證、資料 CRUD 與 realtime subscriptions。
 
-Learn more about the recommended Project Setup and IDE Support in the [Vue Docs TypeScript Guide](https://vuejs.org/guide/typescript/overview.html#project-setup).
+## Local development
+
+```bash
+npm install
+npm run dev
+```
+
+Vite 會把 `/api` 代理到 `http://localhost:8090`。如需連到其他 PocketBase，可設定 `VITE_POCKETBASE_URL`。
+
+## Production build
+
+```bash
+npm run build
+```
+
+正式環境由 Nginx 提供 `dist/` 靜態檔案，並將 `/api/` 反向代理至 PocketBase。

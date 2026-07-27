@@ -1,36 +1,17 @@
-FROM node:lts-slim AS deps
+FROM alpine:3.22
 
-WORKDIR /app
+ARG PB_VERSION=0.39.9
+ARG TARGETARCH
 
-COPY package.json package-lock.json* ./
-RUN npm ci
+RUN apk add --no-cache ca-certificates unzip wget \
+    && wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${TARGETARCH}.zip" -O /tmp/pocketbase.zip \
+    && unzip /tmp/pocketbase.zip -d /pb \
+    && rm /tmp/pocketbase.zip
 
-FROM node:lts-slim AS builder
+WORKDIR /pb
 
-WORKDIR /app
+COPY pb_migrations ./pb_migrations
 
-COPY --from=deps /app/node_modules ./node_modules
-COPY . .
+EXPOSE 8090
 
-RUN npm run build
-
-FROM node:lts-slim AS runner
-
-RUN apt update && apt upgrade -y && \
-    apt clean -y && \
-    rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
-
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
-
-EXPOSE 3000
-
-ENTRYPOINT ["entrypoint.sh"]
-
-CMD ["npm", "run", "start"]
+CMD ["./pocketbase", "serve", "--http=0.0.0.0:8090", "--dir=/pb/pb_data", "--migrationsDir=/pb/pb_migrations"]

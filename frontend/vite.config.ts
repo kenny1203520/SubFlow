@@ -1,35 +1,14 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import tailwindcss from '@tailwindcss/vite'
 
-// https://vite.dev/config/
 export default defineConfig({
-    plugins: [
-        vue(),
-        tailwindcss(),
-    ],
+    plugins: [vue()],
     server: {
         proxy: {
             '/api': {
-                target: 'http://localhost:3000',
+                target: 'http://localhost:8090',
                 changeOrigin: true,
-                xfwd: true
-            },
-            '/auth': {
-                target: 'http://localhost:3000',
-                changeOrigin: true,
-                xfwd: true
-            },
-            '/uploads': {
-                target: 'http://localhost:3000',
-                changeOrigin: true,
-                xfwd: true
-            },
-            '/socket.io': {
-                target: 'http://localhost:3000',
                 ws: true,
-                changeOrigin: true,
-                xfwd: true
             }
         }
     }

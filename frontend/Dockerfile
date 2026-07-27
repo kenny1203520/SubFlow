@@ -1,32 +1,21 @@
-FROM node:lts-slim AS deps
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:lts-slim AS builder
-
-WORKDIR /app
-
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
 RUN npm run build
 
-FROM node:lts-slim AS runner
+FROM dhi.io/nginx:1-alpine AS runner
 
-RUN apt update && apt upgrade -y && \
-    apt clean -y && \
-    rm -rf /var/lib/apt/lists/*
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
 
-WORKDIR /app
+EXPOSE 80
 
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/server.js ./server.js
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD wget -q --spider http://127.0.0.1/healthz || exit 1
 
-EXPOSE 4173
-
-CMD ["npm", "run", "start"]
+CMD ["nginx", "-g", "daemon off;"]
