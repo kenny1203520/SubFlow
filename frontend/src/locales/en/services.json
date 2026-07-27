@@ -1,7 +1,0 @@
-{
-    "title": "Services Management",
-    "description": "Manage available subscription services",
-    "newService": "New Service",
-    "editService": "Edit Service",
-    "domainHint": "Used to fetch icon automatically"
-}
