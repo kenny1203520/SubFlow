@@ -1,82 +1,103 @@
 # SubFlow
 
-SubFlow 是共同訂閱與支出管理服務。後端是單一 Go 執行檔，內嵌 PocketBase 0.39.10；PocketBase 永久負責 `users` 驗證、SQLite、檔案、管理台與基礎服務，所有業務操作則經過 `/api/subflow/v1`。
+SubFlow 以單一 Go 程序提供 Vue SPA、PocketBase users 驗證、管理台、檔案、SubFlow domain API 與 SSE。正式部署只有一個 `subflow` image/container；Node 與 Go image 僅用於 Docker multi-stage build，不會成為額外的 runtime service。
 
-## 快速啟動
+## 單一 Image 啟動
 
 ```bash
 cp .env.example .env
 docker compose up --build -d
 ```
 
-開啟 `http://localhost:4173`。PocketBase 管理台位於 `http://localhost:4173/_/`。
+預設入口為 `http://localhost:8080`，PocketBase 管理台為 `http://localhost:8080/_/`。Compose 只包含 `subflow` 一個 service，資料保存在 `pb_data` volume。
 
-第一次啟動後建立管理員：
+不使用 Compose 時：
 
 ```bash
-docker compose exec backend /pb/subflow superuser create admin@example.com 'change-this-password'
+docker build -t subflow:local .
+docker run --rm -p 8080:8080 -v subflow-data:/app/pb_data \
+  -e SUBFLOW_ENV=production \
+  -e SUBFLOW_APP_URL=https://subflow.example.com \
+  subflow:local
 ```
 
-## 全新資料庫重置
+建立初始管理員：
 
-這個版本不遷移舊的 `members`、群組、訂閱、支出或使用者資料。升級到本版本時，先明確移除舊 volume：
+```bash
+docker compose exec subflow /app/subflow superuser create admin@example.com 'change-this-password'
+```
+
+## Port 設定
+
+- `SUBFLOW_HTTP_PORT` 是 Go 程序實際監聽的 container port，預設 `8080`。
+- `SUBFLOW_PUBLISH_PORT` 是 Compose 發佈至 host 的 port，預設 `8080`。
+- CLI 明確傳入 `--http` 時優先於 `SUBFLOW_HTTP_PORT`。
+- 若外部 URL 或 host port 不同，必須同步設定 `SUBFLOW_APP_URL`，確保邀請連結正確。
+
+例如讓程序與 host 都使用 9000：
+
+```env
+SUBFLOW_HTTP_PORT=9000
+SUBFLOW_PUBLISH_PORT=9000
+SUBFLOW_APP_URL=http://localhost:9000
+```
+
+## 開發模式
+
+Backend：
+
+```bash
+cd backend
+go run ./cmd/subflow serve
+```
+
+預設監聽 `http://localhost:8080`。repository 內含一個 development placeholder，因此不需要先 build frontend；正式 Docker build 會以真正的 Vue `dist` 覆蓋它。
+
+Frontend：
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Vite 透過 `VITE_BACKEND_URL` 將 `/api` 代理到 Go backend，預設為 `http://localhost:8080`。
+
+## 路由與外部服務
+
+- `/` 與前端 Router 路徑：內嵌 Vue SPA。
+- `/api/collections/users/*`：PocketBase users auth。
+- `/api/subflow/v1/*`：SubFlow API 與 SSE。
+- `/_/`：PocketBase 管理台。
+- `/api/health`：健康檢查。
+
+預設 Compose 不會啟動 PostgreSQL、MySQL、MinIO/S3 或 SMTP image。未來外部資料庫、object storage 與郵件服務透過 adapter、DSN 或環境變數接入；`SUBFLOW_DATA_DRIVER=pocketbase` 仍是目前唯一可執行的資料層。
+
+## 資料重置
+
+這個版本不遷移舊資料。需要完整重置時：
 
 ```bash
 docker compose down -v
 docker compose up --build -d
 ```
 
-`down -v` 會永久刪除 PocketBase volume，請只在確認不需保留舊資料後執行。應用程式不會自行刪除 volume。
+`down -v` 會永久刪除 PocketBase volume，應用程式本身不會自動刪除 volume。
 
-## 環境與郵件
-
-- `SUBFLOW_DATA_DRIVER=pocketbase` 是目前唯一可執行的資料層。`postgres`、`mysql` 或未知值會讓程序明確啟動失敗。
-- `SUBFLOW_ENV=development` 未設定 SMTP 時，建立或重送邀請的回應會包含一次性的 `debugUrl`，不會寄信。
-- 非 development 環境未完整設定 SMTP 時，邀請與密碼重設請求會被拒絕。
-- 正式環境請設定 `SUBFLOW_APP_URL` 與所有 `SUBFLOW_SMTP_*` 變數。
-
-## 架構邊界
-
-前端只直接呼叫 PocketBase 原生 `users` 註冊、登入、refresh 與個人資料 API。群組、成員、邀請、訂閱、支出、儀表板和 SSE 全部走穩定的 `/api/subflow/v1`。
-
-```text
-Vue / Pinia ── PocketBase users auth ─┐
-             └─ /api/subflow/v1 ── application services ── repository ports
-                                                            └─ PocketBase adapter
-```
-
-業務服務只依賴 `backend/internal/ports`。若未來加入 PostgreSQL 或 MySQL：
-
-1. 實作所有 repository port，外部關聯鍵使用 PocketBase user ID。
-2. 在 `backend/internal/adapters.New` 增加 driver factory 分支與 DSN 驗證。
-3. 讓新 adapter 重用 PocketBase adapter 使用的 repository contract suite。
-4. 不修改前端、HTTP DTO、驗證來源或 domain service。
-
-## API 約定
-
-- 成功：`{"data": ..., "meta": ...}`；錯誤：`{"error":{"code":"...","message":"...","fields":{...}}}`。
-- 金額使用 `amountMinor` 整數，日期使用 RFC 3339，幣別支援 TWD、USD、JPY、EUR。
-- SSE：`GET /api/subflow/v1/events?groupId=...`，需 Bearer token；事件只包含 type、groupId、resource、resourceId、occurredAt。
-- owner 可管理群組、成員與邀請；owner/member 均可管理群組內訂閱和支出。
-
-## 開發驗證
+## 驗證
 
 ```bash
 cd backend
+go vet ./...
 go test ./...
 
 cd ../frontend
-npm ci
 npm test
 npm run build
-```
 
-Docker 驗收：
-
-```bash
+cd ..
 docker compose config
-docker compose up --build -d
-docker compose ps
+docker build -t subflow:local .
 ```
 
-再以兩個不同瀏覽器 session 登入同一群組，確認新增訂閱或支出後另一端會收到 SSE 並重新抓取資料。
+啟動後應以同一個 port 驗證 SPA、註冊登入、群組 CRUD、邀請、訂閱、支出、PocketBase 管理台與 SSE 即時更新。
