@@ -12,19 +12,24 @@ import (
 	"subflow/internal/adapters"
 	pbadapter "subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
+	"subflow/internal/config"
 	"subflow/internal/mailer"
 	"subflow/internal/realtime"
 	"subflow/internal/transport/httpapi"
+	"subflow/internal/web"
 )
 
 func main() {
 	driver := os.Getenv("SUBFLOW_DATA_DRIVER")
 	environment := os.Getenv("SUBFLOW_ENV")
-	appURL := os.Getenv("SUBFLOW_APP_URL")
-	if appURL == "" {
-		appURL = "http://localhost:8080"
+	httpPort := os.Getenv("SUBFLOW_HTTP_PORT")
+	args, err := config.WithServeAddress(os.Args, httpPort)
+	if err != nil {
+		log.Fatal(err)
 	}
-	if _, err := adapters.New(driver, nil); err != nil {
+	os.Args = args
+	appURL := config.AppURL(os.Getenv("SUBFLOW_APP_URL"), httpPort)
+	if _, err = adapters.New(driver, nil); err != nil {
 		log.Fatal(err)
 	}
 	app := pocketbase.New()
@@ -54,6 +59,7 @@ func main() {
 		base := application.New(stores)
 		(&httpapi.API{Service: base}).RegisterRoutes(e)
 		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: smtpMailer, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
+		web.Register(e)
 		return e.Next()
 	})
 	if err := app.Start(); err != nil {
