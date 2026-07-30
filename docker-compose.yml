@@ -1,42 +1,42 @@
 name: subflow
 
 services:
-  web:
+  frontend:
     build: ./frontend
-    image: subflow-web
-    container_name: subflow-web
+    image: subflow-frontend
     restart: unless-stopped
     ports:
-      - "4173:80"
+      - "${SUBFLOW_PORT:-4173}:80"
     depends_on:
       backend:
         condition: service_healthy
-    networks:
-      - subflow
+    networks: [subflow]
 
   backend:
-    build:
-      context: ./backend
-      args:
-        PB_VERSION: 0.39.10
-    image: subflow-pocketbase
-    container_name: subflow-pocketbase
+    build: ./backend
+    image: subflow-backend
     restart: unless-stopped
-    ports:
-      - "8090:8090"
+    environment:
+      SUBFLOW_DATA_DRIVER: ${SUBFLOW_DATA_DRIVER:-pocketbase}
+      SUBFLOW_ENV: ${SUBFLOW_ENV:-development}
+      SUBFLOW_APP_URL: ${SUBFLOW_APP_URL:-http://localhost:4173}
+      SUBFLOW_SMTP_HOST: ${SUBFLOW_SMTP_HOST:-}
+      SUBFLOW_SMTP_PORT: ${SUBFLOW_SMTP_PORT:-587}
+      SUBFLOW_SMTP_USER: ${SUBFLOW_SMTP_USER:-}
+      SUBFLOW_SMTP_PASSWORD: ${SUBFLOW_SMTP_PASSWORD:-}
+      SUBFLOW_SMTP_FROM: ${SUBFLOW_SMTP_FROM:-}
     volumes:
-      - pocketbase_data:/pb/pb_data
+      - pb_data:/pb/pb_data
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8090/api/health"]
       interval: 10s
       timeout: 3s
-      retries: 5
-      start_period: 10s
-    networks:
-      - subflow
+      retries: 8
+      start_period: 15s
+    networks: [subflow]
 
 volumes:
-  pocketbase_data:
+  pb_data:
 
 networks:
   subflow:

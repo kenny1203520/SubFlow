@@ -1,17 +1,17 @@
-FROM dhi.io/alpine-base:3.24
+FROM golang:1.26.5-alpine AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/subflow ./cmd/subflow
 
-ARG PB_VERSION=0.39.10
-ARG TARGETARCH
-
-RUN apk add --no-cache ca-certificates unzip wget \
-    && wget -q "https://github.com/pocketbase/pocketbase/releases/download/v${PB_VERSION}/pocketbase_${PB_VERSION}_linux_${TARGETARCH}.zip" -O /tmp/pocketbase.zip \
-    && unzip /tmp/pocketbase.zip -d /pb \
-    && rm /tmp/pocketbase.zip
-
+FROM alpine:3.22 AS runner
+RUN apk add --no-cache ca-certificates tzdata
 WORKDIR /pb
-
-COPY pb_migrations ./pb_migrations
-
+COPY --from=builder /out/subflow /pb/subflow
+RUN addgroup -S subflow && adduser -S subflow -G subflow && mkdir -p /pb/pb_data && chown -R subflow:subflow /pb
+USER subflow
 EXPOSE 8090
-
-CMD ["./pocketbase", "serve", "--http=0.0.0.0:8090", "--dir=/pb/pb_data", "--migrationsDir=/pb/pb_migrations"]
+HEALTHCHECK --interval=30s --timeout=3s --start-period=8s --retries=5 CMD wget -q --spider http://127.0.0.1:8090/api/health || exit 1
+ENTRYPOINT ["/pb/subflow"]
+CMD ["serve", "--http=0.0.0.0:8090", "--dir=/pb/pb_data"]
