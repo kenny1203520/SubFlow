@@ -1,6 +1,6 @@
-FROM alpine:3.22
+FROM dhi.io/alpine-base:3.24
 
-ARG PB_VERSION=0.39.9
+ARG PB_VERSION=0.39.10
 ARG TARGETARCH
 
 RUN apk add --no-cache ca-certificates unzip wget \

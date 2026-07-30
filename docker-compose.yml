@@ -18,7 +18,7 @@ services:
     build:
       context: ./backend
       args:
-        PB_VERSION: 0.39.9
+        PB_VERSION: 0.39.10
     image: subflow-pocketbase
     container_name: subflow-pocketbase
     restart: unless-stopped
