@@ -1,4 +1,4 @@
-FROM node:26-alpine AS builder
+FROM dhi.io/node:26-alpine-dev AS builder
 
 WORKDIR /app
 

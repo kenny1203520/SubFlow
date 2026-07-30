@@ -1,9 +1,3 @@
 node_modules
-.DS_Store
-.git
-.gitignore
-.vscode
-.env*.local
-.env
-.env.example
 dist
+*.log
