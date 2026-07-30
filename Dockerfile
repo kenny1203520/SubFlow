@@ -5,7 +5,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM dhi.io/golang:1-debian-dev AS backend-builder
+FROM dhi.io/golang:1-alpine-dev AS backend-builder
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
