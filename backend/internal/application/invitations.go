@@ -1,0 +1,156 @@
+package application
+
+import (
+	"context"
+	"fmt"
+	"net/url"
+	"strings"
+	"time"
+
+	"subflow/internal/domain"
+	"subflow/internal/ports"
+)
+
+type CollaborationService struct {
+	Base                *Service
+	Events              ports.EventPublisher
+	Mailer              ports.Mailer
+	Environment, AppURL string
+}
+
+func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, groupID, email string) (*domain.Invitation, error) {
+	if err := s.Base.role(ctx, groupID, userID, true); err != nil {
+		return nil, err
+	}
+	email = domain.NormalizeEmail(email)
+	if email == "" || !strings.Contains(email, "@") {
+		return nil, domain.ErrInvalid
+	}
+	if _, err := s.Base.Stores.Invitations.FindPending(ctx, groupID, email); err == nil {
+		return nil, domain.ErrConflict
+	}
+	plain, hash, err := domain.NewInvitationToken()
+	if err != nil {
+		return nil, err
+	}
+	inv := &domain.Invitation{GroupID: groupID, Email: email, TokenHash: hash, Status: domain.InvitationPending, InvitedBy: userID, ExpiresAt: s.Base.Now().UTC().Add(7 * 24 * time.Hour)}
+	if err = s.Base.Stores.Invitations.Create(ctx, inv); err != nil {
+		return nil, err
+	}
+	return s.deliver(ctx, inv, plain)
+}
+func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitation, plain string) (*domain.Invitation, error) {
+	group, err := s.Base.Stores.Groups.Get(ctx, inv.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	link := strings.TrimRight(s.AppURL, "/") + "/invite/" + url.PathEscape(plain)
+	if strings.EqualFold(s.Environment, "development") || s.Environment == "" {
+		inv.DebugURL = link
+	}
+	if s.Mailer == nil || !s.Mailer.Configured() {
+		if !strings.EqualFold(s.Environment, "development") && s.Environment != "" {
+			inv.Status = domain.InvitationDeliveryFailed
+			_ = s.Base.Stores.Invitations.Update(ctx, inv)
+			return nil, fmt.Errorf("smtp is required outside development")
+		}
+		return inv, nil
+	}
+	if err = s.Mailer.SendInvitation(ctx, *inv, *group, link); err != nil {
+		inv.Status = domain.InvitationDeliveryFailed
+		_ = s.Base.Stores.Invitations.Update(ctx, inv)
+		return nil, err
+	}
+	s.publish(ctx, "created", *inv)
+	return inv, nil
+}
+func (s *CollaborationService) ListInvitations(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Invitation], error) {
+	if err := s.Base.role(ctx, groupID, userID, true); err != nil {
+		return ports.Page[domain.Invitation]{}, err
+	}
+	return s.Base.Stores.Invitations.List(ctx, groupID, page)
+}
+func (s *CollaborationService) ResendInvitation(ctx context.Context, userID, id string) (*domain.Invitation, error) {
+	inv, err := s.Base.Stores.Invitations.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err = s.Base.role(ctx, inv.GroupID, userID, true); err != nil {
+		return nil, err
+	}
+	if inv.Status == domain.InvitationAccepted || inv.Status == domain.InvitationRevoked {
+		return nil, domain.ErrConflict
+	}
+	plain, hash, err := domain.NewInvitationToken()
+	if err != nil {
+		return nil, err
+	}
+	inv.TokenHash = hash
+	inv.Status = domain.InvitationPending
+	inv.ExpiresAt = s.Base.Now().UTC().Add(7 * 24 * time.Hour)
+	inv.AcceptedBy = ""
+	if err = s.Base.Stores.Invitations.Update(ctx, inv); err != nil {
+		return nil, err
+	}
+	return s.deliver(ctx, inv, plain)
+}
+func (s *CollaborationService) RevokeInvitation(ctx context.Context, userID, id string) error {
+	inv, err := s.Base.Stores.Invitations.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if err = s.Base.role(ctx, inv.GroupID, userID, true); err != nil {
+		return err
+	}
+	if inv.Status == domain.InvitationAccepted {
+		return domain.ErrConflict
+	}
+	inv.Status = domain.InvitationRevoked
+	if err = s.Base.Stores.Invitations.Update(ctx, inv); err != nil {
+		return err
+	}
+	s.publish(ctx, "updated", *inv)
+	return nil
+}
+func (s *CollaborationService) AcceptInvitation(ctx context.Context, userID, token string) (*domain.Invitation, error) {
+	inv, err := s.Base.Stores.Invitations.GetByTokenHash(ctx, domain.HashInvitationToken(token))
+	if err != nil {
+		return nil, err
+	}
+	now := s.Base.Now().UTC()
+	if inv.Status == domain.InvitationAccepted || inv.Status == domain.InvitationRevoked {
+		return nil, domain.ErrConflict
+	}
+	if !domain.InvitationUsable(*inv, now) {
+		inv.Status = domain.InvitationExpired
+		_ = s.Base.Stores.Invitations.Update(ctx, inv)
+		return nil, domain.ErrConflict
+	}
+	user, err := s.Base.Stores.Users.Get(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if domain.NormalizeEmail(user.Email) != domain.NormalizeEmail(inv.Email) {
+		return nil, domain.ErrForbidden
+	}
+	err = s.Base.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if _, roleErr := s.Base.Stores.Memberships.GetRole(tx, inv.GroupID, userID); roleErr != nil {
+			if err := s.Base.Stores.Memberships.Create(tx, &domain.Membership{GroupID: inv.GroupID, UserID: userID, Role: domain.RoleMember}); err != nil {
+				return err
+			}
+		}
+		inv.Status = domain.InvitationAccepted
+		inv.AcceptedBy = userID
+		return s.Base.Stores.Invitations.Update(tx, inv)
+	})
+	if err != nil {
+		return nil, err
+	}
+	s.publish(ctx, "accepted", *inv)
+	return inv, nil
+}
+func (s *CollaborationService) publish(ctx context.Context, kind string, inv domain.Invitation) {
+	if s.Events != nil {
+		_ = s.Events.Publish(ctx, domain.Event{Type: kind, GroupID: inv.GroupID, Resource: "group_invitations", ResourceID: inv.ID, OccurredAt: s.Base.Now().UTC()})
+	}
+}
