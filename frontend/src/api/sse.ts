@@ -1,0 +1,8 @@
+import type { SubFlowEvent } from './types'
+
+export class SSEClient {
+  private stopped=false;private controller?:AbortController;private token:()=>string;private onEvent:(event:SubFlowEvent)=>void;private onUnauthorized:()=>void
+  constructor(token:()=>string,onEvent:(event:SubFlowEvent)=>void,onUnauthorized:()=>void){this.token=token;this.onEvent=onEvent;this.onUnauthorized=onUnauthorized}
+  stop(){this.stopped=true;this.controller?.abort()}
+  async start(groupId:string){this.stop();this.stopped=false;let delay=1000;while(!this.stopped){this.controller=new AbortController();try{const response=await fetch(`/api/subflow/v1/events?groupId=${encodeURIComponent(groupId)}`,{headers:{Accept:'text/event-stream',Authorization:this.token()},signal:this.controller.signal});if(response.status===401){this.onUnauthorized();return}if(!response.ok||!response.body)throw new Error('SSE failed');delay=1000;const reader=response.body.getReader();const decoder=new TextDecoder();let buffer='';while(!this.stopped){const {done,value}=await reader.read();if(done)break;buffer+=decoder.decode(value,{stream:true});const frames=buffer.split('\n\n');buffer=frames.pop()??'';for(const frame of frames){const line=frame.split('\n').find(v=>v.startsWith('data: '));if(line)this.onEvent(JSON.parse(line.slice(6)) as SubFlowEvent)}}}catch(error){if(this.stopped||error instanceof DOMException&&error.name==='AbortError')return}await new Promise(resolve=>setTimeout(resolve,delay));delay=Math.min(delay*2,30000)}}
+}
