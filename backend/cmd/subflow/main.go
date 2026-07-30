@@ -27,7 +27,6 @@ func main() {
 	if _, err := adapters.New(driver, nil); err != nil {
 		log.Fatal(err)
 	}
-
 	app := pocketbase.New()
 	events := realtime.NewBus()
 	smtpMailer := mailer.FromEnv()
@@ -36,7 +35,10 @@ func main() {
 		if err := e.Next(); err != nil {
 			return err
 		}
-		return pbadapter.EnsureSchema(e.App)
+		if err := pbadapter.EnsureSchema(e.App); err != nil {
+			return err
+		}
+		return mailer.ConfigurePocketBase(e.App, smtpMailer)
 	})
 	app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(e *core.RecordRequestPasswordResetRequestEvent) error {
 		if environment != "" && environment != "development" && !smtpMailer.Configured() {
@@ -51,10 +53,7 @@ func main() {
 		}
 		base := application.New(stores)
 		(&httpapi.API{Service: base}).RegisterRoutes(e)
-		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{
-			Base: base, Events: events, Mailer: smtpMailer,
-			Environment: environment, AppURL: appURL,
-		}}).RegisterRoutes(e)
+		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: smtpMailer, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
 		return e.Next()
 	})
 	if err := app.Start(); err != nil {
