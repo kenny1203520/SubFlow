@@ -1,9 +1,11 @@
 ﻿<script setup lang="ts">
 import { reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useWorkspaceStore } from '../stores/workspace'
 import type { Currency, Group } from '../api/types'
 
 const workspace = useWorkspaceStore()
+const router = useRouter()
 const editing = ref(false)
 const form = reactive({ name: '', description: '', currency: 'TWD' as Currency, color: '#7357ff' })
 
@@ -16,6 +18,11 @@ function edit(group: Group) {
   void workspace.selectGroup(group.id)
   editing.value = true
   Object.assign(form, { name: group.name, description: group.description, currency: group.currency, color: group.color })
+}
+
+async function open(group: Group) {
+  await workspace.selectGroup(group.id)
+  await router.push(`/groups/${group.id}/overview`)
 }
 
 async function submit() {
@@ -39,7 +46,7 @@ async function remove() {
         <h2>你的群組</h2>
         <div v-if="workspace.groups.length" class="group-grid">
           <div v-for="group in workspace.groups" :key="group.id" class="group-tile-wrap">
-            <button class="group-tile" :class="{ selected: group.id === workspace.currentGroupId }" @click="workspace.selectGroup(group.id)">
+            <button class="group-tile" :class="{ selected: group.id === workspace.currentGroupId }" @click="open(group)">
               <span class="group-color" :style="{ background: group.color }"></span>
               <strong>{{ group.name }}</strong>
               <small>{{ group.currency }} · {{ group.description || '尚無說明' }}</small>
