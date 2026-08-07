@@ -12,4 +12,11 @@ watch(open, value => { if (value) nextTick(() => emit('opened')) })
 onMounted(() => { document.addEventListener('pointerdown', onPointerDown); document.addEventListener('keydown', onKeyDown) })
 onBeforeUnmount(() => { document.removeEventListener('pointerdown', onPointerDown); document.removeEventListener('keydown', onKeyDown) })
 </script>
-<template><div ref="root" class="base-dropdown"><slot name="trigger" :open="open" :toggle="toggle" :close="close"/><div v-if="open" class="base-dropdown-panel" role="listbox" :aria-label="panelLabel"><slot :close="close"/></div></div></template>
+<template>
+    <div ref="root" class="base-dropdown">
+        <slot name="trigger" :open="open" :toggle="toggle" :close="close" />
+        <div v-if="open" class="base-dropdown-panel" role="listbox" :aria-label="panelLabel">
+            <slot :close="close" />
+        </div>
+    </div>
+</template>
