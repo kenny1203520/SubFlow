@@ -52,11 +52,15 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.PATCH("/api/subflow/v1/subscriptions/{id}", a.updateSubscription).Bind(bind)
 	e.Router.POST("/api/subflow/v1/subscriptions/{id}/stop", a.stopSubscription).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}/stop", a.resumeSubscription).Bind(bind)
+	e.Router.GET("/api/subflow/v1/subscriptions/{id}/billing-dates", a.billingDates).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}", a.deleteSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/expenses", a.listExpenses).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/expenses", a.createExpense).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/expenses/{id}", a.updateExpense).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/expenses/{id}", a.deleteExpense).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/settlements", a.listSettlements).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/settlements", a.createSettlement).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/settlements/{id}", a.deleteSettlement).Bind(bind)
 }
 
 func authID(e *core.RequestEvent) string {
@@ -97,7 +101,7 @@ func fail(e *core.RequestEvent, err error) error {
 	return e.JSON(status, errorEnvelope{Error: apiError{Code: code, Message: message}})
 }
 
-var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}}
+var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}}
 
 func pageRequest(e *core.RequestEvent, resource string) (ports.PageRequest, error) {
 	q := e.Request.URL.Query()
@@ -161,7 +165,7 @@ func (a *API) deleteGroup(e *core.RequestEvent) error {
 	return noContent(e)
 }
 func (a *API) dashboard(e *core.RequestEvent) error {
-	v, err := a.Service.Dashboard(e.Request.Context(), authID(e), groupID(e))
+	v, err := a.Service.WorkspaceDashboard(e.Request.Context(), authID(e), application.DashboardQuery{Scope: "group", GroupID: groupID(e), Month: e.Request.URL.Query().Get("month")})
 	if err != nil {
 		return fail(e, err)
 	}
@@ -169,10 +173,22 @@ func (a *API) dashboard(e *core.RequestEvent) error {
 }
 func (a *API) workspaceDashboard(e *core.RequestEvent) error {
 	scope := e.Request.URL.Query().Get("scope")
-	if scope == "group" { e.Request.SetPathValue("groupId", e.Request.URL.Query().Get("groupId")); return a.dashboard(e) }
-	v, err := a.Service.PersonalDashboard(e.Request.Context(), authID(e), scope == "all")
-	if err != nil { return fail(e, err) }
+	v, err := a.Service.WorkspaceDashboard(e.Request.Context(), authID(e), application.DashboardQuery{Scope: scope, GroupID: e.Request.URL.Query().Get("groupId"), Month: e.Request.URL.Query().Get("month")})
+	if err != nil {
+		return fail(e, err)
+	}
 	return ok(e, http.StatusOK, v, nil)
+}
+func (a *API) billingDates(e *core.RequestEvent) error {
+	limit, _ := strconv.Atoi(e.Request.URL.Query().Get("limit"))
+	if limit == 0 {
+		limit = 12
+	}
+	value, err := a.Service.BillingDates(e.Request.Context(), authID(e), e.Request.PathValue("id"), e.Request.URL.Query().Get("cursor"), limit)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
 }
 func (a *API) listMembers(e *core.RequestEvent) error {
 	p, err := pageRequest(e, "members")
@@ -203,13 +219,25 @@ func (a *API) listSubscriptions(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
 }
 func (a *API) listPersonalSubscriptions(e *core.RequestEvent) error {
-	p, err := pageRequest(e, "subscriptions"); if err != nil { return fail(e, err) }
-	v, err := a.Service.ListPersonalSubscriptions(e.Request.Context(), authID(e), p); if err != nil { return fail(e, err) }
+	p, err := pageRequest(e, "subscriptions")
+	if err != nil {
+		return fail(e, err)
+	}
+	v, err := a.Service.ListPersonalSubscriptions(e.Request.Context(), authID(e), p)
+	if err != nil {
+		return fail(e, err)
+	}
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
 }
 func (a *API) createPersonalSubscription(e *core.RequestEvent) error {
-	var v domain.Subscription; if e.BindBody(&v) != nil { return fail(e, domain.ErrInvalid) }
-	created, err := a.Service.CreateSubscription(e.Request.Context(), authID(e), v); if err != nil { return fail(e, err) }
+	var v domain.Subscription
+	if e.BindBody(&v) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	created, err := a.Service.CreateSubscription(e.Request.Context(), authID(e), v)
+	if err != nil {
+		return fail(e, err)
+	}
 	return ok(e, http.StatusCreated, created, nil)
 }
 func (a *API) createSubscription(e *core.RequestEvent) error {
@@ -237,12 +265,23 @@ func (a *API) updateSubscription(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, updated, nil)
 }
 func (a *API) stopSubscription(e *core.RequestEvent) error {
-	var body struct{ EndsOn string `json:"endsOn"` }; if e.BindBody(&body) != nil { return fail(e, domain.ErrInvalid) }
-	updated, err := a.Service.StopSubscription(e.Request.Context(), authID(e), e.Request.PathValue("id"), body.EndsOn); if err != nil { return fail(e, err) }
+	var body struct {
+		EndsOn string `json:"endsOn"`
+	}
+	if e.BindBody(&body) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	updated, err := a.Service.StopSubscription(e.Request.Context(), authID(e), e.Request.PathValue("id"), body.EndsOn)
+	if err != nil {
+		return fail(e, err)
+	}
 	return ok(e, http.StatusOK, updated, nil)
 }
 func (a *API) resumeSubscription(e *core.RequestEvent) error {
-	updated, err := a.Service.ResumeSubscription(e.Request.Context(), authID(e), e.Request.PathValue("id")); if err != nil { return fail(e, err) }
+	updated, err := a.Service.ResumeSubscription(e.Request.Context(), authID(e), e.Request.PathValue("id"))
+	if err != nil {
+		return fail(e, err)
+	}
 	return ok(e, http.StatusOK, updated, nil)
 }
 func (a *API) deleteSubscription(e *core.RequestEvent) error {
@@ -263,14 +302,28 @@ func (a *API) listExpenses(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
 }
 func (a *API) listPersonalExpenses(e *core.RequestEvent) error {
-	p, err := pageRequest(e, "expenses"); if err != nil { return fail(e, err) }
-	v, err := a.Service.ListPersonalExpenses(e.Request.Context(), authID(e), p); if err != nil { return fail(e, err) }
+	p, err := pageRequest(e, "expenses")
+	if err != nil {
+		return fail(e, err)
+	}
+	v, err := a.Service.ListPersonalExpenses(e.Request.Context(), authID(e), p)
+	if err != nil {
+		return fail(e, err)
+	}
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
 }
 func (a *API) createPersonalExpense(e *core.RequestEvent) error {
-	var v domain.Expense; if e.BindBody(&v) != nil { return fail(e, domain.ErrInvalid) }
-	if v.PaidBy == "" { v.PaidBy = authID(e) }
-	created, err := a.Service.CreateExpense(e.Request.Context(), authID(e), v); if err != nil { return fail(e, err) }
+	var v domain.Expense
+	if e.BindBody(&v) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	if v.PaidBy == "" {
+		v.PaidBy = authID(e)
+	}
+	created, err := a.Service.CreateExpense(e.Request.Context(), authID(e), v)
+	if err != nil {
+		return fail(e, err)
+	}
 	return ok(e, http.StatusCreated, created, nil)
 }
 func (a *API) createExpense(e *core.RequestEvent) error {
@@ -302,6 +355,35 @@ func (a *API) updateExpense(e *core.RequestEvent) error {
 }
 func (a *API) deleteExpense(e *core.RequestEvent) error {
 	if err := a.Service.DeleteExpense(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
+}
+func (a *API) listSettlements(e *core.RequestEvent) error {
+	page, err := pageRequest(e, "settlements")
+	if err != nil {
+		return fail(e, err)
+	}
+	values, err := a.Service.ListSettlements(e.Request.Context(), authID(e), groupID(e), page)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, values.Items, pageMeta(values))
+}
+func (a *API) createSettlement(e *core.RequestEvent) error {
+	var value domain.Settlement
+	if e.BindBody(&value) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value.GroupID = groupID(e)
+	created, err := a.Service.CreateSettlement(e.Request.Context(), authID(e), value)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, created, nil)
+}
+func (a *API) deleteSettlement(e *core.RequestEvent) error {
+	if err := a.Service.DeleteSettlement(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
 		return fail(e, err)
 	}
 	return noContent(e)

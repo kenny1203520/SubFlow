@@ -4,71 +4,35 @@ import { useRoute } from 'vue-router'
 import { useWorkspaceStore } from '../stores/workspace'
 import MoneyValue from '../components/MoneyValue.vue'
 import EmptyState from '../components/EmptyState.vue'
+import AppDrawer from '../components/AppDrawer.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import PersonalLedgerNav from '../components/PersonalLedgerNav.vue'
 import type { BillingCycle, Subscription, SubscriptionStatus } from '../api/types'
 import { majorToMinor, minorToInput } from '../api/money'
+import { useI18n } from '../i18n'
 
-const workspace = useWorkspaceStore(), route = useRoute(), editingId = ref('')
-const personal = computed(() => route.path.startsWith('/personal/'))
-const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
-const currency = computed(() => workspace.currentGroup?.currency || 'TWD')
-const form = reactive({ name: '', category: '影音', amount: '', billingCycle: 'monthly' as BillingCycle, startsOn: new Date().toISOString().slice(0, 10), status: 'active' as SubscriptionStatus, notes: '' })
-function reset() { editingId.value = ''; Object.assign(form, { name: '', category: '影音', amount: '', billingCycle: 'monthly', startsOn: new Date().toISOString().slice(0, 10), status: 'active', notes: '' }) }
-function edit(item: Subscription) { editingId.value = item.id; Object.assign(form, { name: item.name, category: item.category, amount: minorToInput(item.amountMinor, item.currency), billingCycle: item.billingCycle, startsOn: (item.startsOn || item.nextBilling).slice(0, 10), status: item.status, notes: item.notes }) }
-async function submit() { const input = { name: form.name, category: form.category, amountMinor: majorToMinor(form.amount, currency.value), currency: currency.value, billingCycle: form.billingCycle, startsOn: new Date(form.startsOn).toISOString(), status: form.status, notes: form.notes }; if (editingId.value) await workspace.updateSubscription(editingId.value, input); else if (personal.value) await workspace.addPersonalSubscription(input); else await workspace.addSubscription(input); reset() }
-async function stop(item: Subscription) { const value = prompt('選擇最後一期扣款日（YYYY-MM-DD）', item.nextBilling.slice(0, 10)); if (value) await workspace.stopSubscription(item.id, value) }
-async function remove(item: Subscription) { if (confirm(`確定刪除「${item.name}」？`)) { await workspace.deleteSubscription(item.id); if (editingId.value === item.id) reset() } }
-onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
+const workspace=useWorkspaceStore(),route=useRoute(),{tr,formatDate}=useI18n()
+const personal=computed(()=>route.name==='personal-subscriptions'),list=computed(()=>personal.value?workspace.personalSubscriptions:workspace.subscriptions)
+const drawer=ref(false),editingId=ref(''),pendingDelete=ref<Subscription>(),stopping=ref<Subscription>(),dates=ref<string[]>([]),cursor=ref(''),chosenDate=ref(''),datesLoading=ref(false)
+const form=reactive({name:'',category:'',amount:'',currency:'TWD',billingCycle:'monthly' as BillingCycle,startsOn:new Date().toISOString().slice(0,10),status:'active' as SubscriptionStatus,notes:''})
+const editing=computed(()=>list.value.find(item=>item.id===editingId.value)),sourceGroup=computed(()=>workspace.groups.find(group=>group.id===editing.value?.groupId))
+function reset(){editingId.value='';Object.assign(form,{name:'',category:'',amount:'',currency:workspace.currentGroup?.currency||'TWD',billingCycle:'monthly',startsOn:new Date().toISOString().slice(0,10),status:'active',notes:''})}
+function create(){reset();drawer.value=true}
+function edit(item:Subscription){editingId.value=item.id;Object.assign(form,{name:item.name,category:item.category,amount:minorToInput(item.amountMinor,item.currency),currency:item.currency,billingCycle:item.billingCycle,startsOn:(item.startsOn||item.nextBilling).slice(0,10),status:item.status,notes:item.notes});drawer.value=true}
+async function submit(){const input={name:form.name,category:form.category||tr('uncategorized'),amountMinor:majorToMinor(form.amount,form.currency),currency:form.currency as Subscription['currency'],billingCycle:form.billingCycle,startsOn:new Date(`${form.startsOn}T00:00:00`).toISOString(),status:form.status,notes:form.notes};if(editingId.value)await workspace.updateSubscription(editingId.value,input);else if(personal.value)await workspace.addPersonalSubscription(input);else await workspace.addSubscription(input);await workspace.refreshPersonal();drawer.value=false;reset()}
+async function loadDates(more=false){if(!stopping.value)return;datesLoading.value=true;try{const result=await workspace.billingDates(stopping.value.id,more?cursor.value:'');dates.value=more?[...dates.value,...result.dates]:result.dates;cursor.value=result.nextCursor||'';if(!chosenDate.value)chosenDate.value=dates.value[0]||''}finally{datesLoading.value=false}}
+async function openStop(item:Subscription){stopping.value=item;dates.value=[];cursor.value='';chosenDate.value='';await loadDates()}
+async function confirmStop(){if(!stopping.value||!chosenDate.value)return;await workspace.stopSubscription(stopping.value.id,chosenDate.value);stopping.value=undefined}
+async function cancelStop(item:Subscription){await workspace.cancelSubscriptionStop(item.id)}
+async function remove(){if(!pendingDelete.value)return;await workspace.deleteSubscription(pendingDelete.value.id);await workspace.refreshPersonal();pendingDelete.value=undefined}
+function statusKey(item:Subscription){return (item.lifecycleStatus||item.status) as 'active'}
+function cycleKey(item:Subscription){return item.billingCycle as 'monthly'}
+onMounted(()=>{if(personal.value)void workspace.refreshPersonal()})
 </script>
-<template>
-    <section class="page">
-        <div class="page-heading">
-            <div>
-                <p class="eyebrow">RECURRING</p>
-                <h1>{{ personal ? '個人訂閱' : '群組訂閱' }}</h1>
-                <p>以第一個扣款日推算週期，並可排程停止。</p>
-            </div>
-        </div>
-        <div class="two-column content-heavy">
-            <div class="card">
-                <div class="card-title">
-                    <h2>所有訂閱</h2><span>{{ list.length }} 筆</span>
-                </div>
-                <div v-if="list.length" class="rows">
-                    <div v-for="item in list" :key="item.id" class="row">
-                        <div class="service-icon">{{ item.name.slice(0, 1) }}</div>
-                        <div class="grow"><strong>{{ item.name }}</strong><small>{{ item.category || '未分類' }} · 下次 {{ new
-                            Date(item.nextBilling).toLocaleDateString('zh-TW')}} ·
-                                {{ item.lifecycleStatus || item.status }}</small></div>
-                        <div class="money">
-                            <MoneyValue :amount="item.amountMinor" :currency="item.currency" /><small>/
-                                {{ item.billingCycle === 'monthly' ? '月' : item.billingCycle === 'quarterly' ? '季' : '年' }}</small>
-                        </div><button class="ghost"
-                            v-if="item.lifecycleStatus !== 'ended' && item.lifecycleStatus !== 'cancelled'"
-                            @click="stop(item)">停止</button><button class="icon-button"
-                            @click="edit(item)">✎</button><button class="icon-button" @click="remove(item)">×</button>
-                    </div>
-                </div>
-                <EmptyState v-else title="還沒有訂閱" description="加入第一筆固定扣款。" />
-            </div>
-            <form class="card form-card sticky" @submit.prevent="submit">
-                <h2>{{ editingId ? '編輯訂閱' : '新增訂閱' }}</h2><label>名稱<input v-model="form.name" required
-                        placeholder="例如 Netflix"></label>
-                <div class="form-row"><label>分類<input v-model="form.category"></label><label>金額<input
-                            v-model="form.amount" type="number" min="0" step="0.01" required></label></div>
-                <div class="form-row"><label>週期<select v-model="form.billingCycle">
-                            <option value="monthly">每月</option>
-                            <option value="quarterly">每季</option>
-                            <option value="yearly">每年</option>
-                        </select></label><label>狀態<select v-model="form.status">
-                            <option value="active">啟用</option>
-                            <option value="paused">暫停</option>
-                            <option value="cancelled">取消</option>
-                        </select></label></div><label>第一個扣款日<input v-model="form.startsOn" type="date"
-                        required></label><label>備註<textarea v-model="form.notes" rows="2"></textarea></label>
-                <div class="form-actions"><button class="primary"
-                        :disabled="workspace.loading">{{ editingId ? '儲存變更' : '新增訂閱' }}</button><button v-if="editingId"
-                        type="button" class="ghost" @click="reset">取消</button></div>
-            </form>
-        </div>
-    </section>
-</template>
+
+<template><section class="page ledger-page"><PersonalLedgerNav v-if="personal"/><div class="page-heading"><div><p class="eyebrow">{{tr('subscriptions')}}</p><h1>{{tr(personal?'subscriptionPersonal':'subscriptionGroup')}}</h1><p>{{tr('subscriptionDesc')}}</p></div><button class="primary" @click="create">{{tr('createSubscription')}}</button></div>
+  <section class="card data-card"><div class="card-title"><h2>{{tr('allSubscriptions')}}</h2><span>{{tr('records',{count:list.length})}}</span></div><div v-if="list.length" class="data-table subscription-table"><div class="data-table-head"><span>{{tr('name')}}</span><span>{{tr('source')}}</span><span>{{tr('nextBilling')}}</span><span>{{tr('cycle')}}</span><span>{{tr('status')}}</span><span>{{tr('amount')}}</span><span></span></div><article v-for="item in list" :key="item.id" class="data-table-row"><div class="item-cell"><span class="service-icon">{{item.name.slice(0,1)}}</span><span><strong>{{item.name}}</strong><small>{{item.category||tr('uncategorized')}}</small></span></div><span><span class="source-badge" :class="{shared:item.groupId}">{{workspace.groups.find(g=>g.id===item.groupId)?.name||tr('privateRecord')}}</span></span><span>{{formatDate(item.nextBilling)}}</span><span>{{tr(cycleKey(item))}}</span><span class="pill">{{tr(statusKey(item))}}</span><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><span class="row-actions"><button v-if="item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span></article></div><EmptyState v-else :title="tr('noSubscriptions')" :description="tr('noSubscriptionsDesc')"/></section>
+  <AppDrawer :open="drawer" :title="tr(editingId?'editSubscription':'createSubscription')" @close="drawer=false"><form class="form-card" @submit.prevent="submit"><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div><label>{{tr('name')}}<input v-model="form.name" required :placeholder="tr('namePlaceholder')"></label><div class="form-row"><label>{{tr('category')}}<input v-model="form.category"></label><label>{{tr('amount')}}<input v-model="form.amount" type="number" min="0" step="0.01" required></label></div><div class="form-row"><label>{{tr('currency')}}<select v-model="form.currency" :disabled="!personal"><option>TWD</option><option>USD</option><option>JPY</option><option>EUR</option></select></label><label>{{tr('cycle')}}<select v-model="form.billingCycle"><option value="monthly">{{tr('monthly')}}</option><option value="quarterly">{{tr('quarterly')}}</option><option value="yearly">{{tr('yearly')}}</option></select></label></div><div class="form-row"><label>{{tr('status')}}<select v-model="form.status"><option value="active">{{tr('active')}}</option><option value="paused">{{tr('paused')}}</option><option value="cancelled">{{tr('cancelled')}}</option></select></label><label>{{tr('firstBilling')}}<input v-model="form.startsOn" type="date" required></label></div><label>{{tr('notes')}}<textarea v-model="form.notes" rows="3"></textarea></label><div class="form-actions"><button type="button" class="ghost" @click="drawer=false">{{tr('cancel')}}</button><button class="primary" :disabled="workspace.loading">{{tr(editingId?'saveChanges':'createSubscription')}}</button></div></form></AppDrawer>
+  <Teleport to="body"><div v-if="stopping" class="modal-backdrop" @click.self="stopping=undefined"><section class="billing-dialog" role="dialog" aria-modal="true" :aria-label="tr('stopSubscription')"><header><div><h2>{{tr('stopSubscription')}}</h2><p>{{stopping.name}} · {{tr('chooseFinalBilling')}}</p></div><button class="icon-button" :aria-label="tr('close')" @click="stopping=undefined">×</button></header><div v-if="dates.length" class="billing-dates"><label v-for="date in dates" :key="date" :class="{selected:chosenDate===date}"><input v-model="chosenDate" type="radio" :value="date"><span><strong>{{formatDate(date)}}</strong><small>{{tr('finalBilling')}}</small></span></label></div><EmptyState v-else :title="tr('noBillingDates')" :description="tr('subscriptionDesc')"/><button v-if="cursor" class="ghost wide" :disabled="datesLoading" @click="loadDates(true)">{{tr('loadMore')}}</button><div class="form-actions"><button class="ghost" @click="stopping=undefined">{{tr('cancel')}}</button><button class="primary" :disabled="!chosenDate" @click="confirmStop">{{tr('confirm')}}</button></div></section></div></Teleport>
+  <ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('deleteSubscriptionConfirm',{name:pendingDelete.name}):''" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
+</section></template>

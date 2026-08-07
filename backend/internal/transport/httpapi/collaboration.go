@@ -11,6 +11,7 @@ import (
 
 	"subflow/internal/application"
 	"subflow/internal/domain"
+	"subflow/internal/ports"
 )
 
 type CollaborationAPI struct {
@@ -78,13 +79,24 @@ func (a *CollaborationAPI) accept(e *core.RequestEvent) error {
 }
 func (a *CollaborationAPI) events(e *core.RequestEvent) error {
 	group := e.Request.URL.Query().Get("groupId")
-	if group == "" {
-		return fail(e, domain.ErrInvalid)
+	var ch <-chan domain.Event
+	var cancel func()
+	if group != "" {
+		if _, err := a.Service.Base.GetGroup(e.Request.Context(), authID(e), group); err != nil {
+			return fail(e, err)
+		}
+		ch, cancel = a.Service.Events.Subscribe(e.Request.Context(), group)
+	} else {
+		groups, err := a.Service.Base.ListGroups(e.Request.Context(), authID(e), ports.PageRequest{Page: 1, PerPage: 100})
+		if err != nil {
+			return fail(e, err)
+		}
+		ids := make([]string, len(groups.Items))
+		for i, item := range groups.Items {
+			ids[i] = item.ID
+		}
+		ch, cancel = a.Service.Events.SubscribeWorkspace(e.Request.Context(), authID(e), ids)
 	}
-	if _, err := a.Service.Base.GetGroup(e.Request.Context(), authID(e), group); err != nil {
-		return fail(e, err)
-	}
-	ch, cancel := a.Service.Events.Subscribe(e.Request.Context(), group)
 	defer cancel()
 	e.Response.Header().Set("Content-Type", "text/event-stream")
 	e.Response.Header().Set("Cache-Control", "no-cache")

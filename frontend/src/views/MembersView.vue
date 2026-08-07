@@ -2,9 +2,13 @@
 import { ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import EmptyState from '../components/EmptyState.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import { useI18n } from '../i18n'
 
 const workspace = useWorkspaceStore()
 const email = ref('')
+const pendingRemoval = ref<{userId:string;label:string}>()
+const { tr, formatDate } = useI18n()
 
 async function invite() {
     await workspace.invite(email.value)
@@ -12,62 +16,63 @@ async function invite() {
 }
 
 async function removeMember(userId: string, label: string) {
-    if (confirm(`確定要移除「${label}」？`)) await workspace.removeMember(userId)
+    pendingRemoval.value={userId,label}
 }
+async function confirmRemoval(){if(!pendingRemoval.value)return;await workspace.removeMember(pendingRemoval.value.userId);pendingRemoval.value=undefined}
 </script>
 
 <template>
     <section class="page">
         <div class="page-heading">
             <div>
-                <p class="eyebrow">PEOPLE</p>
-                <h1>成員與邀請</h1>
-                <p>邀請連結有效七天，只能由相同 Email 的帳號接受一次。</p>
+                <p class="eyebrow">{{tr('members')}}</p>
+                <h1>{{tr('membersInvites')}}</h1>
+                <p>{{tr('membersDesc')}}</p>
             </div>
         </div>
         <div class="two-column">
             <div class="card">
-                <h2>群組成員</h2>
+                <h2>{{tr('groupMembers')}}</h2>
                 <div v-if="workspace.members.length" class="rows">
                     <div v-for="member in workspace.members" :key="member.id" class="row">
                         <div class="avatar">{{ (member.user?.name || member.user?.email || '?').slice(0,
                             1).toUpperCase() }}</div>
-                        <div class="grow"><strong>{{ member.user?.name || '未命名成員' }}</strong><small>{{
+                        <div class="grow"><strong>{{ member.user?.name || tr('unnamedMember') }}</strong><small>{{
                                 member.user?.email }}</small></div>
-                        <span class="pill">{{ member.role === 'owner' ? '擁有者' : '成員' }}</span>
+                        <span class="pill">{{ tr(member.role) }}</span>
                         <button v-if="workspace.isOwner && member.role !== 'owner'" class="ghost danger-text"
-                            @click="removeMember(member.userId, member.user?.name || member.user?.email || '此成員')">移除</button>
+                            @click="removeMember(member.userId, member.user?.name || member.user?.email || tr('thisMember'))">{{tr('remove')}}</button>
                     </div>
                 </div>
-                <EmptyState v-else title="沒有成員資料" description="選擇群組後即可查看。" />
+                <EmptyState v-else :title="tr('noMemberData')" :description="tr('noMemberDataDesc')" />
             </div>
             <div v-if="workspace.isOwner">
                 <form class="card form-card" @submit.prevent="invite">
-                    <h2>邀請新成員</h2>
+                    <h2>{{tr('inviteMember')}}</h2>
                     <label>Email<input v-model="email" type="email" required placeholder="friend@example.com"></label>
-                    <button class="primary" :disabled="workspace.loading">寄送邀請</button>
+                    <button class="primary" :disabled="workspace.loading">{{tr('sendInvitation')}}</button>
                 </form>
                 <div class="card invitations">
-                    <h2>邀請紀錄</h2>
+                    <h2>{{tr('invitationHistory')}}</h2>
                     <div v-if="workspace.invitations.length">
                         <div v-for="item in workspace.invitations" :key="item.id" class="invite">
-                            <div><strong>{{ item.email }}</strong><small>{{ item.status }} · {{ new
-                                Date(item.expiresAt).toLocaleDateString('zh-TW') }}</small><a v-if="item.debugUrl"
-                                    :href="item.debugUrl">開發測試連結</a></div>
+                            <div><strong>{{ item.email }}</strong><small>{{ tr(item.status==='delivery_failed'?'deliveryFailed':item.status) }} · {{ formatDate(item.expiresAt) }}</small><a v-if="item.debugUrl"
+                                    :href="item.debugUrl">{{tr('developmentLink')}}</a></div>
                             <div v-if="item.status === 'pending' || item.status === 'delivery_failed'" class="actions">
-                                <button class="ghost" @click="workspace.resendInvitation(item.id)">重送</button>
+                                <button class="ghost" @click="workspace.resendInvitation(item.id)">{{tr('resend')}}</button>
                                 <button class="ghost danger-text"
-                                    @click="workspace.revokeInvitation(item.id)">撤銷</button>
+                                    @click="workspace.revokeInvitation(item.id)">{{tr('revoke')}}</button>
                             </div>
                         </div>
                     </div>
-                    <p v-else class="empty-inline">尚無邀請紀錄。</p>
+                    <p v-else class="empty-inline">{{tr('noInvitations')}}</p>
                 </div>
             </div>
             <div v-else class="card owner-note">
-                <h2>成員管理</h2>
-                <p>只有群組擁有者可以邀請或移除成員。</p>
+                <h2>{{tr('memberManagement')}}</h2>
+                <p>{{tr('ownerOnly')}}</p>
             </div>
         </div>
+        <ConfirmDialog :open="!!pendingRemoval" :title="pendingRemoval?tr('removeMemberConfirm',{name:pendingRemoval.label}):''" danger @cancel="pendingRemoval=undefined" @confirm="confirmRemoval"/>
     </section>
 </template>

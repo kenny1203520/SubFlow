@@ -13,6 +13,7 @@ type MembershipRepo struct{ *Repository }
 type InvitationRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
+type SettlementRepo struct{ *Repository }
 type UserRepo struct{ *Repository }
 
 type Stores struct {
@@ -21,13 +22,14 @@ type Stores struct {
 	Invitations   *InvitationRepo
 	Subscriptions *SubscriptionRepo
 	Expenses      *ExpenseRepo
+	Settlements   *SettlementRepo
 	Users         *UserRepo
 	Transactions  *Repository
 }
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &UserRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &UserRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -87,6 +89,25 @@ func (r *ExpenseRepo) Update(ctx context.Context, v *domain.Expense) error {
 func (r *ExpenseRepo) Delete(ctx context.Context, id string) error { return r.DeleteExpense(ctx, id) }
 func (r *ExpenseRepo) ListPersonal(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Expense], error) {
 	return r.ListPersonalExpenses(ctx, userID, req)
+}
+func (r *ExpenseRepo) ReplaceSplits(ctx context.Context, expenseID string, values []domain.ExpenseSplit) error {
+	return r.ReplaceExpenseSplits(ctx, expenseID, values)
+}
+func (r *ExpenseRepo) ListSplits(ctx context.Context, expenseID string) ([]domain.ExpenseSplit, error) {
+	return r.ListExpenseSplits(ctx, expenseID)
+}
+
+func (r *SettlementRepo) Create(ctx context.Context, v *domain.Settlement) error {
+	return r.CreateSettlement(ctx, v)
+}
+func (r *SettlementRepo) Get(ctx context.Context, id string) (*domain.Settlement, error) {
+	return r.GetSettlement(ctx, id)
+}
+func (r *SettlementRepo) List(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Settlement], error) {
+	return r.ListSettlements(ctx, groupID, req)
+}
+func (r *SettlementRepo) Delete(ctx context.Context, id string) error {
+	return r.DeleteSettlement(ctx, id)
 }
 
 func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {

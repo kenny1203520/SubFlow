@@ -61,6 +61,15 @@ type ExpenseRepository interface {
 	ListPersonal(context.Context, string, PageRequest) (Page[domain.Expense], error)
 	Update(context.Context, *domain.Expense) error
 	Delete(context.Context, string) error
+	ReplaceSplits(context.Context, string, []domain.ExpenseSplit) error
+	ListSplits(context.Context, string) ([]domain.ExpenseSplit, error)
+}
+
+type SettlementRepository interface {
+	Create(context.Context, *domain.Settlement) error
+	Get(context.Context, string) (*domain.Settlement, error)
+	List(context.Context, string, PageRequest) (Page[domain.Settlement], error)
+	Delete(context.Context, string) error
 }
 
 type UserDirectory interface {
@@ -75,6 +84,7 @@ type TransactionManager interface {
 type EventPublisher interface {
 	Publish(context.Context, domain.Event) error
 	Subscribe(context.Context, string) (<-chan domain.Event, func())
+	SubscribeWorkspace(context.Context, string, []string) (<-chan domain.Event, func())
 }
 
 type Mailer interface {

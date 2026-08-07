@@ -50,3 +50,60 @@ func TestPermissions(t *testing.T) {
 		t.Fatal("record management role mismatch")
 	}
 }
+
+func TestBillingDatePreservesMonthEndAnchor(t *testing.T) {
+	start := time.Date(2024, time.January, 31, 0, 0, 0, 0, time.UTC)
+	wants := []time.Time{start, time.Date(2024, time.February, 29, 0, 0, 0, 0, time.UTC), time.Date(2024, time.March, 31, 0, 0, 0, 0, time.UTC)}
+	for index, want := range wants {
+		got, err := BillingDate(start, BillingMonthly, index)
+		if err != nil || !got.Equal(want) {
+			t.Fatalf("index %d: got %v, want %v (%v)", index, got, want, err)
+		}
+	}
+	yearly, err := BillingDate(time.Date(2024, time.February, 29, 0, 0, 0, 0, time.UTC), BillingYearly, 1)
+	if err != nil || yearly.Day() != 28 || yearly.Month() != time.February {
+		t.Fatalf("leap anchor: %v (%v)", yearly, err)
+	}
+}
+
+func TestCanonicalSplits(t *testing.T) {
+	members := []string{"payer", "b", "c"}
+	equal, err := CanonicalSplits(100, "payer", SplitEqual, []ExpenseSplit{{UserID: "payer"}, {UserID: "b"}, {UserID: "c"}}, members)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amounts := map[string]int64{}
+	for _, split := range equal {
+		amounts[split.UserID] = split.AmountMinor
+	}
+	if amounts["payer"] != 34 || amounts["b"] != 33 || amounts["c"] != 33 {
+		t.Fatalf("unexpected equal split: %#v", amounts)
+	}
+	percentage, err := CanonicalSplits(101, "payer", SplitPercentage, []ExpenseSplit{{UserID: "payer", PercentageBasisPoints: 5000}, {UserID: "b", PercentageBasisPoints: 5000}}, members)
+	if err != nil {
+		t.Fatal(err)
+	}
+	amounts = map[string]int64{}
+	for _, split := range percentage {
+		amounts[split.UserID] = split.AmountMinor
+	}
+	if amounts["payer"] != 51 || amounts["b"] != 50 {
+		t.Fatalf("unexpected percentage split: %#v", amounts)
+	}
+	if _, err = CanonicalSplits(100, "payer", SplitPercentage, []ExpenseSplit{{UserID: "payer", PercentageBasisPoints: 9000}}, members); err == nil {
+		t.Fatal("invalid percentage total should fail")
+	}
+}
+
+func TestMemberBalancesIncludeSettlements(t *testing.T) {
+	expenses := []Expense{{PaidBy: "a", AmountMinor: 900, Splits: []ExpenseSplit{{UserID: "a", AmountMinor: 300}, {UserID: "b", AmountMinor: 600}}}}
+	settlements := []Settlement{{FromUserID: "b", ToUserID: "a", AmountMinor: 200}}
+	balances := MemberBalances(expenses, settlements)
+	values := map[string]int64{}
+	for _, balance := range balances {
+		values[balance.UserID] = balance.AmountMinor
+	}
+	if values["a"] != 400 || values["b"] != -400 {
+		t.Fatalf("unexpected balances: %#v", values)
+	}
+}

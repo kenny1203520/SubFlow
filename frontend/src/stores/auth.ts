@@ -1,8 +1,10 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { pb } from '../pocketbase'
+import { useI18n } from '../i18n'
 
 export const useAuthStore = defineStore('auth', () => {
+  const { tr } = useI18n()
   const record = ref(pb.authStore.record)
   const authToken = ref(pb.authStore.token)
   const authValid = ref(pb.authStore.isValid)
@@ -12,7 +14,7 @@ export const useAuthStore = defineStore('auth', () => {
   // that determine session state so the first login invalidates this computed.
   const authenticated = computed(() => authValid.value && !!authToken.value && !!record.value)
   const token = computed(() => authToken.value)
-  const name = computed(() => String(record.value?.name || record.value?.email || '使用者'))
+  const name = computed(() => String(record.value?.name || record.value?.email || tr('userFallback')))
 
   pb.authStore.onChange((nextToken, nextRecord) => {
     authToken.value = nextToken
@@ -47,7 +49,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function updateProfile(input: { name: string; timezone: string }) {
-    if (!record.value) throw new Error('尚未登入')
+    if (!record.value) throw new Error(tr('notSignedIn'))
     record.value = await pb.collection('users').update(record.value.id, input)
   }
 

@@ -1,120 +1,44 @@
-﻿<script setup lang="ts">
-import { reactive, ref } from "vue";
-import { useAuthStore } from "../stores/auth";
-import { useWorkspaceStore } from "../stores/workspace";
-import MoneyValue from "../components/MoneyValue.vue";
-import EmptyState from "../components/EmptyState.vue";
-import type { Expense } from "../api/types";
-import { majorToMinor, minorToInput } from "../api/money";
-const workspace = useWorkspaceStore(),
-    auth = useAuthStore(),
-    editingId = ref("");
-const form = reactive({
-    title: "",
-    category: "未分類",
-    amount: "",
-    paidBy: "",
-    incurredOn: new Date().toISOString().slice(0, 10),
-    notes: "",
-});
-function reset() {
-    editingId.value = "";
-    Object.assign(form, {
-        title: "",
-        category: "未分類",
-        amount: "",
-        paidBy: "",
-        incurredOn: new Date().toISOString().slice(0, 10),
-        notes: "",
-    });
-}
-function edit(item: Expense) {
-    editingId.value = item.id;
-    Object.assign(form, {
-        title: item.title,
-        category: item.category,
-        amount: minorToInput(item.amountMinor, workspace.currentGroup?.currency),
-        paidBy: item.paidBy,
-        incurredOn: item.incurredOn.slice(0, 10),
-        notes: item.notes,
-    });
-}
-async function submit() {
-    const input = {
-        title: form.title,
-        category: form.category,
-        amountMinor: majorToMinor(form.amount, workspace.currentGroup?.currency),
-        paidBy: form.paidBy || auth.record?.id || "",
-        incurredOn: new Date(form.incurredOn).toISOString(),
-        notes: form.notes,
-    };
-    if (editingId.value) await workspace.updateExpense(editingId.value, input);
-    else await workspace.addExpense(input);
-    reset();
-}
-async function remove(item: Expense) {
-    if (!confirm(`確定要移除「${item.title}」嗎？`)) return;
-    await workspace.deleteExpense(item.id);
-    if (editingId.value === item.id) reset();
-}
+<script setup lang="ts">
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { useAuthStore } from '../stores/auth'
+import { useWorkspaceStore } from '../stores/workspace'
+import MoneyValue from '../components/MoneyValue.vue'
+import EmptyState from '../components/EmptyState.vue'
+import AppDrawer from '../components/AppDrawer.vue'
+import ConfirmDialog from '../components/ConfirmDialog.vue'
+import PersonalLedgerNav from '../components/PersonalLedgerNav.vue'
+import type { Currency, Expense, ExpenseSplit, SplitMode } from '../api/types'
+import { majorToMinor, minorToInput } from '../api/money'
+import { useI18n } from '../i18n'
+
+const workspace=useWorkspaceStore(),auth=useAuthStore(),route=useRoute(),{tr,formatDate}=useI18n()
+const personal=computed(()=>route.name==='personal-expenses')
+const list=computed(()=>personal.value?workspace.personalExpenses:workspace.expenses)
+const open=ref(false),editingId=ref(''),pendingDelete=ref<Expense>()
+const form=reactive({title:'',category:'',amount:'',currency:'TWD' as Currency,paidBy:'',incurredOn:new Date().toISOString().slice(0,10),notes:'',splitMode:'equal' as SplitMode,participants:{} as Record<string,boolean>,values:{} as Record<string,string>})
+const editing=computed(()=>list.value.find(item=>item.id===editingId.value))
+const sourceGroup=computed(()=>workspace.groups.find(group=>group.id===editing.value?.groupId))
+const currency=computed(()=>sourceGroup.value?.currency||(!personal.value?workspace.currentGroup?.currency:form.currency)||'TWD')
+const participants=computed(()=>workspace.members.filter(member=>form.participants[member.userId]))
+const splitTotalMinor=computed(()=>participants.value.reduce((sum,member)=>sum+(form.splitMode==='amount'?majorToMinor(form.values[member.userId]||'0',currency.value):form.splitMode==='percentage'?Math.round(Number(form.values[member.userId]||0)*100):0),0))
+const expenseMinor=computed(()=>majorToMinor(form.amount||'0',currency.value))
+const splitValid=computed(()=>personal.value&&!editing.value?.groupId||form.splitMode==='equal'?participants.value.length>0:form.splitMode==='amount'?splitTotalMinor.value===expenseMinor.value:splitTotalMinor.value===10000)
+
+function reset(){editingId.value='';Object.assign(form,{title:'',category:'',amount:'',currency:'TWD',paidBy:'',incurredOn:new Date().toISOString().slice(0,10),notes:'',splitMode:'equal',participants:{},values:{}})}
+function create(){reset();if(!personal.value)workspace.members.forEach(m=>{form.participants[m.userId]=true});open.value=true}
+async function edit(item:Expense){editingId.value=item.id;if(item.groupId&&workspace.currentGroupId!==item.groupId)await workspace.selectGroup(item.groupId);const selected=item.splits?.map(split=>split.userId)||workspace.members.map(m=>m.userId);Object.assign(form,{title:item.title,category:item.category,amount:minorToInput(item.amountMinor,item.currency),currency:item.currency||'TWD',paidBy:item.paidBy,incurredOn:item.incurredOn.slice(0,10),notes:item.notes,splitMode:item.splitMode||'equal',participants:Object.fromEntries(selected.map(id=>[id,true])),values:Object.fromEntries((item.splits||[]).map(split=>[split.userId,(item.splitMode==='percentage'?(split.percentageBasisPoints||0)/100:minorToInput(split.amountMinor,item.currency)).toString()]))});open.value=true}
+function canonicalSplits():ExpenseSplit[]{return participants.value.map(member=>({userId:member.userId,amountMinor:form.splitMode==='amount'?majorToMinor(form.values[member.userId]||'0',currency.value):0,percentageBasisPoints:form.splitMode==='percentage'?Math.round(Number(form.values[member.userId]||0)*100):undefined}))}
+async function submit(){if(!splitValid.value)return;const input={title:form.title,category:form.category||tr('uncategorized'),amountMinor:expenseMinor.value,currency:currency.value,paidBy:form.paidBy||auth.record?.id||'',incurredOn:new Date(`${form.incurredOn}T00:00:00`).toISOString(),notes:form.notes,splitMode:form.splitMode,splits:personal.value&&!editing.value?.groupId?undefined:canonicalSplits()};if(editingId.value)await workspace.updateExpense(editingId.value,input);else if(personal.value)await workspace.addPersonalExpense(input);else await workspace.addExpense(input);await workspace.refreshPersonal();open.value=false;reset()}
+async function remove(){if(!pendingDelete.value)return;await workspace.deleteExpense(pendingDelete.value.id);await workspace.refreshPersonal();pendingDelete.value=undefined}
+function recordCurrency(item:Expense){return item.currency||workspace.groups.find(group=>group.id===item.groupId)?.currency||'TWD'}
+onMounted(()=>{if(personal.value)void workspace.refreshPersonal()})
 </script>
-<template>
-    <section class="page">
-        <div class="page-heading">
-            <div>
-                <p class="eyebrow">SPENDING</p>
-                <h1>共同支出</h1>
-                <p>記錄群組支出並掌握每筆費用。</p>
-            </div>
-        </div>
-        <div class="two-column content-heavy">
-            <div class="card">
-                <div class="card-title">
-                    <h2>近期支出</h2>
-                    <span>{{ workspace.expenses.length }} 筆</span>
-                </div>
-                <div v-if="workspace.expenses.length" class="rows">
-                    <div v-for="item in workspace.expenses" :key="item.id" class="row">
-                        <div class="service-icon expense">{{ item.title.slice(0, 1) }}</div>
-                        <div class="grow">
-                            <strong>{{ item.title }}</strong><small>{{ item.category || "未分類" }} ·
-                                {{
-                                    new Date(item.incurredOn).toLocaleDateString("zh-TW")
-                                }}</small>
-                        </div>
-                        <MoneyValue :amount="item.amountMinor" :currency="workspace.currentGroup?.currency" /><button
-                            class="icon-button" aria-label="編輯" @click="edit(item)">
-                            ✎</button><button class="icon-button" aria-label="移除" @click="remove(item)">
-                            ×
-                        </button>
-                    </div>
-                </div>
-                <EmptyState v-else title="還沒有共同支出" description="新增第一筆支出來開始記錄。" />
-            </div>
-            <form class="card form-card sticky" @submit.prevent="submit">
-                <h2>{{ editingId ? "編輯支出" : "新增支出" }}</h2>
-                <label>項目<input v-model="form.title" required placeholder="例如：午餐" /></label>
-                <div class="form-row">
-                    <label>分類<input v-model="form.category" /></label><label>金額<input v-model="form.amount"
-                            type="number" min="0" step="0.01" required /></label>
-                </div>
-                <div class="form-row">
-                    <label>付款人<select v-model="form.paidBy">
-                            <option value="">我自己</option>
-                            <option v-for="member in workspace.members" :key="member.userId" :value="member.userId">
-                                {{ member.user?.name || member.user?.email }}
-                            </option>
-                        </select></label><label>日期<input v-model="form.incurredOn" type="date" required /></label>
-                </div>
-                <label>備註<textarea v-model="form.notes" rows="2"></textarea></label>
-                <div class="form-actions">
-                    <button class="primary" :disabled="workspace.loading">
-                        {{ editingId ? "儲存變更" : "新增支出" }}</button><button v-if="editingId" type="button" class="ghost"
-                        @click="reset">
-                        取消
-                    </button>
-                </div>
-            </form>
-        </div>
-    </section>
-</template>
+
+<template><section class="page ledger-page"><PersonalLedgerNav v-if="personal"/><div class="page-heading"><div><p class="eyebrow">{{tr(personal?'expensePersonal':'splitExpenses')}}</p><h1>{{tr(personal?'expensePersonal':'expenseGroup')}}</h1><p>{{tr('expenseDesc')}}</p></div><button class="primary" @click="create">{{tr('createExpense')}}</button></div>
+  <section class="card data-card"><div class="card-title"><h2>{{tr('recentExpenses')}}</h2><span>{{tr('records',{count:list.length})}}</span></div><div v-if="list.length" class="data-table expense-table"><div class="data-table-head"><span>{{tr('item')}}</span><span>{{tr('source')}}</span><span>{{tr('payer')}}</span><span>{{tr('date')}}</span><span>{{tr('amount')}}</span><span></span></div><article v-for="item in list" :key="item.id" class="data-table-row"><div class="item-cell"><span class="service-icon expense">{{item.title.slice(0,1)}}</span><span><strong>{{item.title}}</strong><small>{{item.category||tr('uncategorized')}}</small></span></div><span><span class="source-badge" :class="{shared:item.groupId}">{{workspace.groups.find(g=>g.id===item.groupId)?.name||tr('privateRecord')}}</span></span><span>{{workspace.members.find(m=>m.userId===item.paidBy)?.user?.name|| (item.paidBy===auth.record?.id?tr('myself'):'—')}}</span><span>{{formatDate(item.incurredOn)}}</span><MoneyValue :amount="item.amountMinor" :currency="recordCurrency(item)"/><span class="row-actions"><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('remove')" @click="pendingDelete=item">×</button></span></article></div><EmptyState v-else :title="tr('noExpenses')" :description="tr('noExpensesDesc')"/></section>
+  <AppDrawer :open="open" :title="tr(editingId?'editExpense':'createExpense')" @close="open=false"><form class="form-card" @submit.prevent="submit"><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div><label>{{tr('item')}}<input v-model="form.title" required :placeholder="tr('itemPlaceholder')"></label><label v-if="personal&&!editing?.groupId">{{tr('currency')}}<select v-model="form.currency"><option>TWD</option><option>USD</option><option>JPY</option><option>EUR</option></select></label><div class="form-row"><label>{{tr('category')}}<input v-model="form.category"></label><label>{{tr('amount')}}<input v-model="form.amount" type="number" min="0" step="0.01" required></label></div><div class="form-row"><label>{{tr('payer')}}<select v-model="form.paidBy"><option value="">{{tr('myself')}}</option><option v-for="member in workspace.members" :key="member.userId" :value="member.userId">{{member.user?.name||member.user?.email}}</option></select></label><label>{{tr('date')}}<input v-model="form.incurredOn" type="date" required></label></div>
+    <template v-if="!personal||editing?.groupId"><label>{{tr('splitMode')}}<select v-model="form.splitMode"><option value="equal">{{tr('splitEqual')}}</option><option value="amount">{{tr('splitAmount')}}</option><option value="percentage">{{tr('splitPercentage')}}</option></select></label><fieldset class="split-editor"><legend>{{tr('participants')}}</legend><label v-for="member in workspace.members" :key="member.userId" class="split-member"><input v-model="form.participants[member.userId]" type="checkbox"><span>{{member.user?.name||member.user?.email}}</span><input v-if="form.participants[member.userId]&&form.splitMode!=='equal'" v-model="form.values[member.userId]" type="number" min="0" step="0.01" :aria-label="member.user?.name"></label><p :class="splitValid?'success':'form-error'">{{splitValid?tr('splitValid'):tr(form.splitMode==='percentage'?'splitInvalidPercentage':'splitInvalidAmount')}}</p></fieldset></template>
+    <label>{{tr('notes')}}<textarea v-model="form.notes" rows="3"></textarea></label><div class="form-actions"><button type="button" class="ghost" @click="open=false">{{tr('cancel')}}</button><button class="primary" :disabled="workspace.loading||!splitValid">{{tr(editingId?'saveChanges':'createExpense')}}</button></div></form></AppDrawer>
+  <ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('removeExpenseConfirm',{name:pendingDelete.title}):''" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
+</section></template>

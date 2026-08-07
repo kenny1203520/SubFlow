@@ -12,14 +12,14 @@ async function submit() { await auth.updateProfile(form); saved.value = true; se
     <section class="page narrow">
         <div class="page-heading">
             <div>
-                <p class="eyebrow">PROFILE</p>
+                <p class="eyebrow">{{t.profile}}</p>
                 <h1>{{ t.profile }}</h1>
                 <p>{{ t.profileDesc }}</p>
             </div>
         </div>
         <div class="profile-layout">
             <form class="card form-card" @submit.prevent="submit">
-                <h2>帳號資料</h2><label>{{ t.email }}<input :value="auth.record?.email"
+                <h2>{{t.accountInfo}}</h2><label>{{ t.email }}<input :value="auth.record?.email"
                         disabled></label><label>{{ t.displayName }}<input v-model="form.name"
                         required></label><label>{{ t.timezone }}
                     <TimezoneSelect v-model="form.timezone" />
@@ -27,7 +27,7 @@ async function submit() { await auth.updateProfile(form); saved.value = true; se
             </form>
             <section class="card form-card appearance-card">
                 <div>
-                    <p class="eyebrow">APPEARANCE</p>
+                    <p class="eyebrow">{{t.appearance}}</p>
                     <h2>{{ t.theme }}</h2>
                     <p class="setting-description">{{ t.themeDesc }}</p>
                 </div>

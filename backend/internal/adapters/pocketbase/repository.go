@@ -239,9 +239,13 @@ func (r *Repository) ListSubscriptions(ctx context.Context, groupID string, req 
 }
 func (r *Repository) ListPersonalSubscriptions(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Subscription], error) {
 	recs, err := listRecords(r.app(ctx), CollectionSubscriptions, "owner={:user} || paid_by={:user}", req, dbx.Params{"user": userID})
-	if err != nil { return ports.Page[domain.Subscription]{}, err }
+	if err != nil {
+		return ports.Page[domain.Subscription]{}, err
+	}
 	items := make([]domain.Subscription, len(recs))
-	for i, v := range recs { items[i] = *subscriptionFrom(v) }
+	for i, v := range recs {
+		items[i] = *subscriptionFrom(v)
+	}
 	count, _ := countFiltered(r.app(ctx), CollectionSubscriptions, "owner={:user} || paid_by={:user}", dbx.Params{"user": userID})
 	return page(items, req, count), nil
 }
@@ -299,9 +303,13 @@ func (r *Repository) ListExpenses(ctx context.Context, groupID string, req ports
 }
 func (r *Repository) ListPersonalExpenses(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Expense], error) {
 	recs, err := listRecords(r.app(ctx), CollectionExpenses, "owner={:user} || paid_by={:user}", req, dbx.Params{"user": userID})
-	if err != nil { return ports.Page[domain.Expense]{}, err }
+	if err != nil {
+		return ports.Page[domain.Expense]{}, err
+	}
 	items := make([]domain.Expense, len(recs))
-	for i, v := range recs { items[i] = *expenseFrom(v) }
+	for i, v := range recs {
+		items[i] = *expenseFrom(v)
+	}
 	count, _ := countFiltered(r.app(ctx), CollectionExpenses, "owner={:user} || paid_by={:user}", dbx.Params{"user": userID})
 	return page(items, req, count), nil
 }
@@ -323,6 +331,86 @@ func (r *Repository) DeleteExpense(ctx context.Context, id string) error {
 		return mapError(err)
 	}
 	return r.app(ctx).Delete(rec)
+}
+
+func (r *Repository) ReplaceExpenseSplits(ctx context.Context, expenseID string, values []domain.ExpenseSplit) error {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExpenseSplits, "expense={:expense}", "", 0, 0, dbx.Params{"expense": expenseID})
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err = r.app(ctx).Delete(record); err != nil {
+			return err
+		}
+	}
+	for i := range values {
+		record, createErr := newRecord(r.app(ctx), CollectionExpenseSplits)
+		if createErr != nil {
+			return createErr
+		}
+		record.Set("expense", expenseID)
+		record.Set("user", values[i].UserID)
+		record.Set("amount_minor", values[i].AmountMinor)
+		record.Set("percentage_bp", values[i].PercentageBasisPoints)
+		if err = r.app(ctx).Save(record); err != nil {
+			return err
+		}
+		values[i].ID = record.Id
+		values[i].ExpenseID = expenseID
+	}
+	return nil
+}
+
+func (r *Repository) ListExpenseSplits(ctx context.Context, expenseID string) ([]domain.ExpenseSplit, error) {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExpenseSplits, "expense={:expense}", "user", 0, 0, dbx.Params{"expense": expenseID})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.ExpenseSplit, len(records))
+	for i, record := range records {
+		result[i] = domain.ExpenseSplit{ID: record.Id, ExpenseID: expenseID, UserID: record.GetString("user"), AmountMinor: int64(record.GetFloat("amount_minor")), PercentageBasisPoints: int(record.GetFloat("percentage_bp"))}
+	}
+	return result, nil
+}
+
+func (r *Repository) CreateSettlement(ctx context.Context, v *domain.Settlement) error {
+	record, err := newRecord(r.app(ctx), CollectionSettlements)
+	if err != nil {
+		return err
+	}
+	writeSettlement(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetSettlement(ctx context.Context, id string) (*domain.Settlement, error) {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlements, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return settlementFrom(record), nil
+}
+func (r *Repository) ListSettlements(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Settlement], error) {
+	records, err := listRecords(r.app(ctx), CollectionSettlements, "group={:group}", req, dbx.Params{"group": groupID})
+	if err != nil {
+		return ports.Page[domain.Settlement]{}, err
+	}
+	items := make([]domain.Settlement, len(records))
+	for i, record := range records {
+		items[i] = *settlementFrom(record)
+	}
+	count, _ := countFiltered(r.app(ctx), CollectionSettlements, "group={:group}", dbx.Params{"group": groupID})
+	return page(items, req, count), nil
+}
+func (r *Repository) DeleteSettlement(ctx context.Context, id string) error {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlements, id)
+	if err != nil {
+		return mapError(err)
+	}
+	return r.app(ctx).Delete(record)
 }
 
 func (r *Repository) GetUser(ctx context.Context, id string) (*domain.User, error) {
@@ -435,16 +523,24 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("amount_minor", v.AmountMinor)
 	r.Set("currency", v.Currency)
 	r.Set("billing_cycle", v.BillingCycle)
-	if v.StartsOn.IsZero() { v.StartsOn = v.NextBilling }
+	if v.StartsOn.IsZero() {
+		v.StartsOn = v.NextBilling
+	}
 	r.Set("starts_on", v.StartsOn)
-	if v.EndsOn != nil { r.Set("ends_on", *v.EndsOn) }
+	if v.EndsOn != nil {
+		r.Set("ends_on", *v.EndsOn)
+	} else {
+		r.Set("ends_on", nil)
+	}
 	r.Set("next_billing", v.NextBilling)
 	r.Set("status", v.Status)
 	r.Set("notes", v.Notes)
 }
 func subscriptionFrom(r *core.Record) *domain.Subscription {
 	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Name: r.GetString("name"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
-	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() { v.EndsOn = &ends }
+	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() {
+		v.EndsOn = &ends
+	}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
@@ -454,13 +550,31 @@ func writeExpense(r *core.Record, v *domain.Expense) {
 	r.Set("title", v.Title)
 	r.Set("category", v.Category)
 	r.Set("amount_minor", v.AmountMinor)
+	r.Set("currency", v.Currency)
 	r.Set("paid_by", v.PaidBy)
 	r.Set("incurred_on", v.IncurredOn)
 	r.Set("split_mode", v.SplitMode)
 	r.Set("notes", v.Notes)
 }
 func expenseFrom(r *core.Record) *domain.Expense {
-	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	if v.Currency == "" {
+		v.Currency = domain.CurrencyTWD
+	}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func writeSettlement(r *core.Record, v *domain.Settlement) {
+	r.Set("group", v.GroupID)
+	r.Set("from_user", v.FromUserID)
+	r.Set("to_user", v.ToUserID)
+	r.Set("created_by", v.CreatedBy)
+	r.Set("amount_minor", v.AmountMinor)
+	r.Set("settled_on", v.SettledOn)
+	r.Set("notes", v.Notes)
+}
+func settlementFrom(r *core.Record) *domain.Settlement {
+	v := &domain.Settlement{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), CreatedBy: r.GetString("created_by"), AmountMinor: int64(r.GetFloat("amount_minor")), SettledOn: r.GetDateTime("settled_on").Time(), Notes: r.GetString("notes")}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }

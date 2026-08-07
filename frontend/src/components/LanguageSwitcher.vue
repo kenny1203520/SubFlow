@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n, type Locale } from '../i18n'
 const { locale, t, setLocale } = useI18n(); const open = ref(false); const query = ref(''); const searchInput = ref<HTMLInputElement | null>(null)
-const languages = computed(() => [{ code: 'zh-TW' as Locale, title: t.value.traditionalChinese, subtitle: t.value.traditionalChineseNative, marker: '繁' }, { code: 'en' as Locale, title: t.value.english, subtitle: t.value.englishNative, marker: 'A' }])
+const languages = computed(() => [{ code: 'zh-TW' as Locale, title: t.value.traditionalChinese, subtitle: t.value.traditionalChineseNative, marker: t.value.languageZhMarker }, { code: 'en' as Locale, title: t.value.english, subtitle: t.value.englishNative, marker: t.value.languageEnMarker }])
 const matches = computed(() => { const term = query.value.trim().toLocaleLowerCase(locale.value); return languages.value.filter(item => !term || `${item.code} ${item.title} ${item.subtitle}`.toLocaleLowerCase(locale.value).includes(term)) })
 function close() { open.value = false; query.value = '' }; function openDialog() { open.value = true; nextTick(() => searchInput.value?.focus()) }; function choose(value: Locale) { setLocale(value); close() }; function onKey(event: KeyboardEvent) { if (event.key === 'Escape' && open.value) close() }
 onMounted(() => window.addEventListener('keydown', onKey)); onBeforeUnmount(() => window.removeEventListener('keydown', onKey))

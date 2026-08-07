@@ -11,8 +11,7 @@ const group = computed(() =>
     workspace.groups.find((value) => value.id === groupId.value),
 );
 async function activate() {
-    if (groupId.value && workspace.currentGroupId !== groupId.value)
-        await workspace.selectGroup(groupId.value);
+    if (groupId.value) await workspace.selectGroup(groupId.value);
 }
 onMounted(() => void activate());
 watch(groupId, () => void activate());
@@ -24,7 +23,7 @@ watch(groupId, () => void activate());
                 tr("allGroupsLink")
                 }}</RouterLink>
             <div>
-                <p class="eyebrow">GROUP WORKSPACE</p>
+                <p class="eyebrow">{{tr('groupWorkspace')}}</p>
                 <h1>{{ group?.name || tr("groupWorkspace") }}</h1>
                 <p>{{ group?.description || tr("groupWorkspaceDesc") }}</p>
             </div>
@@ -46,8 +45,6 @@ watch(groupId, () => void activate());
                 tr("settings")
                 }}</RouterLink>
         </nav>
-        <RouterView v-slot="{ Component, route }">
-            <component :is="Component" :key="route.fullPath" />
-        </RouterView>
+        <RouterView />
     </section>
 </template>
