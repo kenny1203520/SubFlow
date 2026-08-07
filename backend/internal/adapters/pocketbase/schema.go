@@ -75,7 +75,17 @@ func mustCollectionID(app core.App, name string) string { c, _ := app.FindCollec
 
 func ensureCollection(app core.App, name string, define func(*core.Collection)) (*core.Collection, error) {
 	if existing, err := app.FindCollectionByNameOrId(name); err == nil {
+		// Existing installations must receive newly introduced fields too. Build the
+		// desired collection separately and only append fields that do not exist.
+		desired := core.NewBaseCollection(name)
+		define(desired)
 		changed := addAutodates(existing)
+		for _, field := range desired.Fields {
+			if existing.Fields.GetByName(field.GetName()) == nil {
+				existing.Fields.Add(field)
+				changed = true
+			}
+		}
 		if changed {
 			if err = app.Save(existing); err != nil {
 				return nil, err
