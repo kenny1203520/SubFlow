@@ -1,65 +1,14 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useWorkspaceStore } from './stores/workspace'
-
-const auth = useAuthStore()
-const workspace = useWorkspaceStore()
-const router = useRouter()
-
-async function hydrateWorkspace() {
-  await workspace.loadGroups()
-  if (workspace.currentGroupId) await workspace.selectGroup(workspace.currentGroupId)
-}
-
-onMounted(async () => {
-  await auth.initialize()
-  if (auth.authenticated) await hydrateWorkspace()
-})
-
-watch(() => auth.authenticated, (authenticated) => {
-  if (authenticated) {
-    void hydrateWorkspace()
-    return
-  }
-  workspace.clear()
-  if (auth.ready && router.currentRoute.value.path !== '/auth') void router.replace('/auth')
-})
+import { useTheme } from './theme'
+import LanguageSwitcher from './components/LanguageSwitcher.vue'
+import ThemeSwitcher from './components/ThemeSwitcher.vue'
+const auth=useAuthStore(),workspace=useWorkspaceStore(),router=useRouter();useTheme()
+async function hydrateWorkspace(){await workspace.loadGroups();if(workspace.currentGroupId)await workspace.selectGroup(workspace.currentGroupId)}
+onMounted(async()=>{await auth.initialize();if(auth.authenticated)await hydrateWorkspace()})
+watch(()=>auth.authenticated,authenticated=>{if(authenticated){void hydrateWorkspace();return}workspace.clear();if(auth.ready&&router.currentRoute.value.path!=='/auth')void router.replace('/auth')})
 </script>
-
-<template>
-  <div v-if="!auth.ready" class="splash">SubFlow 正在準備你的空間…</div>
-  <RouterView v-else-if="!auth.authenticated" />
-  <div v-else class="shell">
-    <aside class="sidebar">
-      <RouterLink class="brand" to="/"><span>SF</span><strong>SubFlow</strong></RouterLink>
-      <nav>
-        <RouterLink to="/">總覽</RouterLink>
-        <RouterLink to="/groups">群組</RouterLink>
-        <RouterLink to="/members">成員與邀請</RouterLink>
-        <RouterLink to="/subscriptions">訂閱</RouterLink>
-        <RouterLink to="/expenses">共同支出</RouterLink>
-      </nav>
-      <div class="sidebar-bottom">
-        <RouterLink to="/profile">{{ auth.name }}</RouterLink>
-        <button class="ghost" @click="auth.logout">登出</button>
-      </div>
-    </aside>
-    <main class="main">
-      <header class="topbar">
-        <div>
-          <small>目前群組</small>
-          <select :value="workspace.currentGroupId" @change="workspace.selectGroup(($event.target as HTMLSelectElement).value)">
-            <option value="">請選擇群組</option>
-            <option v-for="group in workspace.groups" :key="group.id" :value="group.id">{{ group.name }}</option>
-          </select>
-        </div>
-        <span v-if="workspace.loading" class="sync">同步中</span>
-      </header>
-      <div v-if="workspace.permissionDenied" class="notice danger">你沒有權限查看或修改這個群組。</div>
-      <div v-else-if="workspace.error" class="notice">{{ workspace.error }} <button @click="workspace.refreshGroup">重試</button></div>
-      <RouterView />
-    </main>
-  </div>
-</template>
+<template><div v-if="!auth.ready" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div><RouterView v-else-if="!auth.authenticated"/><div v-else class="shell"><aside class="sidebar"><RouterLink class="brand" to="/"><span>SF</span><strong>SubFlow</strong></RouterLink><p class="sidebar-label">工作空間</p><nav><RouterLink to="/"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg><span>總覽</span></RouterLink><RouterLink to="/groups"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3-8-3Zm0 5 8 3 8-3M4 16.5l8 3 8-3"/></svg><span>群組</span></RouterLink><RouterLink to="/members"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0M16 5.5a3 3 0 0 1 0 5.8M19 20a5.5 5.5 0 0 0-3.2-5"/></svg><span>成員</span></RouterLink><RouterLink to="/subscriptions"><svg viewBox="0 0 24 24"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8l5-5Z"/><path d="M9 12h6M12 9v6"/></svg><span>訂閱</span></RouterLink><RouterLink to="/expenses"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5"/></svg><span>支出</span></RouterLink></nav><div class="sidebar-bottom"><RouterLink class="profile-link" to="/profile"><span class="user-avatar">{{auth.name.slice(0,1).toUpperCase()}}</span><span><small>帳號設定</small>{{auth.name}}</span></RouterLink><button class="logout-button" @click="auth.logout">登出</button></div></aside><main class="main"><header class="topbar"><div class="group-picker"><small>目前群組</small><select :value="workspace.currentGroupId" @change="workspace.selectGroup(($event.target as HTMLSelectElement).value)"><option value="">選擇群組</option><option v-for="group in workspace.groups" :key="group.id" :value="group.id">{{group.name}}</option></select></div><div class="topbar-actions"><span v-if="workspace.loading" class="sync"><i></i>同步中</span><ThemeSwitcher/><LanguageSwitcher/></div></header><div v-if="workspace.permissionDenied" class="notice danger">你沒有權限查看目前群組。</div><div v-else-if="workspace.error" class="notice">{{workspace.error}} <button @click="workspace.refreshGroup">重新整理</button></div><RouterView/></main></div></template>
