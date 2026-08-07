@@ -148,27 +148,34 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if expense.IncurredOn.Before(recordStart) || !expense.IncurredOn.Before(recordEnd) {
 			continue
 		}
-		item := bucket(expense.Currency)
+		displayCurrency, displayAmount := expense.Currency, expense.AmountMinor
+		if query.Scope == "group" {
+			displayCurrency, displayAmount = expense.BaseCurrency, expense.BaseAmountMinor
+		}
+		item := bucket(displayCurrency)
 		share := int64(0)
 		for _, split := range expense.Splits {
 			if split.UserID == userID {
 				share = split.AmountMinor
+				if query.Scope == "group" {
+					share = split.BaseAmountMinor
+				}
 				break
 			}
 		}
 		if expense.GroupID == "" {
-			share = expense.AmountMinor
+			share = displayAmount
 		}
 		if query.Scope == "group" {
-			item.CashOutflowMinor += expense.AmountMinor
+			item.CashOutflowMinor += displayAmount
 		} else if expense.PaidBy == userID {
-			item.CashOutflowMinor += expense.AmountMinor
+			item.CashOutflowMinor += displayAmount
 		}
 		item.PersonalShareMinor += share
-		if expense.PaidBy == userID && expense.AmountMinor > share {
-			item.ReimbursableMinor += expense.AmountMinor - share
+		if expense.PaidBy == userID && displayAmount > share {
+			item.ReimbursableMinor += displayAmount - share
 		}
-		result.MonthExpenseMinor += expense.AmountMinor
+		result.MonthExpenseMinor += displayAmount
 	}
 	now := s.Now()
 	for _, subscription := range subscriptions {
@@ -176,8 +183,12 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if lifecycle != "active" && lifecycle != "ending" {
 			continue
 		}
-		item := bucket(subscription.Currency)
-		monthly, _ := domain.MonthlyEquivalent(subscription.AmountMinor, subscription.BillingCycle)
+		displayCurrency, displayAmount := subscription.Currency, subscription.AmountMinor
+		if query.Scope == "group" {
+			displayCurrency, displayAmount = subscription.BaseCurrency, subscription.BaseAmountMinor
+		}
+		item := bucket(displayCurrency)
+		monthly, _ := domain.MonthlyEquivalent(displayAmount, subscription.BillingCycle)
 		item.MonthlySubscriptionMinor += monthly
 		item.ActiveSubscriptions++
 		result.MonthlySubscriptionMinor += monthly
@@ -204,6 +215,9 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		result.Currencies = append(result.Currencies, *buckets[domain.Currency(currency)])
 	}
 	if query.Scope == "group" {
+		if group, groupErr := s.Stores.Groups.Get(ctx, query.GroupID); groupErr == nil {
+			result.ReportingCurrency = group.Currency
+		}
 		allExpenses, loadErr := s.ListExpenses(ctx, userID, query.GroupID, ports.PageRequest{Page: 1, PerPage: 100})
 		if loadErr != nil {
 			return result, loadErr
@@ -288,6 +302,8 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 		return nil, domain.ErrForbidden
 	}
 	value.CreatedBy = userID
+	value.Currency, value.BaseCurrency = group.Currency, group.Currency
+	value.BaseAmountMinor, value.RateScaled, value.ExchangeRate, value.ExchangeRateDate = value.AmountMinor, domain.ExchangeRateScale, "1", value.SettledOn
 	if err = s.Stores.Settlements.Create(ctx, &value); err != nil {
 		return nil, err
 	}

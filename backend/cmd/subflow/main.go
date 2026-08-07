@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"os"
@@ -13,6 +14,7 @@ import (
 	pbadapter "subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/config"
+	"subflow/internal/exchange"
 	"subflow/internal/mailer"
 	"subflow/internal/realtime"
 	"subflow/internal/transport/httpapi"
@@ -57,6 +59,20 @@ func main() {
 			return err
 		}
 		base := application.New(stores)
+		base.Rates = exchange.NewCBCProvider()
+		app.Cron().MustAdd("subflow_exchange_rates", "15 */6 * * *", func() {
+			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {
+				app.Logger().Warn("exchange rate refresh failed", "error", refreshErr)
+			}
+			if refreshErr := base.RefreshAutomaticSubscriptions(context.Background()); refreshErr != nil {
+				app.Logger().Warn("subscription rate refresh failed", "error", refreshErr)
+			}
+		})
+		go func() {
+			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {
+				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)
+			}
+		}()
 		(&httpapi.API{Service: base}).RegisterRoutes(e)
 		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: smtpMailer, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
 		web.Register(e)

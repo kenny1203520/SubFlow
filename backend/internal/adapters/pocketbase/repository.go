@@ -249,6 +249,18 @@ func (r *Repository) ListPersonalSubscriptions(ctx context.Context, userID strin
 	count, _ := countFiltered(r.app(ctx), CollectionSubscriptions, "owner={:user} || paid_by={:user}", dbx.Params{"user": userID})
 	return page(items, req, count), nil
 }
+
+func (r *Repository) ListAutomaticSubscriptions(ctx context.Context) ([]domain.Subscription, error) {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "rate_mode='automatic' && `group`!=''", "next_billing", 0, 0, nil)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.Subscription, len(records))
+	for i, record := range records {
+		values[i] = *subscriptionFrom(record)
+	}
+	return values, nil
+}
 func (r *Repository) UpdateSubscription(ctx context.Context, v *domain.Subscription) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionSubscriptions, v.ID)
 	if err != nil {
@@ -351,6 +363,7 @@ func (r *Repository) ReplaceExpenseSplits(ctx context.Context, expenseID string,
 		record.Set("expense", expenseID)
 		record.Set("user", values[i].UserID)
 		record.Set("amount_minor", values[i].AmountMinor)
+		record.Set("base_amount_minor", values[i].BaseAmountMinor)
 		record.Set("percentage_bp", values[i].PercentageBasisPoints)
 		if err = r.app(ctx).Save(record); err != nil {
 			return err
@@ -368,7 +381,7 @@ func (r *Repository) ListExpenseSplits(ctx context.Context, expenseID string) ([
 	}
 	result := make([]domain.ExpenseSplit, len(records))
 	for i, record := range records {
-		result[i] = domain.ExpenseSplit{ID: record.Id, ExpenseID: expenseID, UserID: record.GetString("user"), AmountMinor: int64(record.GetFloat("amount_minor")), PercentageBasisPoints: int(record.GetFloat("percentage_bp"))}
+		result[i] = domain.ExpenseSplit{ID: record.Id, ExpenseID: expenseID, UserID: record.GetString("user"), AmountMinor: int64(record.GetFloat("amount_minor")), BaseAmountMinor: int64(record.GetFloat("base_amount_minor")), PercentageBasisPoints: int(record.GetFloat("percentage_bp"))}
 	}
 	return result, nil
 }
@@ -411,6 +424,100 @@ func (r *Repository) DeleteSettlement(ctx context.Context, id string) error {
 		return mapError(err)
 	}
 	return r.app(ctx).Delete(record)
+}
+
+func (r *Repository) UpdateSettlement(ctx context.Context, v *domain.Settlement) error {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlements, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeSettlement(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) CreateCategory(ctx context.Context, v *domain.Category) error {
+	record, err := newRecord(r.app(ctx), CollectionCategories)
+	if err != nil {
+		return err
+	}
+	writeCategory(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetCategory(ctx context.Context, id string) (*domain.Category, error) {
+	record, err := r.app(ctx).FindRecordById(CollectionCategories, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return categoryFrom(record), nil
+}
+func (r *Repository) ListCategories(ctx context.Context, ownerID, groupID string, archived bool) ([]domain.Category, error) {
+	filter := "scope='system'"
+	params := dbx.Params{}
+	if groupID != "" {
+		filter += " || (scope='group' && `group`={:group})"
+		params["group"] = groupID
+	} else {
+		filter += " || (scope='personal' && owner={:owner})"
+		params["owner"] = ownerID
+	}
+	if !archived {
+		filter = "(" + filter + ") && archived=false"
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionCategories, filter, "scope,custom_name,system_key", 0, 0, params)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.Category, len(records))
+	for i, record := range records {
+		result[i] = *categoryFrom(record)
+	}
+	return result, nil
+}
+func (r *Repository) UpdateCategory(ctx context.Context, v *domain.Category) error {
+	record, err := r.app(ctx).FindRecordById(CollectionCategories, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeCategory(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) UpsertExchangeRate(ctx context.Context, v *domain.ExchangeRate) error {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date={:date}", dbx.Params{"base": v.BaseCurrency, "quote": v.QuoteCurrency, "date": v.EffectiveDate})
+	if err != nil {
+		record, err = newRecord(r.app(ctx), CollectionExchangeRates)
+		if err != nil {
+			return err
+		}
+	}
+	writeExchangeRate(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	return nil
+}
+func (r *Repository) LatestExchangeRate(ctx context.Context, from, to domain.Currency, date time.Time) (*domain.ExchangeRate, error) {
+	if from == to {
+		return &domain.ExchangeRate{BaseCurrency: from, QuoteCurrency: to, RateScaled: domain.ExchangeRateScale, Rate: "1", EffectiveDate: date, Provider: "identity", FetchedAt: time.Now()}, nil
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date<={:date}", "-effective_date", 1, 0, dbx.Params{"base": from, "quote": to, "date": date})
+	if err != nil || len(records) == 0 {
+		return nil, domain.ErrRateUnavailable
+	}
+	return exchangeRateFrom(records[0]), nil
 }
 
 func (r *Repository) GetUser(ctx context.Context, id string) (*domain.User, error) {
@@ -524,8 +631,14 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("paid_by", v.PaidBy)
 	r.Set("name", v.Name)
 	r.Set("category", v.Category)
+	r.Set("category_ref", v.CategoryID)
 	r.Set("amount_minor", v.AmountMinor)
 	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("rate_mode", v.RateMode)
 	r.Set("billing_cycle", v.BillingCycle)
 	if v.StartsOn.IsZero() {
 		v.StartsOn = v.NextBilling
@@ -541,7 +654,8 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("notes", v.Notes)
 }
 func subscriptionFrom(r *core.Record) *domain.Subscription {
-	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Name: r.GetString("name"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() {
 		v.EndsOn = &ends
 	}
@@ -553,15 +667,22 @@ func writeExpense(r *core.Record, v *domain.Expense) {
 	r.Set("owner", v.OwnerID)
 	r.Set("title", v.Title)
 	r.Set("category", v.Category)
+	r.Set("category_ref", v.CategoryID)
 	r.Set("amount_minor", v.AmountMinor)
 	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("rate_mode", v.RateMode)
 	r.Set("paid_by", v.PaidBy)
 	r.Set("incurred_on", v.IncurredOn)
 	r.Set("split_mode", v.SplitMode)
 	r.Set("notes", v.Notes)
 }
 func expenseFrom(r *core.Record) *domain.Expense {
-	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if v.Currency == "" {
 		v.Currency = domain.CurrencyTWD
 	}
@@ -574,14 +695,48 @@ func writeSettlement(r *core.Record, v *domain.Settlement) {
 	r.Set("to_user", v.ToUserID)
 	r.Set("created_by", v.CreatedBy)
 	r.Set("amount_minor", v.AmountMinor)
+	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
 	r.Set("settled_on", v.SettledOn)
 	r.Set("notes", v.Notes)
 }
 func settlementFrom(r *core.Record) *domain.Settlement {
-	v := &domain.Settlement{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), CreatedBy: r.GetString("created_by"), AmountMinor: int64(r.GetFloat("amount_minor")), SettledOn: r.GetDateTime("settled_on").Time(), Notes: r.GetString("notes")}
+	v := &domain.Settlement{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), CreatedBy: r.GetString("created_by"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), SettledOn: r.GetDateTime("settled_on").Time(), Notes: r.GetString("notes")}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
 func userFrom(r *core.Record) *domain.User {
 	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone")}
+}
+
+func writeCategory(r *core.Record, v *domain.Category) {
+	r.Set("scope", v.Scope)
+	r.Set("owner", v.OwnerID)
+	r.Set("group", v.GroupID)
+	r.Set("system_key", v.SystemKey)
+	r.Set("custom_name", v.CustomName)
+	r.Set("created_by", v.CreatedBy)
+	r.Set("archived", v.Archived)
+}
+func categoryFrom(r *core.Record) *domain.Category {
+	v := &domain.Category{ID: r.Id, Scope: r.GetString("scope"), OwnerID: r.GetString("owner"), GroupID: r.GetString("group"), SystemKey: r.GetString("system_key"), CustomName: r.GetString("custom_name"), CreatedBy: r.GetString("created_by"), Archived: r.GetBool("archived")}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func writeExchangeRate(r *core.Record, v *domain.ExchangeRate) {
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("quote_currency", v.QuoteCurrency)
+	r.Set("rate_scaled", v.RateScaled)
+	r.Set("effective_date", v.EffectiveDate)
+	r.Set("provider", v.Provider)
+	r.Set("fetched_at", v.FetchedAt)
+}
+func exchangeRateFrom(r *core.Record) *domain.ExchangeRate {
+	v := &domain.ExchangeRate{ID: r.Id, BaseCurrency: domain.Currency(r.GetString("base_currency")), QuoteCurrency: domain.Currency(r.GetString("quote_currency")), RateScaled: int64(r.GetFloat("rate_scaled")), EffectiveDate: r.GetDateTime("effective_date").Time(), Provider: r.GetString("provider"), FetchedAt: r.GetDateTime("fetched_at").Time()}
+	v.Rate = domain.FormatRate(v.RateScaled)
+	return v
 }

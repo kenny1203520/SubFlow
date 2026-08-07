@@ -2,19 +2,21 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { BillingDates, DashboardSummary, Expense, Group, Invitation, Membership, Settlement, Subscription, SubFlowEvent } from '../api/types'
+import type { BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, Invitation, Membership, Settlement, Subscription, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useI18n } from '../i18n'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'>
-type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'startsOn'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'>>
-type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'incurredOn'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'>>
+type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'startsOn'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'>>
+type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'incurredOn'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'>>
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const auth = useAuthStore()
   const { tr } = useI18n()
   const api = new ApiClient(() => auth.token, auth.logout)
   const groups = ref<Group[]>([])
+  const currencies = ref<CurrencyInfo[]>([])
+  const categories = ref<Category[]>([])
   const currentGroupId = ref('')
   const members = ref<Membership[]>([])
   const invitations = ref<Invitation[]>([])
@@ -31,7 +33,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const errorCode = ref('')
   const permissionDenied = ref(false)
   const localizedError = computed(() => {
-    const keys: Record<string, Parameters<typeof tr>[0]> = { network_error: 'networkError', invalid_response: 'invalidResponse', request_failed: 'requestFailed', invalid_request: 'invalidRequest', conflict: 'conflict', not_found: 'notFound', internal_error: 'internalError', forbidden: 'forbiddenError' }
+    const keys: Record<string, Parameters<typeof tr>[0]> = { network_error: 'networkError', invalid_response: 'invalidResponse', request_failed: 'requestFailed', invalid_request: 'invalidRequest', conflict: 'conflict', not_found: 'notFound', internal_error: 'internalError', forbidden: 'forbiddenError', rate_unavailable:'rateUnavailable' }
     return errorCode.value && keys[errorCode.value] ? tr(keys[errorCode.value]) : error.value || tr('unexpectedError')
   })
   const currentGroup = computed(() => groups.value.find(value => value.id === currentGroupId.value))
@@ -67,11 +69,20 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function loadGroups() {
     await run(async () => {
-      groups.value = (await api.get<Group[]>('/groups?perPage=100')).data
+      const [groupResult,currencyResult]=await Promise.all([api.get<Group[]>('/groups?perPage=100'),api.get<CurrencyInfo[]>('/currencies')])
+      groups.value = groupResult.data
+      currencies.value = currencyResult.data
       if (currentGroupId.value && !groups.value.some(group => group.id === currentGroupId.value)) currentGroupId.value = ''
       if (!sseStarted) { sse = new SSEClient(() => auth.token, onEvent, auth.logout); sseStarted = true; void sse.start() }
     }, 'groups')
   }
+
+  async function loadCategories(scope:'personal'|'group',groupId='') { categories.value=(await api.get<Category[]>(`/categories?scope=${scope}${groupId?`&groupId=${encodeURIComponent(groupId)}`:''}`)).data }
+  async function createCategory(scope:'personal'|'group',customName:string,groupId=''){const value=(await api.post<Category>('/categories',{scope,customName,groupId})).data;categories.value.push(value);return value}
+  async function archiveCategory(id:string){await api.delete(`/categories/${id}`);categories.value=categories.value.filter(v=>v.id!==id)}
+  async function quoteRate(from:Currency,to:Currency,date:string){return (await api.get<ExchangeRate>(`/exchange-rates/quote?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`)).data}
+  async function previewGroupCurrency(currency:Currency){return (await api.post<CurrencyChangePreview>(`/groups/${currentGroupId.value}/currency-change/preview`,{currency})).data}
+  async function changeGroupCurrency(currency:Currency){const group=(await api.post<Group>(`/groups/${currentGroupId.value}/currency-change`,{currency})).data;groups.value=groups.value.map(v=>v.id===group.id?group:v);await refreshGroup();return group}
 
   async function selectGroup(id: string) {
     if (id && loadedGroupId === id) return
@@ -310,10 +321,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   return {
-    groups, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations,
+    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations,
     subscriptions, expenses, settlements, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
     revokeInvitation, acceptInvitation, addSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, retryLast, clear, isForbidden,
+    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,
   }
 })

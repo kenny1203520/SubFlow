@@ -13,6 +13,7 @@ import (
 type Service struct {
 	Stores adapters.Stores
 	Now    func() time.Time
+	Rates  RateProvider
 }
 
 func New(stores adapters.Stores) *Service { return &Service{Stores: stores, Now: time.Now} }
@@ -82,6 +83,9 @@ func (s *Service) UpdateGroup(ctx context.Context, userID string, group domain.G
 	if strings.TrimSpace(group.Name) == "" || !domain.IsCurrency(group.Currency) {
 		return nil, domain.ErrInvalid
 	}
+	if group.Currency != current.Currency {
+		return nil, domain.ErrConflict
+	}
 	if group.Timezone == "" {
 		group.Timezone = current.Timezone
 		if group.Timezone == "" {
@@ -128,6 +132,9 @@ func validSubscription(v *domain.Subscription) bool {
 	return strings.TrimSpace(v.Name) != "" && v.AmountMinor >= 0 && domain.IsCurrency(v.Currency) && (v.BillingCycle == domain.BillingMonthly || v.BillingCycle == domain.BillingQuarterly || v.BillingCycle == domain.BillingYearly) && (v.Status == domain.SubscriptionActive || v.Status == domain.SubscriptionPaused || v.Status == domain.SubscriptionCancelled) && (!v.StartsOn.IsZero() || !v.NextBilling.IsZero())
 }
 func (s *Service) CreateSubscription(ctx context.Context, userID string, v domain.Subscription) (*domain.Subscription, error) {
+	if v.RateMode == "" {
+		v.RateMode = domain.RateAutomatic
+	}
 	if v.GroupID != "" {
 		v.OwnerID = ""
 		if err := s.role(ctx, v.GroupID, userID, false); err != nil {
@@ -143,7 +150,7 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 		if err != nil {
 			return nil, err
 		}
-		v.Currency = group.Currency
+		v.BaseCurrency = group.Currency
 	} else {
 		v.GroupID = ""
 		v.OwnerID = userID
@@ -153,12 +160,24 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 		if v.PaidBy != userID {
 			return nil, domain.ErrForbidden
 		}
+		v.BaseCurrency = v.Currency
 	}
 	if v.StartsOn.IsZero() {
 		v.StartsOn = v.NextBilling
 	}
 	location := s.accountingLocation(ctx, userID, v.GroupID)
 	v.StartsOn = v.StartsOn.In(location)
+	if v.Currency == "" {
+		v.Currency = v.BaseCurrency
+	}
+	if _, err := s.validateCategory(ctx, userID, v.GroupID, v.CategoryID); err != nil {
+		return nil, err
+	}
+	baseAmount, rate, rateText, rateDate, err := s.conversion(ctx, v.Currency, v.BaseCurrency, v.AmountMinor, v.RateMode, v.ExchangeRate, v.StartsOn)
+	if err != nil {
+		return nil, err
+	}
+	v.BaseAmountMinor, v.RateScaled, v.ExchangeRate, v.ExchangeRateDate = baseAmount, rate, rateText, rateDate
 	if next, err := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now().In(location)); err == nil {
 		v.NextBilling = next
 	}
@@ -175,6 +194,7 @@ func (s *Service) ListPersonalSubscriptions(ctx context.Context, userID string, 
 	if err == nil {
 		for i := range result.Items {
 			result.Items[i].LifecycleStatus = domain.SubscriptionLifecycle(result.Items[i], s.Now())
+			result.Items[i].CategoryInfo = s.hydrateCategory(ctx, result.Items[i].CategoryID)
 		}
 	}
 	return result, err
@@ -299,6 +319,7 @@ func (s *Service) ListSubscriptions(ctx context.Context, userID, groupID string,
 	if err == nil {
 		for i := range result.Items {
 			result.Items[i].LifecycleStatus = domain.SubscriptionLifecycle(result.Items[i], s.Now())
+			result.Items[i].CategoryInfo = s.hydrateCategory(ctx, result.Items[i].CategoryID)
 		}
 	}
 	return result, err
@@ -329,6 +350,29 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		return nil, nextErr
 	}
 	v.EndsOn = current.EndsOn
+	if v.BaseCurrency == "" {
+		v.BaseCurrency = current.BaseCurrency
+	}
+	if v.Currency == "" {
+		v.Currency = current.Currency
+	}
+	if v.RateMode == "" {
+		v.RateMode = current.RateMode
+		if v.RateMode == "" {
+			v.RateMode = domain.RateAutomatic
+		}
+	}
+	if v.CategoryID == "" {
+		v.CategoryID = current.CategoryID
+	}
+	if _, err = s.validateCategory(ctx, userID, v.GroupID, v.CategoryID); err != nil {
+		return nil, err
+	}
+	baseAmount, rate, rateText, rateDate, conversionErr := s.conversion(ctx, v.Currency, v.BaseCurrency, v.AmountMinor, v.RateMode, v.ExchangeRate, v.StartsOn)
+	if conversionErr != nil {
+		return nil, conversionErr
+	}
+	v.BaseAmountMinor, v.RateScaled, v.ExchangeRate, v.ExchangeRateDate = baseAmount, rate, rateText, rateDate
 	if !validSubscription(&v) {
 		return nil, domain.ErrInvalid
 	}
@@ -372,9 +416,13 @@ func (s *Service) hydrateExpense(ctx context.Context, v *domain.Expense) error {
 		return err
 	}
 	v.Splits = splits
+	v.CategoryInfo = s.hydrateCategory(ctx, v.CategoryID)
 	return nil
 }
 func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Expense) (*domain.Expense, error) {
+	if v.RateMode == "" {
+		v.RateMode = domain.RateAutomatic
+	}
 	if v.PaidBy == "" {
 		v.PaidBy = userID
 	}
@@ -391,7 +439,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 		if err != nil {
 			return nil, err
 		}
-		v.Currency = group.Currency
+		v.BaseCurrency = group.Currency
 		if len(v.Splits) == 0 {
 			v.Splits = []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}
 			v.SplitMode = domain.SplitAmount
@@ -409,9 +457,25 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 		if v.Currency == "" {
 			v.Currency = domain.CurrencyTWD
 		}
+		v.BaseCurrency = v.Currency
 		v.SplitMode = domain.SplitAmount
 		v.Splits = []domain.ExpenseSplit{{UserID: userID, AmountMinor: v.AmountMinor}}
 	}
+	if _, err := s.validateCategory(ctx, userID, v.GroupID, v.CategoryID); err != nil {
+		return nil, err
+	}
+	baseAmount, rate, rateText, rateDate, err := s.conversion(ctx, v.Currency, v.BaseCurrency, v.AmountMinor, v.RateMode, v.ExchangeRate, v.IncurredOn)
+	if err != nil {
+		return nil, err
+	}
+	v.BaseAmountMinor, v.RateScaled, v.ExchangeRate, v.ExchangeRateDate = baseAmount, rate, rateText, rateDate
+	for i := range v.Splits {
+		v.Splits[i].BaseAmountMinor, err = domain.ConvertMinor(v.Splits[i].AmountMinor, v.Currency, v.BaseCurrency, rate)
+		if err != nil {
+			return nil, err
+		}
+	}
+	v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
 	if !validExpense(&v) {
 		return nil, domain.ErrInvalid
 	}
@@ -484,7 +548,7 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 		if groupErr != nil {
 			return nil, groupErr
 		}
-		v.Currency = group.Currency
+		v.BaseCurrency = group.Currency
 		if len(v.Splits) == 0 {
 			v.Splits = current.Splits
 		}
@@ -493,6 +557,36 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 			return nil, err
 		}
 	}
+	if v.Currency == "" {
+		v.Currency = current.Currency
+	}
+	if v.BaseCurrency == "" {
+		v.BaseCurrency = current.BaseCurrency
+	}
+	if v.RateMode == "" {
+		v.RateMode = current.RateMode
+		if v.RateMode == "" {
+			v.RateMode = domain.RateAutomatic
+		}
+	}
+	if v.CategoryID == "" {
+		v.CategoryID = current.CategoryID
+	}
+	if _, err = s.validateCategory(ctx, userID, v.GroupID, v.CategoryID); err != nil {
+		return nil, err
+	}
+	baseAmount, rate, rateText, rateDate, conversionErr := s.conversion(ctx, v.Currency, v.BaseCurrency, v.AmountMinor, v.RateMode, v.ExchangeRate, v.IncurredOn)
+	if conversionErr != nil {
+		return nil, conversionErr
+	}
+	v.BaseAmountMinor, v.RateScaled, v.ExchangeRate, v.ExchangeRateDate = baseAmount, rate, rateText, rateDate
+	for i := range v.Splits {
+		v.Splits[i].BaseAmountMinor, err = domain.ConvertMinor(v.Splits[i].AmountMinor, v.Currency, v.BaseCurrency, rate)
+		if err != nil {
+			return nil, err
+		}
+	}
+	v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
 	if !validExpense(&v) {
 		return nil, domain.ErrInvalid
 	}

@@ -6,16 +6,21 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"math/big"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/text/currency"
 )
 
 var (
-	ErrNotFound  = errors.New("not found")
-	ErrForbidden = errors.New("forbidden")
-	ErrConflict  = errors.New("conflict")
-	ErrInvalid   = errors.New("invalid input")
+	ErrNotFound        = errors.New("not found")
+	ErrForbidden       = errors.New("forbidden")
+	ErrConflict        = errors.New("conflict")
+	ErrInvalid         = errors.New("invalid input")
+	ErrRateUnavailable = errors.New("exchange rate unavailable")
 )
 
 func NormalizeEmail(value string) string {
@@ -23,12 +28,140 @@ func NormalizeEmail(value string) string {
 }
 
 func IsCurrency(value Currency) bool {
-	switch value {
-	case CurrencyTWD, CurrencyUSD, CurrencyJPY, CurrencyEUR:
-		return true
-	default:
-		return false
+	return activeCurrencyCodes[value]
+}
+
+func ActiveCurrencies() []CurrencyInfo {
+	result := make([]CurrencyInfo, 0, len(activeCurrencyCodes))
+	for code := range activeCurrencyCodes {
+		digits, _ := CurrencyDigits(code)
+		result = append(result, CurrencyInfo{Code: code, Digits: digits})
 	}
+	sort.Slice(result, func(i, j int) bool { return result[i].Code < result[j].Code })
+	return result
+}
+
+var activeCurrencyCodes = func() map[Currency]bool {
+	values := strings.Fields("AED AFN ALL AMD AOA ARS AUD AWG AZN BAM BBD BDT BGN BHD BIF BMD BND BOB BRL BSD BTN BWP BYN BZD CAD CDF CHF CLP CNY COP CRC CUP CVE CZK DJF DKK DOP DZD EGP ERN ETB EUR FJD FKP GBP GEL GHS GIP GMD GNF GTQ GYD HKD HNL HTG HUF IDR ILS INR IQD IRR ISK JMD JOD JPY KES KGS KHR KMF KPW KRW KWD KYD KZT LAK LBP LKR LRD LSL LYD MAD MDL MGA MKD MMK MNT MOP MRU MUR MVR MWK MXN MYR MZN NAD NGN NIO NOK NPR NZD OMR PAB PEN PGK PHP PKR PLN PYG QAR RON RSD RUB RWF SAR SBD SCR SDG SEK SGD SHP SLE SOS SRD SSP STN SVC SYP SZL THB TJS TMT TND TOP TRY TTD TWD TZS UAH UGX USD UYU UZS VES VND VUV WST XAF XCD XCG XOF XPF YER ZAR ZMW ZWG")
+	result := make(map[Currency]bool, len(values))
+	for _, value := range values {
+		result[Currency(value)] = true
+	}
+	return result
+}()
+
+func CurrencyDigits(value Currency) (int, error) {
+	if !IsCurrency(value) {
+		return 0, ErrInvalid
+	}
+	if strings.Contains(" BIF CLP DJF GNF ISK JPY KMF KRW PYG RWF UGX VND VUV XAF XOF XPF ", " "+string(value)+" ") {
+		return 0, nil
+	}
+	if strings.Contains(" BHD IQD JOD KWD LYD OMR TND ", " "+string(value)+" ") {
+		return 3, nil
+	}
+	unit, err := currency.ParseISO(string(value))
+	if err != nil {
+		return 2, nil
+	}
+	scale, _ := currency.Standard.Rounding(unit)
+	return scale, nil
+}
+
+func ParseRate(value string) (int64, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, ErrInvalid
+	}
+	parts := strings.Split(value, ".")
+	if len(parts) > 2 || parts[0] == "" {
+		return 0, ErrInvalid
+	}
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || whole < 0 {
+		return 0, ErrInvalid
+	}
+	fraction := ""
+	if len(parts) == 2 {
+		fraction = parts[1]
+	}
+	if len(fraction) > 8 {
+		return 0, ErrInvalid
+	}
+	for len(fraction) < 8 {
+		fraction += "0"
+	}
+	fractionValue := int64(0)
+	if fraction != "" {
+		fractionValue, err = strconv.ParseInt(fraction, 10, 64)
+		if err != nil {
+			return 0, ErrInvalid
+		}
+	}
+	if whole > (int64(^uint64(0)>>1)-fractionValue)/ExchangeRateScale {
+		return 0, ErrInvalid
+	}
+	result := whole*ExchangeRateScale + fractionValue
+	if result <= 0 {
+		return 0, ErrInvalid
+	}
+	return result, nil
+}
+
+func FormatRate(value int64) string {
+	if value <= 0 {
+		return ""
+	}
+	whole := value / ExchangeRateScale
+	fraction := strconv.FormatInt(value%ExchangeRateScale, 10)
+	fraction = strings.Repeat("0", 8-len(fraction)) + fraction
+	fraction = strings.TrimRight(fraction, "0")
+	if fraction == "" {
+		return strconv.FormatInt(whole, 10)
+	}
+	return strconv.FormatInt(whole, 10) + "." + fraction
+}
+
+func ConvertMinor(amount int64, from, to Currency, rateScaled int64) (int64, error) {
+	if amount < 0 || rateScaled <= 0 || !IsCurrency(from) || !IsCurrency(to) {
+		return 0, ErrInvalid
+	}
+	fromDigits, err := CurrencyDigits(from)
+	if err != nil {
+		return 0, err
+	}
+	toDigits, err := CurrencyDigits(to)
+	if err != nil {
+		return 0, err
+	}
+	numerator := new(big.Int).Mul(big.NewInt(amount), big.NewInt(rateScaled))
+	numerator.Mul(numerator, new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(toDigits)), nil))
+	denominator := new(big.Int).Mul(big.NewInt(ExchangeRateScale), new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(fromDigits)), nil))
+	quotient, remainder := new(big.Int), new(big.Int)
+	quotient.QuoRem(numerator, denominator, remainder)
+	if new(big.Int).Mul(remainder, big.NewInt(2)).Cmp(denominator) >= 0 {
+		quotient.Add(quotient, big.NewInt(1))
+	}
+	if !quotient.IsInt64() {
+		return 0, ErrInvalid
+	}
+	return quotient.Int64(), nil
+}
+
+func CanonicalBaseSplits(total int64, payer string, values []ExpenseSplit) []ExpenseSplit {
+	result := append([]ExpenseSplit(nil), values...)
+	var allocated int64
+	target := 0
+	for i := range result {
+		allocated += result[i].BaseAmountMinor
+		if result[i].UserID == payer {
+			target = i
+		}
+	}
+	if len(result) > 0 {
+		result[target].BaseAmountMinor += total - allocated
+	}
+	return result
 }
 
 func CanManageGroup(role MemberRole) bool { return role == RoleOwner }
@@ -181,14 +314,26 @@ func CanonicalSplits(amount int64, payer string, mode SplitMode, input []Expense
 func MemberBalances(expenses []Expense, settlements []Settlement) []MemberBalance {
 	totals := map[string]int64{}
 	for _, expense := range expenses {
-		totals[expense.PaidBy] += expense.AmountMinor
+		amount := expense.BaseAmountMinor
+		if amount == 0 {
+			amount = expense.AmountMinor
+		}
+		totals[expense.PaidBy] += amount
 		for _, split := range expense.Splits {
-			totals[split.UserID] -= split.AmountMinor
+			share := split.BaseAmountMinor
+			if share == 0 {
+				share = split.AmountMinor
+			}
+			totals[split.UserID] -= share
 		}
 	}
 	for _, settlement := range settlements {
-		totals[settlement.FromUserID] += settlement.AmountMinor
-		totals[settlement.ToUserID] -= settlement.AmountMinor
+		amount := settlement.BaseAmountMinor
+		if amount == 0 {
+			amount = settlement.AmountMinor
+		}
+		totals[settlement.FromUserID] += amount
+		totals[settlement.ToUserID] -= amount
 	}
 	ids := make([]string, 0, len(totals))
 	for id := range totals {

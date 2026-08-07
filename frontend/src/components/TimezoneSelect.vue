@@ -13,7 +13,7 @@ const allZones = computed<TimeZone[]>(() => ['UTC', ...Intl.supportedValuesOf('t
 const selectedZone = computed(() => allZones.value.find(zone => zone.name === props.modelValue))
 const matchingZones = computed(() => { const term = query.value.trim().toLocaleLowerCase(locale.value); return allZones.value.filter(zone => !term || `${zone.name} ${zone.displayName} ${zone.offset}`.toLocaleLowerCase(locale.value).includes(term)) })
 const groups = computed(() => matchingZones.value.reduce<Record<string, TimeZone[]>>((all, zone) => { (all[zone.offset] ||= []).push(zone); return all }, {}))
-const label = computed(() => props.modelValue ? timezoneLabel(props.modelValue) : t.value.timezone)
+const label = computed(() => props.modelValue ? timezoneLabel(props.modelValue,new Date(),locale.value) : t.value.timezone)
 function select(value: string, close: () => void) { emit('update:modelValue', value); query.value = ''; close() }
 function focusSearch() { nextTick(() => searchInput.value?.focus()) }
 </script>

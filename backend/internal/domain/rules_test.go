@@ -5,6 +5,29 @@ import (
 	"time"
 )
 
+func TestActiveCurrencyValidationAndDigits(t *testing.T) {
+	if !IsCurrency("TWD") || !IsCurrency("XOF") || IsCurrency("XAU") || IsCurrency("ADP") {
+		t.Fatal("active ISO currency validation mismatch")
+	}
+	for code, want := range map[Currency]int{"JPY": 0, "USD": 2, "KWD": 3} {
+		got, err := CurrencyDigits(code)
+		if err != nil || got != want {
+			t.Fatalf("%s digits=%d err=%v", code, got, err)
+		}
+	}
+}
+
+func TestConvertMinorUsesFixedPointAndCurrencyDigits(t *testing.T) {
+	got, err := ConvertMinor(12345, "USD", "JPY", 15000000000)
+	if err != nil || got != 18518 {
+		t.Fatalf("expected rounded JPY 18518, got %d err=%v", got, err)
+	}
+	rate, err := ParseRate("31.25000000")
+	if err != nil || FormatRate(rate) != "31.25" {
+		t.Fatalf("rate round trip failed: %d %v", rate, err)
+	}
+}
+
 func TestMonthlyEquivalent(t *testing.T) {
 	tests := []struct {
 		cycle BillingCycle

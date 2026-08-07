@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
 	"github.com/pocketbase/pocketbase/core"
@@ -35,6 +36,12 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	_ = protected
 	bind := apis.RequireAuth("users")
 	e.Router.GET("/api/subflow/v1/groups", a.listGroups).Bind(bind)
+	e.Router.GET("/api/subflow/v1/currencies", a.currencies).Bind(bind)
+	e.Router.GET("/api/subflow/v1/categories", a.listCategories).Bind(bind)
+	e.Router.POST("/api/subflow/v1/categories", a.createCategory).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/categories/{id}", a.updateCategory).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/categories/{id}", a.archiveCategory).Bind(bind)
+	e.Router.GET("/api/subflow/v1/exchange-rates/quote", a.exchangeRateQuote).Bind(bind)
 	e.Router.GET("/api/subflow/v1/dashboard", a.workspaceDashboard).Bind(bind)
 	e.Router.GET("/api/subflow/v1/subscriptions", a.listPersonalSubscriptions).Bind(bind)
 	e.Router.POST("/api/subflow/v1/subscriptions", a.createPersonalSubscription).Bind(bind)
@@ -44,6 +51,8 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/groups/{groupId}", a.getGroup).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/groups/{groupId}", a.updateGroup).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}", a.deleteGroup).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/currency-change/preview", a.previewCurrencyChange).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/currency-change", a.changeCurrency).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/summary", a.dashboard).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/members", a.listMembers).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/members/{userId}", a.removeMember).Bind(bind)
@@ -97,8 +106,97 @@ func fail(e *core.RequestEvent, err error) error {
 		status = http.StatusConflict
 		code = "conflict"
 		message = "資料狀態衝突"
+	case errors.Is(err, domain.ErrRateUnavailable):
+		status = http.StatusUnprocessableEntity
+		code = "rate_unavailable"
+		message = "exchange rate unavailable"
 	}
 	return e.JSON(status, errorEnvelope{Error: apiError{Code: code, Message: message}})
+}
+
+func (a *API) currencies(e *core.RequestEvent) error {
+	return ok(e, http.StatusOK, a.Service.Currencies(), nil)
+}
+func (a *API) listCategories(e *core.RequestEvent) error {
+	q := e.Request.URL.Query()
+	values, err := a.Service.ListCategories(e.Request.Context(), authID(e), q.Get("scope"), q.Get("groupId"), q.Get("archived") == "true")
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, values, nil)
+}
+func (a *API) createCategory(e *core.RequestEvent) error {
+	var value domain.Category
+	if e.BindBody(&value) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	created, err := a.Service.CreateCategory(e.Request.Context(), authID(e), value)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, created, nil)
+}
+func (a *API) updateCategory(e *core.RequestEvent) error {
+	var value domain.Category
+	if e.BindBody(&value) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value.ID = e.Request.PathValue("id")
+	updated, err := a.Service.UpdateCategory(e.Request.Context(), authID(e), value)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, updated, nil)
+}
+func (a *API) archiveCategory(e *core.RequestEvent) error {
+	updated, err := a.Service.UpdateCategory(e.Request.Context(), authID(e), domain.Category{ID: e.Request.PathValue("id"), Archived: true})
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, updated, nil)
+}
+func (a *API) exchangeRateQuote(e *core.RequestEvent) error {
+	q := e.Request.URL.Query()
+	date, err := time.Parse("2006-01-02", q.Get("date"))
+	if err != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.QuoteRate(e.Request.Context(), domain.Currency(q.Get("from")), domain.Currency(q.Get("to")), date)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func currencyBody(e *core.RequestEvent) (domain.Currency, error) {
+	var body struct {
+		Currency domain.Currency `json:"currency"`
+	}
+	if e.BindBody(&body) != nil {
+		return "", domain.ErrInvalid
+	}
+	return body.Currency, nil
+}
+func (a *API) previewCurrencyChange(e *core.RequestEvent) error {
+	currency, err := currencyBody(e)
+	if err != nil {
+		return fail(e, err)
+	}
+	value, err := a.Service.PreviewGroupCurrency(e.Request.Context(), authID(e), groupID(e), currency)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) changeCurrency(e *core.RequestEvent) error {
+	currency, err := currencyBody(e)
+	if err != nil {
+		return fail(e, err)
+	}
+	value, err := a.Service.ChangeGroupCurrency(e.Request.Context(), authID(e), groupID(e), currency)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
 }
 
 var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}}

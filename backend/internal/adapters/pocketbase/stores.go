@@ -2,6 +2,7 @@ package pocketbase
 
 import (
 	"context"
+	"time"
 
 	"github.com/pocketbase/pocketbase/core"
 
@@ -14,6 +15,8 @@ type InvitationRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
 type SettlementRepo struct{ *Repository }
+type CategoryRepo struct{ *Repository }
+type ExchangeRateRepo struct{ *Repository }
 type UserRepo struct{ *Repository }
 
 type Stores struct {
@@ -23,13 +26,15 @@ type Stores struct {
 	Subscriptions *SubscriptionRepo
 	Expenses      *ExpenseRepo
 	Settlements   *SettlementRepo
+	Categories    *CategoryRepo
+	ExchangeRates *ExchangeRateRepo
 	Users         *UserRepo
 	Transactions  *Repository
 }
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &UserRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &UserRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -73,6 +78,9 @@ func (r *SubscriptionRepo) Delete(ctx context.Context, id string) error {
 func (r *SubscriptionRepo) ListPersonal(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Subscription], error) {
 	return r.ListPersonalSubscriptions(ctx, userID, req)
 }
+func (r *SubscriptionRepo) ListAutomatic(ctx context.Context) ([]domain.Subscription, error) {
+	return r.ListAutomaticSubscriptions(ctx)
+}
 
 func (r *ExpenseRepo) Create(ctx context.Context, v *domain.Expense) error {
 	return r.CreateExpense(ctx, v)
@@ -106,8 +114,30 @@ func (r *SettlementRepo) Get(ctx context.Context, id string) (*domain.Settlement
 func (r *SettlementRepo) List(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Settlement], error) {
 	return r.ListSettlements(ctx, groupID, req)
 }
+func (r *SettlementRepo) Update(ctx context.Context, v *domain.Settlement) error {
+	return r.UpdateSettlement(ctx, v)
+}
 func (r *SettlementRepo) Delete(ctx context.Context, id string) error {
 	return r.DeleteSettlement(ctx, id)
+}
+
+func (r *CategoryRepo) Create(ctx context.Context, v *domain.Category) error {
+	return r.CreateCategory(ctx, v)
+}
+func (r *CategoryRepo) Get(ctx context.Context, id string) (*domain.Category, error) {
+	return r.GetCategory(ctx, id)
+}
+func (r *CategoryRepo) List(ctx context.Context, ownerID, groupID string, archived bool) ([]domain.Category, error) {
+	return r.ListCategories(ctx, ownerID, groupID, archived)
+}
+func (r *CategoryRepo) Update(ctx context.Context, v *domain.Category) error {
+	return r.UpdateCategory(ctx, v)
+}
+func (r *ExchangeRateRepo) Upsert(ctx context.Context, v *domain.ExchangeRate) error {
+	return r.UpsertExchangeRate(ctx, v)
+}
+func (r *ExchangeRateRepo) LatestOnOrBefore(ctx context.Context, from, to domain.Currency, date time.Time) (*domain.ExchangeRate, error) {
+	return r.LatestExchangeRate(ctx, from, to, date)
 }
 
 func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {

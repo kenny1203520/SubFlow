@@ -9,4 +9,4 @@ export function timezoneOffset(timeZone:string,date:Date|string=new Date()){
     return{label:`UTC${match[1]}${hours}:${minutesPart}`,minutes}
   }catch{return{label:'UTC+00:00',minutes:0}}
 }
-export function timezoneLabel(timeZone:string,date:Date|string=new Date()){const name=timeZone||'UTC';return`${name} (${timezoneOffset(name,date).label})`}
+export function timezoneLabel(timeZone:string,date:Date|string=new Date(),locale=typeof document==='undefined'?'zh-TW':document.documentElement.lang||'zh-TW'){const name=timeZone||'UTC';let localized=name;try{localized=new Intl.DateTimeFormat(locale,{timeZone:name,timeZoneName:'longGeneric'}).formatToParts(typeof date==='string'?new Date(date):date).find(part=>part.type==='timeZoneName')?.value||name}catch{}return`${localized} · ${name} (${timezoneOffset(name,date).label})`}

@@ -50,6 +50,7 @@ type SubscriptionRepository interface {
 	Get(context.Context, string) (*domain.Subscription, error)
 	List(context.Context, string, PageRequest) (Page[domain.Subscription], error)
 	ListPersonal(context.Context, string, PageRequest) (Page[domain.Subscription], error)
+	ListAutomatic(context.Context) ([]domain.Subscription, error)
 	Update(context.Context, *domain.Subscription) error
 	Delete(context.Context, string) error
 }
@@ -69,7 +70,20 @@ type SettlementRepository interface {
 	Create(context.Context, *domain.Settlement) error
 	Get(context.Context, string) (*domain.Settlement, error)
 	List(context.Context, string, PageRequest) (Page[domain.Settlement], error)
+	Update(context.Context, *domain.Settlement) error
 	Delete(context.Context, string) error
+}
+
+type CategoryRepository interface {
+	Create(context.Context, *domain.Category) error
+	Get(context.Context, string) (*domain.Category, error)
+	List(context.Context, string, string, bool) ([]domain.Category, error)
+	Update(context.Context, *domain.Category) error
+}
+
+type ExchangeRateRepository interface {
+	Upsert(context.Context, *domain.ExchangeRate) error
+	LatestOnOrBefore(context.Context, domain.Currency, domain.Currency, time.Time) (*domain.ExchangeRate, error)
 }
 
 type UserDirectory interface {

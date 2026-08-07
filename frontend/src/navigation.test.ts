@@ -22,7 +22,7 @@ describe('navigation stability',()=>{
     await router.push('/');await router.isReady()
     const wrapper=mount(App,{global:{plugins:[router],stubs:{LanguageSwitcher:true,ThemeSwitcher:true}}})
     const targets=['/','/personal/expenses','/personal/subscriptions','/groups','/groups/group-1/overview','/groups/group-1/expenses','/groups/group-1/subscriptions','/groups/group-1/members','/groups/group-1/settings']
-    for(let index=0;index<36;index++){await router.push(targets[index%targets.length]);await new Promise(resolve=>setTimeout(resolve,0));expect(wrapper.find('.main').exists()).toBe(true);expect(wrapper.find('.error-state').exists()).toBe(false);expect(wrapper.find('.main section').exists()).toBe(true)}
+    for(let index=0;index<36;index++){await router.push(targets[index%targets.length]);await new Promise(resolve=>setTimeout(resolve,0));const context=`route ${router.currentRoute.value.fullPath}, iteration ${index}`;expect(wrapper.find('.main').exists(),context).toBe(true);expect(wrapper.find('.error-state').exists(),context).toBe(false);expect(wrapper.find('.main section').exists(),context).toBe(true)}
     wrapper.unmount()
   })
 })
