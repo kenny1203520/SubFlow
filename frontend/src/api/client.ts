@@ -1,4 +1,4 @@
-import type { ApiFailure, Envelope } from './types'
+﻿import type { ApiFailure, Envelope } from './types'
 
 export class ApiError extends Error {
   status:number;code:string;fields?:Record<string,string>

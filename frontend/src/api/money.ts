@@ -1,4 +1,4 @@
-import type { Currency } from './types'
+﻿import type { Currency } from './types'
 
 export function currencyDigits(currency: Currency | string = 'TWD') {
   return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2
@@ -15,3 +15,4 @@ export function minorToMajor(value: number, currency: Currency | string = 'TWD')
 export function minorToInput(value: number, currency: Currency | string = 'TWD') {
   return minorToMajor(value, currency).toFixed(currencyDigits(currency))
 }
+
