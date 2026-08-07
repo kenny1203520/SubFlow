@@ -35,6 +35,11 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	_ = protected
 	bind := apis.RequireAuth("users")
 	e.Router.GET("/api/subflow/v1/groups", a.listGroups).Bind(bind)
+	e.Router.GET("/api/subflow/v1/dashboard", a.workspaceDashboard).Bind(bind)
+	e.Router.GET("/api/subflow/v1/subscriptions", a.listPersonalSubscriptions).Bind(bind)
+	e.Router.POST("/api/subflow/v1/subscriptions", a.createPersonalSubscription).Bind(bind)
+	e.Router.GET("/api/subflow/v1/expenses", a.listPersonalExpenses).Bind(bind)
+	e.Router.POST("/api/subflow/v1/expenses", a.createPersonalExpense).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups", a.createGroup).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}", a.getGroup).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/groups/{groupId}", a.updateGroup).Bind(bind)
@@ -45,6 +50,8 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/subscriptions", a.listSubscriptions).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/subscriptions", a.createSubscription).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/subscriptions/{id}", a.updateSubscription).Bind(bind)
+	e.Router.POST("/api/subflow/v1/subscriptions/{id}/stop", a.stopSubscription).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}/stop", a.resumeSubscription).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}", a.deleteSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/expenses", a.listExpenses).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/expenses", a.createExpense).Bind(bind)
@@ -160,6 +167,13 @@ func (a *API) dashboard(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusOK, v, nil)
 }
+func (a *API) workspaceDashboard(e *core.RequestEvent) error {
+	scope := e.Request.URL.Query().Get("scope")
+	if scope == "group" { e.Request.SetPathValue("groupId", e.Request.URL.Query().Get("groupId")); return a.dashboard(e) }
+	v, err := a.Service.PersonalDashboard(e.Request.Context(), authID(e), scope == "all")
+	if err != nil { return fail(e, err) }
+	return ok(e, http.StatusOK, v, nil)
+}
 func (a *API) listMembers(e *core.RequestEvent) error {
 	p, err := pageRequest(e, "members")
 	if err != nil {
@@ -188,6 +202,16 @@ func (a *API) listSubscriptions(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
 }
+func (a *API) listPersonalSubscriptions(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "subscriptions"); if err != nil { return fail(e, err) }
+	v, err := a.Service.ListPersonalSubscriptions(e.Request.Context(), authID(e), p); if err != nil { return fail(e, err) }
+	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *API) createPersonalSubscription(e *core.RequestEvent) error {
+	var v domain.Subscription; if e.BindBody(&v) != nil { return fail(e, domain.ErrInvalid) }
+	created, err := a.Service.CreateSubscription(e.Request.Context(), authID(e), v); if err != nil { return fail(e, err) }
+	return ok(e, http.StatusCreated, created, nil)
+}
 func (a *API) createSubscription(e *core.RequestEvent) error {
 	var v domain.Subscription
 	if err := e.BindBody(&v); err != nil {
@@ -212,6 +236,15 @@ func (a *API) updateSubscription(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusOK, updated, nil)
 }
+func (a *API) stopSubscription(e *core.RequestEvent) error {
+	var body struct{ EndsOn string `json:"endsOn"` }; if e.BindBody(&body) != nil { return fail(e, domain.ErrInvalid) }
+	updated, err := a.Service.StopSubscription(e.Request.Context(), authID(e), e.Request.PathValue("id"), body.EndsOn); if err != nil { return fail(e, err) }
+	return ok(e, http.StatusOK, updated, nil)
+}
+func (a *API) resumeSubscription(e *core.RequestEvent) error {
+	updated, err := a.Service.ResumeSubscription(e.Request.Context(), authID(e), e.Request.PathValue("id")); if err != nil { return fail(e, err) }
+	return ok(e, http.StatusOK, updated, nil)
+}
 func (a *API) deleteSubscription(e *core.RequestEvent) error {
 	if err := a.Service.DeleteSubscription(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
 		return fail(e, err)
@@ -228,6 +261,17 @@ func (a *API) listExpenses(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *API) listPersonalExpenses(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "expenses"); if err != nil { return fail(e, err) }
+	v, err := a.Service.ListPersonalExpenses(e.Request.Context(), authID(e), p); if err != nil { return fail(e, err) }
+	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *API) createPersonalExpense(e *core.RequestEvent) error {
+	var v domain.Expense; if e.BindBody(&v) != nil { return fail(e, domain.ErrInvalid) }
+	if v.PaidBy == "" { v.PaidBy = authID(e) }
+	created, err := a.Service.CreateExpense(e.Request.Context(), authID(e), v); if err != nil { return fail(e, err) }
+	return ok(e, http.StatusCreated, created, nil)
 }
 func (a *API) createExpense(e *core.RequestEvent) error {
 	var v domain.Expense

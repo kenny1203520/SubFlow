@@ -6,8 +6,8 @@ import type { DashboardSummary, Expense, Group, Invitation, Membership, Subscrip
 import { useAuthStore } from './auth'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'color'>
-type SubscriptionInput = Omit<Subscription, 'id' | 'groupId' | 'createdAt' | 'updatedAt'>
-type ExpenseInput = Omit<Expense, 'id' | 'groupId' | 'createdAt' | 'updatedAt'>
+type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'startsOn'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'>>
+type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'paidBy'|'incurredOn'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'>>
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const auth = useAuthStore()
@@ -18,6 +18,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const invitations = ref<Invitation[]>([])
   const subscriptions = ref<Subscription[]>([])
   const expenses = ref<Expense[]>([])
+  const personalSubscriptions = ref<Subscription[]>([])
+  const personalExpenses = ref<Expense[]>([])
+  const personalSummary = ref<DashboardSummary | null>(null)
   const summary = ref<DashboardSummary | null>(null)
   const loading = ref(false)
   const error = ref('')
@@ -83,6 +86,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       invitations.value = me?.role === 'owner'
         ? (await api.get<Invitation[]>(`/groups/${id}/invitations?perPage=100`)).data
         : []
+    })
+  }
+
+  async function refreshPersonal(scope: 'personal'|'all' = 'personal') {
+    await run(async () => {
+      const [subscriptionPage, expensePage, dashboard] = await Promise.all([
+        api.get<Subscription[]>('/subscriptions?perPage=100'),
+        api.get<Expense[]>('/expenses?perPage=100'),
+        api.get<DashboardSummary>(`/dashboard?scope=${scope}`),
+      ])
+      personalSubscriptions.value = subscriptionPage.data
+      personalExpenses.value = expensePage.data
+      personalSummary.value = dashboard.data
     })
   }
 
@@ -193,6 +209,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
   }
 
+  async function addPersonalExpense(input: ExpenseInput) {
+    await run(async () => { await api.post<Expense>('/expenses', input); await refreshPersonal() })
+  }
+  async function addPersonalSubscription(input: SubscriptionInput) {
+    await run(async () => { await api.post<Subscription>('/subscriptions', input); await refreshPersonal() })
+  }
+  async function stopSubscription(id: string, endsOn: string) {
+    await run(async () => { await api.post<Subscription>(`/subscriptions/${id}/stop`, { endsOn }); await refreshPersonal() })
+  }
+
   async function updateExpense(id: string, input: ExpenseInput) {
     await run(async () => {
       await api.patch<Expense>(`/expenses/${id}`, input)
@@ -215,6 +241,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     invitations.value = []
     subscriptions.value = []
     expenses.value = []
+    personalSubscriptions.value = []
+    personalExpenses.value = []
+    personalSummary.value = null
     summary.value = null
     error.value = ''
     permissionDenied.value = false
@@ -226,9 +255,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations,
-    subscriptions, expenses, summary, loading, error, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, personalSubscriptions, personalExpenses, personalSummary, summary, loading, error, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
     revokeInvitation, acceptInvitation, addSubscription, updateSubscription, deleteSubscription,
-    addExpense, updateExpense, deleteExpense, clear, isForbidden,
+    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, refreshPersonal, clear, isForbidden,
   }
 })

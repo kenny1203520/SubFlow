@@ -105,12 +105,12 @@ func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID st
 }
 
 func validSubscription(v *domain.Subscription) bool {
-	return strings.TrimSpace(v.Name) != "" && v.AmountMinor >= 0 && domain.IsCurrency(v.Currency) && (v.BillingCycle == domain.BillingMonthly || v.BillingCycle == domain.BillingQuarterly || v.BillingCycle == domain.BillingYearly) && (v.Status == domain.SubscriptionActive || v.Status == domain.SubscriptionPaused || v.Status == domain.SubscriptionCancelled) && !v.NextBilling.IsZero()
+	return strings.TrimSpace(v.Name) != "" && v.AmountMinor >= 0 && domain.IsCurrency(v.Currency) && (v.BillingCycle == domain.BillingMonthly || v.BillingCycle == domain.BillingQuarterly || v.BillingCycle == domain.BillingYearly) && (v.Status == domain.SubscriptionActive || v.Status == domain.SubscriptionPaused || v.Status == domain.SubscriptionCancelled) && (!v.StartsOn.IsZero() || !v.NextBilling.IsZero())
 }
 func (s *Service) CreateSubscription(ctx context.Context, userID string, v domain.Subscription) (*domain.Subscription, error) {
-	if err := s.role(ctx, v.GroupID, userID, false); err != nil {
-		return nil, err
-	}
+	if v.GroupID != "" { if err := s.role(ctx, v.GroupID, userID, false); err != nil { return nil, err } } else { v.OwnerID = userID; if v.PaidBy == "" { v.PaidBy = userID } }
+	if v.StartsOn.IsZero() { v.StartsOn = v.NextBilling }
+	if next, err := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now()); err == nil { v.NextBilling = next }
 	if !validSubscription(&v) {
 		return nil, domain.ErrInvalid
 	}
@@ -119,6 +119,34 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 	}
 	return &v, nil
 }
+func (s *Service) ListPersonalSubscriptions(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Subscription], error) {
+	result, err := s.Stores.Subscriptions.ListPersonal(ctx, userID, page)
+	if err == nil { for i := range result.Items { result.Items[i].LifecycleStatus = domain.SubscriptionLifecycle(result.Items[i], s.Now()) } }
+	return result, err
+}
+
+func (s *Service) PersonalDashboard(ctx context.Context, userID string, all bool) (domain.DashboardSummary, error) {
+	subs, err := s.ListPersonalSubscriptions(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "next_billing"})
+	if err != nil { return domain.DashboardSummary{}, err }
+	expenses, err := s.ListPersonalExpenses(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-incurred_on"})
+	if err != nil { return domain.DashboardSummary{}, err }
+	now := s.Now(); result := domain.DashboardSummary{}; totals := map[domain.Currency]*domain.CurrencyDashboard{}
+	for _, item := range subs.Items { item.LifecycleStatus = domain.SubscriptionLifecycle(item, now); if item.LifecycleStatus == "active" || item.LifecycleStatus == "ending" { amount, _ := domain.MonthlyEquivalent(item.AmountMinor, item.BillingCycle); bucket := totals[item.Currency]; if bucket == nil { bucket=&domain.CurrencyDashboard{Currency:item.Currency}; totals[item.Currency]=bucket }; bucket.MonthlySubscriptionMinor += amount; bucket.ActiveSubscriptions++; result.ActiveSubscriptions++; result.MonthlySubscriptionMinor += amount; if !item.NextBilling.Before(now) && item.NextBilling.Before(now.AddDate(0,1,0)) { result.Upcoming=append(result.Upcoming,item) } } }
+	for _, item := range expenses.Items { if item.IncurredOn.Year()==now.Year() && item.IncurredOn.Month()==now.Month() { bucket:=totals[domain.CurrencyTWD]; if bucket==nil { bucket=&domain.CurrencyDashboard{Currency:domain.CurrencyTWD}; totals[domain.CurrencyTWD]=bucket }; bucket.CashOutflowMinor += item.AmountMinor; bucket.PersonalShareMinor += item.AmountMinor; result.MonthExpenseMinor += item.AmountMinor } }
+	for _, bucket := range totals { result.Currencies=append(result.Currencies,*bucket) }
+	return result,nil
+}
+
+func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn string) (*domain.Subscription, error) {
+	v, err := s.Stores.Subscriptions.Get(ctx,id); if err != nil { return nil,err }
+	if v.GroupID == "" { if v.OwnerID != userID { return nil,domain.ErrForbidden } } else if err=s.role(ctx,v.GroupID,userID,false); err != nil { return nil,err }
+	value, err := time.Parse("2006-01-02", endsOn); if err != nil { value,err=time.Parse(time.RFC3339,endsOn); if err != nil { return nil,domain.ErrInvalid } }
+	current:=v.StartsOn; if current.IsZero(){current=v.NextBilling}; matched:=false
+	for i:=0;i<1200 && !current.After(value);i++ { if current.Equal(value) || current.Format("2006-01-02")==value.Format("2006-01-02") { matched=true;break }; current,_=domain.NextBilling(current,v.BillingCycle,current.Add(time.Nanosecond)) }
+	if !matched || value.Before(v.NextBilling) { return nil,domain.ErrInvalid }
+	v.EndsOn=&value; if err=s.Stores.Subscriptions.Update(ctx,v);err!=nil{return nil,err}; v.LifecycleStatus=domain.SubscriptionLifecycle(*v,s.Now()); return v,nil
+}
+func (s *Service) ResumeSubscription(ctx context.Context, userID,id string)(*domain.Subscription,error){ v,err:=s.Stores.Subscriptions.Get(ctx,id);if err!=nil{return nil,err};if v.GroupID=="" {if v.OwnerID!=userID{return nil,domain.ErrForbidden}} else if err=s.role(ctx,v.GroupID,userID,false);err!=nil{return nil,err};v.EndsOn=nil;if err=s.Stores.Subscriptions.Update(ctx,v);err!=nil{return nil,err};v.LifecycleStatus=domain.SubscriptionLifecycle(*v,s.Now());return v,nil }
 func (s *Service) ListSubscriptions(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Subscription], error) {
 	if err := s.role(ctx, groupID, userID, false); err != nil {
 		return ports.Page[domain.Subscription]{}, err
@@ -162,12 +190,7 @@ func validExpense(v *domain.Expense) bool {
 	return strings.TrimSpace(v.Title) != "" && v.AmountMinor >= 0 && !v.IncurredOn.IsZero() && v.PaidBy != ""
 }
 func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Expense) (*domain.Expense, error) {
-	if err := s.role(ctx, v.GroupID, userID, false); err != nil {
-		return nil, err
-	}
-	if _, err := s.Stores.Memberships.GetRole(ctx, v.GroupID, v.PaidBy); err != nil {
-		return nil, domain.ErrInvalid
-	}
+	if v.GroupID != "" { if err := s.role(ctx, v.GroupID, userID, false); err != nil { return nil, err }; if _, err := s.Stores.Memberships.GetRole(ctx, v.GroupID, v.PaidBy); err != nil { return nil, domain.ErrInvalid } } else { v.OwnerID = userID; if v.PaidBy == "" { v.PaidBy = userID }; if v.PaidBy != userID { return nil, domain.ErrForbidden } }
 	if !validExpense(&v) {
 		return nil, domain.ErrInvalid
 	}
@@ -176,6 +199,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 	}
 	return &v, nil
 }
+func (s *Service) ListPersonalExpenses(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Expense], error) { return s.Stores.Expenses.ListPersonal(ctx, userID, page) }
 func (s *Service) ListExpenses(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Expense], error) {
 	if err := s.role(ctx, groupID, userID, false); err != nil {
 		return ports.Page[domain.Expense]{}, err

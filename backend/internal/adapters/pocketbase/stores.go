@@ -68,6 +68,9 @@ func (r *SubscriptionRepo) Update(ctx context.Context, v *domain.Subscription) e
 func (r *SubscriptionRepo) Delete(ctx context.Context, id string) error {
 	return r.DeleteSubscription(ctx, id)
 }
+func (r *SubscriptionRepo) ListPersonal(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Subscription], error) {
+	return r.ListPersonalSubscriptions(ctx, userID, req)
+}
 
 func (r *ExpenseRepo) Create(ctx context.Context, v *domain.Expense) error {
 	return r.CreateExpense(ctx, v)
@@ -82,6 +85,9 @@ func (r *ExpenseRepo) Update(ctx context.Context, v *domain.Expense) error {
 	return r.UpdateExpense(ctx, v)
 }
 func (r *ExpenseRepo) Delete(ctx context.Context, id string) error { return r.DeleteExpense(ctx, id) }
+func (r *ExpenseRepo) ListPersonal(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Expense], error) {
+	return r.ListPersonalExpenses(ctx, userID, req)
+}
 
 func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {
 	return r.GetUser(ctx, id)

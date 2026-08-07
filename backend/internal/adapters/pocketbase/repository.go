@@ -237,6 +237,14 @@ func (r *Repository) ListSubscriptions(ctx context.Context, groupID string, req 
 	count, _ := countFiltered(r.app(ctx), CollectionSubscriptions, "group={:group}", dbx.Params{"group": groupID})
 	return page(items, req, count), nil
 }
+func (r *Repository) ListPersonalSubscriptions(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Subscription], error) {
+	recs, err := listRecords(r.app(ctx), CollectionSubscriptions, "owner={:user} || paid_by={:user}", req, dbx.Params{"user": userID})
+	if err != nil { return ports.Page[domain.Subscription]{}, err }
+	items := make([]domain.Subscription, len(recs))
+	for i, v := range recs { items[i] = *subscriptionFrom(v) }
+	count, _ := countFiltered(r.app(ctx), CollectionSubscriptions, "owner={:user} || paid_by={:user}", dbx.Params{"user": userID})
+	return page(items, req, count), nil
+}
 func (r *Repository) UpdateSubscription(ctx context.Context, v *domain.Subscription) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionSubscriptions, v.ID)
 	if err != nil {
@@ -287,6 +295,14 @@ func (r *Repository) ListExpenses(ctx context.Context, groupID string, req ports
 		items[i] = *expenseFrom(v)
 	}
 	count, _ := countFiltered(r.app(ctx), CollectionExpenses, "group={:group}", dbx.Params{"group": groupID})
+	return page(items, req, count), nil
+}
+func (r *Repository) ListPersonalExpenses(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Expense], error) {
+	recs, err := listRecords(r.app(ctx), CollectionExpenses, "owner={:user} || paid_by={:user}", req, dbx.Params{"user": userID})
+	if err != nil { return ports.Page[domain.Expense]{}, err }
+	items := make([]domain.Expense, len(recs))
+	for i, v := range recs { items[i] = *expenseFrom(v) }
+	count, _ := countFiltered(r.app(ctx), CollectionExpenses, "owner={:user} || paid_by={:user}", dbx.Params{"user": userID})
 	return page(items, req, count), nil
 }
 func (r *Repository) UpdateExpense(ctx context.Context, v *domain.Expense) error {
@@ -412,31 +428,39 @@ func invitationFrom(r *core.Record) *domain.Invitation {
 }
 func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("group", v.GroupID)
+	r.Set("owner", v.OwnerID)
+	r.Set("paid_by", v.PaidBy)
 	r.Set("name", v.Name)
 	r.Set("category", v.Category)
 	r.Set("amount_minor", v.AmountMinor)
 	r.Set("currency", v.Currency)
 	r.Set("billing_cycle", v.BillingCycle)
+	if v.StartsOn.IsZero() { v.StartsOn = v.NextBilling }
+	r.Set("starts_on", v.StartsOn)
+	if v.EndsOn != nil { r.Set("ends_on", *v.EndsOn) }
 	r.Set("next_billing", v.NextBilling)
 	r.Set("status", v.Status)
 	r.Set("notes", v.Notes)
 }
 func subscriptionFrom(r *core.Record) *domain.Subscription {
-	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), Name: r.GetString("name"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Name: r.GetString("name"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() { v.EndsOn = &ends }
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
 func writeExpense(r *core.Record, v *domain.Expense) {
 	r.Set("group", v.GroupID)
+	r.Set("owner", v.OwnerID)
 	r.Set("title", v.Title)
 	r.Set("category", v.Category)
 	r.Set("amount_minor", v.AmountMinor)
 	r.Set("paid_by", v.PaidBy)
 	r.Set("incurred_on", v.IncurredOn)
+	r.Set("split_mode", v.SplitMode)
 	r.Set("notes", v.Notes)
 }
 func expenseFrom(r *core.Record) *domain.Expense {
-	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), Title: r.GetString("title"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), Notes: r.GetString("notes")}
+	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }

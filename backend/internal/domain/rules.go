@@ -50,6 +50,22 @@ func MonthlyEquivalent(amount int64, cycle BillingCycle) (int64, error) {
 	}
 }
 
+func NextBilling(start time.Time, cycle BillingCycle, now time.Time) (time.Time, error) {
+	if start.IsZero() { return time.Time{}, ErrInvalid }
+	step := 0
+	switch cycle { case BillingMonthly: step = 1; case BillingQuarterly: step = 3; case BillingYearly: step = 12; default: return time.Time{}, ErrInvalid }
+	value := start
+	for value.Before(now) { value = value.AddDate(0, step, 0) }
+	return value, nil
+}
+
+func SubscriptionLifecycle(v Subscription, now time.Time) string {
+	if v.Status == SubscriptionCancelled { return "cancelled" }
+	if v.Status == SubscriptionPaused { return "paused" }
+	if v.EndsOn != nil { if now.After(*v.EndsOn) { return "ended" }; return "ending" }
+	return "active"
+}
+
 func NewInvitationToken() (plain string, hash string, err error) {
 	raw := make([]byte, 32)
 	if _, err = rand.Read(raw); err != nil {

@@ -44,6 +44,14 @@ const (
 	BillingYearly    BillingCycle = "yearly"
 )
 
+type SplitMode string
+
+const (
+	SplitEqual      SplitMode = "equal"
+	SplitAmount     SplitMode = "amount"
+	SplitPercentage SplitMode = "percentage"
+)
+
 type User struct {
 	ID       string `json:"id"`
 	Email    string `json:"email"`
@@ -88,14 +96,19 @@ type Invitation struct {
 
 type Subscription struct {
 	ID           string             `json:"id"`
-	GroupID      string             `json:"groupId"`
+	GroupID      string             `json:"groupId,omitempty"`
+	OwnerID      string             `json:"ownerId,omitempty"`
+	PaidBy       string             `json:"paidBy"`
 	Name         string             `json:"name"`
 	Category     string             `json:"category"`
 	AmountMinor  int64              `json:"amountMinor"`
 	Currency     Currency           `json:"currency"`
 	BillingCycle BillingCycle       `json:"billingCycle"`
+	StartsOn     time.Time          `json:"startsOn"`
+	EndsOn       *time.Time         `json:"endsOn,omitempty"`
 	NextBilling  time.Time          `json:"nextBilling"`
 	Status       SubscriptionStatus `json:"status"`
+	LifecycleStatus string           `json:"lifecycleStatus,omitempty"`
 	Notes        string             `json:"notes"`
 	CreatedAt    time.Time          `json:"createdAt"`
 	UpdatedAt    time.Time          `json:"updatedAt"`
@@ -103,15 +116,53 @@ type Subscription struct {
 
 type Expense struct {
 	ID          string    `json:"id"`
-	GroupID     string    `json:"groupId"`
+	GroupID     string    `json:"groupId,omitempty"`
+	OwnerID     string    `json:"ownerId,omitempty"`
 	Title       string    `json:"title"`
 	Category    string    `json:"category"`
 	AmountMinor int64     `json:"amountMinor"`
 	PaidBy      string    `json:"paidBy"`
 	IncurredOn  time.Time `json:"incurredOn"`
 	Notes       string    `json:"notes"`
+	SplitMode   SplitMode `json:"splitMode,omitempty"`
+	Splits      []ExpenseSplit `json:"splits,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type ExpenseSplit struct {
+	ID                     string `json:"id,omitempty"`
+	ExpenseID              string `json:"expenseId,omitempty"`
+	UserID                 string `json:"userId"`
+	AmountMinor            int64  `json:"amountMinor"`
+	PercentageBasisPoints  int    `json:"percentageBasisPoints,omitempty"`
+}
+
+type Settlement struct {
+	ID          string    `json:"id"`
+	GroupID     string    `json:"groupId"`
+	FromUserID  string    `json:"fromUserId"`
+	ToUserID    string    `json:"toUserId"`
+	CreatedBy   string    `json:"createdBy"`
+	AmountMinor int64     `json:"amountMinor"`
+	SettledOn   time.Time `json:"settledOn"`
+	Notes       string    `json:"notes"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
+}
+
+type CurrencyDashboard struct {
+	Currency                 Currency `json:"currency"`
+	CashOutflowMinor         int64    `json:"cashOutflowMinor"`
+	PersonalShareMinor       int64    `json:"personalShareMinor"`
+	ReimbursableMinor        int64    `json:"reimbursableMinor"`
+	MonthlySubscriptionMinor int64    `json:"monthlySubscriptionMinor"`
+	ActiveSubscriptions      int      `json:"activeSubscriptions"`
+}
+
+type MemberBalance struct {
+	UserID      string `json:"userId"`
+	AmountMinor int64  `json:"amountMinor"`
 }
 
 type DashboardSummary struct {
@@ -119,6 +170,8 @@ type DashboardSummary struct {
 	MonthExpenseMinor        int64          `json:"monthExpenseMinor"`
 	ActiveSubscriptions      int            `json:"activeSubscriptions"`
 	Upcoming                 []Subscription `json:"upcoming"`
+	Currencies               []CurrencyDashboard `json:"currencies,omitempty"`
+	Balances                 []MemberBalance `json:"balances,omitempty"`
 }
 
 type Event struct {

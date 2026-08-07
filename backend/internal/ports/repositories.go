@@ -49,6 +49,7 @@ type SubscriptionRepository interface {
 	Create(context.Context, *domain.Subscription) error
 	Get(context.Context, string) (*domain.Subscription, error)
 	List(context.Context, string, PageRequest) (Page[domain.Subscription], error)
+	ListPersonal(context.Context, string, PageRequest) (Page[domain.Subscription], error)
 	Update(context.Context, *domain.Subscription) error
 	Delete(context.Context, string) error
 }
@@ -57,6 +58,7 @@ type ExpenseRepository interface {
 	Create(context.Context, *domain.Expense) error
 	Get(context.Context, string) (*domain.Expense, error)
 	List(context.Context, string, PageRequest) (Page[domain.Expense], error)
+	ListPersonal(context.Context, string, PageRequest) (Page[domain.Expense], error)
 	Update(context.Context, *domain.Expense) error
 	Delete(context.Context, string) error
 }

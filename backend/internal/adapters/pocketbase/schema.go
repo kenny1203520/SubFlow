@@ -8,6 +8,8 @@ const (
 	CollectionInvitations   = "group_invitations"
 	CollectionSubscriptions = "subscriptions"
 	CollectionExpenses      = "expenses"
+	CollectionExpenseSplits = "expense_splits"
+	CollectionSettlements   = "settlements"
 )
 
 // EnsureSchema installs the SubFlow baseline idempotently. Domain collections
@@ -46,18 +48,30 @@ func EnsureSchema(app core.App) error {
 		return err
 	}
 	_, err = ensureCollection(app, CollectionSubscriptions, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 80}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: []string{"TWD", "USD", "JPY", "EUR"}, MaxSelect: 1}, &core.SelectField{Name: "billing_cycle", Required: true, Values: []string{"monthly", "quarterly", "yearly"}, MaxSelect: 1}, &core.DateField{Name: "next_billing", Required: true}, &core.SelectField{Name: "status", Required: true, Values: []string{"active", "paused", "cancelled"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "paid_by", CollectionId: users.Id, MaxSelect: 1}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 80}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: []string{"TWD", "USD", "JPY", "EUR"}, MaxSelect: 1}, &core.SelectField{Name: "billing_cycle", Required: true, Values: []string{"monthly", "quarterly", "yearly"}, MaxSelect: 1}, &core.DateField{Name: "starts_on", Required: true}, &core.DateField{Name: "ends_on"}, &core.DateField{Name: "next_billing", Required: true}, &core.SelectField{Name: "status", Required: true, Values: []string{"active", "paused", "cancelled"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_subscriptions_group_next", false, "`group`, next_billing", "")
 	})
 	if err != nil {
 		return err
 	}
 	_, err = ensureCollection(app, CollectionExpenses, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 80}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.DateField{Name: "incurred_on", Required: true}, &core.TextField{Name: "notes", Max: 4000})
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 80}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.DateField{Name: "incurred_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_expenses_group_date", false, "`group`, incurred_on", "")
+	})
+	if err != nil { return err }
+	_, err = ensureCollection(app, CollectionExpenseSplits, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "expense", Required: true, CollectionId: mustCollectionID(app, CollectionExpenses), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.NumberField{Name: "percentage_bp", OnlyInt: true})
+		c.AddIndex("idx_splits_expense_user", true, "expense, user", "")
+	})
+	if err != nil { return err }
+	_, err = ensureCollection(app, CollectionSettlements, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "created_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.DateField{Name: "settled_on", Required: true}, &core.TextField{Name: "notes", Max: 4000})
+		c.AddIndex("idx_settlements_group_date", false, "`group`, settled_on", "")
 	})
 	return err
 }
+
+func mustCollectionID(app core.App, name string) string { c, _ := app.FindCollectionByNameOrId(name); return c.Id }
 
 func ensureCollection(app core.App, name string, define func(*core.Collection)) (*core.Collection, error) {
 	if existing, err := app.FindCollectionByNameOrId(name); err == nil {
