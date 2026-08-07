@@ -3,7 +3,7 @@ export type Role = 'owner' | 'member'
 export type BillingCycle = 'monthly' | 'quarterly' | 'yearly'
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
 
-export interface Group { id:string;name:string;description:string;currency:Currency;color:string;ownerId:string;createdAt:string;updatedAt:string }
+export interface Group { id:string;name:string;description:string;currency:Currency;timezone:string;color:string;ownerId:string;createdAt:string;updatedAt:string }
 export interface User { id:string;email:string;name:string;avatar?:string;timezone:string }
 export interface Membership { id:string;groupId:string;userId:string;role:Role;user?:User;createdAt:string }
 export interface Invitation { id:string;groupId:string;email:string;status:'pending'|'delivery_failed'|'accepted'|'revoked'|'expired';invitedBy:string;acceptedBy?:string;expiresAt:string;debugUrl?:string;createdAt:string;updatedAt:string }

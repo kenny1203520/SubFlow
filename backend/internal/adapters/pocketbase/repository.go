@@ -489,11 +489,15 @@ func writeGroup(r *core.Record, v *domain.Group) {
 	r.Set("name", v.Name)
 	r.Set("description", v.Description)
 	r.Set("currency", v.Currency)
+	r.Set("timezone", v.Timezone)
 	r.Set("color", v.Color)
 	r.Set("owner", v.OwnerID)
 }
 func groupFrom(r *core.Record) *domain.Group {
-	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Color: r.GetString("color"), OwnerID: r.GetString("owner")}
+	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Timezone: r.GetString("timezone"), Color: r.GetString("color"), OwnerID: r.GetString("owner")}
+	if v.Timezone == "" {
+		v.Timezone = "UTC"
+	}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }

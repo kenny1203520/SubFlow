@@ -15,13 +15,29 @@ type BillingDatePage struct {
 	NextCursor string      `json:"nextCursor,omitempty"`
 }
 
-func (s *Service) monthRange(ctx context.Context, userID, month string) (time.Time, time.Time, error) {
-	location := time.Local
-	if user, err := s.Stores.Users.Get(ctx, userID); err == nil && user.Timezone != "" {
-		if value, loadErr := time.LoadLocation(user.Timezone); loadErr == nil {
+func (s *Service) accountingLocation(ctx context.Context, userID, groupID string) *time.Location {
+	location := time.UTC
+	zone := ""
+	if groupID != "" {
+		if group, err := s.Stores.Groups.Get(ctx, groupID); err == nil {
+			zone = group.Timezone
+		}
+	}
+	if zone == "" {
+		if user, err := s.Stores.Users.Get(ctx, userID); err == nil {
+			zone = user.Timezone
+		}
+	}
+	if zone != "" {
+		if value, loadErr := time.LoadLocation(zone); loadErr == nil {
 			location = value
 		}
 	}
+	return location
+}
+
+func (s *Service) monthRange(ctx context.Context, userID, groupID, month string) (time.Time, time.Time, error) {
+	location := s.accountingLocation(ctx, userID, groupID)
 	if month == "" {
 		month = s.Now().In(location).Format("2006-01")
 	}
@@ -39,14 +55,18 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	if query.Scope != "personal" && query.Scope != "group" && query.Scope != "all" {
 		return domain.DashboardSummary{}, domain.ErrInvalid
 	}
-	start, end, err := s.monthRange(ctx, userID, query.Month)
+	rangeGroup := ""
+	if query.Scope == "group" {
+		rangeGroup = query.GroupID
+	}
+	start, end, err := s.monthRange(ctx, userID, rangeGroup, query.Month)
 	if err != nil {
 		return domain.DashboardSummary{}, err
 	}
 	result := domain.DashboardSummary{Month: start.Format("2006-01")}
 	var expenses []domain.Expense
 	var subscriptions []domain.Subscription
-	groupCurrency := map[string]domain.Currency{}
+	groupTimezone := map[string]string{}
 	loadGroup := func(groupID string) error {
 		expensePage, loadErr := s.ListExpenses(ctx, userID, groupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-incurred_on"})
 		if loadErr != nil {
@@ -60,7 +80,7 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if loadErr != nil {
 			return loadErr
 		}
-		groupCurrency[groupID] = group.Currency
+		groupTimezone[groupID] = group.Timezone
 		expenses = append(expenses, expensePage.Items...)
 		subscriptions = append(subscriptions, subscriptionPage.Items...)
 		return nil
@@ -105,8 +125,27 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		}
 		return buckets[currency]
 	}
+	recordRange := func(groupID string) (time.Time, time.Time) {
+		if groupID == "" || query.Scope == "group" {
+			return start, end
+		}
+		zone := groupTimezone[groupID]
+		if zone == "" {
+			if group, groupErr := s.Stores.Groups.Get(ctx, groupID); groupErr == nil {
+				zone = group.Timezone
+				groupTimezone[groupID] = zone
+			}
+		}
+		location := time.UTC
+		if value, loadErr := time.LoadLocation(zone); loadErr == nil {
+			location = value
+		}
+		value, _ := time.ParseInLocation("2006-01", start.Format("2006-01"), location)
+		return value, value.AddDate(0, 1, 0)
+	}
 	for _, expense := range expenses {
-		if expense.IncurredOn.Before(start) || !expense.IncurredOn.Before(end) {
+		recordStart, recordEnd := recordRange(expense.GroupID)
+		if expense.IncurredOn.Before(recordStart) || !expense.IncurredOn.Before(recordEnd) {
 			continue
 		}
 		item := bucket(expense.Currency)
@@ -143,9 +182,11 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		item.ActiveSubscriptions++
 		result.MonthlySubscriptionMinor += monthly
 		result.ActiveSubscriptions++
-		dates, _ := domain.BillingDates(subscription.StartsOn, subscription.BillingCycle, start, 4)
+		recordStart, recordEnd := recordRange(subscription.GroupID)
+		location := s.accountingLocation(ctx, userID, subscription.GroupID)
+		dates, _ := domain.BillingDates(subscription.StartsOn.In(location), subscription.BillingCycle, recordStart, 4)
 		for _, date := range dates {
-			if !date.Before(end) {
+			if !date.Before(recordEnd) {
 				break
 			}
 			if subscription.EndsOn == nil || !date.After(*subscription.EndsOn) {
@@ -200,15 +241,16 @@ func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, l
 	} else if err = s.role(ctx, subscription.GroupID, userID, false); err != nil {
 		return BillingDatePage{}, err
 	}
-	from := subscription.NextBilling
+	location := s.accountingLocation(ctx, userID, subscription.GroupID)
+	from := subscription.NextBilling.In(location)
 	if cursor != "" {
-		value, parseErr := time.Parse("2006-01-02", cursor)
+		value, parseErr := time.ParseInLocation("2006-01-02", cursor, location)
 		if parseErr != nil {
 			return BillingDatePage{}, domain.ErrInvalid
 		}
 		from = value.AddDate(0, 0, 1)
 	}
-	dates, err := domain.BillingDates(subscription.StartsOn, subscription.BillingCycle, from, limit)
+	dates, err := domain.BillingDates(subscription.StartsOn.In(location), subscription.BillingCycle, from, limit)
 	if err != nil {
 		return BillingDatePage{}, err
 	}

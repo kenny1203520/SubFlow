@@ -26,7 +26,7 @@ func EnsureSchema(app core.App) error {
 		}
 	}
 	groups, err := ensureCollection(app, CollectionGroups, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "description", Max: 2000}, &core.SelectField{Name: "currency", Required: true, Values: []string{"TWD", "USD", "JPY", "EUR"}, MaxSelect: 1}, &core.TextField{Name: "color", Max: 32}, &core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
+		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "description", Max: 2000}, &core.SelectField{Name: "currency", Required: true, Values: []string{"TWD", "USD", "JPY", "EUR"}, MaxSelect: 1}, &core.TextField{Name: "timezone", Max: 64}, &core.TextField{Name: "color", Max: 32}, &core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
 		c.AddIndex("idx_groups_owner", false, "owner", "")
 	})
 	if err != nil {
@@ -144,6 +144,22 @@ func syncField(current, desired core.Field) bool {
 	return false
 }
 func backfillFinance(app core.App) error {
+	groups, err := app.FindRecordsByFilter(CollectionGroups, "", "", 0, 0, nil)
+	if err != nil {
+		return err
+	}
+	for _, group := range groups {
+		if group.GetString("timezone") == "" {
+			timezone := "UTC"
+			if owner, findErr := app.FindRecordById("users", group.GetString("owner")); findErr == nil && owner.GetString("timezone") != "" {
+				timezone = owner.GetString("timezone")
+			}
+			group.Set("timezone", timezone)
+			if err = app.Save(group); err != nil {
+				return err
+			}
+		}
+	}
 	expenses, err := app.FindRecordsByFilter(CollectionExpenses, "", "", 0, 0, nil)
 	if err != nil {
 		return err

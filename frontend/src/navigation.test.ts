@@ -5,7 +5,7 @@ import { mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 
 const auth=reactive({ready:true,authenticated:true,name:'Kenny',record:{id:'user-1',name:'Kenny',email:'kenny@example.com',timezone:'Asia/Taipei'},token:'token',initialize:vi.fn(async()=>{}),logout:vi.fn()})
-const group={id:'group-1',name:'Trip',description:'Trip ledger',currency:'TWD',color:'#7357ff',ownerId:'user-1',createdAt:'',updatedAt:''}
+const group={id:'group-1',name:'Trip',description:'Trip ledger',currency:'TWD',timezone:'Asia/Taipei',color:'#7357ff',ownerId:'user-1',createdAt:'',updatedAt:''}
 const workspace=reactive({groups:[group],currentGroupId:'group-1',currentGroup:group,currentMembership:{userId:'user-1',role:'owner'},isOwner:true,members:[],invitations:[],subscriptions:[],expenses:[],settlements:[],personalSubscriptions:[],personalExpenses:[],personalSummary:null,summary:null,loading:false,error:'',localizedError:'',permissionDenied:false,loadGroups:vi.fn(async()=>{}),selectGroup:vi.fn(async()=>{}),refreshDashboard:vi.fn(async()=>{}),refreshPersonal:vi.fn(async()=>{}),refreshGroup:vi.fn(async()=>{}),retryLast:vi.fn()})
 vi.mock('./stores/auth',()=>({useAuthStore:()=>auth}))
 vi.mock('./stores/workspace',()=>({useWorkspaceStore:()=>workspace}))

@@ -3,6 +3,7 @@ import { computed, onMounted, watch } from "vue";
 import { useRoute } from "vue-router";
 import { useWorkspaceStore } from "../stores/workspace";
 import { useI18n } from "../i18n";
+import { timezoneLabel } from "../timezone";
 const route = useRoute(),
     workspace = useWorkspaceStore();
 const { tr } = useI18n();
@@ -26,6 +27,7 @@ watch(groupId, () => void activate());
                 <p class="eyebrow">{{tr('groupWorkspace')}}</p>
                 <h1>{{ group?.name || tr("groupWorkspace") }}</h1>
                 <p>{{ group?.description || tr("groupWorkspaceDesc") }}</p>
+                <small v-if="group" class="timezone-caption">{{ tr("groupTimezoneValue", { timezone: timezoneLabel(group.timezone) }) }}</small>
             </div>
         </div>
         <nav class="group-tabs" :aria-label="tr('groupWorkspace')">

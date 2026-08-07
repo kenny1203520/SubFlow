@@ -9,7 +9,7 @@ export const zhTW = {
   membersInvites: '成員與邀請', membersDesc: '邀請連結有效七天，只能由相同 Email 的帳號接受一次。', groupMembers: '群組成員', unnamedMember: '未命名成員', owner: '擁有者', member: '成員', thisMember: '此成員', removeMemberConfirm: '確定要移除「{name}」？', noMemberData: '沒有成員資料', noMemberDataDesc: '進入群組後即可查看。', inviteMember: '邀請新成員', sendInvitation: '寄送邀請', invitationHistory: '邀請紀錄', resend: '重送', revoke: '撤銷', noInvitations: '尚無邀請紀錄。', memberManagement: '成員管理', ownerOnly: '只有群組擁有者可以邀請或移除成員。', developmentLink: '開發測試連結', pending: '待接受', deliveryFailed: '寄送失敗', accepted: '已接受', revoked: '已撤銷', expired: '已過期', invitation: '邀請', joinGroup: '加入 SubFlow 群組', inviteDesc: '系統會確認目前登入帳號的 Email 與邀請對象一致。', acceptInvitation: '接受邀請', joined: '已加入，正在前往群組…',
   balances: '成員餘額', settlements: '還款紀錄', recordSettlement: '記錄還款', fromMember: '付款人', toMember: '收款人', settlementDate: '還款日期', noSettlements: '尚無還款紀錄', noBalances: '目前沒有應收應付', deleteSettlementConfirm: '確定刪除這筆還款紀錄嗎？',
   confirm: '確認', delete: '刪除', networkError: '網路連線失敗，請稍後重試', invalidResponse: '伺服器回應格式錯誤', requestFailed: '請求失敗', invalidRequest: '輸入資料不正確', conflict: '資料狀態衝突', notFound: '找不到指定資源', internalError: '服務暫時無法處理請求', forbiddenError: '沒有權限執行此操作',
-  languageZhMarker: '繁', languageEnMarker: 'A',
+  languageZhMarker: '繁', languageEnMarker: 'A', groupTimezone: '群組時區', groupTimezoneDesc: '群組月份、訂閱週期與共同帳務以此時區為準。', originalTimezone: '原始群組時間：{date} · {timezone}', yourTimezone: '你的時區：{timezone}', groupTimezoneValue: '群組帳務時區：{timezone}',
 } as const
 
 export type MessageKey = keyof typeof zhTW

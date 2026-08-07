@@ -6,7 +6,7 @@ import type { BillingDates, DashboardSummary, Expense, Group, Invitation, Member
 import { useAuthStore } from './auth'
 import { useI18n } from '../i18n'
 
-type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'color'>
+type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'>
 type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'startsOn'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'>>
 type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'incurredOn'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'>>
 

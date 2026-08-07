@@ -65,6 +65,7 @@ type Group struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Currency    Currency  `json:"currency"`
+	Timezone    string    `json:"timezone"`
 	Color       string    `json:"color"`
 	OwnerID     string    `json:"ownerId"`
 	CreatedAt   time.Time `json:"createdAt"`

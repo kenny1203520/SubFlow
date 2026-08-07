@@ -33,6 +33,17 @@ func (s *Service) role(ctx context.Context, groupID, userID string, ownerOnly bo
 
 func (s *Service) CreateGroup(ctx context.Context, userID string, group domain.Group) (*domain.Group, error) {
 	group.Name = strings.TrimSpace(group.Name)
+	if group.Timezone == "" {
+		if user, err := s.Stores.Users.Get(ctx, userID); err == nil {
+			group.Timezone = user.Timezone
+		}
+		if group.Timezone == "" {
+			group.Timezone = "UTC"
+		}
+	}
+	if _, err := time.LoadLocation(group.Timezone); err != nil {
+		return nil, domain.ErrInvalid
+	}
 	if group.Name == "" || !domain.IsCurrency(group.Currency) {
 		return nil, domain.ErrInvalid
 	}
@@ -69,6 +80,15 @@ func (s *Service) UpdateGroup(ctx context.Context, userID string, group domain.G
 		return nil, err
 	}
 	if strings.TrimSpace(group.Name) == "" || !domain.IsCurrency(group.Currency) {
+		return nil, domain.ErrInvalid
+	}
+	if group.Timezone == "" {
+		group.Timezone = current.Timezone
+		if group.Timezone == "" {
+			group.Timezone = "UTC"
+		}
+	}
+	if _, err = time.LoadLocation(group.Timezone); err != nil {
 		return nil, domain.ErrInvalid
 	}
 	group.OwnerID = current.OwnerID
@@ -137,7 +157,9 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 	if v.StartsOn.IsZero() {
 		v.StartsOn = v.NextBilling
 	}
-	if next, err := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now()); err == nil {
+	location := s.accountingLocation(ctx, userID, v.GroupID)
+	v.StartsOn = v.StartsOn.In(location)
+	if next, err := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now().In(location)); err == nil {
 		v.NextBilling = next
 	}
 	if !validSubscription(&v) {
@@ -218,14 +240,15 @@ func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn strin
 	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
 		return nil, err
 	}
-	value, err := time.Parse("2006-01-02", endsOn)
+	location := s.accountingLocation(ctx, userID, v.GroupID)
+	value, err := time.ParseInLocation("2006-01-02", endsOn, location)
 	if err != nil {
 		value, err = time.Parse(time.RFC3339, endsOn)
 		if err != nil {
 			return nil, domain.ErrInvalid
 		}
 	}
-	dates, dateErr := domain.BillingDates(v.StartsOn, v.BillingCycle, v.NextBilling, 1200)
+	dates, dateErr := domain.BillingDates(v.StartsOn.In(location), v.BillingCycle, v.NextBilling.In(location), 1200)
 	if dateErr != nil {
 		return nil, dateErr
 	}
@@ -298,7 +321,9 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	if v.StartsOn.IsZero() {
 		v.StartsOn = current.StartsOn
 	}
-	if next, nextErr := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now()); nextErr == nil {
+	location := s.accountingLocation(ctx, userID, current.GroupID)
+	v.StartsOn = v.StartsOn.In(location)
+	if next, nextErr := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now().In(location)); nextErr == nil {
 		v.NextBilling = next
 	} else {
 		return nil, nextErr

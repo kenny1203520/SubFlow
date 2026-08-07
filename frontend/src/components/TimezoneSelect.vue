@@ -2,18 +2,18 @@
 import { computed, nextTick, ref } from 'vue'
 import { useI18n } from '../i18n'
 import BaseDropdown from './BaseDropdown.vue'
+import { timezoneOffset, timezoneLabel } from '../timezone'
 
 type TimeZone = { name: string; displayName: string; offset: string; offsetMinutes: number }
 const props = defineProps<{ modelValue: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const { locale, t } = useI18n(); const query = ref(''); const open = ref(false); const searchInput = ref<HTMLInputElement | null>(null)
-function getOffset(name: string) { const part = new Intl.DateTimeFormat('en-US', { timeZone: name, timeZoneName: 'longOffset' }).formatToParts(new Date()).find(value => value.type === 'timeZoneName')?.value ?? 'GMT'; const match = part.match(/GMT([+-])(\d{2}):(\d{2})/); if (!match) return { text: 'UTC+00:00', minutes: 0 }; const minutes = Number(match[2]) * 60 + Number(match[3]); return { text: `UTC${match[1]}${match[2]}:${match[3]}`, minutes: match[1] === '-' ? -minutes : minutes } }
 function getDisplayName(name: string) { return new Intl.DateTimeFormat(locale.value, { timeZone: name, timeZoneName: 'long' }).formatToParts(new Date()).find(value => value.type === 'timeZoneName')?.value || name.replaceAll('_', ' ') }
-const allZones = computed<TimeZone[]>(() => Intl.supportedValuesOf('timeZone').map(name => { const offset = getOffset(name); return { name, displayName: getDisplayName(name), offset: offset.text, offsetMinutes: offset.minutes } }).sort((a, b) => a.offsetMinutes - b.offsetMinutes || a.displayName.localeCompare(b.displayName, locale.value)))
+const allZones = computed<TimeZone[]>(() => ['UTC', ...Intl.supportedValuesOf('timeZone').filter(name => name !== 'UTC')].map(name => { const offset = timezoneOffset(name); return { name, displayName: getDisplayName(name), offset: offset.label, offsetMinutes: offset.minutes } }).sort((a, b) => a.offsetMinutes - b.offsetMinutes || a.displayName.localeCompare(b.displayName, locale.value)))
 const selectedZone = computed(() => allZones.value.find(zone => zone.name === props.modelValue))
 const matchingZones = computed(() => { const term = query.value.trim().toLocaleLowerCase(locale.value); return allZones.value.filter(zone => !term || `${zone.name} ${zone.displayName} ${zone.offset}`.toLocaleLowerCase(locale.value).includes(term)) })
 const groups = computed(() => matchingZones.value.reduce<Record<string, TimeZone[]>>((all, zone) => { (all[zone.offset] ||= []).push(zone); return all }, {}))
-const label = computed(() => selectedZone.value ? `${selectedZone.value.displayName} (${selectedZone.value.offset})` : props.modelValue || t.value.timezone)
+const label = computed(() => props.modelValue ? timezoneLabel(props.modelValue) : t.value.timezone)
 function select(value: string, close: () => void) { emit('update:modelValue', value); query.value = ''; close() }
 function focusSearch() { nextTick(() => searchInput.value?.focus()) }
 </script>
