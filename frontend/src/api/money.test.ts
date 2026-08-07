@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+﻿import { describe, expect, it } from 'vitest'
 import { majorToMinor, minorToInput, minorToMajor } from './money'
 
 describe('currency minor units', () => {
@@ -14,3 +14,4 @@ describe('currency minor units', () => {
     expect(minorToInput(1234, 'JPY')).toBe('1234')
   })
 })
+

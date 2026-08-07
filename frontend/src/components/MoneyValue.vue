@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed } from 'vue'
 import { minorToMajor } from '../api/money'
 
@@ -10,3 +10,4 @@ const value = computed(() => new Intl.NumberFormat('zh-TW', {
 </script>
 
 <template><span>{{ value }}</span></template>
+

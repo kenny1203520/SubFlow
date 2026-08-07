@@ -1,4 +1,4 @@
-export type Currency = 'TWD' | 'USD' | 'JPY' | 'EUR'
+﻿export type Currency = 'TWD' | 'USD' | 'JPY' | 'EUR'
 export type Role = 'owner' | 'member'
 export type BillingCycle = 'monthly' | 'quarterly' | 'yearly'
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
@@ -14,3 +14,4 @@ export interface SubFlowEvent { type:string;groupId:string;resource:string;resou
 export interface Meta { page:number;perPage:number;totalItems:number;totalPages:number }
 export interface Envelope<T> { data:T;meta?:Meta }
 export interface ApiFailure { error:{code:string;message:string;fields?:Record<string,string>} }
+
