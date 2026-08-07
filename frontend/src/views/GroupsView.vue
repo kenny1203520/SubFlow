@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { reactive, ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import type { Currency, Group } from '../api/types'
