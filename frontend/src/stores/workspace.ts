@@ -23,6 +23,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const subscriptions = ref<Subscription[]>([])
   const expenses = ref<Expense[]>([])
   const settlements = ref<Settlement[]>([])
+  const groupErrors = reactive<Record<'members'|'subscriptions'|'expenses'|'settlements'|'summary', string>>({ members:'', subscriptions:'', expenses:'', settlements:'', summary:'' })
+  const groupBusy = reactive<Record<'members'|'subscriptions'|'expenses'|'settlements'|'summary', number>>({ members:0, subscriptions:0, expenses:0, settlements:0, summary:0 })
   const personalSubscriptions = ref<Subscription[]>([])
   const personalExpenses = ref<Expense[]>([])
   const personalSummary = ref<DashboardSummary | null>(null)
@@ -46,6 +48,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let hydratingGroupId = ''
   let groupHydration: Promise<void> | undefined
   let lastRetry: (() => Promise<void>) | undefined
+
+  function resourceError(reason: unknown) {
+    const code = reason instanceof ApiError ? reason.code : 'internal_error'
+    const keys: Record<string, Parameters<typeof tr>[0]> = { network_error:'networkError', invalid_response:'invalidResponse', request_failed:'requestFailed', invalid_request:'invalidRequest', conflict:'conflict', not_found:'notFound', internal_error:'internalError', forbidden:'forbiddenError', rate_unavailable:'rateUnavailable' }
+    return keys[code] ? tr(keys[code]) : tr('requestFailed')
+  }
 
   async function run(task: () => Promise<void>, key = 'general') {
     busy[key] = (busy[key] || 0) + 1
@@ -98,6 +106,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       summary.value = null
       return
     }
+    members.value = []
+    invitations.value = []
+    subscriptions.value = []
+    expenses.value = []
+    settlements.value = []
+    summary.value = null
+    for (const key of Object.keys(groupErrors) as Array<keyof typeof groupErrors>) groupErrors[key] = ''
     hydratingGroupId = id
     groupHydration = refreshGroup(request).finally(() => { if (hydratingGroupId === id) { hydratingGroupId='';groupHydration=undefined } })
     await groupHydration
@@ -106,26 +121,29 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function refreshGroup(expectedRequest = ++groupRequest) {
     if (!currentGroupId.value) return
     const id = currentGroupId.value
-    await run(async () => {
-      const [memberPage, subscriptionPage, expensePage, settlementPage, dashboard] = await Promise.all([
-        api.get<Membership[]>(`/groups/${id}/members?perPage=100`),
-        api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=100`),
-        api.get<Expense[]>(`/groups/${id}/expenses?perPage=100`),
-        api.get<Settlement[]>(`/groups/${id}/settlements?perPage=100`),
-        api.get<DashboardSummary>(`/groups/${id}/summary`),
-      ])
-      if (expectedRequest !== groupRequest || id !== currentGroupId.value) return
-      members.value = memberPage.data
-      subscriptions.value = subscriptionPage.data
-      expenses.value = expensePage.data
-      settlements.value = settlementPage.data
-      summary.value = dashboard.data
-      const me = memberPage.data.find(member => member.userId === auth.record?.id)
-      invitations.value = me?.role === 'owner'
-        ? (await api.get<Invitation[]>(`/groups/${id}/invitations?perPage=100`)).data
-        : []
-      if (expectedRequest === groupRequest && id === currentGroupId.value) loadedGroupId = id
-    }, 'group')
+    const load = async <T>(key: keyof typeof groupErrors, request: () => Promise<T>, apply: (value: T) => void) => {
+      groupBusy[key]++
+      try {
+        const value = await request()
+        if (expectedRequest === groupRequest && id === currentGroupId.value) { apply(value); groupErrors[key] = '' }
+      } catch (reason) {
+        if (expectedRequest === groupRequest && id === currentGroupId.value) groupErrors[key] = resourceError(reason)
+      } finally { groupBusy[key] = Math.max(0, groupBusy[key] - 1) }
+    }
+    await Promise.all([
+      load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }),
+      load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=100`).then(value => value.data), value => { subscriptions.value = value }),
+      load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=100`).then(value => value.data), value => { expenses.value = value }),
+      load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=100`).then(value => value.data), value => { settlements.value = value }),
+      load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }),
+    ])
+    if (expectedRequest === groupRequest && id === currentGroupId.value) {
+      const me = members.value.find(member => member.userId === auth.record?.id)
+      if (me?.role === 'owner') {
+        try { invitations.value = (await api.get<Invitation[]>(`/groups/${id}/invitations?perPage=100`)).data } catch { invitations.value = [] }
+      } else invitations.value = []
+      loadedGroupId = id
+    }
   }
 
   async function refreshPersonal(scope: 'personal'|'all' = 'personal', month = '') {
@@ -307,6 +325,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     subscriptions.value = []
     expenses.value = []
     settlements.value = []
+    for (const key of Object.keys(groupErrors) as Array<keyof typeof groupErrors>) groupErrors[key] = ''
     personalSubscriptions.value = []
     personalExpenses.value = []
     personalSummary.value = null
@@ -322,7 +341,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations,
-    subscriptions, expenses, settlements, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
     revokeInvitation, acceptInvitation, addSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,
