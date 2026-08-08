@@ -463,7 +463,10 @@ func (r *Repository) ListCategories(ctx context.Context, ownerID, groupID string
 	filter := "scope='system'"
 	params := dbx.Params{}
 	if groupID != "" {
-		filter += " || (scope='group' && `group`={:group})"
+		// PocketBase filter identifiers are not SQL identifiers. Quoting the
+		// relation field with backticks makes the filter parser reject valid
+		// group category requests and previously surfaced as a 500 response.
+		filter += " || (scope='group' && group={:group})"
 		params["group"] = groupID
 	} else {
 		filter += " || (scope='personal' && owner={:owner})"
@@ -474,7 +477,7 @@ func (r *Repository) ListCategories(ctx context.Context, ownerID, groupID string
 	}
 	records, err := r.app(ctx).FindRecordsByFilter(CollectionCategories, filter, "scope,custom_name,system_key", 0, 0, params)
 	if err != nil {
-		return nil, err
+		return nil, mapError(err)
 	}
 	result := make([]domain.Category, len(records))
 	for i, record := range records {

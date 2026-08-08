@@ -46,6 +46,15 @@ func TestRepositoryCRUDContract(t *testing.T) {
 	if err = stores.Memberships.Create(ctx, member); err != nil {
 		t.Fatal(err)
 	}
+	category := &domain.Category{Scope: "group", GroupID: group.ID, CreatedBy: record.Id, CustomName: "Shared food"}
+	if err = stores.Categories.Create(ctx, category); err != nil {
+		t.Fatal(err)
+	}
+	if categories, listErr := stores.Categories.List(ctx, record.Id, group.ID, false); listErr != nil {
+		t.Fatalf("group category list contract failed: %v", listErr)
+	} else if !containsCategory(categories, category.ID) {
+		t.Fatalf("group category was not returned: %#v", categories)
+	}
 	if role, roleErr := stores.Memberships.GetRole(ctx, group.ID, record.Id); roleErr != nil || role != domain.RoleOwner {
 		t.Fatalf("unexpected role %q: %v", role, roleErr)
 	}
@@ -87,4 +96,13 @@ func TestRepositoryCRUDContract(t *testing.T) {
 	if err = stores.Expenses.Delete(ctx, exp.ID); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func containsCategory(categories []domain.Category, id string) bool {
+	for _, category := range categories {
+		if category.ID == id {
+			return true
+		}
+	}
+	return false
 }

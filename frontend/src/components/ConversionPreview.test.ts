@@ -25,4 +25,12 @@ describe('ConversionPreview', () => {
     expect(wrapper.text()).toContain('請輸入大於 0 的手動匯率')
     expect(wrapper.emitted('validity')?.at(-1)).toEqual([false])
   })
+
+  it('recalculates the manual conversion as the rate changes', async () => {
+    const wrapper = mount(ConversionPreview, { props: { from:'USD', to:'TWD', amount:'10', date:'2026-08-08', mode:'manual', manualRate:'31.5' } })
+    expect(wrapper.text()).toContain('315')
+    await wrapper.setProps({ manualRate:'32' })
+    expect(wrapper.text()).toContain('320')
+    expect(wrapper.emitted('validity')?.at(-1)).toEqual([true])
+  })
 })
