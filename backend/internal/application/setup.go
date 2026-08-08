@@ -2,7 +2,9 @@ package application
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -29,12 +31,19 @@ func equalSecret(actual, supplied string) bool {
 	return subtle.ConstantTimeCompare([]byte(actual), []byte(supplied)) == 1
 }
 
+func equalSecretHash(expected, supplied string) bool {
+	sum := sha256.Sum256([]byte(supplied))
+	return expected != "" && subtle.ConstantTimeCompare([]byte(expected), []byte(fmt.Sprintf("%x", sum))) == 1
+}
+
 func (s *Service) InitializeSetup(ctx context.Context, input domain.SetupInput) (*domain.User, error) {
 	if !validSetup(input) {
 		s.audit(ctx, "", "", "setup.initialize", "system", "", "failed")
 		return nil, domain.ErrInvalid
 	}
-	if !equalSecret(os.Getenv("SUBFLOW_SETUP_SECRET"), input.Secret) {
+	settings, settingsErr := s.Stores.Settings.Get(ctx)
+	configuredSecret := os.Getenv("SUBFLOW_SETUP_SECRET")
+	if settingsErr != nil || !(equalSecret(configuredSecret, input.Secret) || (configuredSecret == "" && equalSecretHash(settings.SetupSecretHash, input.Secret))) {
 		s.audit(ctx, "", "", "setup.initialize", "system", "", "failed")
 		return nil, domain.ErrSetupSecret
 	}

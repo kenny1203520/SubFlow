@@ -340,7 +340,7 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 	if settings.Initialized {
 		return ok(e, http.StatusOK, map[string]any{"initialized": true}, nil)
 	}
-	return ok(e, http.StatusOK, map[string]any{"initialized": false, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowRegistration}, nil)
+	return ok(e, http.StatusOK, map[string]any{"initialized": false, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowRegistration, "currencies": a.Service.Currencies()}, nil)
 }
 func (a *API) initializeSetup(e *core.RequestEvent) error {
 	var value domain.SetupInput

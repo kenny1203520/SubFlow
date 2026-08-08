@@ -5,10 +5,11 @@ import { currencyLabel } from '../currency'
 import { useI18n } from '../i18n'
 import BaseDropdown from './BaseDropdown.vue'
 const props=withDefaults(defineProps<{modelValue:Currency;currencies?:CurrencyInfo[]}>(),{currencies:()=>[{code:'TWD',digits:2},{code:'USD',digits:2},{code:'JPY',digits:0},{code:'EUR',digits:2}]})
+const fallbackCurrencies:CurrencyInfo[]=[{code:'TWD',digits:2},{code:'USD',digits:2},{code:'JPY',digits:0},{code:'EUR',digits:2}]
 const emit=defineEmits<{(e:'update:modelValue',value:Currency):void}>()
 const {locale,tr}=useI18n()
 const open=ref(false),query=ref(''),searchInput=ref<HTMLInputElement|null>(null)
-const options=computed(()=>props.currencies.map(item=>({...item,label:currencyLabel(item.code,locale.value)})))
+const options=computed(()=>{const values=props.currencies?.length?props.currencies:fallbackCurrencies;return values.map(item=>({...item,label:currencyLabel(item.code,locale.value)}))})
 const selected=computed(()=>options.value.find(item=>item.code===props.modelValue))
 const matches=computed(()=>{const term=query.value.trim().toLocaleLowerCase(locale.value);return options.value.filter(item=>!term||`${item.label} ${item.code}`.toLocaleLowerCase(locale.value).includes(term))})
 function select(value:Currency,close:()=>void){emit('update:modelValue',value);query.value='';close()}
