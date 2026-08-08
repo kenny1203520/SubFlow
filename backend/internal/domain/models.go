@@ -93,42 +93,64 @@ type ExchangeRate struct {
 }
 
 type User struct {
-	ID       string `json:"id"`
-	Email    string `json:"email"`
-	Name     string `json:"name"`
-	Avatar   string `json:"avatar,omitempty"`
-	Timezone string `json:"timezone"`
+	ID              string   `json:"id"`
+	Email           string   `json:"email"`
+	Name            string   `json:"name"`
+	Avatar          string   `json:"avatar,omitempty"`
+	Timezone        string   `json:"timezone"`
 	DefaultCurrency Currency `json:"defaultCurrency"`
-	SystemRoleID string `json:"systemRoleId,omitempty"`
+	SystemRoleID    string   `json:"systemRoleId,omitempty"`
+}
+
+// SystemSettings is the single installation-wide configuration record. It is
+// intentionally separate from a user profile so the initial setup can be
+// completed exactly once.
+type SystemSettings struct {
+	Initialized       bool     `json:"initialized"`
+	SiteName          string   `json:"siteName"`
+	DefaultTimezone   string   `json:"defaultTimezone"`
+	DefaultCurrency   Currency `json:"defaultCurrency"`
+	AllowRegistration bool     `json:"allowRegistration"`
+}
+
+type SetupInput struct {
+	AdminName         string   `json:"adminName"`
+	Email             string   `json:"email"`
+	Password          string   `json:"password"`
+	SiteName          string   `json:"siteName"`
+	DefaultTimezone   string   `json:"defaultTimezone"`
+	DefaultCurrency   Currency `json:"defaultCurrency"`
+	AllowRegistration bool     `json:"allowRegistration"`
+	Secret            string   `json:"secret"`
 }
 
 type Role struct {
-	ID string `json:"id"`
-	Scope string `json:"scope"`
-	GroupID string `json:"groupId,omitempty"`
-	Name string `json:"name"`
-	Key string `json:"key"`
-	Permissions []string `json:"permissions"`
-	Protected bool `json:"protected"`
-	CreatedBy string `json:"createdBy,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID          string    `json:"id"`
+	Scope       string    `json:"scope"`
+	GroupID     string    `json:"groupId,omitempty"`
+	Name        string    `json:"name"`
+	Key         string    `json:"key"`
+	Permissions []string  `json:"permissions"`
+	Protected   bool      `json:"protected"`
+	CreatedBy   string    `json:"createdBy,omitempty"`
+	CreatedAt   time.Time `json:"createdAt"`
+	UpdatedAt   time.Time `json:"updatedAt"`
 }
 
 type AuditLog struct {
-	ID string `json:"id"`
-	ActorID string `json:"actorId,omitempty"`
-	GroupID string `json:"groupId,omitempty"`
-	Scope string `json:"scope"`
-	Action string `json:"action"`
-	Resource string `json:"resource"`
-	ResourceID string `json:"resourceId,omitempty"`
-	Outcome string `json:"outcome"`
-	Summary string `json:"summary,omitempty"`
-	IP string `json:"ip,omitempty"`
-	UserAgent string `json:"userAgent,omitempty"`
-	Hash string `json:"hash"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID         string    `json:"id"`
+	ActorID    string    `json:"actorId,omitempty"`
+	GroupID    string    `json:"groupId,omitempty"`
+	Scope      string    `json:"scope"`
+	Action     string    `json:"action"`
+	Resource   string    `json:"resource"`
+	ResourceID string    `json:"resourceId,omitempty"`
+	Outcome    string    `json:"outcome"`
+	Summary    string    `json:"summary,omitempty"`
+	IP         string    `json:"ip,omitempty"`
+	UserAgent  string    `json:"userAgent,omitempty"`
+	Hash       string    `json:"hash"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type Group struct {

@@ -10,8 +10,10 @@ import ProfileView from './views/ProfileView.vue'
 import InviteView from './views/InviteView.vue'
 import GroupWorkspaceView from './views/GroupWorkspaceView.vue'
 import AdminView from './views/AdminView.vue'
+import SetupView from './views/SetupView.vue'
 
 export const routes: RouteRecordRaw[] = [
+  { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
   { path: '/auth', name: 'auth', component: AuthView, meta: { public: true } },
   { path: '/invite/:token', name: 'invite', component: InviteView },
   { path: '/', name: 'dashboard', component: DashboardView },
@@ -39,6 +41,7 @@ export const routes: RouteRecordRaw[] = [
 
 export const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach(to => {
+	if (to.name === 'setup') return true
   if (!to.meta.public && !pb.authStore.isValid) return { name: 'auth', query: { redirect: to.fullPath } }
   if (to.name === 'auth' && pb.authStore.isValid) return { name: 'dashboard' }
   return true

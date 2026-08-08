@@ -3,6 +3,7 @@ import { onErrorCaptured, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useWorkspaceStore } from './stores/workspace'
+import { useSetupStore } from './stores/setup'
 import { useTheme } from './theme'
 import { useI18n } from './i18n'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
@@ -10,6 +11,7 @@ import ThemeSwitcher from './components/ThemeSwitcher.vue'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
+const setup = useSetupStore()
 const router = useRouter()
 const route = useRoute()
 const { tr } = useI18n()
@@ -27,6 +29,8 @@ async function hydrateWorkspace() {
 }
 
 async function bootstrap() {
+	try { await setup.refresh() } catch { setup.status.initialized = true; setup.ready = true }
+	if (!setup.initialized) { if (route.name !== 'setup') await router.replace({ name: 'setup' }); return }
   await auth.initialize()
   if (auth.authenticated) await hydrateWorkspace()
 }
@@ -45,13 +49,15 @@ watch(() => auth.authenticated, authenticated => {
   if (authenticated) { void hydrateWorkspace(); return }
   hydratedUser = ''
   workspace.clear()
-  if (auth.ready && route.name !== 'auth') void router.replace({ name: 'auth' })
+  if (auth.ready && setup.initialized && route.name !== 'auth') void router.replace({ name: 'auth' })
 })
+watch(() => setup.initialized, initialized => { if (!initialized && route.name !== 'setup') void router.replace({ name: 'setup' }) })
 watch(() => route.fullPath, () => { routeError.value = undefined })
 </script>
 
 <template>
-  <div v-if="!auth.ready" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div>
+  <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div>
+  <RouterView v-else-if="!setup.initialized" />
   <RouterView v-else-if="!auth.authenticated" />
   <div v-else class="shell">
     <aside class="sidebar">

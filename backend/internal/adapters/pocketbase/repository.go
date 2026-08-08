@@ -119,7 +119,9 @@ func (r *Repository) CreateMembership(ctx context.Context, m *domain.Membership)
 }
 func (r *Repository) UpdateMembershipRole(ctx context.Context, groupID, userID, roleID string) error {
 	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionMembers, "group={:group} && user={:user}", dbx.Params{"group": groupID, "user": userID})
-	if err != nil { return mapError(err) }
+	if err != nil {
+		return mapError(err)
+	}
 	record.Set("role_ref", roleID)
 	return r.app(ctx).Save(record)
 }
@@ -506,22 +508,124 @@ func (r *Repository) UpdateCategory(ctx context.Context, v *domain.Category) err
 	return nil
 }
 
-func roleCollection(scope string) string { if scope == "system" { return CollectionSystemRoles }; return CollectionGroupRoles }
+func roleCollection(scope string) string {
+	if scope == "system" {
+		return CollectionSystemRoles
+	}
+	return CollectionGroupRoles
+}
 func writeRole(record *core.Record, v *domain.Role) {
-	record.Set("group", v.GroupID); record.Set("name", v.Name); record.Set("key", v.Key); record.Set("permissions", v.Permissions); record.Set("protected", v.Protected); record.Set("created_by", v.CreatedBy)
+	record.Set("group", v.GroupID)
+	record.Set("name", v.Name)
+	record.Set("key", v.Key)
+	record.Set("permissions", v.Permissions)
+	record.Set("protected", v.Protected)
+	record.Set("created_by", v.CreatedBy)
 }
 func roleFrom(record *core.Record, scope string) *domain.Role {
-	v := &domain.Role{ID:record.Id, Scope:scope, GroupID:record.GetString("group"), Name:record.GetString("name"), Key:record.GetString("key"), Protected:record.GetBool("protected"), CreatedBy:record.GetString("created_by")}
-	_ = json.Unmarshal([]byte(record.GetString("permissions")), &v.Permissions); hydrateTimes(record,&v.CreatedAt,&v.UpdatedAt); return v
+	v := &domain.Role{ID: record.Id, Scope: scope, GroupID: record.GetString("group"), Name: record.GetString("name"), Key: record.GetString("key"), Protected: record.GetBool("protected"), CreatedBy: record.GetString("created_by")}
+	_ = json.Unmarshal([]byte(record.GetString("permissions")), &v.Permissions)
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return v
 }
-func (r *Repository) CreateRole(ctx context.Context, v *domain.Role) error { record,err:=newRecord(r.app(ctx),roleCollection(v.Scope));if err!=nil{return err};writeRole(record,v);if err=r.app(ctx).Save(record);err!=nil{return err};v.ID=record.Id;hydrateTimes(record,&v.CreatedAt,&v.UpdatedAt);return nil }
-func (r *Repository) GetRoleRecord(ctx context.Context, scope,id string) (*domain.Role,error) { record,err:=r.app(ctx).FindRecordById(roleCollection(scope),id);if err!=nil{return nil,mapError(err)};return roleFrom(record,scope),nil }
-func (r *Repository) ListRoles(ctx context.Context, scope,groupID string) ([]domain.Role,error) { filter:="";params:=dbx.Params{};if scope=="group"{filter="group={:group}";params["group"]=groupID};records,err:=r.app(ctx).FindRecordsByFilter(roleCollection(scope),filter,"key",0,0,params);if err!=nil{return nil,mapError(err)};values:=make([]domain.Role,len(records));for i,record:=range records{values[i]=*roleFrom(record,scope)};return values,nil }
-func (r *Repository) UpdateRoleRecord(ctx context.Context, v *domain.Role) error { record,err:=r.app(ctx).FindRecordById(roleCollection(v.Scope),v.ID);if err!=nil{return mapError(err)};writeRole(record,v);if err=r.app(ctx).Save(record);err!=nil{return err};hydrateTimes(record,&v.CreatedAt,&v.UpdatedAt);return nil }
-func (r *Repository) DeleteRoleRecord(ctx context.Context, scope,id string) error { record,err:=r.app(ctx).FindRecordById(roleCollection(scope),id);if err!=nil{return mapError(err)};return r.app(ctx).Delete(record) }
+func (r *Repository) CreateRole(ctx context.Context, v *domain.Role) error {
+	record, err := newRecord(r.app(ctx), roleCollection(v.Scope))
+	if err != nil {
+		return err
+	}
+	writeRole(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetRoleRecord(ctx context.Context, scope, id string) (*domain.Role, error) {
+	record, err := r.app(ctx).FindRecordById(roleCollection(scope), id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return roleFrom(record, scope), nil
+}
+func (r *Repository) ListRoles(ctx context.Context, scope, groupID string) ([]domain.Role, error) {
+	filter := ""
+	params := dbx.Params{}
+	if scope == "group" {
+		filter = "group={:group}"
+		params["group"] = groupID
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(roleCollection(scope), filter, "key", 0, 0, params)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.Role, len(records))
+	for i, record := range records {
+		values[i] = *roleFrom(record, scope)
+	}
+	return values, nil
+}
+func (r *Repository) UpdateRoleRecord(ctx context.Context, v *domain.Role) error {
+	record, err := r.app(ctx).FindRecordById(roleCollection(v.Scope), v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeRole(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) DeleteRoleRecord(ctx context.Context, scope, id string) error {
+	record, err := r.app(ctx).FindRecordById(roleCollection(scope), id)
+	if err != nil {
+		return mapError(err)
+	}
+	return r.app(ctx).Delete(record)
+}
 
-func (r *Repository) CreateAudit(ctx context.Context, v *domain.AuditLog) error { record,err:=newRecord(r.app(ctx),CollectionAuditLogs);if err!=nil{return err};record.Set("actor",v.ActorID);record.Set("group",v.GroupID);record.Set("scope",v.Scope);record.Set("action",v.Action);record.Set("resource",v.Resource);record.Set("resource_id",v.ResourceID);record.Set("outcome",v.Outcome);record.Set("summary",v.Summary);record.Set("ip",v.IP);record.Set("user_agent",v.UserAgent);record.Set("hash",v.Hash);if err=r.app(ctx).Save(record);err!=nil{return err};v.ID=record.Id;v.CreatedAt=record.GetDateTime("created").Time();return nil }
-func (r *Repository) ListAudits(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.AuditLog],error) { filter:="";params:=dbx.Params{};if groupID!=""{filter="group={:group}";params["group"]=groupID};records,err:=listRecords(r.app(ctx),CollectionAuditLogs,filter,req,params);if err!=nil{return ports.Page[domain.AuditLog]{},err};values:=make([]domain.AuditLog,len(records));for i,r:=range records{values[i]=domain.AuditLog{ID:r.Id,ActorID:r.GetString("actor"),GroupID:r.GetString("group"),Scope:r.GetString("scope"),Action:r.GetString("action"),Resource:r.GetString("resource"),ResourceID:r.GetString("resource_id"),Outcome:r.GetString("outcome"),Summary:r.GetString("summary"),IP:r.GetString("ip"),UserAgent:r.GetString("user_agent"),Hash:r.GetString("hash"),CreatedAt:r.GetDateTime("created").Time()}};count,_:=countFiltered(r.app(ctx),CollectionAuditLogs,filter,params);return page(values,req,count),nil }
+func (r *Repository) CreateAudit(ctx context.Context, v *domain.AuditLog) error {
+	record, err := newRecord(r.app(ctx), CollectionAuditLogs)
+	if err != nil {
+		return err
+	}
+	record.Set("actor", v.ActorID)
+	record.Set("group", v.GroupID)
+	record.Set("scope", v.Scope)
+	record.Set("action", v.Action)
+	record.Set("resource", v.Resource)
+	record.Set("resource_id", v.ResourceID)
+	record.Set("outcome", v.Outcome)
+	record.Set("summary", v.Summary)
+	record.Set("ip", v.IP)
+	record.Set("user_agent", v.UserAgent)
+	record.Set("hash", v.Hash)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	v.CreatedAt = record.GetDateTime("created").Time()
+	return nil
+}
+func (r *Repository) ListAudits(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.AuditLog], error) {
+	filter := ""
+	params := dbx.Params{}
+	if groupID != "" {
+		filter = "group={:group}"
+		params["group"] = groupID
+	}
+	records, err := listRecords(r.app(ctx), CollectionAuditLogs, filter, req, params)
+	if err != nil {
+		return ports.Page[domain.AuditLog]{}, err
+	}
+	values := make([]domain.AuditLog, len(records))
+	for i, r := range records {
+		values[i] = domain.AuditLog{ID: r.Id, ActorID: r.GetString("actor"), GroupID: r.GetString("group"), Scope: r.GetString("scope"), Action: r.GetString("action"), Resource: r.GetString("resource"), ResourceID: r.GetString("resource_id"), Outcome: r.GetString("outcome"), Summary: r.GetString("summary"), IP: r.GetString("ip"), UserAgent: r.GetString("user_agent"), Hash: r.GetString("hash"), CreatedAt: r.GetDateTime("created").Time()}
+	}
+	count, _ := countFiltered(r.app(ctx), CollectionAuditLogs, filter, params)
+	return page(values, req, count), nil
+}
 func (r *Repository) UpsertExchangeRate(ctx context.Context, v *domain.ExchangeRate) error {
 	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date={:date}", dbx.Params{"base": v.BaseCurrency, "quote": v.QuoteCurrency, "date": v.EffectiveDate})
 	if err != nil {
@@ -564,8 +668,85 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*domain.Use
 }
 func (r *Repository) SetUserSystemRole(ctx context.Context, id, roleID string) error {
 	record, err := r.app(ctx).FindRecordById("users", id)
-	if err != nil { return mapError(err) }
+	if err != nil {
+		return mapError(err)
+	}
 	record.Set("system_role", roleID)
+	return r.app(ctx).Save(record)
+}
+
+func (r *Repository) CreateSetupUser(ctx context.Context, input domain.SetupInput) (*domain.User, error) {
+	record, err := newRecord(r.app(ctx), "users")
+	if err != nil {
+		return nil, err
+	}
+	record.Set("email", input.Email)
+	record.Set("password", input.Password)
+	record.Set("passwordConfirm", input.Password)
+	record.Set("name", input.AdminName)
+	record.Set("timezone", input.DefaultTimezone)
+	record.Set("default_currency", input.DefaultCurrency)
+	record.Set("verified", true)
+	if err = r.app(ctx).Save(record); err != nil {
+		return nil, err
+	}
+	return userFrom(record), nil
+}
+
+func (r *Repository) CountUsersBySystemRole(ctx context.Context, roleID string) (int, error) {
+	items, err := r.app(ctx).FindRecordsByFilter("users", "system_role={:role}", "", 1, 0, dbx.Params{"role": roleID})
+	if err != nil {
+		return 0, err
+	}
+	return len(items), nil
+}
+
+func settingsFrom(record *core.Record) domain.SystemSettings {
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: record.GetBool("allow_registration")}
+}
+
+func defaultSystemSettings() domain.SystemSettings {
+	return domain.SystemSettings{SiteName: "SubFlow", DefaultTimezone: "UTC", DefaultCurrency: domain.CurrencyTWD}
+}
+
+func (r *Repository) GetSystemSettings(ctx context.Context) (domain.SystemSettings, error) {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return defaultSystemSettings(), nil
+		}
+		return domain.SystemSettings{}, err
+	}
+	value := settingsFrom(record)
+	if value.SiteName == "" {
+		value.SiteName = "SubFlow"
+	}
+	if value.DefaultTimezone == "" {
+		value.DefaultTimezone = "UTC"
+	}
+	if value.DefaultCurrency == "" {
+		value.DefaultCurrency = domain.CurrencyTWD
+	}
+	return value, nil
+}
+
+func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.SystemSettings) error {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		record, err = newRecord(r.app(ctx), CollectionSystemSettings)
+		if err != nil {
+			return err
+		}
+		record.Set("key", "primary")
+	}
+	record.Set("initialized", value.Initialized)
+	record.Set("site_name", value.SiteName)
+	record.Set("default_timezone", value.DefaultTimezone)
+	record.Set("default_currency", value.DefaultCurrency)
+	record.Set("allow_registration", value.AllowRegistration)
 	return r.app(ctx).Save(record)
 }
 
@@ -643,7 +824,7 @@ func groupFrom(r *core.Record) *domain.Group {
 	return v
 }
 func membershipFrom(r *core.Record) domain.Membership {
-	return domain.Membership{ID: r.Id, GroupID: r.GetString("group"), UserID: r.GetString("user"), Role: domain.MemberRole(r.GetString("role")), RoleID:r.GetString("role_ref"), CreatedAt: r.GetDateTime("created").Time()}
+	return domain.Membership{ID: r.Id, GroupID: r.GetString("group"), UserID: r.GetString("user"), Role: domain.MemberRole(r.GetString("role")), RoleID: r.GetString("role_ref"), CreatedAt: r.GetDateTime("created").Time()}
 }
 func writeInvitation(r *core.Record, v *domain.Invitation) {
 	r.Set("group", v.GroupID)
@@ -744,7 +925,7 @@ func settlementFrom(r *core.Record) *domain.Settlement {
 	return v
 }
 func userFrom(r *core.Record) *domain.User {
-	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone"), DefaultCurrency:domain.Currency(r.GetString("default_currency")), SystemRoleID:r.GetString("system_role")}
+	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone"), DefaultCurrency: domain.Currency(r.GetString("default_currency")), SystemRoleID: r.GetString("system_role")}
 }
 
 func writeCategory(r *core.Record, v *domain.Category) {
@@ -758,7 +939,7 @@ func writeCategory(r *core.Record, v *domain.Category) {
 	r.Set("archived", v.Archived)
 }
 func categoryFrom(r *core.Record) *domain.Category {
-	v := &domain.Category{ID: r.Id, Scope: r.GetString("scope"), OwnerID: r.GetString("owner"), GroupID: r.GetString("group"), SystemKey: r.GetString("system_key"), CustomName: r.GetString("custom_name"), IconKey:r.GetString("icon_key"), CreatedBy: r.GetString("created_by"), Archived: r.GetBool("archived")}
+	v := &domain.Category{ID: r.Id, Scope: r.GetString("scope"), OwnerID: r.GetString("owner"), GroupID: r.GetString("group"), SystemKey: r.GetString("system_key"), CustomName: r.GetString("custom_name"), IconKey: r.GetString("icon_key"), CreatedBy: r.GetString("created_by"), Archived: r.GetBool("archived")}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }

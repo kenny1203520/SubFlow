@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { pb } from '../pocketbase'
 import { useI18n } from '../i18n'
+import { ApiClient } from '../api/client'
 
 export const useAuthStore = defineStore('auth', () => {
   const { tr } = useI18n()
@@ -44,7 +45,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(input: { email: string; password: string; name: string }) {
-    await pb.collection('users').create({ email: input.email, password: input.password, passwordConfirm: input.password, name: input.name, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, default_currency:'TWD' })
+	  const api = new ApiClient(() => '', () => {})
+	  await api.post('/auth/register', { email: input.email, password: input.password, adminName: input.name })
     await login(input.email, input.password)
   }
 

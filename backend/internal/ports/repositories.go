@@ -104,6 +104,13 @@ type UserDirectory interface {
 	Get(context.Context, string) (*domain.User, error)
 	FindByEmail(context.Context, string) (*domain.User, error)
 	SetSystemRole(context.Context, string, string) error
+	Create(context.Context, domain.SetupInput) (*domain.User, error)
+	CountBySystemRole(context.Context, string) (int, error)
+}
+
+type SystemSettingsRepository interface {
+	Get(context.Context) (domain.SystemSettings, error)
+	Save(context.Context, domain.SystemSettings) error
 }
 
 type TransactionManager interface {

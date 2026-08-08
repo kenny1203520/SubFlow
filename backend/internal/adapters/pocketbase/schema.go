@@ -9,18 +9,19 @@ import (
 )
 
 const (
-	CollectionGroups        = "groups"
-	CollectionMembers       = "group_members"
-	CollectionInvitations   = "group_invitations"
-	CollectionSubscriptions = "subscriptions"
-	CollectionExpenses      = "expenses"
-	CollectionExpenseSplits = "expense_splits"
-	CollectionSettlements   = "settlements"
-	CollectionCategories    = "categories"
-	CollectionExchangeRates = "exchange_rates"
-	CollectionSystemRoles   = "system_roles"
-	CollectionGroupRoles    = "group_roles"
-	CollectionAuditLogs     = "audit_logs"
+	CollectionGroups         = "groups"
+	CollectionMembers        = "group_members"
+	CollectionInvitations    = "group_invitations"
+	CollectionSubscriptions  = "subscriptions"
+	CollectionExpenses       = "expenses"
+	CollectionExpenseSplits  = "expense_splits"
+	CollectionSettlements    = "settlements"
+	CollectionCategories     = "categories"
+	CollectionExchangeRates  = "exchange_rates"
+	CollectionSystemRoles    = "system_roles"
+	CollectionGroupRoles     = "group_roles"
+	CollectionAuditLogs      = "audit_logs"
+	CollectionSystemSettings = "system_settings"
 )
 
 var systemCategoryKeys = []string{"food_dining", "transport", "housing", "utilities", "shopping", "entertainment", "health", "education", "travel", "insurance", "software_digital", "memberships", "taxes_fees", "gifts_donations", "other"}
@@ -48,9 +49,19 @@ func EnsureSchema(app core.App) error {
 		}
 	}
 	usersChanged := false
-	if users.Fields.GetByName("default_currency") == nil { users.Fields.Add(&core.SelectField{Name:"default_currency", Values:currencyValues(), MaxSelect:1}); usersChanged = true }
-	if users.Fields.GetByName("system_role") == nil { users.Fields.Add(&core.TextField{Name:"system_role", Max:32}); usersChanged = true }
-	if usersChanged { if err = app.Save(users); err != nil { return err } }
+	if users.Fields.GetByName("default_currency") == nil {
+		users.Fields.Add(&core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1})
+		usersChanged = true
+	}
+	if users.Fields.GetByName("system_role") == nil {
+		users.Fields.Add(&core.TextField{Name: "system_role", Max: 32})
+		usersChanged = true
+	}
+	if usersChanged {
+		if err = app.Save(users); err != nil {
+			return err
+		}
+	}
 	groups, err := ensureCollection(app, CollectionGroups, func(c *core.Collection) {
 		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "description", Max: 2000}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.TextField{Name: "timezone", Max: 64}, &core.TextField{Name: "color", Max: 32}, &core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
 		c.AddIndex("idx_groups_owner", false, "owner", "")
@@ -59,28 +70,41 @@ func EnsureSchema(app core.App) error {
 		return err
 	}
 	_, err = ensureCollection(app, CollectionSystemRoles, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name:"name", Required:true, Max:80}, &core.TextField{Name:"key", Required:true, Max:40}, &core.JSONField{Name:"permissions"}, &core.BoolField{Name:"protected"}, &core.RelationField{Name:"created_by", CollectionId:users.Id, MaxSelect:1})
+		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_system_roles_key", true, "key", "")
 	})
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
+	_, err = ensureCollection(app, CollectionSystemSettings, func(c *core.Collection) {
+		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "site_name", Max: 120}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"})
+		c.AddIndex("idx_system_settings_key", true, "key", "")
+	})
+	if err != nil {
+		return err
+	}
 	_, err = ensureCollection(app, CollectionGroupRoles, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name:"group", Required:true, CollectionId:groups.Id, MaxSelect:1, CascadeDelete:true}, &core.TextField{Name:"name", Required:true, Max:80}, &core.TextField{Name:"key", Required:true, Max:40}, &core.JSONField{Name:"permissions"}, &core.BoolField{Name:"protected"}, &core.RelationField{Name:"created_by", CollectionId:users.Id, MaxSelect:1})
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_group_roles_key", true, "group, key", "")
 	})
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	_, err = ensureCollection(app, CollectionMembers, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "role", Required: true, Values: []string{"owner", "member"}, MaxSelect: 1}, &core.TextField{Name:"role_ref", Max:32})
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "role", Required: true, Values: []string{"owner", "member"}, MaxSelect: 1}, &core.TextField{Name: "role_ref", Max: 32})
 		c.AddIndex("idx_group_members_unique", true, "`group`, `user`", "")
 	})
 	if err != nil {
 		return err
 	}
 	_, err = ensureCollection(app, CollectionAuditLogs, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name:"actor", CollectionId:users.Id, MaxSelect:1}, &core.RelationField{Name:"group", CollectionId:groups.Id, MaxSelect:1, CascadeDelete:true}, &core.TextField{Name:"scope", Required:true, Max:24}, &core.TextField{Name:"action", Required:true, Max:120}, &core.TextField{Name:"resource", Required:true, Max:80}, &core.TextField{Name:"resource_id", Max:32}, &core.TextField{Name:"outcome", Required:true, Max:24}, &core.TextField{Name:"summary", Max:4000}, &core.TextField{Name:"ip", Max:80}, &core.TextField{Name:"user_agent", Max:500}, &core.TextField{Name:"hash", Required:true, Max:128})
+		c.Fields.Add(&core.RelationField{Name: "actor", CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "scope", Required: true, Max: 24}, &core.TextField{Name: "action", Required: true, Max: 120}, &core.TextField{Name: "resource", Required: true, Max: 80}, &core.TextField{Name: "resource_id", Max: 32}, &core.TextField{Name: "outcome", Required: true, Max: 24}, &core.TextField{Name: "summary", Max: 4000}, &core.TextField{Name: "ip", Max: 80}, &core.TextField{Name: "user_agent", Max: 500}, &core.TextField{Name: "hash", Required: true, Max: 128})
 		c.AddIndex("idx_audit_logs_group_created", false, "group, created", "")
 		c.AddIndex("idx_audit_logs_actor_created", false, "actor, created", "")
 	})
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	_, err = ensureCollection(app, CollectionInvitations, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.EmailField{Name: "email", Required: true}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.DateField{Name: "expires_at", Required: true}, &core.RelationField{Name: "invited_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "accepted_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "delivery_failed", "accepted", "revoked", "expired"}, MaxSelect: 1})
 		c.AddIndex("idx_invitations_token", true, "token_hash", "")
@@ -90,7 +114,7 @@ func EnsureSchema(app core.App) error {
 		return err
 	}
 	categories, err := ensureCollection(app, CollectionCategories, func(c *core.Collection) {
-		c.Fields.Add(&core.SelectField{Name: "scope", Required: true, Values: []string{"system", "personal", "group"}, MaxSelect: 1}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "system_key", Max: 80}, &core.TextField{Name: "custom_name", Max: 120}, &core.TextField{Name:"icon_key", Max:80}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1}, &core.BoolField{Name: "archived"})
+		c.Fields.Add(&core.SelectField{Name: "scope", Required: true, Values: []string{"system", "personal", "group"}, MaxSelect: 1}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "system_key", Max: 80}, &core.TextField{Name: "custom_name", Max: 120}, &core.TextField{Name: "icon_key", Max: 80}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1}, &core.BoolField{Name: "archived"})
 		c.AddIndex("idx_categories_scope", false, "scope, owner, `group`, archived", "")
 	})
 	if err != nil {
@@ -208,10 +232,21 @@ func syncField(current, desired core.Field) bool {
 	return false
 }
 func backfillFinance(app core.App) error {
-	if err := ensureRoleSeeds(app); err != nil { return err }
+	if err := ensureRoleSeeds(app); err != nil {
+		return err
+	}
 	users, err := app.FindRecordsByFilter("users", "", "", 0, 0, nil)
-	if err != nil { return err }
-	for _, user := range users { if user.GetString("default_currency") == "" { user.Set("default_currency", "TWD"); if err = app.Save(user); err != nil { return err } } }
+	if err != nil {
+		return err
+	}
+	for _, user := range users {
+		if user.GetString("default_currency") == "" {
+			user.Set("default_currency", "TWD")
+			if err = app.Save(user); err != nil {
+				return err
+			}
+		}
+	}
 	for _, key := range systemCategoryKeys {
 		if _, findErr := app.FindFirstRecordByFilter(CollectionCategories, "system_key={:key}", map[string]any{"key": key}); findErr == nil {
 			continue
@@ -231,7 +266,9 @@ func backfillFinance(app core.App) error {
 		return err
 	}
 	for _, group := range groups {
-		if err = ensureGroupRoleSeeds(app, group); err != nil { return err }
+		if err = ensureGroupRoleSeeds(app, group); err != nil {
+			return err
+		}
 		if group.GetString("timezone") == "" {
 			timezone := "UTC"
 			if owner, findErr := app.FindRecordById("users", group.GetString("owner")); findErr == nil && owner.GetString("timezone") != "" {
@@ -379,19 +416,66 @@ func backfillFinance(app core.App) error {
 
 func ensureRoleSeeds(app core.App) error {
 	if _, err := app.FindFirstRecordByFilter(CollectionSystemRoles, "key='admin'", nil); err != nil {
-		r, e := newSchemaRecord(app, CollectionSystemRoles); if e != nil { return e }; r.Set("name","Administrator");r.Set("key","admin");r.Set("permissions",[]string{"system.roles.manage","system.users.assign","system.audit.read","system.settings.manage"});r.Set("protected",true);if e=app.Save(r);e!=nil{return e}
+		r, e := newSchemaRecord(app, CollectionSystemRoles)
+		if e != nil {
+			return e
+		}
+		r.Set("name", "Administrator")
+		r.Set("key", "admin")
+		r.Set("permissions", []string{"system.roles.manage", "system.users.assign", "system.audit.read", "system.settings.manage"})
+		r.Set("protected", true)
+		if e = app.Save(r); e != nil {
+			return e
+		}
 	}
 	if _, err := app.FindFirstRecordByFilter(CollectionSystemRoles, "key='user'", nil); err != nil {
-		r, e := newSchemaRecord(app, CollectionSystemRoles); if e != nil { return e }; r.Set("name","User");r.Set("key","user");r.Set("permissions",[]string{});r.Set("protected",true);if e=app.Save(r);e!=nil{return e}
+		r, e := newSchemaRecord(app, CollectionSystemRoles)
+		if e != nil {
+			return e
+		}
+		r.Set("name", "User")
+		r.Set("key", "user")
+		r.Set("permissions", []string{})
+		r.Set("protected", true)
+		if e = app.Save(r); e != nil {
+			return e
+		}
 	}
 	return nil
 }
 func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
-	all := []string{"group.view","group.settings.manage","group.members.manage","group.roles.manage","group.audit.read","ledger.expenses.read","ledger.expenses.write","ledger.expenses.delete","ledger.subscriptions.read","ledger.subscriptions.write","ledger.subscriptions.delete","ledger.settlements.read","ledger.settlements.write","ledger.settlements.delete","categories.manage"}
-	for _, seed := range []struct{ key,name string; permissions []string }{{"owner","Owner",all},{"member","Member",[]string{"group.view","ledger.expenses.read","ledger.expenses.write","ledger.subscriptions.read","ledger.subscriptions.write","ledger.settlements.read","ledger.settlements.write","categories.manage"}}} {
-		record, err := app.FindFirstRecordByFilter(CollectionGroupRoles,"group={:group} && key={:key}",map[string]any{"group":group.Id,"key":seed.key})
-		if err != nil { record,err=newSchemaRecord(app,CollectionGroupRoles);if err!=nil{return err};record.Set("group",group.Id);record.Set("name",seed.name);record.Set("key",seed.key);record.Set("permissions",seed.permissions);record.Set("protected",true);if err=app.Save(record);err!=nil{return err} }
-		members, err := app.FindRecordsByFilter(CollectionMembers,"group={:group} && role={:role}","",0,0,map[string]any{"group":group.Id,"role":seed.key});if err!=nil{return err};for _, member:=range members{if member.GetString("role_ref")==""{member.Set("role_ref",record.Id);if err=app.Save(member);err!=nil{return err}}}
+	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.expenses.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.write", "ledger.settlements.delete", "categories.manage"}
+	for _, seed := range []struct {
+		key, name   string
+		permissions []string
+	}{{"owner", "Owner", all}, {"member", "Member", []string{"group.view", "ledger.expenses.read", "ledger.expenses.write", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.settlements.read", "ledger.settlements.write", "categories.manage"}}} {
+		record, err := app.FindFirstRecordByFilter(CollectionGroupRoles, "group={:group} && key={:key}", map[string]any{"group": group.Id, "key": seed.key})
+		if err != nil {
+			record, err = newSchemaRecord(app, CollectionGroupRoles)
+			if err != nil {
+				return err
+			}
+			record.Set("group", group.Id)
+			record.Set("name", seed.name)
+			record.Set("key", seed.key)
+			record.Set("permissions", seed.permissions)
+			record.Set("protected", true)
+			if err = app.Save(record); err != nil {
+				return err
+			}
+		}
+		members, err := app.FindRecordsByFilter(CollectionMembers, "group={:group} && role={:role}", "", 0, 0, map[string]any{"group": group.Id, "role": seed.key})
+		if err != nil {
+			return err
+		}
+		for _, member := range members {
+			if member.GetString("role_ref") == "" {
+				member.Set("role_ref", record.Id)
+				if err = app.Save(member); err != nil {
+					return err
+				}
+			}
+		}
 	}
 	return nil
 }
