@@ -58,6 +58,9 @@ func (s *Service) CreateGroup(ctx context.Context, userID string, group domain.G
 		}
 		return s.Stores.Memberships.Create(tx, &domain.Membership{GroupID: group.ID, UserID: userID, Role: domain.RoleOwner})
 	})
+	if err == nil {
+		s.audit(ctx, userID, group.ID, "group.created", "group", group.ID, "success")
+	}
 	return &group, err
 }
 
@@ -99,6 +102,7 @@ func (s *Service) UpdateGroup(ctx context.Context, userID string, group domain.G
 	if err = s.Stores.Groups.Update(ctx, &group); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, group.ID, "group.updated", "group", group.ID, "success")
 	return &group, nil
 }
 
@@ -106,7 +110,11 @@ func (s *Service) DeleteGroup(ctx context.Context, userID, id string) error {
 	if err := s.role(ctx, id, userID, true); err != nil {
 		return err
 	}
-	return s.Stores.Groups.Delete(ctx, id)
+	err := s.Stores.Groups.Delete(ctx, id)
+	if err == nil {
+		s.audit(ctx, userID, id, "group.deleted", "group", id, "success")
+	}
+	return err
 }
 func (s *Service) ListMembers(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Membership], error) {
 	if err := s.role(ctx, groupID, userID, false); err != nil {
@@ -125,7 +133,11 @@ func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID st
 	if role == domain.RoleOwner {
 		return domain.ErrForbidden
 	}
-	return s.Stores.Memberships.Delete(ctx, groupID, memberID)
+	err = s.Stores.Memberships.Delete(ctx, groupID, memberID)
+	if err == nil {
+		s.audit(ctx, userID, groupID, "member.removed", "membership", memberID, "success")
+	}
+	return err
 }
 
 func validSubscription(v *domain.Subscription) bool {
@@ -187,6 +199,7 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 	if err := s.Stores.Subscriptions.Create(ctx, &v); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, v.GroupID, "subscription.created", "subscription", v.ID, "success")
 	return &v, nil
 }
 func (s *Service) ListPersonalSubscriptions(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Subscription], error) {
@@ -289,6 +302,7 @@ func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn strin
 	if err = s.Stores.Subscriptions.Update(ctx, v); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, v.GroupID, "subscription.stop_scheduled", "subscription", v.ID, "success")
 	v.LifecycleStatus = domain.SubscriptionLifecycle(*v, s.Now())
 	return v, nil
 }
@@ -308,6 +322,7 @@ func (s *Service) ResumeSubscription(ctx context.Context, userID, id string) (*d
 	if err = s.Stores.Subscriptions.Update(ctx, v); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, v.GroupID, "subscription.stop_cancelled", "subscription", v.ID, "success")
 	v.LifecycleStatus = domain.SubscriptionLifecycle(*v, s.Now())
 	return v, nil
 }
@@ -379,6 +394,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	if err = s.Stores.Subscriptions.Update(ctx, &v); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success")
 	return &v, nil
 }
 func (s *Service) DeleteSubscription(ctx context.Context, userID, id string) error {
@@ -393,7 +409,11 @@ func (s *Service) DeleteSubscription(ctx context.Context, userID, id string) err
 	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
 		return err
 	}
-	return s.Stores.Subscriptions.Delete(ctx, id)
+	err = s.Stores.Subscriptions.Delete(ctx, id)
+	if err == nil {
+		s.audit(ctx, userID, v.GroupID, "subscription.deleted", "subscription", id, "success")
+	}
+	return err
 }
 
 func validExpense(v *domain.Expense) bool {
@@ -490,6 +510,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 	for i := range v.Splits {
 		v.Splits[i].ExpenseID = v.ID
 	}
+	s.audit(ctx, userID, v.GroupID, "expense.created", "expense", v.ID, "success")
 	return &v, nil
 }
 func (s *Service) ListPersonalExpenses(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Expense], error) {
@@ -598,6 +619,7 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 	}); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, v.GroupID, "expense.updated", "expense", v.ID, "success")
 	return &v, nil
 }
 func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
@@ -612,7 +634,11 @@ func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
 	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
 		return err
 	}
-	return s.Stores.Expenses.Delete(ctx, id)
+	err = s.Stores.Expenses.Delete(ctx, id)
+	if err == nil {
+		s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success")
+	}
+	return err
 }
 
 func (s *Service) Dashboard(ctx context.Context, userID, groupID string) (domain.DashboardSummary, error) {

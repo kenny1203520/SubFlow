@@ -150,6 +150,7 @@ func (s *Service) CreateCategory(ctx context.Context, userID string, value domai
 	if err = s.Stores.Categories.Create(ctx, &value); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, value.GroupID, "category.created", "category", value.ID, "success")
 	return &value, nil
 }
 
@@ -178,9 +179,13 @@ func (s *Service) UpdateCategory(ctx context.Context, userID string, value domai
 		current.CustomName = name
 	}
 	current.Archived = value.Archived
+	if value.IconKey != "" {
+		current.IconKey = value.IconKey
+	}
 	if err = s.Stores.Categories.Update(ctx, current); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, current.GroupID, "category.updated", "category", current.ID, "success")
 	return current, nil
 }
 

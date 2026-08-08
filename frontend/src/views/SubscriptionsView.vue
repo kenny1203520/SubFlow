@@ -11,6 +11,7 @@ import PersonalLedgerNav from '../components/PersonalLedgerNav.vue'
 import CurrencySelect from '../components/CurrencySelect.vue'
 import CategorySelect from '../components/CategorySelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
+import SourceDialog from '../components/SourceDialog.vue'
 import type { BillingCycle, Subscription, SubscriptionStatus } from '../api/types'
 import { majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
@@ -20,7 +21,7 @@ import { categoryLabel } from '../category'
 const workspace = useWorkspaceStore(), auth = useAuthStore(), route = useRoute(), { tr, formatDate } = useI18n()
 const personal = computed(() => route.name === 'personal-subscriptions')
 const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
-const drawer = ref(false), editingId = ref(''), pendingDelete = ref<Subscription>(), stopping = ref<Subscription>()
+const drawer = ref(false), editingId = ref(''), pendingDelete = ref<Subscription>(), sourceItem = ref<Subscription>(), stopping = ref<Subscription>()
 const dates = ref<string[]>([]), cursor = ref(''), chosenDate = ref(''), datesLoading = ref(false), formError = ref(''), rateValid = ref(true)
 const form = reactive({ name:'', category:'', categoryId:'', amount:'', currency:'TWD', rateMode:'automatic' as 'automatic'|'manual', exchangeRate:'', billingCycle:'monthly' as BillingCycle, startsOn:new Date().toISOString().slice(0,10), status:'active' as SubscriptionStatus, notes:'' })
 const editing = computed(() => list.value.find(item => item.id === editingId.value))
@@ -28,7 +29,7 @@ const sourceGroup = computed(() => workspace.groups.find(group => group.id === e
 const reportingCurrency = computed(() => sourceGroup.value?.currency || (!personal.value ? workspace.currentGroup?.currency : form.currency) || form.currency)
 watch(() => [form.currency, reportingCurrency.value], ([from, to]) => { if (from === to) { form.rateMode = 'automatic'; form.exchangeRate = '' } })
 
-function reset() { editingId.value=''; formError.value=''; rateValid.value=true; Object.assign(form,{name:'',category:'',categoryId:'',amount:'',currency:workspace.currentGroup?.currency||'TWD',rateMode:'automatic',exchangeRate:'',billingCycle:'monthly',startsOn:new Date().toISOString().slice(0,10),status:'active',notes:''}) }
+function reset() { editingId.value=''; formError.value=''; rateValid.value=true; Object.assign(form,{name:'',category:'',categoryId:'',amount:'',currency:workspace.currentGroup?.currency||auth.record?.defaultCurrency||'TWD',rateMode:'automatic',exchangeRate:'',billingCycle:'monthly',startsOn:new Date().toISOString().slice(0,10),status:'active',notes:''}) }
 async function loadFormCategories() { try { await workspace.loadCategories(personal.value && !editing.value?.groupId ? 'personal' : 'group', editing.value?.groupId || workspace.currentGroupId) } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
 async function create() { reset(); drawer.value = true; await loadFormCategories() }
 async function edit(item: Subscription) { reset(); editingId.value=item.id; Object.assign(form,{name:item.name,category:item.category,categoryId:item.categoryId||'',amount:minorToInput(item.amountMinor,item.currency),currency:item.currency,rateMode:item.rateMode||'automatic',exchangeRate:item.exchangeRate||'',billingCycle:item.billingCycle,startsOn:(item.startsOn||item.nextBilling).slice(0,10),status:item.status,notes:item.notes}); drawer.value=true; await loadFormCategories() }
@@ -60,7 +61,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
         <div class="data-table-head"><span>{{tr('name')}}</span><span>{{tr('source')}}</span><span>{{tr('nextBilling')}}</span><span>{{tr('cycle')}}</span><span>{{tr('status')}}</span><span>{{tr('amount')}}</span><span></span></div>
         <article v-for="item in list" :key="item.id" class="data-table-row">
           <div class="item-cell"><span class="service-icon">{{item.name.slice(0,1)}}</span><span><strong>{{item.name}}</strong><small>{{recordCategory(item)}}</small></span></div>
-          <span><span class="source-badge" :class="{shared:item.groupId}">{{itemGroup(item)?.name||tr('privateRecord')}}</span></span>
+          <span><button class="source-badge" :class="{shared:item.groupId}" @click="sourceItem=item">{{itemGroup(item)?.name||tr('privateRecord')}}</button></span>
           <span class="timezone-date"><strong>{{viewerDate(item.nextBilling)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small></span><span>{{tr(cycleKey(item))}}</span><span class="pill">{{tr(statusKey(item))}}</span>
           <span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span>
           <span class="row-actions"><button v-if="item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span>
@@ -76,6 +77,6 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
       <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('cycle')}}</strong></div><div class="ledger-form-grid"><label>{{tr('cycle')}}<select v-model="form.billingCycle"><option value="monthly">{{tr('monthly')}}</option><option value="quarterly">{{tr('quarterly')}}</option><option value="yearly">{{tr('yearly')}}</option></select></label><label>{{tr('firstBilling')}}<input v-model="form.startsOn" type="date" required></label><label>{{tr('status')}}<select v-model="form.status"><option value="active">{{tr('active')}}</option><option value="paused">{{tr('paused')}}</option><option value="cancelled">{{tr('cancelled')}}</option></select></label></div></section><section class="ledger-form-section"><label>{{tr('notes')}}<textarea v-model="form.notes" rows="3"></textarea></label></section><div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="drawer=false">{{tr('cancel')}}</button><button class="primary" :disabled="workspace.loading||!rateValid">{{tr(editingId?'saveChanges':'createSubscription')}}</button></div>
     </form></AppDrawer>
     <Teleport to="body"><div v-if="stopping" class="modal-backdrop" @click.self="stopping=undefined"><section class="billing-dialog" role="dialog" aria-modal="true" :aria-label="tr('stopSubscription')"><header><div><h2>{{tr('stopSubscription')}}</h2><p>{{stopping.name}} · {{tr('chooseFinalBilling')}}</p></div><button class="icon-button" :aria-label="tr('close')" @click="stopping=undefined">×</button></header><div v-if="dates.length" class="billing-dates"><label v-for="date in dates" :key="date" :class="{selected:chosenDate===date}"><input v-model="chosenDate" type="radio" :value="date"><span><strong>{{viewerDate(date)}}</strong><small>{{tr('finalBilling')}}</small><small v-if="stopping.groupId">{{originalTime(stopping,date)}}</small></span></label></div><EmptyState v-else :title="tr('noBillingDates')" :description="tr('subscriptionDesc')"/><button v-if="cursor" class="ghost wide" :disabled="datesLoading" @click="loadDates(true)">{{tr('loadMore')}}</button><div class="form-actions"><button class="ghost" @click="stopping=undefined">{{tr('cancel')}}</button><button class="primary" :disabled="!chosenDate" @click="confirmStop">{{tr('confirm')}}</button></div></section></div></Teleport>
-    <ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('deleteSubscriptionConfirm',{name:pendingDelete.name}):''" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
+    <SourceDialog :open="!!sourceItem" kind="subscriptions" :group="sourceItem?itemGroup(sourceItem):undefined" :currency="sourceItem?.currency||'TWD'" @close="sourceItem=undefined"/><ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('deleteSubscriptionConfirm',{name:pendingDelete.name}):''" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
   </section>
 </template>

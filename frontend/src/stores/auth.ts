@@ -44,14 +44,17 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(input: { email: string; password: string; name: string }) {
-    await pb.collection('users').create({ email: input.email, password: input.password, passwordConfirm: input.password, name: input.name, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+    await pb.collection('users').create({ email: input.email, password: input.password, passwordConfirm: input.password, name: input.name, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, default_currency:'TWD' })
     await login(input.email, input.password)
   }
 
-  async function updateProfile(input: { name: string; timezone: string }) {
+  async function updateProfile(input: { name: string; timezone: string; default_currency?: string }) {
     if (!record.value) throw new Error(tr('notSignedIn'))
     record.value = await pb.collection('users').update(record.value.id, input)
   }
+
+  async function oauthProviders() { const methods=await pb.collection('users').listAuthMethods(); return methods.oauth2?.providers||[] }
+  function loginOAuth(provider:string) { return pb.collection('users').authWithOAuth2({provider,createData:{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,default_currency:'TWD'}}) }
 
   function logout() {
     pb.authStore.clear()
@@ -60,5 +63,5 @@ export const useAuthStore = defineStore('auth', () => {
     record.value = null
   }
 
-  return { record, ready, authenticated, token, name, initialize, login, register, updateProfile, logout }
+  return { record, ready, authenticated, token, name, initialize, login, register, updateProfile, oauthProviders, loginOAuth, logout }
 })

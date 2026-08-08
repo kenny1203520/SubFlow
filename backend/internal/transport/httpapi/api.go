@@ -56,6 +56,19 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/summary", a.dashboard).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/members", a.listMembers).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/members/{userId}", a.removeMember).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/roles", a.listGroupRoles).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/roles", a.createGroupRole).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/roles/{id}", a.updateGroupRole).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/roles/{id}", a.deleteGroupRole).Bind(bind)
+	e.Router.PUT("/api/subflow/v1/groups/{groupId}/members/{userId}/role", a.assignGroupRole).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/audit-logs", a.listGroupAudit).Bind(bind)
+	e.Router.GET("/api/subflow/v1/system/roles", a.listSystemRoles).Bind(bind)
+	e.Router.POST("/api/subflow/v1/system/roles", a.createSystemRole).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/system/roles/{id}", a.updateSystemRole).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/system/roles/{id}", a.deleteSystemRole).Bind(bind)
+	e.Router.PUT("/api/subflow/v1/system/users/{userId}/role", a.assignSystemRole).Bind(bind)
+	e.Router.GET("/api/subflow/v1/system/audit-logs", a.listSystemAudit).Bind(bind)
+	e.Router.POST("/api/subflow/v1/system/bootstrap-admin", a.bootstrapSystemAdmin).Bind(apis.RequireSuperuserAuth())
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/subscriptions", a.listSubscriptions).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/subscriptions", a.createSubscription).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/subscriptions/{id}", a.updateSubscription).Bind(bind)
@@ -305,6 +318,12 @@ func (a *API) removeMember(e *core.RequestEvent) error {
 	}
 	return noContent(e)
 }
+func (a *API) listGroupRoles(e *core.RequestEvent) error { values,err:=a.Service.ListGroupRoles(e.Request.Context(),authID(e),groupID(e));if err!=nil{return fail(e,err)};return ok(e,http.StatusOK,values,nil) }
+func (a *API) createGroupRole(e *core.RequestEvent) error { var value domain.Role;if e.BindBody(&value)!=nil{return fail(e,domain.ErrInvalid)};value.GroupID=groupID(e);v,err:=a.Service.CreateGroupRole(e.Request.Context(),authID(e),value);if err!=nil{return fail(e,err)};return ok(e,http.StatusCreated,v,nil) }
+func (a *API) updateGroupRole(e *core.RequestEvent) error { var value domain.Role;if e.BindBody(&value)!=nil{return fail(e,domain.ErrInvalid)};value.ID=e.Request.PathValue("id");v,err:=a.Service.UpdateGroupRole(e.Request.Context(),authID(e),value);if err!=nil{return fail(e,err)};return ok(e,http.StatusOK,v,nil) }
+func (a *API) deleteGroupRole(e *core.RequestEvent) error { if err:=a.Service.DeleteGroupRole(e.Request.Context(),authID(e),e.Request.PathValue("id"));err!=nil{return fail(e,err)};return noContent(e) }
+func (a *API) assignGroupRole(e *core.RequestEvent) error { var body struct{ RoleID string `json:"roleId"` };if e.BindBody(&body)!=nil||body.RoleID==""{return fail(e,domain.ErrInvalid)};if err:=a.Service.AssignGroupRole(e.Request.Context(),authID(e),groupID(e),e.Request.PathValue("userId"),body.RoleID);err!=nil{return fail(e,err)};return noContent(e) }
+func (a *API) listGroupAudit(e *core.RequestEvent) error { p,err:=pageRequest(e,"created");if err!=nil{return fail(e,err)};v,err:=a.Service.ListGroupAudit(e.Request.Context(),authID(e),groupID(e),p);if err!=nil{return fail(e,err)};return ok(e,http.StatusOK,v.Items,pageMeta(v)) }
 func (a *API) listSubscriptions(e *core.RequestEvent) error {
 	p, err := pageRequest(e, "subscriptions")
 	if err != nil {
@@ -486,3 +505,10 @@ func (a *API) deleteSettlement(e *core.RequestEvent) error {
 	}
 	return noContent(e)
 }
+func (a *API) listSystemRoles(e *core.RequestEvent) error { values,err:=a.Service.ListSystemRoles(e.Request.Context(),authID(e));if err!=nil{return fail(e,err)};return ok(e,http.StatusOK,values,nil) }
+func (a *API) createSystemRole(e *core.RequestEvent) error { var value domain.Role;if e.BindBody(&value)!=nil{return fail(e,domain.ErrInvalid)};v,err:=a.Service.CreateSystemRole(e.Request.Context(),authID(e),value);if err!=nil{return fail(e,err)};return ok(e,http.StatusCreated,v,nil) }
+func (a *API) updateSystemRole(e *core.RequestEvent) error { var value domain.Role;if e.BindBody(&value)!=nil{return fail(e,domain.ErrInvalid)};value.ID=e.Request.PathValue("id");v,err:=a.Service.UpdateSystemRole(e.Request.Context(),authID(e),value);if err!=nil{return fail(e,err)};return ok(e,http.StatusOK,v,nil) }
+func (a *API) deleteSystemRole(e *core.RequestEvent) error { if err:=a.Service.DeleteSystemRole(e.Request.Context(),authID(e),e.Request.PathValue("id"));err!=nil{return fail(e,err)};return noContent(e) }
+func (a *API) assignSystemRole(e *core.RequestEvent) error { var body struct{ RoleID string `json:"roleId"` };if e.BindBody(&body)!=nil||body.RoleID==""{return fail(e,domain.ErrInvalid)};if err:=a.Service.AssignSystemRole(e.Request.Context(),authID(e),e.Request.PathValue("userId"),body.RoleID);err!=nil{return fail(e,err)};return noContent(e) }
+func (a *API) listSystemAudit(e *core.RequestEvent) error { page,err:=pageRequest(e,"audit logs");if err!=nil{return fail(e,err)};values,err:=a.Service.ListSystemAudit(e.Request.Context(),authID(e),page);if err!=nil{return fail(e,err)};return ok(e,http.StatusOK,values.Items,pageMeta(values)) }
+func (a *API) bootstrapSystemAdmin(e *core.RequestEvent) error { var body struct{ UserID string `json:"userId"` };if e.BindBody(&body)!=nil||body.UserID==""{return fail(e,domain.ErrInvalid)};if err:=a.Service.BootstrapSystemAdmin(e.Request.Context(),body.UserID);err!=nil{return fail(e,err)};return noContent(e) }

@@ -68,6 +68,7 @@ type Category struct {
 	GroupID    string    `json:"groupId,omitempty"`
 	SystemKey  string    `json:"systemKey,omitempty"`
 	CustomName string    `json:"customName,omitempty"`
+	IconKey    string    `json:"iconKey,omitempty"`
 	CreatedBy  string    `json:"createdBy,omitempty"`
 	Archived   bool      `json:"archived"`
 	CreatedAt  time.Time `json:"createdAt"`
@@ -97,6 +98,37 @@ type User struct {
 	Name     string `json:"name"`
 	Avatar   string `json:"avatar,omitempty"`
 	Timezone string `json:"timezone"`
+	DefaultCurrency Currency `json:"defaultCurrency"`
+	SystemRoleID string `json:"systemRoleId,omitempty"`
+}
+
+type Role struct {
+	ID string `json:"id"`
+	Scope string `json:"scope"`
+	GroupID string `json:"groupId,omitempty"`
+	Name string `json:"name"`
+	Key string `json:"key"`
+	Permissions []string `json:"permissions"`
+	Protected bool `json:"protected"`
+	CreatedBy string `json:"createdBy,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+type AuditLog struct {
+	ID string `json:"id"`
+	ActorID string `json:"actorId,omitempty"`
+	GroupID string `json:"groupId,omitempty"`
+	Scope string `json:"scope"`
+	Action string `json:"action"`
+	Resource string `json:"resource"`
+	ResourceID string `json:"resourceId,omitempty"`
+	Outcome string `json:"outcome"`
+	Summary string `json:"summary,omitempty"`
+	IP string `json:"ip,omitempty"`
+	UserAgent string `json:"userAgent,omitempty"`
+	Hash string `json:"hash"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type Group struct {
@@ -116,6 +148,8 @@ type Membership struct {
 	GroupID   string     `json:"groupId"`
 	UserID    string     `json:"userId"`
 	Role      MemberRole `json:"role"`
+	RoleID    string     `json:"roleId,omitempty"`
+	RoleName  string     `json:"roleName,omitempty"`
 	User      *User      `json:"user,omitempty"`
 	CreatedAt time.Time  `json:"createdAt"`
 }

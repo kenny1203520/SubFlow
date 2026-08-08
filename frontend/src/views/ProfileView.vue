@@ -4,9 +4,10 @@ import { useAuthStore } from '../stores/auth'
 import { useI18n } from '../i18n'
 import { useTheme } from '../theme'
 import TimezoneSelect from '../components/TimezoneSelect.vue'
+import CurrencySelect from '../components/CurrencySelect.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 const auth = useAuthStore(), workspace=useWorkspaceStore(), saved = ref(false), categoryName=ref(''), { t } = useI18n(), { preference, setTheme } = useTheme()
-const form = reactive({ name: String(auth.record?.name || ''), timezone: String(auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone) })
+const form = reactive({ name: String(auth.record?.name || ''), timezone: String(auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone), default_currency:String(auth.record?.defaultCurrency||'TWD') })
 async function submit() { await auth.updateProfile(form); saved.value = true; setTimeout(() => saved.value = false, 1800) }
 async function addCategory(){if(!categoryName.value.trim())return;await workspace.createCategory('personal',categoryName.value.trim());categoryName.value=''}
 onMounted(()=>void workspace.loadCategories('personal'))
@@ -26,7 +27,7 @@ onMounted(()=>void workspace.loadCategories('personal'))
                         disabled></label><label>{{ t.displayName }}<input v-model="form.name"
                         required></label><label>{{ t.timezone }}
                     <TimezoneSelect v-model="form.timezone" />
-                </label><button class="primary">{{ t.save }}</button><span v-if="saved" class="success">{{ t.saved }}</span>
+                </label><label>{{t.currency}}<CurrencySelect v-model="form.default_currency" :currencies="workspace.currencies"/></label><button class="primary">{{ t.save }}</button><span v-if="saved" class="success">{{ t.saved }}</span>
             </form>
             <section class="card form-card appearance-card">
                 <div>

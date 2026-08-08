@@ -19,6 +19,8 @@ type Stores struct {
 	Settlements   ports.SettlementRepository
 	Categories    ports.CategoryRepository
 	ExchangeRates ports.ExchangeRateRepository
+	Roles         ports.RoleRepository
+	Audits        ports.AuditRepository
 	Users         ports.UserDirectory
 	Transactions  ports.TransactionManager
 }
@@ -27,7 +29,7 @@ func New(driver string, app core.App) (Stores, error) {
 	switch strings.ToLower(strings.TrimSpace(driver)) {
 	case "", "pocketbase":
 		s := pbadapter.NewStores(app)
-		return Stores{s.Groups, s.Memberships, s.Invitations, s.Subscriptions, s.Expenses, s.Settlements, s.Categories, s.ExchangeRates, s.Users, s.Transactions}, nil
+		return Stores{s.Groups, s.Memberships, s.Invitations, s.Subscriptions, s.Expenses, s.Settlements, s.Categories, s.ExchangeRates, s.Roles, s.Audits, s.Users, s.Transactions}, nil
 	case "postgres", "mysql":
 		return Stores{}, fmt.Errorf("SUBFLOW_DATA_DRIVER %q is reserved but not implemented", driver)
 	default:

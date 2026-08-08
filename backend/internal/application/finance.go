@@ -307,6 +307,7 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	if err = s.Stores.Settlements.Create(ctx, &value); err != nil {
 		return nil, err
 	}
+	s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success")
 	return &value, nil
 }
 func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error {
@@ -321,5 +322,9 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 	if value.CreatedBy != userID && group.OwnerID != userID {
 		return domain.ErrForbidden
 	}
-	return s.Stores.Settlements.Delete(ctx, id)
+	err = s.Stores.Settlements.Delete(ctx, id)
+	if err == nil {
+		s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "success")
+	}
+	return err
 }

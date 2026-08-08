@@ -34,6 +34,20 @@ type MembershipRepository interface {
 	GetRole(context.Context, string, string) (domain.MemberRole, error)
 	List(context.Context, string, PageRequest) (Page[domain.Membership], error)
 	Delete(context.Context, string, string) error
+	UpdateRole(context.Context, string, string, string) error
+}
+
+type RoleRepository interface {
+	Create(context.Context, *domain.Role) error
+	Get(context.Context, string, string) (*domain.Role, error)
+	List(context.Context, string, string) ([]domain.Role, error)
+	Update(context.Context, *domain.Role) error
+	Delete(context.Context, string, string) error
+}
+
+type AuditRepository interface {
+	Create(context.Context, *domain.AuditLog) error
+	List(context.Context, string, PageRequest) (Page[domain.AuditLog], error)
 }
 
 type InvitationRepository interface {
@@ -89,6 +103,7 @@ type ExchangeRateRepository interface {
 type UserDirectory interface {
 	Get(context.Context, string) (*domain.User, error)
 	FindByEmail(context.Context, string) (*domain.User, error)
+	SetSystemRole(context.Context, string, string) error
 }
 
 type TransactionManager interface {

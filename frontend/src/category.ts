@@ -12,3 +12,4 @@ export function categoryLabel(category: Pick<Category, 'systemKey' | 'customName
   const key = category?.systemKey ? systemKeys[category.systemKey] : undefined
   return key ? tr(key) : category?.customName || fallback || tr('uncategorized')
 }
+export function categoryIcon(category: Pick<Category, 'systemKey' | 'iconKey'> | undefined) { return category?.iconKey || category?.systemKey || 'tag' }

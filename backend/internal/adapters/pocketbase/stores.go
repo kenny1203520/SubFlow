@@ -17,6 +17,8 @@ type ExpenseRepo struct{ *Repository }
 type SettlementRepo struct{ *Repository }
 type CategoryRepo struct{ *Repository }
 type ExchangeRateRepo struct{ *Repository }
+type RoleRepo struct{ *Repository }
+type AuditRepo struct{ *Repository }
 type UserRepo struct{ *Repository }
 
 type Stores struct {
@@ -28,13 +30,15 @@ type Stores struct {
 	Settlements   *SettlementRepo
 	Categories    *CategoryRepo
 	ExchangeRates *ExchangeRateRepo
+	Roles         *RoleRepo
+	Audits        *AuditRepo
 	Users         *UserRepo
 	Transactions  *Repository
 }
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &UserRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -46,6 +50,7 @@ func (r *MembershipRepo) List(ctx context.Context, groupID string, req ports.Pag
 func (r *MembershipRepo) Delete(ctx context.Context, groupID, userID string) error {
 	return r.DeleteMembership(ctx, groupID, userID)
 }
+func (r *MembershipRepo) UpdateRole(ctx context.Context, groupID, userID, roleID string) error { return r.UpdateMembershipRole(ctx, groupID, userID, roleID) }
 
 func (r *InvitationRepo) Create(ctx context.Context, v *domain.Invitation) error {
 	return r.CreateInvitation(ctx, v)
@@ -139,10 +144,20 @@ func (r *ExchangeRateRepo) Upsert(ctx context.Context, v *domain.ExchangeRate) e
 func (r *ExchangeRateRepo) LatestOnOrBefore(ctx context.Context, from, to domain.Currency, date time.Time) (*domain.ExchangeRate, error) {
 	return r.LatestExchangeRate(ctx, from, to, date)
 }
+func (r *RoleRepo) Create(ctx context.Context, v *domain.Role) error { return r.CreateRole(ctx,v) }
+func (r *RoleRepo) Get(ctx context.Context, scope,id string) (*domain.Role,error) { return r.GetRoleRecord(ctx,scope,id) }
+func (r *RoleRepo) List(ctx context.Context, scope,groupID string) ([]domain.Role,error) { return r.ListRoles(ctx,scope,groupID) }
+func (r *RoleRepo) Update(ctx context.Context, v *domain.Role) error { return r.UpdateRoleRecord(ctx,v) }
+func (r *RoleRepo) Delete(ctx context.Context, scope,id string) error { return r.DeleteRoleRecord(ctx,scope,id) }
+func (r *AuditRepo) Create(ctx context.Context, v *domain.AuditLog) error { return r.CreateAudit(ctx,v) }
+func (r *AuditRepo) List(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.AuditLog],error) { return r.ListAudits(ctx,groupID,req) }
 
 func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {
 	return r.GetUser(ctx, id)
 }
 func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	return r.Repository.FindByEmail(ctx, email)
+}
+func (r *UserRepo) SetSystemRole(ctx context.Context, id, roleID string) error {
+	return r.Repository.SetUserSystemRole(ctx, id, roleID)
 }
