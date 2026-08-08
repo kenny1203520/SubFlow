@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import EmptyState from '../components/EmptyState.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -19,6 +19,8 @@ async function removeMember(userId: string, label: string) {
     pendingRemoval.value={userId,label}
 }
 async function confirmRemoval(){if(!pendingRemoval.value)return;await workspace.removeMember(pendingRemoval.value.userId);pendingRemoval.value=undefined}
+async function assignRole(userId:string,event:Event){const roleId=(event.target as HTMLSelectElement).value;if(roleId)await workspace.assignGroupRole(userId,roleId)}
+onMounted(()=>{if(workspace.isOwner){void workspace.loadGroupRoles?.();void workspace.loadGroupAuditLogs?.()}})
 </script>
 
 <template>
@@ -40,6 +42,9 @@ async function confirmRemoval(){if(!pendingRemoval.value)return;await workspace.
                         <div class="grow"><strong>{{ member.user?.name || tr('unnamedMember') }}</strong><small>{{
                                 member.user?.email }}</small></div>
                         <span class="pill">{{ tr(member.role) }}</span>
+                        <select v-if="workspace.isOwner && member.role !== 'owner' && workspace.groupRoles?.length" class="member-role-select" :value="member.roleId" @change="assignRole(member.userId,$event)">
+                            <option v-for="role in workspace.groupRoles||[]" :key="role.id" :value="role.id">{{role.name}}</option>
+                        </select>
                         <button v-if="workspace.isOwner && member.role !== 'owner'" class="ghost danger-text"
                             @click="removeMember(member.userId, member.user?.name || member.user?.email || tr('thisMember'))">{{tr('remove')}}</button>
                     </div>
@@ -73,6 +78,7 @@ async function confirmRemoval(){if(!pendingRemoval.value)return;await workspace.
                 <p>{{tr('ownerOnly')}}</p>
             </div>
         </div>
+        <section v-if="workspace.isOwner" class="card audit-list"><h2>{{tr('settlements')}}</h2><div v-if="workspace.groupAuditLogs?.length" class="rows"><div v-for="entry in workspace.groupAuditLogs||[]" :key="entry.id" class="row"><div class="grow"><strong>{{entry.action}}</strong><small>{{entry.resource}} · {{formatDate(entry.createdAt)}}</small></div><span class="pill">{{entry.outcome}}</span></div></div><p v-else class="empty-inline">{{tr('noSummary')}}</p></section>
         <ConfirmDialog :open="!!pendingRemoval" :title="pendingRemoval?tr('removeMemberConfirm',{name:pendingRemoval.label}):''" danger @cancel="pendingRemoval=undefined" @confirm="confirmRemoval"/>
     </section>
 </template>

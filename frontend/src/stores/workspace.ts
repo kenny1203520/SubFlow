@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, Invitation, Membership, Settlement, Subscription, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, Invitation, Membership, Settlement, Subscription, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useI18n } from '../i18n'
 
@@ -23,6 +23,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const subscriptions = ref<Subscription[]>([])
   const expenses = ref<Expense[]>([])
   const settlements = ref<Settlement[]>([])
+  const groupRoles = ref<AccessRole[]>([])
+  const groupAuditLogs = ref<AuditLog[]>([])
   const groupErrors = reactive<Record<'members'|'subscriptions'|'expenses'|'settlements'|'summary', string>>({ members:'', subscriptions:'', expenses:'', settlements:'', summary:'' })
   const groupBusy = reactive<Record<'members'|'subscriptions'|'expenses'|'settlements'|'summary', number>>({ members:0, subscriptions:0, expenses:0, settlements:0, summary:0 })
   const personalSubscriptions = ref<Subscription[]>([])
@@ -214,6 +216,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await refreshGroup()
     })
   }
+  async function loadGroupRoles() { if (!currentGroupId.value) return; groupRoles.value=(await api.get<AccessRole[]>(`/groups/${currentGroupId.value}/roles`)).data }
+  async function createGroupRole(input: Pick<AccessRole,'name'|'key'|'permissions'>) { if (!currentGroupId.value) return; const role=(await api.post<AccessRole>(`/groups/${currentGroupId.value}/roles`,input)).data;groupRoles.value.push(role);return role }
+  async function assignGroupRole(userId:string,roleId:string) { if (!currentGroupId.value) return;await api.request(`/groups/${currentGroupId.value}/members/${userId}/role`,{method:'PUT',body:JSON.stringify({roleId})});await refreshGroup() }
+  async function loadGroupAuditLogs() { if (!currentGroupId.value) return;groupAuditLogs.value=(await api.get<AuditLog[]>(`/groups/${currentGroupId.value}/audit-logs?perPage=100`)).data }
 
   async function invite(email: string) {
     if (!currentGroupId.value) return
@@ -341,9 +347,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations,
-    subscriptions, expenses, settlements, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
-    revokeInvitation, acceptInvitation, addSubscription, updateSubscription, deleteSubscription,
+    revokeInvitation, acceptInvitation, loadGroupRoles, createGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,
   }
 })

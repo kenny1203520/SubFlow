@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -47,7 +47,14 @@ function viewerTimezone(){return auth.record?.timezone||Intl.DateTimeFormat().re
 function itemGroup(item:Expense){return workspace.groups.find(group=>group.id===item.groupId)}
 function viewerDate(value:string){return formatDate(value,{dateStyle:'medium',timeZone:viewerTimezone()})}
 function originalTime(item:Expense){const group=itemGroup(item);return group?tr('originalTimezone',{date:formatDate(item.incurredOn,{dateStyle:'medium',timeZone:group.timezone}),timezone:timezoneLabel(group.timezone,item.incurredOn)}):''}
-onMounted(()=>{if(personal.value)void workspace.refreshPersonal()})
+function openSourceFromBadge(event: MouseEvent) {
+  const badge=(event.target as HTMLElement).closest('.source-badge')
+  if (!badge) return
+  const name=badge.textContent?.trim()||''
+  sourceItem.value=list.value.find(item=>(itemGroup(item)?.name||tr('privateRecord'))===name)
+}
+onMounted(()=>{if(personal.value)void workspace.refreshPersonal();document.addEventListener('click',openSourceFromBadge)})
+onBeforeUnmount(()=>document.removeEventListener('click',openSourceFromBadge))
 </script>
 
 <template><section class="page ledger-page"><PersonalLedgerNav v-if="personal"/><div class="page-heading"><div><p class="eyebrow">{{tr(personal?'expensePersonal':'splitExpenses')}}</p><h1>{{tr(personal?'expensePersonal':'expenseGroup')}}</h1><p>{{tr('expenseDesc')}}</p></div><button class="primary" @click="create">{{tr('createExpense')}}</button></div>

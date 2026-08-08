@@ -10,7 +10,9 @@ export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
 
 export interface Group { id:string;name:string;description:string;currency:Currency;timezone:string;color:string;ownerId:string;createdAt:string;updatedAt:string }
 export interface User { id:string;email:string;name:string;avatar?:string;timezone:string;defaultCurrency?:Currency;systemRoleId?:string }
-export interface Membership { id:string;groupId:string;userId:string;role:Role;user?:User;createdAt:string }
+export interface Membership { id:string;groupId:string;userId:string;role:Role;roleId?:string;roleName?:string;user?:User;createdAt:string }
+export interface AccessRole { id:string;scope:'system'|'group';groupId?:string;name:string;key:string;permissions:string[];protected:boolean;createdBy?:string;createdAt:string;updatedAt:string }
+export interface AuditLog { id:string;actorId:string;groupId?:string;scope:'system'|'group';action:string;resource:string;resourceId:string;outcome:'success'|'failure';summary?:string;ip?:string;userAgent?:string;createdAt:string }
 export interface Invitation { id:string;groupId:string;email:string;status:'pending'|'delivery_failed'|'accepted'|'revoked'|'expired';invitedBy:string;acceptedBy?:string;expiresAt:string;debugUrl?:string;createdAt:string;updatedAt:string }
 export type SplitMode='equal'|'amount'|'percentage'
 export interface ExpenseSplit { id?:string;expenseId?:string;userId:string;amountMinor:number;baseAmountMinor?:number;percentageBasisPoints?:number }

@@ -9,6 +9,7 @@ import ExpensesView from './views/ExpensesView.vue'
 import ProfileView from './views/ProfileView.vue'
 import InviteView from './views/InviteView.vue'
 import GroupWorkspaceView from './views/GroupWorkspaceView.vue'
+import AdminView from './views/AdminView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/auth', name: 'auth', component: AuthView, meta: { public: true } },
@@ -32,6 +33,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/subscriptions', redirect: { name: 'personal-subscriptions' } },
   { path: '/expenses', redirect: { name: 'personal-expenses' } },
   { path: '/profile', name: 'profile', component: ProfileView },
+  { path: '/admin', name: 'admin', component: AdminView },
   { path: '/:pathMatch(.*)*', redirect: { name: 'dashboard' } },
 ]
 
