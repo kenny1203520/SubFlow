@@ -10,7 +10,7 @@ const props = withDefaults(defineProps<{ modelValue: string; categories?: Catego
 const emit = defineEmits<{ 'update:modelValue': [value: string]; create: [name: string, icon: string] }>()
 const { tr } = useI18n()
 const open = ref(false), search = ref(''), creating = ref(false), newName = ref(''), icon = ref('tag'), searchInput = ref<HTMLInputElement | null>(null)
-const filtered = computed(() => props.categories.filter(item => `${item.customName || ''} ${item.systemKey || ''}`.toLowerCase().includes(search.value.toLowerCase())))
+const filtered = computed(() => { const term=search.value.trim().toLocaleLowerCase(); return props.categories.filter(item => !term || `${label(item)} ${item.customName || ''} ${item.systemKey || ''}`.toLocaleLowerCase().includes(term)) })
 const selected = computed(() => props.categories.find(item => item.id === props.modelValue))
 function label(item?: Category) { return item ? categoryLabel(item, '', tr) : tr('uncategorized') }
 function choose(value: string) { emit('update:modelValue', value); open.value = false; search.value = '' }
