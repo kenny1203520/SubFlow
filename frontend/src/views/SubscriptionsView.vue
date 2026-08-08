@@ -16,7 +16,7 @@ import type { BillingCycle, Subscription, SubscriptionStatus } from '../api/type
 import { majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
 import { timezoneLabel } from '../timezone'
-import { categoryLabel } from '../category'
+import { categoryGlyph, categoryLabel } from '../category'
 
 const workspace = useWorkspaceStore(), auth = useAuthStore(), route = useRoute(), { tr, formatDate } = useI18n()
 const personal = computed(() => route.name === 'personal-subscriptions')
@@ -33,7 +33,7 @@ function reset() { editingId.value=''; formError.value=''; rateValid.value=true;
 async function loadFormCategories() { try { await workspace.loadCategories(personal.value && !editing.value?.groupId ? 'personal' : 'group', editing.value?.groupId || workspace.currentGroupId) } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
 async function create() { reset(); drawer.value = true; await loadFormCategories() }
 async function edit(item: Subscription) { reset(); editingId.value=item.id; Object.assign(form,{name:item.name,category:item.category,categoryId:item.categoryId||'',amount:minorToInput(item.amountMinor,item.currency),currency:item.currency,rateMode:item.rateMode||'automatic',exchangeRate:item.exchangeRate||'',billingCycle:item.billingCycle,startsOn:(item.startsOn||item.nextBilling).slice(0,10),status:item.status,notes:item.notes}); drawer.value=true; await loadFormCategories() }
-async function addCategory(name: string) { try { const value = await workspace.createCategory(personal.value && !editing.value?.groupId ? 'personal' : 'group',name,editing.value?.groupId || workspace.currentGroupId); form.categoryId = value.id } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
+async function addCategory(name: string, icon = 'tag') { try { const value = await workspace.createCategory(personal.value && !editing.value?.groupId ? 'personal' : 'group',name,editing.value?.groupId || workspace.currentGroupId,icon); form.categoryId = value.id } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
 async function submit() { if (!rateValid.value) return; const input={name:form.name,category:form.category||'',categoryId:form.categoryId,amountMinor:majorToMinor(form.amount,form.currency),currency:form.currency as Subscription['currency'],rateMode:form.rateMode,exchangeRate:form.exchangeRate,billingCycle:form.billingCycle,startsOn:new Date(`${form.startsOn}T00:00:00`).toISOString(),status:form.status,notes:form.notes}; if(editingId.value) await workspace.updateSubscription(editingId.value,input); else if(personal.value) await workspace.addPersonalSubscription(input); else await workspace.addSubscription(input); await workspace.refreshPersonal(); drawer.value=false; reset() }
 async function loadDates(more=false) { if(!stopping.value) return; datesLoading.value=true; try { const result=await workspace.billingDates(stopping.value.id,more?cursor.value:''); dates.value=more?[...dates.value,...result.dates]:result.dates; cursor.value=result.nextCursor||''; if(!chosenDate.value) chosenDate.value=dates.value[0]||'' } finally { datesLoading.value=false } }
 async function openStop(item: Subscription) { stopping.value=item; dates.value=[]; cursor.value=''; chosenDate.value=''; await loadDates() }
@@ -42,7 +42,7 @@ async function cancelStop(item: Subscription) { await workspace.cancelSubscripti
 async function remove() { if(!pendingDelete.value) return; await workspace.deleteSubscription(pendingDelete.value.id); await workspace.refreshPersonal(); pendingDelete.value=undefined }
 function statusKey(item: Subscription) { return (item.lifecycleStatus||item.status) as 'active' }
 function cycleKey(item: Subscription) { return item.billingCycle as 'monthly' }
-function recordCategory(item: Subscription) { return categoryLabel(item.categoryInfo,item.category,tr) }
+function recordCategory(item: Subscription) { return `${categoryGlyph(item.categoryInfo)} ${categoryLabel(item.categoryInfo,item.category,tr)}` }
 function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }
 function itemGroup(item: Subscription) { return workspace.groups.find(group => group.id === item.groupId) }
 function viewerDate(value: string) { return formatDate(value,{dateStyle:'medium',timeZone:viewerTimezone()}) }

@@ -16,7 +16,7 @@ import type { Currency, Expense, ExpenseSplit, SplitMode } from '../api/types'
 import { majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
 import { timezoneLabel } from '../timezone'
-import { categoryLabel } from '../category'
+import { categoryGlyph, categoryLabel } from '../category'
 
 const workspace=useWorkspaceStore(),auth=useAuthStore(),route=useRoute(),{tr,formatDate}=useI18n()
 const personal=computed(()=>route.name==='personal-expenses')
@@ -37,12 +37,12 @@ function reset(){editingId.value='';formError.value='';rateValid.value=true;Obje
 async function loadFormCategories(){try{await workspace.loadCategories(personal.value&&!editing.value?.groupId?'personal':'group',editing.value?.groupId||workspace.currentGroupId)}catch{formError.value=workspace.localizedError||tr('requestFailed')}}
 async function create(){reset();if(!personal.value)workspace.members.forEach(m=>{form.participants[m.userId]=true});open.value=true;await loadFormCategories()}
 async function edit(item:Expense){reset();editingId.value=item.id;if(item.groupId&&workspace.currentGroupId!==item.groupId)await workspace.selectGroup(item.groupId);const selected=item.splits?.map(split=>split.userId)||workspace.members.map(m=>m.userId);Object.assign(form,{title:item.title,category:item.category,categoryId:item.categoryId||'',amount:minorToInput(item.amountMinor,item.currency),currency:item.currency||'TWD',rateMode:item.rateMode||'automatic',exchangeRate:item.exchangeRate||'',paidBy:item.paidBy,incurredOn:item.incurredOn.slice(0,10),notes:item.notes,splitMode:item.splitMode||'equal',participants:Object.fromEntries(selected.map(id=>[id,true])),values:Object.fromEntries((item.splits||[]).map(split=>[split.userId,(item.splitMode==='percentage'?(split.percentageBasisPoints||0)/100:minorToInput(split.amountMinor,item.currency)).toString()]))});open.value=true;await loadFormCategories()}
-async function addCategory(name:string){try{const value=await workspace.createCategory(personal.value&&!editing.value?.groupId?'personal':'group',name,editing.value?.groupId||workspace.currentGroupId);form.categoryId=value.id}catch{formError.value=workspace.localizedError||tr('requestFailed')}}
+async function addCategory(name:string,icon='tag'){try{const value=await workspace.createCategory(personal.value&&!editing.value?.groupId?'personal':'group',name,editing.value?.groupId||workspace.currentGroupId,icon);form.categoryId=value.id}catch{formError.value=workspace.localizedError||tr('requestFailed')}}
 function canonicalSplits():ExpenseSplit[]{return participants.value.map(member=>({userId:member.userId,amountMinor:form.splitMode==='amount'?majorToMinor(form.values[member.userId]||'0',currency.value):0,percentageBasisPoints:form.splitMode==='percentage'?Math.round(Number(form.values[member.userId]||0)*100):undefined}))}
 async function submit(){if(!splitValid.value||!rateValid.value)return;const input={title:form.title,category:form.category||'',categoryId:form.categoryId,amountMinor:expenseMinor.value,currency:currency.value,rateMode:form.rateMode,exchangeRate:form.exchangeRate,paidBy:form.paidBy||auth.record?.id||'',incurredOn:new Date(`${form.incurredOn}T00:00:00`).toISOString(),notes:form.notes,splitMode:form.splitMode,splits:personal.value&&!editing.value?.groupId?undefined:canonicalSplits()};if(editingId.value)await workspace.updateExpense(editingId.value,input);else if(personal.value)await workspace.addPersonalExpense(input);else await workspace.addExpense(input);await workspace.refreshPersonal();open.value=false;reset()}
 async function remove(){if(!pendingDelete.value)return;await workspace.deleteExpense(pendingDelete.value.id);await workspace.refreshPersonal();pendingDelete.value=undefined}
 function recordCurrency(item:Expense){return item.currency||workspace.groups.find(group=>group.id===item.groupId)?.currency||'TWD'}
-function recordCategory(item:Expense){return categoryLabel(item.categoryInfo,item.category,tr)}
+function recordCategory(item:Expense){return `${categoryGlyph(item.categoryInfo)} ${categoryLabel(item.categoryInfo,item.category,tr)}`}
 function viewerTimezone(){return auth.record?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'}
 function itemGroup(item:Expense){return workspace.groups.find(group=>group.id===item.groupId)}
 function viewerDate(value:string){return formatDate(value,{dateStyle:'medium',timeZone:viewerTimezone()})}

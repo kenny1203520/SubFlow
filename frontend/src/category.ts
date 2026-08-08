@@ -13,3 +13,5 @@ export function categoryLabel(category: Pick<Category, 'systemKey' | 'customName
   return key ? tr(key) : category?.customName || fallback || tr('uncategorized')
 }
 export function categoryIcon(category: Pick<Category, 'systemKey' | 'iconKey'> | undefined) { return category?.iconKey || category?.systemKey || 'tag' }
+const glyphs: Record<string, string> = { food_dining:'🍽',transport:'🚌',housing:'🏠',utilities:'💡',shopping:'🛍',entertainment:'🎬',health:'♥',education:'📚',travel:'✈',insurance:'🛡',software_digital:'💻',memberships:'👥',taxes_fees:'%',gifts_donations:'🎁',other:'⋯',tag:'🏷' }
+export function categoryGlyph(category: Pick<Category, 'systemKey' | 'iconKey'> | undefined) { return glyphs[categoryIcon(category)] || glyphs.tag }
