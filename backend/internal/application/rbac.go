@@ -241,7 +241,7 @@ func (s *Service) ListSystemAudit(ctx context.Context, userID string, page ports
 	return s.Stores.Audits.List(ctx, "", page)
 }
 func (s *Service) CreateGroupRole(ctx context.Context, userID string, value domain.Role) (*domain.Role, error) {
-	if err := s.role(ctx, value.GroupID, userID, true); err != nil {
+	if err := s.groupPermission(ctx, userID, value.GroupID, "group.roles.manage"); err != nil {
 		return nil, err
 	}
 	value.Scope = "group"
@@ -273,7 +273,7 @@ func (s *Service) UpdateGroupRole(ctx context.Context, userID string, value doma
 	if err != nil {
 		return nil, err
 	}
-	if err = s.role(ctx, current.GroupID, userID, true); err != nil {
+	if err = s.groupPermission(ctx, userID, current.GroupID, "group.roles.manage"); err != nil {
 		return nil, err
 	}
 	if current.Protected {
@@ -296,7 +296,7 @@ func (s *Service) DeleteGroupRole(ctx context.Context, userID, id string) error 
 	if err != nil {
 		return err
 	}
-	if err = s.role(ctx, current.GroupID, userID, true); err != nil {
+	if err = s.groupPermission(ctx, userID, current.GroupID, "group.roles.manage"); err != nil {
 		return err
 	}
 	if current.Protected {
@@ -318,7 +318,7 @@ func (s *Service) DeleteGroupRole(ctx context.Context, userID, id string) error 
 	return err
 }
 func (s *Service) AssignGroupRole(ctx context.Context, userID, groupID, memberID, roleID string) error {
-	if err := s.role(ctx, groupID, userID, true); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.roles.manage"); err != nil {
 		return err
 	}
 	role, err := s.Stores.Roles.Get(ctx, "group", roleID)

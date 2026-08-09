@@ -57,6 +57,15 @@ type InvitationRepository interface {
 	FindPending(context.Context, string, string) (*domain.Invitation, error)
 	List(context.Context, string, PageRequest) (Page[domain.Invitation], error)
 	Update(context.Context, *domain.Invitation) error
+	ListForEmail(context.Context, string, PageRequest) (Page[domain.Invitation], error)
+}
+
+type NotificationRepository interface {
+	Create(context.Context, *domain.Notification) error
+	Get(context.Context, string) (*domain.Notification, error)
+	ListForUser(context.Context, string, PageRequest) (Page[domain.Notification], error)
+	MarkRead(context.Context, string, time.Time) error
+	MarkReadForResource(context.Context, string, string, time.Time) error
 }
 
 type SubscriptionRepository interface {

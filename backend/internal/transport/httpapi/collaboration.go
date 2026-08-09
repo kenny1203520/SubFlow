@@ -25,6 +25,11 @@ func (a *CollaborationAPI) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/invitations/{id}/resend", a.resend).Bind(bind)
 	e.Router.POST("/api/subflow/v1/invitations/{id}/revoke", a.revoke).Bind(bind)
 	e.Router.POST("/api/subflow/v1/invitations/accept", a.accept).Bind(bind)
+	e.Router.GET("/api/subflow/v1/invitations/pending", a.pending).Bind(bind)
+	e.Router.POST("/api/subflow/v1/invitations/{id}/accept", a.acceptByID).Bind(bind)
+	e.Router.POST("/api/subflow/v1/invitations/{id}/decline", a.decline).Bind(bind)
+	e.Router.GET("/api/subflow/v1/notifications", a.notifications).Bind(bind)
+	e.Router.POST("/api/subflow/v1/notifications/{id}/read", a.readNotification).Bind(bind)
 	e.Router.GET("/api/subflow/v1/events", a.events).Bind(bind)
 }
 func (a *CollaborationAPI) list(e *core.RequestEvent) error {
@@ -77,6 +82,15 @@ func (a *CollaborationAPI) accept(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusOK, v, nil)
 }
+func (a *CollaborationAPI) pending(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "created"); if err != nil { return fail(e, err) }
+	v, err := a.Service.ListMyInvitations(e.Request.Context(), authID(e), p); if err != nil { return fail(e, err) }
+	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *CollaborationAPI) acceptByID(e *core.RequestEvent) error { v, err := a.Service.AcceptInvitationByID(e.Request.Context(), authID(e), e.Request.PathValue("id")); if err != nil { return fail(e, err) }; return ok(e, http.StatusOK, v, nil) }
+func (a *CollaborationAPI) decline(e *core.RequestEvent) error { v, err := a.Service.DeclineInvitation(e.Request.Context(), authID(e), e.Request.PathValue("id")); if err != nil { return fail(e, err) }; return ok(e, http.StatusOK, v, nil) }
+func (a *CollaborationAPI) notifications(e *core.RequestEvent) error { p, err := pageRequest(e, "-created"); if err != nil { return fail(e, err) }; v, err := a.Service.ListNotifications(e.Request.Context(), authID(e), p); if err != nil { return fail(e, err) }; return ok(e, http.StatusOK, v.Items, pageMeta(v)) }
+func (a *CollaborationAPI) readNotification(e *core.RequestEvent) error { if err := a.Service.MarkNotificationRead(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil { return fail(e, err) }; return ok(e, http.StatusOK, map[string]bool{"read":true}, nil) }
 func (a *CollaborationAPI) events(e *core.RequestEvent) error {
 	group := e.Request.URL.Query().Get("groupId")
 	var ch <-chan domain.Event

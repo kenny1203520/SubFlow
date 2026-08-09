@@ -13,6 +13,7 @@ const group = computed(() =>
     workspace.groups.find((value) => value.id === groupId.value),
 );
 const canReadAudit = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.audit.read'));
+const canManageRoles = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.roles.manage'));
 async function activate() {
     if (groupId.value) await workspace.selectGroup(groupId.value);
 }
@@ -43,6 +44,7 @@ watch(groupId, () => void activate());
             <RouterLink :to="`/groups/${groupId}/members`">{{
                 tr("members")
                 }}</RouterLink>
+            <RouterLink v-if="canManageRoles" :to="`/groups/${groupId}/roles`">{{ tr("roleManagement") }}</RouterLink>
             <RouterLink v-if="canReadAudit" :to="`/groups/${groupId}/audit`">{{ tr("auditLogs") }}</RouterLink>
             <RouterLink :to="`/groups/${groupId}/settings`">{{
                 tr("settings")

@@ -123,7 +123,7 @@ func (s *Service) ListMembers(ctx context.Context, userID, groupID string, page 
 	return s.Stores.Memberships.List(ctx, groupID, page)
 }
 func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID string) error {
-	if err := s.role(ctx, groupID, userID, true); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
 		return err
 	}
 	role, err := s.Stores.Memberships.GetRole(ctx, groupID, memberID)

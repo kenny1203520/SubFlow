@@ -15,7 +15,8 @@ export interface GroupAccess { permissions:string[] }
 export interface Membership { id:string;groupId:string;userId:string;role:Role;roleId?:string;roleName?:string;user?:User;createdAt:string }
 export interface AccessRole { id:string;scope:'system'|'group';groupId?:string;name:string;category:string;key:string;permissions:string[];protected:boolean;createdBy?:string;createdAt:string;updatedAt:string }
 export interface AuditLog { id:string;actorId:string;actorName?:string;groupId?:string;scope:'system'|'group';action:string;resource:string;resourceId:string;outcome:'success'|'failure';summary?:string;ip?:string;userAgent?:string;createdAt:string }
-export interface Invitation { id:string;groupId:string;email:string;status:'pending'|'delivery_failed'|'accepted'|'revoked'|'expired';invitedBy:string;acceptedBy?:string;expiresAt:string;debugUrl?:string;createdAt:string;updatedAt:string }
+export interface Invitation { id:string;groupId:string;email:string;status:'pending'|'delivery_failed'|'accepted'|'declined'|'revoked'|'expired';invitedBy:string;acceptedBy?:string;expiresAt:string;debugUrl?:string;groupInfo?:Group;createdAt:string;updatedAt:string }
+export interface Notification { id:string;userId:string;type:string;groupId?:string;resourceId?:string;readAt?:string;createdAt:string;updatedAt:string }
 export type SplitMode='equal'|'amount'|'percentage'
 export interface ExpenseSplit { id?:string;expenseId?:string;userId:string;amountMinor:number;baseAmountMinor?:number;percentageBasisPoints?:number }
 interface ConvertedRecord { categoryId?:string;categoryInfo?:Category;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;exchangeRateDate:string;rateMode:RateMode }

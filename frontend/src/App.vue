@@ -7,6 +7,7 @@ import { useSetupStore } from './stores/setup'
 import { useTheme } from './theme'
 import { useI18n } from './i18n'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
+import NotificationBell from './components/NotificationBell.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 
 const auth = useAuthStore()
@@ -77,7 +78,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
     <main class="main">
       <header class="topbar">
         <div><small class="topbar-label">SubFlow</small><strong>{{ tr('personalGroupFinance') }}</strong></div>
-        <div class="topbar-actions"><span v-if="workspace.loading" class="sync"><i></i>{{ tr('syncing') }}</span><ThemeSwitcher /><LanguageSwitcher /></div>
+        <div class="topbar-actions"><span v-if="workspace.loading" class="sync"><i></i>{{ tr('syncing') }}</span><NotificationBell /><ThemeSwitcher /><LanguageSwitcher /></div>
       </header>
       <div v-if="workspace.permissionDenied" class="notice danger">{{ tr('forbidden') }}</div>
       <div v-else-if="workspace.error" class="notice">{{ workspace.localizedError }} <button @click="workspace.retryLast">{{ tr('retry') }}</button></div>

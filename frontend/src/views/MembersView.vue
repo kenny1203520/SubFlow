@@ -1,14 +1,17 @@
 ﻿<script setup lang="ts">
-import { ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import EmptyState from '../components/EmptyState.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useI18n } from '../i18n'
+import RoleSelect from '../components/RoleSelect.vue'
 
 const workspace = useWorkspaceStore()
 const email = ref('')
 const pendingRemoval = ref<{userId:string;label:string}>()
 const { tr, formatDate } = useI18n()
+const canManageMembers=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.members.manage'))
+const canManageRoles=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage'))
 
 async function invite() {
     await workspace.invite(email.value)
@@ -19,7 +22,8 @@ async function removeMember(userId: string, label: string) {
     pendingRemoval.value={userId,label}
 }
 async function confirmRemoval(){if(!pendingRemoval.value)return;await workspace.removeMember(pendingRemoval.value.userId);pendingRemoval.value=undefined}
-async function assignRole(userId:string,event:Event){const roleId=(event.target as HTMLSelectElement).value;if(roleId)await workspace.assignGroupRole(userId,roleId)}
+async function assignRole(userId:string,roleId:string){if(roleId)await workspace.assignGroupRole(userId,roleId)}
+onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
 </script>
 
 <template>
@@ -40,17 +44,15 @@ async function assignRole(userId:string,event:Event){const roleId=(event.target 
                             1).toUpperCase() }}</div>
                         <div class="grow"><strong>{{ member.user?.name || tr('unnamedMember') }}</strong><small>{{
                                 member.user?.email }}</small></div>
-                        <span class="pill">{{ tr(member.role) }}</span>
-                        <select v-if="workspace.isOwner && member.role !== 'owner' && workspace.groupRoles?.length" class="member-role-select" :value="member.roleId" @change="assignRole(member.userId,$event)">
-                            <option v-for="role in workspace.groupRoles||[]" :key="role.id" :value="role.id">{{role.name}}</option>
-                        </select>
-                        <button v-if="workspace.isOwner && member.role !== 'owner'" class="ghost danger-text"
+                        <span class="pill">{{ member.roleName || tr(member.role) }}</span>
+                        <RoleSelect v-if="canManageRoles && member.role !== 'owner' && workspace.groupRoles.length" :model-value="member.roleId||''" :roles="workspace.groupRoles" :label="tr('assignRole')" @update:model-value="assignRole(member.userId,$event)" />
+                        <button v-if="canManageMembers && member.role !== 'owner'" class="ghost danger-text"
                             @click="removeMember(member.userId, member.user?.name || member.user?.email || tr('thisMember'))">{{tr('remove')}}</button>
                     </div>
                 </div>
                 <EmptyState v-else :title="tr('noMemberData')" :description="tr('noMemberDataDesc')" />
             </div>
-            <div v-if="workspace.isOwner">
+            <div v-if="canManageMembers">
                 <form class="card form-card" @submit.prevent="invite">
                     <h2>{{tr('inviteMember')}}</h2>
                     <label>Email<input v-model="email" type="email" required placeholder="friend@example.com"></label>
@@ -74,7 +76,7 @@ async function assignRole(userId:string,event:Event){const roleId=(event.target 
             </div>
             <div v-else class="card owner-note">
                 <h2>{{tr('memberManagement')}}</h2>
-                <p>{{tr('ownerOnly')}}</p>
+                <p>{{tr('memberManagePermissionRequired')}}</p>
             </div>
         </div>
         <ConfirmDialog :open="!!pendingRemoval" :title="pendingRemoval?tr('removeMemberConfirm',{name:pendingRemoval.label}):''" danger @cancel="pendingRemoval=undefined" @confirm="confirmRemoval"/>

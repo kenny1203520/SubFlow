@@ -28,6 +28,7 @@ const (
 	InvitationAccepted       InvitationStatus = "accepted"
 	InvitationRevoked        InvitationStatus = "revoked"
 	InvitationExpired        InvitationStatus = "expired"
+	InvitationDeclined       InvitationStatus = "declined"
 )
 
 type SubscriptionStatus string
@@ -192,6 +193,22 @@ type Invitation struct {
 	CreatedAt  time.Time        `json:"createdAt"`
 	UpdatedAt  time.Time        `json:"updatedAt"`
 	DebugURL   string           `json:"debugUrl,omitempty"`
+	Group      *Group           `json:"groupInfo,omitempty"`
+}
+
+// Notification is deliberately small and resource-oriented so its displayed
+// wording remains localised by the client.  The first notification producer is
+// group invitations, while the type can be extended without changing the UI
+// contract.
+type Notification struct {
+	ID         string    `json:"id"`
+	UserID     string    `json:"userId"`
+	Type       string    `json:"type"`
+	GroupID    string    `json:"groupId,omitempty"`
+	ResourceID string    `json:"resourceId,omitempty"`
+	ReadAt     *time.Time `json:"readAt,omitempty"`
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
 }
 
 type Subscription struct {

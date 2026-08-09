@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Settlement, Subscription, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Notification, Settlement, Subscription, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useI18n } from '../i18n'
 
@@ -20,6 +20,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentGroupId = ref('')
   const members = ref<Membership[]>([])
   const invitations = ref<Invitation[]>([])
+  const pendingInvitations = ref<Invitation[]>([])
+  const notifications = ref<Notification[]>([])
   const subscriptions = ref<Subscription[]>([])
   const expenses = ref<Expense[]>([])
   const settlements = ref<Settlement[]>([])
@@ -83,6 +85,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       const [groupResult,currencyResult]=await Promise.all([api.get<Group[]>('/groups?perPage=100'),api.get<CurrencyInfo[]>('/currencies')])
       groups.value = groupResult.data
       currencies.value = currencyResult.data
+		  try { await loadInvitationInbox() } catch { pendingInvitations.value=[]; notifications.value=[] }
       if (currentGroupId.value && !groups.value.some(group => group.id === currentGroupId.value)) currentGroupId.value = ''
       if (!sseStarted) { sse = new SSEClient(() => auth.token, onEvent, auth.logout); sseStarted = true; void sse.start() }
     }, 'groups')
@@ -90,6 +93,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function loadCategories(scope:'personal'|'group',groupId='') { categories.value=(await api.get<Category[]>(`/categories?scope=${scope}${groupId?`&groupId=${encodeURIComponent(groupId)}`:''}`)).data }
   async function createCategory(scope:'personal'|'group',customName:string,groupId='',iconKey='tag'){const value=(await api.post<Category>('/categories',{scope,customName,groupId,iconKey})).data;categories.value.push(value);return value}
+  async function updateCategory(id:string, value:Pick<Category,'customName'|'iconKey'>){const updated=(await api.patch<Category>(`/categories/${id}`,value)).data;categories.value=categories.value.map(item=>item.id===id?updated:item);return updated}
   async function archiveCategory(id:string){await api.delete(`/categories/${id}`);categories.value=categories.value.filter(v=>v.id!==id)}
   async function quoteRate(from:Currency,to:Currency,date:string){return (await api.get<ExchangeRate>(`/exchange-rates/quote?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`)).data}
   async function previewGroupCurrency(currency:Currency){return (await api.post<CurrencyChangePreview>(`/groups/${currentGroupId.value}/currency-change/preview`,{currency})).data}
@@ -146,8 +150,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 			load('access', () => api.get<GroupAccess>(`/groups/${id}/access`).then(value => value.data), value => { groupPermissions.value = value.permissions }),
     ])
     if (expectedRequest === groupRequest && id === currentGroupId.value) {
-      const me = members.value.find(member => member.userId === auth.record?.id)
-      if (me?.role === 'owner') {
+      if (groupPermissions.value.includes('group.members.manage')) {
         try { invitations.value = (await api.get<Invitation[]>(`/groups/${id}/invitations?perPage=100`)).data } catch { invitations.value = [] }
       } else invitations.value = []
       loadedGroupId = id
@@ -223,7 +226,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
   }
   async function loadGroupRoles() { if (!currentGroupId.value) return; groupRoles.value=(await api.get<AccessRole[]>(`/groups/${currentGroupId.value}/roles`)).data }
-  async function createGroupRole(input: Pick<AccessRole,'name'|'key'|'permissions'>) { if (!currentGroupId.value) return; const role=(await api.post<AccessRole>(`/groups/${currentGroupId.value}/roles`,input)).data;groupRoles.value.push(role);return role }
+  async function createGroupRole(input: Pick<AccessRole,'name'|'category'|'permissions'>) { if (!currentGroupId.value) return; const role=(await api.post<AccessRole>(`/groups/${currentGroupId.value}/roles`,input)).data;groupRoles.value.push(role);return role }
+  async function updateGroupRole(id:string,input:Pick<AccessRole,'name'|'category'|'permissions'>) { if (!currentGroupId.value) return; const role=(await api.patch<AccessRole>(`/groups/${currentGroupId.value}/roles/${id}`,input)).data;groupRoles.value=groupRoles.value.map(value=>value.id===id?role:value);return role }
+  async function deleteGroupRole(id:string) { if (!currentGroupId.value) return; await api.delete(`/groups/${currentGroupId.value}/roles/${id}`); groupRoles.value=groupRoles.value.filter(value=>value.id!==id) }
   async function assignGroupRole(userId:string,roleId:string) { if (!currentGroupId.value) return;await api.request(`/groups/${currentGroupId.value}/members/${userId}/role`,{method:'PUT',body:JSON.stringify({roleId})});await refreshGroup() }
   async function loadGroupAuditLogs() { if (!currentGroupId.value) return;groupAuditLogs.value=(await api.get<AuditLog[]>(`/groups/${currentGroupId.value}/audit-logs?perPage=100`)).data }
 
@@ -256,6 +261,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await selectGroup(invitation.groupId)
     })
   }
+  async function loadInvitationInbox(){const [invites, notes]=await Promise.all([api.get<Invitation[]>('/invitations/pending?perPage=100'),api.get<Notification[]>('/notifications?perPage=100')]);pendingInvitations.value=invites.data;notifications.value=notes.data}
+  async function acceptPendingInvitation(id:string){await run(async()=>{const invitation=(await api.post<Invitation>(`/invitations/${id}/accept`)).data;pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id);notifications.value=notifications.value.map(item=>item.resourceId===id?{...item,readAt:new Date().toISOString()}:item);await loadGroups();await selectGroup(invitation.groupId)})}
+  async function declinePendingInvitation(id:string){await run(async()=>{await api.post(`/invitations/${id}/decline`);pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id);notifications.value=notifications.value.map(item=>item.resourceId===id?{...item,readAt:new Date().toISOString()}:item)})}
+  async function markNotificationRead(id:string){await api.post(`/notifications/${id}/read`);notifications.value=notifications.value.map(item=>item.id===id?{...item,readAt:new Date().toISOString()}:item)}
 
   async function addSubscription(input: SubscriptionInput) {
     if (!currentGroupId.value) return
@@ -334,6 +343,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     groupRequest++
     members.value = []
     invitations.value = []
+    pendingInvitations.value=[]; notifications.value=[]
     subscriptions.value = []
     expenses.value = []
     settlements.value = []
@@ -352,10 +362,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   return {
-    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations,
+    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, pendingInvitations, notifications,
     subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
-    revokeInvitation, acceptInvitation, loadGroupRoles, createGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,
+    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
+    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,
   }
 })

@@ -144,6 +144,9 @@ func (r *Repository) ListMemberships(ctx context.Context, groupID string, req po
 		if u, e := r.GetUser(ctx, m.UserID); e == nil {
 			m.User = u
 		}
+		if m.RoleID != "" {
+			if role, e := r.GetRoleRecord(ctx, "group", m.RoleID); e == nil { m.RoleName = role.Name }
+		}
 		items = append(items, m)
 	}
 	count, _ := countFiltered(r.app(ctx), CollectionMembers, "group={:group}", dbx.Params{"group": groupID})
@@ -203,6 +206,14 @@ func (r *Repository) ListInvitations(ctx context.Context, groupID string, req po
 	count, _ := countFiltered(r.app(ctx), CollectionInvitations, "group={:group}", dbx.Params{"group": groupID})
 	return page(items, req, count), nil
 }
+func (r *Repository) ListInvitationsForEmail(ctx context.Context, email string, req ports.PageRequest) (ports.Page[domain.Invitation], error) {
+	recs, err := listRecords(r.app(ctx), CollectionInvitations, "email={:email} && status='pending'", req, dbx.Params{"email": email})
+	if err != nil { return ports.Page[domain.Invitation]{}, err }
+	items := make([]domain.Invitation, len(recs))
+	for i, v := range recs { items[i] = *invitationFrom(v); if group, e := r.GetGroup(ctx, items[i].GroupID); e == nil { items[i].Group = group } }
+	count, _ := countFiltered(r.app(ctx), CollectionInvitations, "email={:email} && status='pending'", dbx.Params{"email": email})
+	return page(items, req, count), nil
+}
 func (r *Repository) UpdateInvitation(ctx context.Context, v *domain.Invitation) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionInvitations, v.ID)
 	if err != nil {
@@ -213,6 +224,30 @@ func (r *Repository) UpdateInvitation(ctx context.Context, v *domain.Invitation)
 		return err
 	}
 	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) CreateNotification(ctx context.Context, value *domain.Notification) error {
+	rec, err := newRecord(r.app(ctx), CollectionNotifications); if err != nil { return err }
+	writeNotification(rec, value)
+	if err = r.app(ctx).Save(rec); err != nil { return err }
+	value.ID = rec.Id; hydrateTimes(rec, &value.CreatedAt, &value.UpdatedAt); return nil
+}
+func (r *Repository) GetNotification(ctx context.Context, id string) (*domain.Notification, error) {
+	rec, err := r.app(ctx).FindRecordById(CollectionNotifications, id); if err != nil { return nil, mapError(err) }; return notificationFrom(rec), nil
+}
+func (r *Repository) ListNotifications(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Notification], error) {
+	recs, err := listRecords(r.app(ctx), CollectionNotifications, "user={:user}", req, dbx.Params{"user": userID}); if err != nil { return ports.Page[domain.Notification]{}, err }
+	items := make([]domain.Notification, len(recs)); for i, rec := range recs { items[i] = *notificationFrom(rec) }
+	count, _ := countFiltered(r.app(ctx), CollectionNotifications, "user={:user}", dbx.Params{"user": userID}); return page(items, req, count), nil
+}
+func (r *Repository) MarkNotificationRead(ctx context.Context, id string, when time.Time) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionNotifications, id); if err != nil { return mapError(err) }; rec.Set("read_at", when); return r.app(ctx).Save(rec)
+}
+func (r *Repository) MarkNotificationsReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && resource_id={:resource}", "", 0, 0, map[string]any{"user":userID,"resource":resourceID})
+	if err != nil { return mapError(err) }
+	for _, rec := range recs { if rec.GetDateTime("read_at").IsZero() { rec.Set("read_at", when); if err := r.app(ctx).Save(rec); err != nil { return err } } }
 	return nil
 }
 
@@ -881,6 +916,8 @@ func invitationFrom(r *core.Record) *domain.Invitation {
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
+func writeNotification(r *core.Record, value *domain.Notification) { r.Set("user", value.UserID); r.Set("type", value.Type); r.Set("group", value.GroupID); r.Set("resource_id", value.ResourceID); if value.ReadAt != nil { r.Set("read_at", *value.ReadAt) } }
+func notificationFrom(r *core.Record) *domain.Notification { value := &domain.Notification{ID:r.Id,UserID:r.GetString("user"),Type:r.GetString("type"),GroupID:r.GetString("group"),ResourceID:r.GetString("resource_id")}; if read := r.GetDateTime("read_at").Time(); !read.IsZero() { value.ReadAt=&read }; hydrateTimes(r,&value.CreatedAt,&value.UpdatedAt); return value }
 func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("group", v.GroupID)
 	r.Set("owner", v.OwnerID)

@@ -12,6 +12,7 @@ import (
 
 type MembershipRepo struct{ *Repository }
 type InvitationRepo struct{ *Repository }
+type NotificationRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
 type SettlementRepo struct{ *Repository }
@@ -26,6 +27,7 @@ type Stores struct {
 	Groups        *Repository
 	Memberships   *MembershipRepo
 	Invitations   *InvitationRepo
+	Notifications *NotificationRepo
 	Subscriptions *SubscriptionRepo
 	Expenses      *ExpenseRepo
 	Settlements   *SettlementRepo
@@ -40,7 +42,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -68,6 +70,12 @@ func (r *InvitationRepo) List(ctx context.Context, groupID string, req ports.Pag
 func (r *InvitationRepo) Update(ctx context.Context, v *domain.Invitation) error {
 	return r.UpdateInvitation(ctx, v)
 }
+func (r *InvitationRepo) ListForEmail(ctx context.Context, email string, req ports.PageRequest) (ports.Page[domain.Invitation], error) { return r.ListInvitationsForEmail(ctx, email, req) }
+func (r *NotificationRepo) Create(ctx context.Context, v *domain.Notification) error { return r.CreateNotification(ctx, v) }
+func (r *NotificationRepo) Get(ctx context.Context, id string) (*domain.Notification, error) { return r.GetNotification(ctx, id) }
+func (r *NotificationRepo) ListForUser(ctx context.Context, id string, req ports.PageRequest) (ports.Page[domain.Notification], error) { return r.ListNotifications(ctx, id, req) }
+func (r *NotificationRepo) MarkRead(ctx context.Context, id string, when time.Time) error { return r.MarkNotificationRead(ctx, id, when) }
+func (r *NotificationRepo) MarkReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error { return r.MarkNotificationsReadForResource(ctx, userID, resourceID, when) }
 
 func (r *SubscriptionRepo) Create(ctx context.Context, v *domain.Subscription) error {
 	return r.CreateSubscription(ctx, v)

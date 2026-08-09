@@ -5,6 +5,7 @@ import DashboardView from './views/DashboardView.vue'
 import GroupsView from './views/GroupsView.vue'
 import MembersView from './views/MembersView.vue'
 import GroupAuditView from './views/GroupAuditView.vue'
+import GroupRolesView from './views/GroupRolesView.vue'
 import SubscriptionsView from './views/SubscriptionsView.vue'
 import ExpensesView from './views/ExpensesView.vue'
 import ProfileView from './views/ProfileView.vue'
@@ -27,6 +28,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'expenses', name: 'group-expenses', component: ExpensesView },
       { path: 'subscriptions', name: 'group-subscriptions', component: SubscriptionsView },
       { path: 'members', name: 'group-members', component: MembersView },
+      { path: 'roles', name: 'group-roles', component: GroupRolesView },
       { path: 'audit', name: 'group-audit', component: GroupAuditView },
       { path: 'settings', name: 'group-settings', component: GroupsView },
     ],

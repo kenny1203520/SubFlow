@@ -16,6 +16,7 @@ const (
 	CollectionGroups         = "groups"
 	CollectionMembers        = "group_members"
 	CollectionInvitations    = "group_invitations"
+	CollectionNotifications  = "notifications"
 	CollectionSubscriptions  = "subscriptions"
 	CollectionExpenses       = "expenses"
 	CollectionExpenseSplits  = "expense_splits"
@@ -158,9 +159,16 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionInvitations, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.EmailField{Name: "email", Required: true}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.DateField{Name: "expires_at", Required: true}, &core.RelationField{Name: "invited_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "accepted_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "delivery_failed", "accepted", "revoked", "expired"}, MaxSelect: 1})
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.EmailField{Name: "email", Required: true}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.DateField{Name: "expires_at", Required: true}, &core.RelationField{Name: "invited_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "accepted_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "delivery_failed", "accepted", "declined", "revoked", "expired"}, MaxSelect: 1})
 		c.AddIndex("idx_invitations_token", true, "token_hash", "")
 		c.AddIndex("idx_invitations_group_email", false, "`group`, email", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionNotifications, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "type", Required: true, Max: 80}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "resource_id", Max: 32}, &core.DateField{Name: "read_at"})
+		c.AddIndex("idx_notifications_user_created", false, "user, created", "")
 	})
 	if err != nil {
 		return "", err

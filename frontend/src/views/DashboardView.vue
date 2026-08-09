@@ -8,6 +8,7 @@ import EmptyState from '../components/EmptyState.vue'
 import { useI18n } from '../i18n'
 import AppDrawer from '../components/AppDrawer.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import BaseCombobox from '../components/BaseCombobox.vue'
 import type { Settlement } from '../api/types'
 import { majorToMinor } from '../api/money'
 import { timezoneLabel } from '../timezone'
@@ -57,7 +58,7 @@ watch(()=>[route.params.groupId,route.query.scope,route.query.groupId,route.quer
   <div class="page-heading"><div><p class="eyebrow">{{tr('overview')}}</p><h1>{{scope==='personal'?tr('dashboardPersonal'):scope==='all'?tr('dashboardAll'):tr('dashboardGroup')}}</h1><p>{{tr('dashboardDesc')}}</p></div><RouterLink class="primary" :to="actionExpense">{{tr('addExpense')}}</RouterLink></div>
   <div class="dashboard-toolbar">
     <div v-if="!nestedGroup" class="segmented scope-switch"><button :class="{active:scope==='personal'}" @click="updateQuery({scope:'personal'})">{{tr('personal')}}</button><button :class="{active:scope==='group'}" :disabled="!workspace.groups.length" @click="updateQuery({scope:'group',groupId:selectedGroup||workspace.groups[0]?.id})">{{tr('singleGroup')}}</button><button :class="{active:scope==='all'}" @click="updateQuery({scope:'all'})">{{tr('allGroups')}}</button></div>
-    <select v-if="!nestedGroup&&scope==='group'" :value="selectedGroup" :aria-label="tr('chooseGroup')" @change="updateQuery({groupId:($event.target as HTMLSelectElement).value})"><option v-for="group in workspace.groups" :key="group.id" :value="group.id">{{group.name}}</option></select>
+    <BaseCombobox v-if="!nestedGroup&&scope==='group'" :model-value="selectedGroup" :options="workspace.groups.map(group=>({value:group.id,label:group.name,searchText:`${group.name} ${group.currency}`}))" :label="tr('chooseGroup')" :placeholder="tr('chooseGroup')" :allow-create="false" @update:model-value="updateQuery({groupId:$event})" />
     <div class="month-nav"><button class="icon-button" :aria-label="tr('previousMonth')" @click="moveMonth(-1)">‹</button><strong>{{formatMonth(month)}}</strong><button class="icon-button" :aria-label="tr('nextMonth')" @click="moveMonth(1)">›</button></div>
     <div class="toolbar-timezone"><small>{{tr('yourTimezone',{timezone:timezoneLabel(viewerTimezone)})}}</small><small v-if="accountingGroup">{{tr('groupTimezoneValue',{timezone:timezoneLabel(accountingGroup.timezone)})}}</small></div>
   </div>
