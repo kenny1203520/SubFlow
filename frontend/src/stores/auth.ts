@@ -42,6 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
     authToken.value = pb.authStore.token
     authValid.value = pb.authStore.isValid
     record.value = pb.authStore.record
+    ready.value = true
   }
 
   async function register(input: { email: string; password: string; name: string }) {

@@ -12,6 +12,6 @@ export const useSetupStore = defineStore('setup', () => {
   const initialized = computed(() => status.value.initialized)
   const allowRegistration = computed(() => !!status.value.allowRegistration)
   async function refresh(token='') { status.value = (await publicApi.get<SetupStatus>(`/setup/status${token?`?token=${encodeURIComponent(token)}`:''}`)).data; ready.value = true; return status.value }
-  async function initialize(input: Record<string, unknown>) { await publicApi.post('/setup/initialize', input); await refresh() }
+  async function initialize(input: Record<string, unknown>) { await publicApi.post('/setup/initialize', input) }
   return { status, ready, initialized, allowRegistration, refresh, initialize }
 })
