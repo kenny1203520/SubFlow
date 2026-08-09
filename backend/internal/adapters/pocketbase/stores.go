@@ -174,6 +174,9 @@ func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {
 func (r *UserRepo) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	return r.Repository.FindByEmail(ctx, email)
 }
+func (r *UserRepo) List(ctx context.Context, req ports.PageRequest, query string) (ports.Page[domain.User], error) {
+	return r.Repository.ListUsers(ctx, req, query)
+}
 func (r *UserRepo) SetSystemRole(ctx context.Context, id, roleID string) error {
 	return r.Repository.SetUserSystemRole(ctx, id, roleID)
 }

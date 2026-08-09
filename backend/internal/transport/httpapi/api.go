@@ -41,6 +41,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/groups", a.listGroups).Bind(bind)
 	e.Router.GET("/api/subflow/v1/currencies", a.currencies).Bind(bind)
 	e.Router.GET("/api/subflow/v1/categories", a.listCategories).Bind(bind)
+	e.Router.GET("/api/subflow/v1/system/access", a.systemAccess).Bind(bind)
 	e.Router.POST("/api/subflow/v1/categories", a.createCategory).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/categories/{id}", a.updateCategory).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/categories/{id}", a.archiveCategory).Bind(bind)
@@ -70,6 +71,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.PATCH("/api/subflow/v1/system/roles/{id}", a.updateSystemRole).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/system/roles/{id}", a.deleteSystemRole).Bind(bind)
 	e.Router.PUT("/api/subflow/v1/system/users/{userId}/role", a.assignSystemRole).Bind(bind)
+	e.Router.GET("/api/subflow/v1/system/users", a.listSystemUsers).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/audit-logs", a.listSystemAudit).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/settings", a.getSystemSettings).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/system/settings", a.updateSystemSettings).Bind(bind)
@@ -338,7 +340,7 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	if settings.Initialized {
-		return ok(e, http.StatusOK, map[string]any{"initialized": true}, nil)
+		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowRegistration}, nil)
 	}
 	_, valid, err := a.Service.ValidateSetupToken(e.Request.Context(), e.Request.URL.Query().Get("token"))
 	if err != nil {
@@ -348,6 +350,13 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 		return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": false}, nil)
 	}
 	return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": true, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowRegistration, "currencies": a.Service.Currencies()}, nil)
+}
+func (a *API) systemAccess(e *core.RequestEvent) error {
+	permissions, err := a.Service.SystemPermissions(e.Request.Context(), authID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]any{"permissions": permissions}, nil)
 }
 func (a *API) initializeSetup(e *core.RequestEvent) error {
 	var value domain.SetupInput
@@ -659,6 +668,17 @@ func (a *API) assignSystemRole(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return noContent(e)
+}
+func (a *API) listSystemUsers(e *core.RequestEvent) error {
+	page, err := pageRequest(e, "users")
+	if err != nil {
+		return fail(e, err)
+	}
+	values, err := a.Service.ListSystemUsers(e.Request.Context(), authID(e), page, e.Request.URL.Query().Get("q"))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, values.Items, pageMeta(values))
 }
 func (a *API) listSystemAudit(e *core.RequestEvent) error {
 	page, err := pageRequest(e, "audit logs")

@@ -36,13 +36,17 @@ export const routes: RouteRecordRaw[] = [
   { path: '/expenses', redirect: { name: 'personal-expenses' } },
   { path: '/profile', name: 'profile', component: ProfileView },
   { path: '/admin', name: 'admin', component: AdminView },
+  { path: '/admin/:section(settings|users|roles|audit)', name: 'admin-section', component: AdminView },
   { path: '/:pathMatch(.*)*', redirect: { name: 'dashboard' } },
 ]
 
 export const router = createRouter({ history: createWebHistory(), routes })
-router.beforeEach(to => {
+router.beforeEach(async to => {
 	if (to.name === 'setup') return true
   if (!to.meta.public && !pb.authStore.isValid) return { name: 'auth', query: { redirect: to.fullPath } }
   if (to.name === 'auth' && pb.authStore.isValid) return { name: 'dashboard' }
+  if (String(to.path).startsWith('/admin')) {
+    try { const response=await fetch('/api/subflow/v1/system/access',{headers:{Authorization:`Bearer ${pb.authStore.token}`}}); const body=await response.json(); const permissions:string[]=body?.data?.permissions||[]; if (!permissions.some(value=>value==='*'||value.startsWith('system.'))) return {name:'dashboard',query:{denied:'admin'}} } catch { return {name:'dashboard'} }
+  }
   return true
 })

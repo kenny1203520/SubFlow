@@ -73,6 +73,15 @@ func main() {
 		}
 		base := application.New(stores)
 		base.Rates = exchange.NewCBCProvider()
+		app.OnRecordAuthWithOAuth2Request("users").BindFunc(func(event *core.RecordAuthWithOAuth2RequestEvent) error {
+			if event.IsNewRecord {
+				settings, settingsErr := base.SetupStatus(event.Request.Context())
+				if settingsErr != nil || !settings.Initialized || !settings.AllowRegistration {
+					return event.ForbiddenError("New user registration is disabled", nil)
+				}
+			}
+			return event.Next()
+		})
 		app.Cron().MustAdd("subflow_exchange_rates", "15 */6 * * *", func() {
 			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {
 				app.Logger().Warn("exchange rate refresh failed", "error", refreshErr)

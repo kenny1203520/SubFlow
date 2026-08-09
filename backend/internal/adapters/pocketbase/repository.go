@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -665,6 +666,41 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*domain.Use
 		return nil, mapError(err)
 	}
 	return userFrom(rec), nil
+}
+func (r *Repository) ListUsers(ctx context.Context, req ports.PageRequest, query string) (ports.Page[domain.User], error) {
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PerPage < 1 || req.PerPage > 100 {
+		req.PerPage = 25
+	}
+	records, err := r.app(ctx).FindRecordsByFilter("users", "", "name,email", 1000, 0, nil)
+	if err != nil {
+		return ports.Page[domain.User]{}, err
+	}
+	needle := strings.ToLower(strings.TrimSpace(query))
+	items := make([]domain.User, 0, len(records))
+	for _, record := range records {
+		value := userFrom(record)
+		if needle != "" && !strings.Contains(strings.ToLower(value.Name), needle) && !strings.Contains(strings.ToLower(value.Email), needle) {
+			continue
+		}
+		items = append(items, *value)
+	}
+	total := len(items)
+	start := (req.Page - 1) * req.PerPage
+	if start > total {
+		start = total
+	}
+	end := start + req.PerPage
+	if end > total {
+		end = total
+	}
+	pages := (total + req.PerPage - 1) / req.PerPage
+	if pages == 0 {
+		pages = 1
+	}
+	return ports.Page[domain.User]{Items: items[start:end], Page: req.Page, PerPage: req.PerPage, TotalItems: total, TotalPages: pages}, nil
 }
 func (r *Repository) SetUserSystemRole(ctx context.Context, id, roleID string) error {
 	record, err := r.app(ctx).FindRecordById("users", id)

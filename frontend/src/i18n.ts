@@ -1,6 +1,7 @@
 import { computed, ref, watchEffect } from 'vue'
 import { en } from './locales/en'
 import { zhTW, type MessageKey } from './locales/zh-TW'
+import { adminExtras } from './locales/admin'
 
 export type Locale = 'zh-TW' | 'en'
 const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('subflow-locale') : null
@@ -13,8 +14,9 @@ watchEffect(() => {
 
 export function useI18n() {
   const t = computed(() => messages[locale.value])
-  function tr(key: MessageKey, values: Record<string, string | number> = {}) {
-    return t.value[key].replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? ''))
+  function tr(key: MessageKey | string, values: Record<string, string | number> = {}) {
+    const text = (t.value as Record<string,string>)[key] ?? adminExtras[locale.value][key as keyof typeof adminExtras['zh-TW']] ?? key
+    return text.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? ''))
   }
   function setLocale(next: Locale) {
     locale.value = next

@@ -67,9 +67,9 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
         <RouterLink :to="{ name: 'dashboard' }"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" /></svg><span>{{ tr('overview') }}</span></RouterLink>
         <RouterLink :to="{ name: 'personal-expenses' }"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg><span>{{ tr('personalLedger') }}</span></RouterLink>
         <RouterLink :to="{ name: 'groups' }"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3-8-3Zm0 5 8 3 8-3M4 16.5l8 3 8-3" /></svg><span>{{ tr('groups') }}</span></RouterLink>
-        <RouterLink v-if="auth.record?.systemRoleId" :to="{ name: 'admin' }"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7l-8-4Z" /></svg><span>{{ tr('settings') }}</span></RouterLink>
       </nav>
       <div class="sidebar-bottom">
+        <RouterLink v-if="auth.canAdminister" class="admin-link" :to="{ name: 'admin' }"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7l-8-4Z" /></svg><span>{{ tr('systemAdministration') }}</span></RouterLink>
         <RouterLink class="profile-link" :to="{ name: 'profile' }"><span class="user-avatar">{{ auth.name.slice(0, 1).toUpperCase() }}</span><span><small>{{ tr('accountSettings') }}</small>{{ auth.name }}</span></RouterLink>
         <button class="logout-button" @click="auth.logout">{{ tr('logout') }}</button>
       </div>

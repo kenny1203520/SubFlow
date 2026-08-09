@@ -45,6 +45,23 @@ func (s *Service) systemPermission(ctx context.Context, userID, permission strin
 	}
 	return domain.ErrForbidden
 }
+func (s *Service) SystemPermissions(ctx context.Context, userID string) ([]string, error) {
+	user, err := s.Stores.Users.Get(ctx, userID)
+	if err != nil || user.SystemRoleID == "" {
+		return []string{}, nil
+	}
+	role, err := s.Stores.Roles.Get(ctx, "system", user.SystemRoleID)
+	if err != nil {
+		return []string{}, nil
+	}
+	return role.Permissions, nil
+}
+func (s *Service) ListSystemUsers(ctx context.Context, userID string, page ports.PageRequest, query string) (ports.Page[domain.User], error) {
+	if err := s.systemPermission(ctx, userID, "system.users.assign"); err != nil {
+		return ports.Page[domain.User]{}, err
+	}
+	return s.Stores.Users.List(ctx, page, query)
+}
 func (s *Service) ListSystemRoles(ctx context.Context, userID string) ([]domain.Role, error) {
 	if err := s.systemPermission(ctx, userID, "system.roles.manage"); err != nil {
 		return nil, err

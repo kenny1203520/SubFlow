@@ -103,6 +103,7 @@ type ExchangeRateRepository interface {
 type UserDirectory interface {
 	Get(context.Context, string) (*domain.User, error)
 	FindByEmail(context.Context, string) (*domain.User, error)
+	List(context.Context, PageRequest, string) (Page[domain.User], error)
 	SetSystemRole(context.Context, string, string) error
 	Create(context.Context, domain.SetupInput) (*domain.User, error)
 	CountBySystemRole(context.Context, string) (int, error)
