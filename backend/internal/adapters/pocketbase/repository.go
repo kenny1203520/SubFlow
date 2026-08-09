@@ -261,7 +261,7 @@ func (r *Repository) ListPersonalSubscriptions(ctx context.Context, userID strin
 }
 
 func (r *Repository) ListAutomaticSubscriptions(ctx context.Context) ([]domain.Subscription, error) {
-	records, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "rate_mode='automatic' && `group`!=''", "next_billing", 0, 0, nil)
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "rate_mode='automatic' && group!=''", "next_billing", 0, 0, nil)
 	if err != nil {
 		return nil, mapError(err)
 	}

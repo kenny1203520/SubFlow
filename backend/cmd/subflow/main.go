@@ -30,7 +30,10 @@ func main() {
 		log.Fatal(err)
 	}
 	os.Args = args
-	appURL := config.AppURL(os.Getenv("SUBFLOW_APP_URL"), httpPort)
+	appURL, err := config.PublicAppURL(os.Getenv("SUBFLOW_APP_URL"), httpPort, environment)
+	if err != nil {
+		log.Fatal(err)
+	}
 	if _, err = adapters.New(driver, nil); err != nil {
 		log.Fatal(err)
 	}
@@ -42,7 +45,7 @@ func main() {
 		if err := e.Next(); err != nil {
 			return err
 		}
-		if err := pbadapter.EnsureSchema(e.App); err != nil {
+		if err := pbadapter.EnsureSchemaWithSetupURL(e.App, appURL); err != nil {
 			return err
 		}
 		return mailer.ConfigurePocketBase(e.App, smtpMailer)
@@ -65,7 +68,7 @@ func main() {
 				app.Logger().Warn("exchange rate refresh failed", "error", refreshErr)
 			}
 			if refreshErr := base.RefreshAutomaticSubscriptions(context.Background()); refreshErr != nil {
-				app.Logger().Warn("subscription rate refresh failed", "error", refreshErr)
+				app.Logger().Warn("subscription rate refresh failed", "operation", "refresh_automatic_subscriptions", "error", refreshErr)
 			}
 		})
 		go func() {

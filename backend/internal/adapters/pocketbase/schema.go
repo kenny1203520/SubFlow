@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -39,7 +38,7 @@ func setupTokenHash(value string) string {
 
 // ensureInitialSystemSettings creates a one-time installer link. Only the
 // token hash is stored; the plain token is emitted once to the server log.
-func ensureInitialSystemSettings(app core.App) error {
+func ensureInitialSystemSettings(app core.App, appURL string) error {
 	record, err := app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
 	if err == nil && (record.GetBool("initialized") || record.GetBool("setup_token_issued")) {
 		return nil
@@ -64,11 +63,7 @@ func ensureInitialSystemSettings(app core.App) error {
 	if err := app.Save(record); err != nil {
 		return err
 	}
-	baseURL := strings.TrimRight(os.Getenv("SUBFLOW_APP_URL"), "/")
-	if baseURL == "" {
-		baseURL = "http://localhost:8080"
-	}
-	fmt.Printf("SubFlow first-run setup link (shown once): %s/setup?token=%s\n", baseURL, token)
+	fmt.Printf("SubFlow first-run setup link (shown once): %s/setup?token=%s\n", strings.TrimRight(appURL, "/"), token)
 	return nil
 }
 
@@ -84,6 +79,12 @@ func currencyValues() []string {
 // EnsureSchema installs the SubFlow baseline idempotently. Domain collections
 // have no public rules because business access is restricted to /api/subflow/v1.
 func EnsureSchema(app core.App) error {
+	return EnsureSchemaWithSetupURL(app, "http://localhost:8080")
+}
+
+// EnsureSchemaWithSetupURL installs the schema and emits a first-run setup
+// link using the browser-facing URL resolved at process startup.
+func EnsureSchemaWithSetupURL(app core.App, appURL string) error {
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		return err
@@ -129,7 +130,7 @@ func EnsureSchema(app core.App) error {
 	if err != nil {
 		return err
 	}
-	if err := ensureInitialSystemSettings(app); err != nil {
+	if err := ensureInitialSystemSettings(app, appURL); err != nil {
 		return err
 	}
 	_, err = ensureCollection(app, CollectionGroupRoles, func(c *core.Collection) {
