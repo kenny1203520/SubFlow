@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, Invitation, Membership, Settlement, Subscription, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Settlement, Subscription, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useI18n } from '../i18n'
 
@@ -25,8 +25,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const settlements = ref<Settlement[]>([])
   const groupRoles = ref<AccessRole[]>([])
   const groupAuditLogs = ref<AuditLog[]>([])
-  const groupErrors = reactive<Record<'members'|'subscriptions'|'expenses'|'settlements'|'summary', string>>({ members:'', subscriptions:'', expenses:'', settlements:'', summary:'' })
-  const groupBusy = reactive<Record<'members'|'subscriptions'|'expenses'|'settlements'|'summary', number>>({ members:0, subscriptions:0, expenses:0, settlements:0, summary:0 })
+  const groupPermissions = ref<string[]>([])
+  const groupErrors = reactive<Record<'access'|'members'|'subscriptions'|'expenses'|'settlements'|'summary', string>>({ access:'', members:'', subscriptions:'', expenses:'', settlements:'', summary:'' })
+  const groupBusy = reactive<Record<'access'|'members'|'subscriptions'|'expenses'|'settlements'|'summary', number>>({ access:0, members:0, subscriptions:0, expenses:0, settlements:0, summary:0 })
   const personalSubscriptions = ref<Subscription[]>([])
   const personalExpenses = ref<Expense[]>([])
   const personalSummary = ref<DashboardSummary | null>(null)
@@ -106,6 +107,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       subscriptions.value = []
       expenses.value = []
       summary.value = null
+      groupPermissions.value = []
+      groupAuditLogs.value = []
       return
     }
     members.value = []
@@ -114,6 +117,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     expenses.value = []
     settlements.value = []
     summary.value = null
+    groupPermissions.value = []
+    groupAuditLogs.value = []
     for (const key of Object.keys(groupErrors) as Array<keyof typeof groupErrors>) groupErrors[key] = ''
     hydratingGroupId = id
     groupHydration = refreshGroup(request).finally(() => { if (hydratingGroupId === id) { hydratingGroupId='';groupHydration=undefined } })
@@ -138,6 +143,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=100`).then(value => value.data), value => { expenses.value = value }),
       load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=100`).then(value => value.data), value => { settlements.value = value }),
       load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }),
+			load('access', () => api.get<GroupAccess>(`/groups/${id}/access`).then(value => value.data), value => { groupPermissions.value = value.permissions }),
     ])
     if (expectedRequest === groupRequest && id === currentGroupId.value) {
       const me = members.value.find(member => member.userId === auth.record?.id)
@@ -347,7 +353,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations,
-    subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
     revokeInvitation, acceptInvitation, loadGroupRoles, createGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,

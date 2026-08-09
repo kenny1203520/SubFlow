@@ -59,6 +59,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/currency-change", a.changeCurrency).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/summary", a.dashboard).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/members", a.listMembers).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/access", a.groupAccess).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/members/{userId}", a.removeMember).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/roles", a.listGroupRoles).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/roles", a.createGroupRole).Bind(bind)
@@ -353,6 +354,13 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 }
 func (a *API) systemAccess(e *core.RequestEvent) error {
 	permissions, err := a.Service.SystemPermissions(e.Request.Context(), authID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]any{"permissions": permissions}, nil)
+}
+func (a *API) groupAccess(e *core.RequestEvent) error {
+	permissions, err := a.Service.GroupPermissions(e.Request.Context(), authID(e), groupID(e))
 	if err != nil {
 		return fail(e, err)
 	}

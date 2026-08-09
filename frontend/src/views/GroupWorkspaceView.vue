@@ -12,6 +12,7 @@ const groupId = computed(() => String(route.params.groupId || ""));
 const group = computed(() =>
     workspace.groups.find((value) => value.id === groupId.value),
 );
+const canReadAudit = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.audit.read'));
 async function activate() {
     if (groupId.value) await workspace.selectGroup(groupId.value);
 }
@@ -21,9 +22,7 @@ watch(groupId, () => void activate());
 <template>
     <section class="group-workspace">
         <div class="group-workspace-head">
-            <RouterLink class="back-link" to="/groups">{{
-                tr("allGroupsLink")
-                }}</RouterLink>
+            <RouterLink class="back-link" to="/groups" :aria-label="tr('backToGroups')"><span aria-hidden="true">←</span>{{ tr("allGroupsLink") }}</RouterLink>
             <div class="group-workspace-identity">
                 <p class="eyebrow">{{tr('groupWorkspace')}}</p>
                 <h1>{{ group?.name || tr("groupWorkspace") }}</h1>
@@ -44,6 +43,7 @@ watch(groupId, () => void activate());
             <RouterLink :to="`/groups/${groupId}/members`">{{
                 tr("members")
                 }}</RouterLink>
+            <RouterLink v-if="canReadAudit" :to="`/groups/${groupId}/audit`">{{ tr("auditLogs") }}</RouterLink>
             <RouterLink :to="`/groups/${groupId}/settings`">{{
                 tr("settings")
                 }}</RouterLink>

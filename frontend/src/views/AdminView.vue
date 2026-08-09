@@ -32,7 +32,7 @@ const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
 const section = computed(() => String(route.params.section || 'overview'))
 const roleCategories = computed(() => [...new Set(roles.value.map(role => role.category).filter((value): value is string => !!value))].sort())
-const rolesByCategory = computed(() => roles.value.reduce<Record<string, AccessRole[]>>((groups, role) => { const category = role.category || tr('noSummary'); (groups[category] ||= []).push(role); return groups }, {}))
+const rolesByCategory = computed(() => roles.value.reduce<Record<string, AccessRole[]>>((groups, role) => { const category = role.category || tr('ungroupedRoles'); (groups[category] ||= []).push(role); return groups }, {}))
 const can = (permission: string) => auth.permissions.includes('*') || auth.permissions.includes(permission)
 const pbAdminUrl = computed(() => {
   const base = import.meta.env.VITE_BACKEND_URL || window.location.origin
@@ -163,11 +163,13 @@ onMounted(() => void load())
           </section>
         </div>
       </section>
-      <form v-if="editRole" class="card admin-form" @submit.prevent="saveRole">
-        <h2>{{ editRole.id ? tr('edit') : tr('add') }}</h2>
-        <BaseInput v-model="editRole.name" :label="tr('name')" required />
-        <BaseCombobox v-model="editRole.category" :options="roleCategories" :label="tr('category')" :placeholder="tr('noSummary')" />
-        <fieldset class="permission-options">
+      <form v-if="editRole" class="card admin-form role-editor" @submit.prevent="saveRole">
+        <section class="form-section">
+          <h2>{{ editRole.id ? tr('editRole') : tr('createRole') }}</h2>
+          <BaseInput v-model="editRole.name" :label="tr('roleName')" required />
+          <BaseCombobox v-model="editRole.category" :options="roleCategories" :label="tr('roleGroup')" :placeholder="tr('ungroupedRoles')" :help="tr('roleGroupHelp')" />
+        </section>
+        <fieldset class="permission-options form-section">
           <legend>{{ tr('permissions') }}</legend>
           <label v-for="permission in allPermissions" :key="permission" class="check permission-option">
             <input v-model="editRole.permissions" type="checkbox" :value="permission">

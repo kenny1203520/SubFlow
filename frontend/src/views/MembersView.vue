@@ -1,16 +1,14 @@
 ﻿<script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import EmptyState from '../components/EmptyState.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useI18n } from '../i18n'
-import { auditPresentation } from '../utils/audit'
 
 const workspace = useWorkspaceStore()
 const email = ref('')
 const pendingRemoval = ref<{userId:string;label:string}>()
-const { tr, formatDate, locale } = useI18n()
-const auditInfo=(entry:import('../api/types').AuditLog)=>auditPresentation(entry,locale.value)
+const { tr, formatDate } = useI18n()
 
 async function invite() {
     await workspace.invite(email.value)
@@ -22,7 +20,6 @@ async function removeMember(userId: string, label: string) {
 }
 async function confirmRemoval(){if(!pendingRemoval.value)return;await workspace.removeMember(pendingRemoval.value.userId);pendingRemoval.value=undefined}
 async function assignRole(userId:string,event:Event){const roleId=(event.target as HTMLSelectElement).value;if(roleId)await workspace.assignGroupRole(userId,roleId)}
-onMounted(()=>{if(workspace.isOwner){void workspace.loadGroupRoles?.();void workspace.loadGroupAuditLogs?.()}})
 </script>
 
 <template>
@@ -80,7 +77,6 @@ onMounted(()=>{if(workspace.isOwner){void workspace.loadGroupRoles?.();void work
                 <p>{{tr('ownerOnly')}}</p>
             </div>
         </div>
-        <section v-if="workspace.isOwner" class="card audit-list"><h2>{{tr('auditLogs')}}</h2><div v-if="workspace.groupAuditLogs?.length" class="rows"><div v-for="entry in workspace.groupAuditLogs||[]" :key="entry.id" class="row"><div class="grow"><strong>{{auditInfo(entry).action}}</strong><small>{{auditInfo(entry).actor}} · {{auditInfo(entry).resource}} · {{formatDate(entry.createdAt)}}</small></div><span class="pill">{{auditInfo(entry).outcome}}</span></div></div><p v-else class="empty-inline">{{tr('noSummary')}}</p></section>
         <ConfirmDialog :open="!!pendingRemoval" :title="pendingRemoval?tr('removeMemberConfirm',{name:pendingRemoval.label}):''" danger @cancel="pendingRemoval=undefined" @confirm="confirmRemoval"/>
     </section>
 </template>

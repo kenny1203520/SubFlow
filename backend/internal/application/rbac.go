@@ -60,6 +60,55 @@ func (s *Service) SystemPermissions(ctx context.Context, userID string) ([]strin
 	}
 	return role.Permissions, nil
 }
+
+// GroupPermissions returns the permissions of the caller's assigned group
+// role.  Membership.Role is kept for backwards compatibility, while RoleID
+// is the authoritative RBAC relation for new and migrated memberships.
+func (s *Service) GroupPermissions(ctx context.Context, userID, groupID string) ([]string, error) {
+	members, err := s.Stores.Memberships.List(ctx, groupID, ports.PageRequest{Page: 1, PerPage: 100})
+	if err != nil {
+		return nil, err
+	}
+	for _, member := range members.Items {
+		if member.UserID != userID {
+			continue
+		}
+		if member.RoleID != "" {
+			role, roleErr := s.Stores.Roles.Get(ctx, "group", member.RoleID)
+			if roleErr != nil {
+				return nil, roleErr
+			}
+			return role.Permissions, nil
+		}
+		// Old records can briefly exist without role_ref during an upgrade.
+		// Resolve their protected owner/member role by key instead of denying
+		// a valid existing member while the schema backfill completes.
+		roles, roleErr := s.Stores.Roles.List(ctx, "group", groupID)
+		if roleErr != nil {
+			return nil, roleErr
+		}
+		for _, role := range roles {
+			if role.Key == string(member.Role) {
+				return role.Permissions, nil
+			}
+		}
+		return nil, domain.ErrForbidden
+	}
+	return nil, domain.ErrForbidden
+}
+
+func (s *Service) groupPermission(ctx context.Context, userID, groupID, permission string) error {
+	permissions, err := s.GroupPermissions(ctx, userID, groupID)
+	if err != nil {
+		return err
+	}
+	for _, value := range permissions {
+		if value == permission || value == "*" {
+			return nil
+		}
+	}
+	return domain.ErrForbidden
+}
 func (s *Service) ListSystemUsers(ctx context.Context, userID string, page ports.PageRequest, query string) (ports.Page[domain.User], error) {
 	if err := s.systemPermission(ctx, userID, "system.users.assign"); err != nil {
 		return ports.Page[domain.User]{}, err
@@ -293,7 +342,7 @@ func (s *Service) AssignGroupRole(ctx context.Context, userID, groupID, memberID
 	return err
 }
 func (s *Service) ListGroupAudit(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.AuditLog], error) {
-	if err := s.role(ctx, groupID, userID, true); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.audit.read"); err != nil {
 		return ports.Page[domain.AuditLog]{}, err
 	}
 	return s.Stores.Audits.List(ctx, groupID, page)
