@@ -12,6 +12,8 @@ import CurrencySelect from '../components/CurrencySelect.vue'
 import TimezoneSelect from '../components/TimezoneSelect.vue'
 import BaseInput from '../components/BaseInput.vue'
 import RoleSelect from '../components/RoleSelect.vue'
+import BaseCombobox from '../components/BaseCombobox.vue'
+import { auditPresentation } from '../utils/audit'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
@@ -29,6 +31,8 @@ const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
 const section = computed(() => String(route.params.section || 'overview'))
+const roleCategories = computed(() => [...new Set(roles.value.map(role => role.category).filter((value): value is string => !!value))].sort())
+const rolesByCategory = computed(() => roles.value.reduce<Record<string, AccessRole[]>>((groups, role) => { const category = role.category || tr('noSummary'); (groups[category] ||= []).push(role); return groups }, {}))
 const can = (permission: string) => auth.permissions.includes('*') || auth.permissions.includes(permission)
 const pbAdminUrl = computed(() => {
   const base = import.meta.env.VITE_BACKEND_URL || window.location.origin
@@ -38,6 +42,7 @@ const pbAdminUrl = computed(() => {
 function permissionInfo(permission: string) {
   return systemPermissionText[locale.value][permission as keyof typeof systemPermissionText['zh-TW']] ?? { title: permission, description: permission }
 }
+function auditInfo(log: AuditLog) { return auditPresentation(log, locale.value) }
 
 async function loadRoles() { if (can('system.roles.manage')) roles.value = (await api.get<AccessRole[]>('/system/roles')).data }
 async function loadUsers() { if (can('system.users.assign')) users.value = (await api.get<User[]>(`/system/users?perPage=50&q=${encodeURIComponent(query.value)}`)).data }
@@ -57,14 +62,14 @@ async function saveSettings() {
   } catch { error.value = tr('requestFailed') }
 }
 function startRole(role?: AccessRole) {
-  editRole.value = role ? { ...role, permissions: [...role.permissions] } : { id: '', scope: 'system', name: '', key: '', permissions: [], protected: false, createdAt: '', updatedAt: '' }
+  editRole.value = role ? { ...role, permissions: [...role.permissions] } : { id: '', scope: 'system', name: '', category: '', key: '', permissions: [], protected: false, createdAt: '', updatedAt: '' }
 }
 async function saveRole() {
   if (!editRole.value) return
   try {
     const value = editRole.value
     if (value.id) await api.patch(`/system/roles/${value.id}`, value)
-    else await api.post('/system/roles', { name: value.name, key: value.key, permissions: value.permissions })
+    else await api.post('/system/roles', { name: value.name, category: value.category, permissions: value.permissions })
     editRole.value = null
     await loadRoles()
   } catch { error.value = tr('requestFailed') }
@@ -138,10 +143,12 @@ onMounted(() => void load())
     <section v-else-if="section === 'roles' && can('system.roles.manage')" class="admin-stack">
       <section class="card admin-form">
         <div class="section-heading"><h2>{{ tr('roleManagement') }}</h2><button class="primary" @click="startRole()">{{ tr('add') }}</button></div>
-        <div class="data-list">
-          <article v-for="role in roles" :key="role.id" class="data-row">
+        <div class="role-category-list">
+          <section v-for="(categoryRoles, category) in rolesByCategory" :key="category" class="role-category">
+          <h3>{{ category }}</h3>
+          <article v-for="role in categoryRoles" :key="role.id" class="data-row">
             <div class="grow">
-              <strong>{{ role.name }}</strong><small>{{ role.key }}</small>
+              <strong>{{ role.name }}</strong>
               <div v-if="role.permissions.length" class="permission-summary">
                 <div v-for="permission in role.permissions" :key="permission" class="permission-display">
                   <strong>{{ permissionInfo(permission).title }}</strong><small>{{ permissionInfo(permission).description }}</small>
@@ -153,12 +160,13 @@ onMounted(() => void load())
             <button v-else class="ghost" @click="startRole(role)">{{ tr('edit') }}</button>
             <button v-if="!role.protected" class="danger-text" @click="deleteRole(role)">{{ tr('delete') }}</button>
           </article>
+          </section>
         </div>
       </section>
       <form v-if="editRole" class="card admin-form" @submit.prevent="saveRole">
         <h2>{{ editRole.id ? tr('edit') : tr('add') }}</h2>
         <BaseInput v-model="editRole.name" :label="tr('name')" required />
-        <BaseInput v-model="editRole.key" :label="tr('category')" required :disabled="!!editRole.id" />
+        <BaseCombobox v-model="editRole.category" :options="roleCategories" :label="tr('category')" :placeholder="tr('noSummary')" />
         <fieldset class="permission-options">
           <legend>{{ tr('permissions') }}</legend>
           <label v-for="permission in allPermissions" :key="permission" class="check permission-option">
@@ -172,7 +180,7 @@ onMounted(() => void load())
 
     <section v-else-if="section === 'audit' && can('system.audit.read')" class="card admin-form">
       <h2>{{ tr('auditLogs') }}</h2>
-      <div class="data-list"><article v-for="log in logs" :key="log.id" class="data-row"><div class="grow"><strong>{{ log.action }}</strong><small>{{ log.resource }} · {{ formatDate(log.createdAt) }} · {{ log.outcome }}</small></div></article><p v-if="!logs.length" class="empty-inline">{{ tr('noSummary') }}</p></div>
+      <div class="data-list"><article v-for="log in logs" :key="log.id" class="data-row"><div class="grow"><strong>{{ auditInfo(log).action }}</strong><small>{{ auditInfo(log).actor }} · {{ auditInfo(log).resource }} · {{ formatDate(log.createdAt) }}</small></div><span class="pill">{{ auditInfo(log).outcome }}</span></article><p v-if="!logs.length" class="empty-inline">{{ tr('noSummary') }}</p></div>
     </section>
   </section>
 </template>

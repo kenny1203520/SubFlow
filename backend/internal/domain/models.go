@@ -131,6 +131,7 @@ type Role struct {
 	Scope       string    `json:"scope"`
 	GroupID     string    `json:"groupId,omitempty"`
 	Name        string    `json:"name"`
+	Category    string    `json:"category,omitempty"`
 	Key         string    `json:"key"`
 	Permissions []string  `json:"permissions"`
 	Protected   bool      `json:"protected"`
@@ -142,6 +143,7 @@ type Role struct {
 type AuditLog struct {
 	ID         string    `json:"id"`
 	ActorID    string    `json:"actorId,omitempty"`
+	ActorName  string    `json:"actorName,omitempty"`
 	GroupID    string    `json:"groupId,omitempty"`
 	Scope      string    `json:"scope"`
 	Action     string    `json:"action"`

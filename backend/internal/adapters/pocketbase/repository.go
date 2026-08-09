@@ -518,13 +518,14 @@ func roleCollection(scope string) string {
 func writeRole(record *core.Record, v *domain.Role) {
 	record.Set("group", v.GroupID)
 	record.Set("name", v.Name)
+	record.Set("category", v.Category)
 	record.Set("key", v.Key)
 	record.Set("permissions", v.Permissions)
 	record.Set("protected", v.Protected)
 	record.Set("created_by", v.CreatedBy)
 }
 func roleFrom(record *core.Record, scope string) *domain.Role {
-	v := &domain.Role{ID: record.Id, Scope: scope, GroupID: record.GetString("group"), Name: record.GetString("name"), Key: record.GetString("key"), Protected: record.GetBool("protected"), CreatedBy: record.GetString("created_by")}
+	v := &domain.Role{ID: record.Id, Scope: scope, GroupID: record.GetString("group"), Name: record.GetString("name"), Category: record.GetString("category"), Key: record.GetString("key"), Protected: record.GetBool("protected"), CreatedBy: record.GetString("created_by")}
 	_ = json.Unmarshal([]byte(record.GetString("permissions")), &v.Permissions)
 	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
 	return v
@@ -621,8 +622,9 @@ func (r *Repository) ListAudits(ctx context.Context, groupID string, req ports.P
 		return ports.Page[domain.AuditLog]{}, err
 	}
 	values := make([]domain.AuditLog, len(records))
-	for i, r := range records {
-		values[i] = domain.AuditLog{ID: r.Id, ActorID: r.GetString("actor"), GroupID: r.GetString("group"), Scope: r.GetString("scope"), Action: r.GetString("action"), Resource: r.GetString("resource"), ResourceID: r.GetString("resource_id"), Outcome: r.GetString("outcome"), Summary: r.GetString("summary"), IP: r.GetString("ip"), UserAgent: r.GetString("user_agent"), Hash: r.GetString("hash"), CreatedAt: r.GetDateTime("created").Time()}
+	for i, record := range records {
+		values[i] = domain.AuditLog{ID: record.Id, ActorID: record.GetString("actor"), GroupID: record.GetString("group"), Scope: record.GetString("scope"), Action: record.GetString("action"), Resource: record.GetString("resource"), ResourceID: record.GetString("resource_id"), Outcome: record.GetString("outcome"), Summary: record.GetString("summary"), IP: record.GetString("ip"), UserAgent: record.GetString("user_agent"), Hash: record.GetString("hash"), CreatedAt: record.GetDateTime("created").Time()}
+		if values[i].ActorID != "" { if actor, err := r.app(ctx).FindRecordById("users", values[i].ActorID); err == nil { values[i].ActorName = actor.GetString("name"); if values[i].ActorName == "" { values[i].ActorName = actor.Email() } } }
 	}
 	count, _ := countFiltered(r.app(ctx), CollectionAuditLogs, filter, params)
 	return page(values, req, count), nil

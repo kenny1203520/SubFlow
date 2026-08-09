@@ -118,7 +118,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSystemRoles, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
+		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "category", Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_system_roles_key", true, "key", "")
 	})
 	if err != nil {
@@ -136,7 +136,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionGroupRoles, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "category", Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_group_roles_key", true, "group, key", "")
 	})
 	if err != nil {
