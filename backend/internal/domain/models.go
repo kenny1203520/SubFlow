@@ -111,7 +111,8 @@ type SystemSettings struct {
 	DefaultTimezone   string   `json:"defaultTimezone"`
 	DefaultCurrency   Currency `json:"defaultCurrency"`
 	AllowRegistration bool     `json:"allowRegistration"`
-	SetupSecretHash   string   `json:"-"`
+	SetupTokenHash    string   `json:"-"`
+	SetupTokenIssued  bool     `json:"-"`
 }
 
 type SetupInput struct {
@@ -122,7 +123,7 @@ type SetupInput struct {
 	DefaultTimezone   string   `json:"defaultTimezone"`
 	DefaultCurrency   Currency `json:"defaultCurrency"`
 	AllowRegistration bool     `json:"allowRegistration"`
-	Secret            string   `json:"secret"`
+	Token             string   `json:"token"`
 }
 
 type Role struct {

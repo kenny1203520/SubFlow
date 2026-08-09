@@ -702,7 +702,7 @@ func (r *Repository) CountUsersBySystemRole(ctx context.Context, roleID string) 
 }
 
 func settingsFrom(record *core.Record) domain.SystemSettings {
-	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: record.GetBool("allow_registration"), SetupSecretHash: record.GetString("setup_secret_hash")}
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: record.GetBool("allow_registration"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
 }
 
 func defaultSystemSettings() domain.SystemSettings {
@@ -747,8 +747,8 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	record.Set("default_timezone", value.DefaultTimezone)
 	record.Set("default_currency", value.DefaultCurrency)
 	record.Set("allow_registration", value.AllowRegistration)
-	if value.SetupSecretHash != "" {
-		record.Set("setup_secret_hash", value.SetupSecretHash)
+	if value.SetupTokenHash != "" {
+		record.Set("setup_secret_hash", value.SetupTokenHash)
 	}
 	return r.app(ctx).Save(record)
 }

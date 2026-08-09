@@ -22,7 +22,7 @@ var (
 	ErrInvalid         = errors.New("invalid input")
 	ErrRateUnavailable = errors.New("exchange rate unavailable")
 	ErrSetupDisabled   = errors.New("setup disabled")
-	ErrSetupSecret     = errors.New("setup secret invalid")
+	ErrSetupToken      = errors.New("setup token invalid")
 )
 
 func NormalizeEmail(value string) string {

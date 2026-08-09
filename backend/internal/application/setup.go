@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -24,16 +23,17 @@ func validSetup(input domain.SetupInput) bool {
 	return err == nil
 }
 
-func equalSecret(actual, supplied string) bool {
-	if actual == "" {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(actual), []byte(supplied)) == 1
-}
-
-func equalSecretHash(expected, supplied string) bool {
+func equalSetupToken(expected, supplied string) bool {
 	sum := sha256.Sum256([]byte(supplied))
 	return expected != "" && subtle.ConstantTimeCompare([]byte(expected), []byte(fmt.Sprintf("%x", sum))) == 1
+}
+
+func (s *Service) ValidateSetupToken(ctx context.Context, token string) (domain.SystemSettings, bool, error) {
+	settings, err := s.Stores.Settings.Get(ctx)
+	if err != nil || settings.Initialized {
+		return settings, false, err
+	}
+	return settings, settings.SetupTokenIssued && equalSetupToken(settings.SetupTokenHash, token), nil
 }
 
 func (s *Service) InitializeSetup(ctx context.Context, input domain.SetupInput) (*domain.User, error) {
@@ -41,11 +41,10 @@ func (s *Service) InitializeSetup(ctx context.Context, input domain.SetupInput) 
 		s.audit(ctx, "", "", "setup.initialize", "system", "", "failed")
 		return nil, domain.ErrInvalid
 	}
-	settings, settingsErr := s.Stores.Settings.Get(ctx)
-	configuredSecret := os.Getenv("SUBFLOW_SETUP_SECRET")
-	if settingsErr != nil || !(equalSecret(configuredSecret, input.Secret) || (configuredSecret == "" && equalSecretHash(settings.SetupSecretHash, input.Secret))) {
+	_, validToken, settingsErr := s.ValidateSetupToken(ctx, input.Token)
+	if settingsErr != nil || !validToken {
 		s.audit(ctx, "", "", "setup.initialize", "system", "", "failed")
-		return nil, domain.ErrSetupSecret
+		return nil, domain.ErrSetupToken
 	}
 	var created *domain.User
 	err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {

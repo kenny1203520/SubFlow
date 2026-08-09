@@ -132,10 +132,10 @@ func fail(e *core.RequestEvent, err error) error {
 		status = http.StatusGone
 		code = "setup_disabled"
 		message = "setup is no longer available"
-	case errors.Is(err, domain.ErrSetupSecret):
+	case errors.Is(err, domain.ErrSetupToken):
 		status = http.StatusForbidden
-		code = "setup_secret_invalid"
-		message = "setup secret is invalid"
+		code = "setup_token_invalid"
+		message = "setup link is invalid or expired"
 	}
 	return e.JSON(status, errorEnvelope{Error: apiError{Code: code, Message: message}})
 }
@@ -340,7 +340,14 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 	if settings.Initialized {
 		return ok(e, http.StatusOK, map[string]any{"initialized": true}, nil)
 	}
-	return ok(e, http.StatusOK, map[string]any{"initialized": false, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowRegistration, "currencies": a.Service.Currencies()}, nil)
+	_, valid, err := a.Service.ValidateSetupToken(e.Request.Context(), e.Request.URL.Query().Get("token"))
+	if err != nil {
+		return fail(e, err)
+	}
+	if !valid {
+		return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": false}, nil)
+	}
+	return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": true, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowRegistration, "currencies": a.Service.Currencies()}, nil)
 }
 func (a *API) initializeSetup(e *core.RequestEvent) error {
 	var value domain.SetupInput

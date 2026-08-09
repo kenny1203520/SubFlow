@@ -1,6 +1,8 @@
 package application
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"testing"
 
 	"subflow/internal/domain"
@@ -17,14 +19,15 @@ func TestSetupInputValidation(t *testing.T) {
 	}
 }
 
-func TestSetupSecretComparison(t *testing.T) {
-	if !equalSecret("deployment-secret", "deployment-secret") {
-		t.Fatal("expected matching setup secret")
+func TestSetupTokenComparison(t *testing.T) {
+	sum := sha256.Sum256([]byte("installer-token"))
+	if !equalSetupToken(fmt.Sprintf("%x", sum), "installer-token") {
+		t.Fatal("expected matching installer token")
 	}
-	if equalSecret("deployment-secret", "incorrect") {
-		t.Fatal("expected non-matching setup secret")
+	if equalSetupToken(fmt.Sprintf("%x", sum), "incorrect-token") {
+		t.Fatal("expected non-matching installer token")
 	}
-	if equalSecret("", "") {
-		t.Fatal("empty deployment secret must never enable setup")
+	if equalSetupToken("", "") {
+		t.Fatal("empty token hash must never enable setup")
 	}
 }

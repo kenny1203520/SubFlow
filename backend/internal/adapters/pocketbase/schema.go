@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -31,24 +32,23 @@ const (
 
 var systemCategoryKeys = []string{"food_dining", "transport", "housing", "utilities", "shopping", "entertainment", "health", "education", "travel", "insurance", "software_digital", "memberships", "taxes_fees", "gifts_donations", "other"}
 
-func setupSecretHash(value string) string {
+func setupTokenHash(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
 }
 
-// ensureInitialSystemSettings creates the one private installation secret on
-// the server. Only its hash is stored; the plain value is deliberately printed
-// once to the server log so a public setup page can never disclose it.
+// ensureInitialSystemSettings creates a one-time installer link. Only the
+// token hash is stored; the plain token is emitted once to the server log.
 func ensureInitialSystemSettings(app core.App) error {
 	record, err := app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
-	if err == nil && record.GetString("setup_secret_hash") != "" {
+	if err == nil && (record.GetBool("initialized") || record.GetBool("setup_token_issued")) {
 		return nil
 	}
 	secretBytes := make([]byte, 24)
 	if _, err := rand.Read(secretBytes); err != nil {
 		return err
 	}
-	secret := base64.RawURLEncoding.EncodeToString(secretBytes)
+	token := base64.RawURLEncoding.EncodeToString(secretBytes)
 	if err != nil {
 		record, err = newSchemaRecord(app, CollectionSystemSettings)
 		if err != nil {
@@ -59,11 +59,16 @@ func ensureInitialSystemSettings(app core.App) error {
 		record.Set("default_timezone", "UTC")
 		record.Set("default_currency", "TWD")
 	}
-	record.Set("setup_secret_hash", setupSecretHash(secret))
+	record.Set("setup_secret_hash", setupTokenHash(token))
+	record.Set("setup_token_issued", true)
 	if err := app.Save(record); err != nil {
 		return err
 	}
-	fmt.Printf("SubFlow initial setup secret (shown once): %s\n", secret)
+	baseURL := strings.TrimRight(os.Getenv("SUBFLOW_APP_URL"), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	fmt.Printf("SubFlow first-run setup link (shown once): %s/setup?token=%s\n", baseURL, token)
 	return nil
 }
 
@@ -118,7 +123,7 @@ func EnsureSchema(app core.App) error {
 		return err
 	}
 	_, err = ensureCollection(app, CollectionSystemSettings, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "site_name", Max: 120}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"}, &core.TextField{Name: "setup_secret_hash", Hidden: true, Max: 128})
+		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "site_name", Max: 120}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"}, &core.TextField{Name: "setup_secret_hash", Hidden: true, Max: 128}, &core.BoolField{Name: "setup_token_issued"})
 		c.AddIndex("idx_system_settings_key", true, "key", "")
 	})
 	if err != nil {
