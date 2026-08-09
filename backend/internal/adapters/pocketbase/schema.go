@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"fmt"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -37,21 +36,22 @@ func setupTokenHash(value string) string {
 }
 
 // ensureInitialSystemSettings creates a one-time installer link. Only the
-// token hash is stored; the plain token is emitted once to the server log.
-func ensureInitialSystemSettings(app core.App, appURL string) error {
+// token hash is stored; the caller is responsible for displaying the plain
+// link after the server finishes its bootstrap output.
+func ensureInitialSystemSettings(app core.App, appURL string) (string, error) {
 	record, err := app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
 	if err == nil && (record.GetBool("initialized") || record.GetBool("setup_token_issued")) {
-		return nil
+		return "", nil
 	}
 	secretBytes := make([]byte, 24)
 	if _, err := rand.Read(secretBytes); err != nil {
-		return err
+		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(secretBytes)
 	if err != nil {
 		record, err = newSchemaRecord(app, CollectionSystemSettings)
 		if err != nil {
-			return err
+			return "", err
 		}
 		record.Set("key", "primary")
 		record.Set("site_name", "SubFlow")
@@ -61,10 +61,9 @@ func ensureInitialSystemSettings(app core.App, appURL string) error {
 	record.Set("setup_secret_hash", setupTokenHash(token))
 	record.Set("setup_token_issued", true)
 	if err := app.Save(record); err != nil {
-		return err
+		return "", err
 	}
-	fmt.Printf("SubFlow first-run setup link (shown once): %s/setup?token=%s\n", strings.TrimRight(appURL, "/"), token)
-	return nil
+	return strings.TrimRight(appURL, "/") + "/setup?token=" + token, nil
 }
 
 func currencyValues() []string {
@@ -79,20 +78,22 @@ func currencyValues() []string {
 // EnsureSchema installs the SubFlow baseline idempotently. Domain collections
 // have no public rules because business access is restricted to /api/subflow/v1.
 func EnsureSchema(app core.App) error {
-	return EnsureSchemaWithSetupURL(app, "http://localhost:8080")
+	_, err := EnsureSchemaWithSetupURL(app, "http://localhost:8080")
+	return err
 }
 
-// EnsureSchemaWithSetupURL installs the schema and emits a first-run setup
-// link using the browser-facing URL resolved at process startup.
-func EnsureSchemaWithSetupURL(app core.App, appURL string) error {
+// EnsureSchemaWithSetupURL installs the schema and returns a first-run setup
+// link when one is created. The link is intentionally not logged here so it
+// can be displayed after noisy bootstrap output.
+func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
-		return err
+		return "", err
 	}
 	if users.Fields.GetByName("timezone") == nil {
 		users.Fields.Add(&core.TextField{Name: "timezone", Max: 64})
 		if err = app.Save(users); err != nil {
-			return err
+			return "", err
 		}
 	}
 	usersChanged := false
@@ -106,7 +107,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) error {
 	}
 	if usersChanged {
 		if err = app.Save(users); err != nil {
-			return err
+			return "", err
 		}
 	}
 	groups, err := ensureCollection(app, CollectionGroups, func(c *core.Collection) {
@@ -114,38 +115,39 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) error {
 		c.AddIndex("idx_groups_owner", false, "owner", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSystemRoles, func(c *core.Collection) {
 		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_system_roles_key", true, "key", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSystemSettings, func(c *core.Collection) {
 		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "site_name", Max: 120}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"}, &core.TextField{Name: "setup_secret_hash", Hidden: true, Max: 128}, &core.BoolField{Name: "setup_token_issued"})
 		c.AddIndex("idx_system_settings_key", true, "key", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
-	if err := ensureInitialSystemSettings(app, appURL); err != nil {
-		return err
+	setupLink, err := ensureInitialSystemSettings(app, appURL)
+	if err != nil {
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionGroupRoles, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 80}, &core.TextField{Name: "key", Required: true, Max: 40}, &core.JSONField{Name: "permissions"}, &core.BoolField{Name: "protected"}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_group_roles_key", true, "group, key", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionMembers, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "role", Required: true, Values: []string{"owner", "member"}, MaxSelect: 1}, &core.TextField{Name: "role_ref", Max: 32})
 		c.AddIndex("idx_group_members_unique", true, "`group`, `user`", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionAuditLogs, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "actor", CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "scope", Required: true, Max: 24}, &core.TextField{Name: "action", Required: true, Max: 120}, &core.TextField{Name: "resource", Required: true, Max: 80}, &core.TextField{Name: "resource_id", Max: 32}, &core.TextField{Name: "outcome", Required: true, Max: 24}, &core.TextField{Name: "summary", Max: 4000}, &core.TextField{Name: "ip", Max: 80}, &core.TextField{Name: "user_agent", Max: 500}, &core.TextField{Name: "hash", Required: true, Max: 128})
@@ -153,7 +155,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) error {
 		c.AddIndex("idx_audit_logs_actor_created", false, "actor, created", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionInvitations, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.EmailField{Name: "email", Required: true}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.DateField{Name: "expires_at", Required: true}, &core.RelationField{Name: "invited_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "accepted_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "delivery_failed", "accepted", "revoked", "expired"}, MaxSelect: 1})
@@ -161,51 +163,51 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) error {
 		c.AddIndex("idx_invitations_group_email", false, "`group`, email", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	categories, err := ensureCollection(app, CollectionCategories, func(c *core.Collection) {
 		c.Fields.Add(&core.SelectField{Name: "scope", Required: true, Values: []string{"system", "personal", "group"}, MaxSelect: 1}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "system_key", Max: 80}, &core.TextField{Name: "custom_name", Max: 120}, &core.TextField{Name: "icon_key", Max: 80}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1}, &core.BoolField{Name: "archived"})
 		c.AddIndex("idx_categories_scope", false, "scope, owner, `group`, archived", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionExchangeRates, func(c *core.Collection) {
 		c.Fields.Add(&core.SelectField{Name: "base_currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "quote_currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "rate_scaled", Required: true, OnlyInt: true}, &core.DateField{Name: "effective_date", Required: true}, &core.TextField{Name: "provider", Required: true, Max: 80}, &core.DateField{Name: "fetched_at", Required: true})
 		c.AddIndex("idx_exchange_rates_unique", true, "base_currency, quote_currency, effective_date", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSubscriptions, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "paid_by", CollectionId: users.Id, MaxSelect: 1}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.SelectField{Name: "billing_cycle", Required: true, Values: []string{"monthly", "quarterly", "yearly"}, MaxSelect: 1}, &core.DateField{Name: "starts_on", Required: true}, &core.DateField{Name: "ends_on"}, &core.DateField{Name: "next_billing", Required: true}, &core.SelectField{Name: "status", Required: true, Values: []string{"active", "paused", "cancelled"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_subscriptions_group_next", false, "`group`, next_billing", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionExpenses, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.DateField{Name: "incurred_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_expenses_group_date", false, "`group`, incurred_on", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionExpenseSplits, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "expense", Required: true, CollectionId: mustCollectionID(app, CollectionExpenses), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "percentage_bp", OnlyInt: true})
 		c.AddIndex("idx_splits_expense_user", true, "expense, user", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSettlements, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "created_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.DateField{Name: "settled_on", Required: true}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_settlements_group_date", false, "`group`, settled_on", "")
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
-	return backfillFinance(app)
+	return setupLink, backfillFinance(app)
 }
 
 func mustCollectionID(app core.App, name string) string {

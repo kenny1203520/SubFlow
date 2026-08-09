@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"os"
 
@@ -20,6 +21,13 @@ import (
 	"subflow/internal/transport/httpapi"
 	"subflow/internal/web"
 )
+
+func setupStartupNotice(link string) string {
+	if link == "" {
+		return ""
+	}
+	return fmt.Sprintf("\n\033[1;97;42m  FIRST-RUN SETUP REQUIRED  \033[0m\n\033[1;32m╔══════════════════════════════════════════════════════════════╗\n║ Open this one-time setup link in your browser:               ║\n╚══════════════════════════════════════════════════════════════╝\033[0m\n\033[1;97m%s\033[0m\n", link)
+}
 
 func main() {
 	driver := os.Getenv("SUBFLOW_DATA_DRIVER")
@@ -40,12 +48,14 @@ func main() {
 	app := pocketbase.New()
 	events := realtime.NewBus()
 	smtpMailer := mailer.FromEnv()
+	var setupLink string
 	realtime.BindRecordEvents(app, events)
 	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
 		if err := e.Next(); err != nil {
 			return err
 		}
-		if err := pbadapter.EnsureSchemaWithSetupURL(e.App, appURL); err != nil {
+		setupLink, err = pbadapter.EnsureSchemaWithSetupURL(e.App, appURL)
+		if err != nil {
 			return err
 		}
 		return mailer.ConfigurePocketBase(e.App, smtpMailer)
@@ -79,6 +89,7 @@ func main() {
 		(&httpapi.API{Service: base}).RegisterRoutes(e)
 		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: smtpMailer, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
 		web.Register(e)
+		fmt.Print(setupStartupNotice(setupLink))
 		return e.Next()
 	})
 	if err := app.Start(); err != nil {
