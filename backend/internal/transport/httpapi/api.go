@@ -341,7 +341,7 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	if settings.Initialized {
-		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowRegistration}, nil)
+		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaProvider": settings.CaptchaProvider, "captchaSiteKey": settings.CaptchaSiteKey}, nil)
 	}
 	_, valid, err := a.Service.ValidateSetupToken(e.Request.Context(), e.Request.URL.Query().Get("token"))
 	if err != nil {
@@ -350,7 +350,7 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 	if !valid {
 		return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": false}, nil)
 	}
-	return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": true, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowRegistration, "currencies": a.Service.Currencies()}, nil)
+	return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": true, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "currencies": a.Service.Currencies()}, nil)
 }
 func (a *API) systemAccess(e *core.RequestEvent) error {
 	permissions, err := a.Service.SystemPermissions(e.Request.Context(), authID(e))
@@ -381,6 +381,9 @@ func (a *API) register(e *core.RequestEvent) error {
 	var value domain.SetupInput
 	if e.BindBody(&value) != nil {
 		return fail(e, domain.ErrInvalid)
+	}
+	if err := a.Service.VerifyCaptcha(e.Request.Context(), value.CaptchaToken, e.RealIP()); err != nil {
+		return fail(e, domain.ErrForbidden)
 	}
 	created, err := a.Service.Register(e.Request.Context(), value)
 	if err != nil {

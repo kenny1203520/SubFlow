@@ -86,7 +86,11 @@ func (s *Service) InitializeSetup(ctx context.Context, input domain.SetupInput) 
 		if err = s.Stores.Users.SetSystemRole(tx, created.ID, admin.ID); err != nil {
 			return err
 		}
-		settings = domain.SystemSettings{Initialized: true, SiteName: input.SiteName, DefaultTimezone: input.DefaultTimezone, DefaultCurrency: input.DefaultCurrency, AllowRegistration: input.AllowRegistration}
+		allowPassword, allowOIDC := input.AllowPasswordRegistration, input.AllowOIDCRegistration
+		if !allowPassword && !allowOIDC && input.AllowRegistration {
+			allowPassword, allowOIDC = true, true
+		}
+		settings = domain.SystemSettings{Initialized: true, SiteName: input.SiteName, DefaultTimezone: input.DefaultTimezone, DefaultCurrency: input.DefaultCurrency, AllowRegistration: allowPassword, AllowPasswordRegistration: allowPassword, AllowOIDCRegistration: allowOIDC}
 		return s.Stores.Settings.Save(tx, settings)
 	})
 	if err != nil {
@@ -102,7 +106,7 @@ func (s *Service) Register(ctx context.Context, input domain.SetupInput) (*domai
 	if err != nil {
 		return nil, err
 	}
-	if !settings.Initialized || !settings.AllowRegistration {
+	if !settings.Initialized || !settings.AllowPasswordRegistration {
 		return nil, domain.ErrForbidden
 	}
 	input.AdminName = strings.TrimSpace(input.AdminName)
@@ -140,17 +144,59 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	if _, err := time.LoadLocation(value.DefaultTimezone); err != nil {
 		return domain.SystemSettings{}, domain.ErrInvalid
 	}
+	current, err := s.Stores.Settings.Get(ctx)
+	if err != nil {
+		return domain.SystemSettings{}, err
+	}
+	if value.CaptchaProvider != "" && value.CaptchaProvider != "recaptcha" && value.CaptchaProvider != "turnstile" && value.CaptchaProvider != "hcaptcha" && value.CaptchaProvider != "altcha" {
+		return domain.SystemSettings{}, domain.ErrInvalid
+	}
+	if value.CaptchaSecret != "" {
+		if !s.Cipher.Available() {
+			return domain.SystemSettings{}, domain.ErrInvalid
+		}
+		ciphertext, cipherErr := s.Cipher.Encrypt(value.CaptchaSecret)
+		if cipherErr != nil {
+			return domain.SystemSettings{}, cipherErr
+		}
+		value.CaptchaSecretCiphertext = ciphertext
+	} else {
+		value.CaptchaSecretCiphertext = current.CaptchaSecretCiphertext
+	}
+	value.CaptchaConfigured = value.CaptchaSecretCiphertext != ""
+	value.CaptchaSecret = ""
 	value.Initialized = true
+	value.AllowRegistration = value.AllowPasswordRegistration
 	if err := s.Stores.Settings.Save(ctx, value); err != nil {
 		return domain.SystemSettings{}, err
 	}
 	s.audit(ctx, userID, "", "system.settings.updated", "system_settings", "primary", "success")
-	return value, nil
+	return s.sanitiseSettings(value), nil
 }
 
 func (s *Service) GetSystemSettings(ctx context.Context, userID string) (domain.SystemSettings, error) {
 	if err := s.systemPermission(ctx, userID, "system.settings.manage"); err != nil {
 		return domain.SystemSettings{}, err
 	}
-	return s.Stores.Settings.Get(ctx)
+	value, err := s.Stores.Settings.Get(ctx)
+	return s.sanitiseSettings(value), err
+}
+
+func (s *Service) sanitiseSettings(value domain.SystemSettings) domain.SystemSettings {
+	value.CaptchaSecret = ""
+	value.CaptchaSecretCiphertext = ""
+	value.CaptchaConfigured = value.CaptchaConfigured || value.CaptchaProvider != ""
+	return value
+}
+
+func (s *Service) VerifyCaptcha(ctx context.Context, token, remoteIP string) error {
+	settings, err := s.Stores.Settings.Get(ctx)
+	if err != nil || settings.CaptchaProvider == "" {
+		return err
+	}
+	secret, err := s.Cipher.Decrypt(settings.CaptchaSecretCiphertext)
+	if err != nil {
+		return err
+	}
+	return s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, token, remoteIP)
 }

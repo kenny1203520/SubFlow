@@ -2,21 +2,28 @@ package application
 
 import (
 	"context"
+	"os"
 	"strings"
 	"time"
 
 	"subflow/internal/adapters"
+	"subflow/internal/captcha"
 	"subflow/internal/domain"
 	"subflow/internal/ports"
+	"subflow/internal/security"
 )
 
 type Service struct {
-	Stores adapters.Stores
-	Now    func() time.Time
-	Rates  RateProvider
+	Stores  adapters.Stores
+	Now     func() time.Time
+	Rates   RateProvider
+	Captcha captcha.Verifier
+	Cipher  security.SettingsCipher
 }
 
-func New(stores adapters.Stores) *Service { return &Service{Stores: stores, Now: time.Now} }
+func New(stores adapters.Stores) *Service {
+	return &Service{Stores: stores, Now: time.Now, Captcha: captcha.NewVerifier(), Cipher: security.NewSettingsCipher(os.Getenv("SUBFLOW_SETTINGS_ENCRYPTION_KEY"))}
+}
 
 func (s *Service) role(ctx context.Context, groupID, userID string, ownerOnly bool) error {
 	role, err := s.Stores.Memberships.GetRole(ctx, groupID, userID)

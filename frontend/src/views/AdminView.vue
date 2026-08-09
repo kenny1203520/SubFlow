@@ -11,6 +11,7 @@ import { systemPermissionText } from '../locales/admin'
 import CurrencySelect from '../components/CurrencySelect.vue'
 import TimezoneSelect from '../components/TimezoneSelect.vue'
 import BaseInput from '../components/BaseInput.vue'
+import PasswordField from '../components/PasswordField.vue'
 import RoleSelect from '../components/RoleSelect.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
 import { auditPresentation } from '../utils/audit'
@@ -27,7 +28,7 @@ const error = ref('')
 const saved = ref(false)
 const loading = ref(false)
 const query = ref('')
-const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true })
+const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaSecret: '', captchaConfigured: false })
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
 const section = computed(() => String(route.params.section || 'overview'))
@@ -125,7 +126,15 @@ onMounted(() => void load())
       <BaseInput v-model="settings.siteName" :label="tr('siteName')" required :maxlength="120" />
       <label>{{ tr('timezone') }}<TimezoneSelect v-model="settings.defaultTimezone" /></label>
       <label>{{ tr('currency') }}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies" /></label>
-      <label class="check"><input v-model="settings.allowRegistration" type="checkbox"><span>{{ tr('allowRegistration') }}</span></label>
+      <fieldset class="settings-section"><legend>{{ tr('loginSecurity') }}</legend>
+        <label class="check"><input v-model="settings.allowPasswordRegistration" type="checkbox"><span>{{ tr('allowPasswordRegistration') }}</span></label>
+        <label class="check"><input v-model="settings.allowOidcRegistration" type="checkbox"><span>{{ tr('allowOidcRegistration') }}</span></label>
+      </fieldset>
+      <fieldset class="settings-section"><legend>{{ tr('captcha') }}</legend>
+        <BaseCombobox v-model="settings.captchaProvider" :label="tr('captchaProvider')" :options="[{value:'',label:tr('disabled')},{value:'recaptcha',label:'Google reCAPTCHA'},{value:'turnstile',label:'Cloudflare Turnstile'},{value:'hcaptcha',label:'hCaptcha'},{value:'altcha',label:'ALTCHA'}]" />
+        <BaseInput v-if="settings.captchaProvider" v-model="settings.captchaSiteKey" :label="tr('captchaSiteKey')" />
+        <PasswordField v-if="settings.captchaProvider" v-model="settings.captchaSecret" :label="tr('captchaSecret')" autocomplete="off" :help="settings.captchaConfigured ? tr('captchaConfigured') : tr('captchaNotConfigured')" />
+      </fieldset>
       <div class="form-actions"><button class="primary">{{ tr('saveChanges') }}</button><span v-if="saved" class="success">{{ tr('saved') }}</span></div>
     </form>
 

@@ -107,24 +107,34 @@ type User struct {
 // intentionally separate from a user profile so the initial setup can be
 // completed exactly once.
 type SystemSettings struct {
-	Initialized       bool     `json:"initialized"`
-	SiteName          string   `json:"siteName"`
-	DefaultTimezone   string   `json:"defaultTimezone"`
-	DefaultCurrency   Currency `json:"defaultCurrency"`
-	AllowRegistration bool     `json:"allowRegistration"`
-	SetupTokenHash    string   `json:"-"`
-	SetupTokenIssued  bool     `json:"-"`
+	Initialized               bool     `json:"initialized"`
+	SiteName                  string   `json:"siteName"`
+	DefaultTimezone           string   `json:"defaultTimezone"`
+	DefaultCurrency           Currency `json:"defaultCurrency"`
+	AllowRegistration         bool     `json:"allowRegistration"` // legacy response compatibility
+	AllowPasswordRegistration bool     `json:"allowPasswordRegistration"`
+	AllowOIDCRegistration     bool     `json:"allowOidcRegistration"`
+	CaptchaProvider           string   `json:"captchaProvider,omitempty"`
+	CaptchaSiteKey            string   `json:"captchaSiteKey,omitempty"`
+	CaptchaSecret             string   `json:"captchaSecret,omitempty"`
+	CaptchaConfigured         bool     `json:"captchaConfigured"`
+	CaptchaSecretCiphertext   string   `json:"-"`
+	SetupTokenHash            string   `json:"-"`
+	SetupTokenIssued          bool     `json:"-"`
 }
 
 type SetupInput struct {
-	AdminName         string   `json:"adminName"`
-	Email             string   `json:"email"`
-	Password          string   `json:"password"`
-	SiteName          string   `json:"siteName"`
-	DefaultTimezone   string   `json:"defaultTimezone"`
-	DefaultCurrency   Currency `json:"defaultCurrency"`
-	AllowRegistration bool     `json:"allowRegistration"`
-	Token             string   `json:"token"`
+	AdminName                 string   `json:"adminName"`
+	Email                     string   `json:"email"`
+	Password                  string   `json:"password"`
+	SiteName                  string   `json:"siteName"`
+	DefaultTimezone           string   `json:"defaultTimezone"`
+	DefaultCurrency           Currency `json:"defaultCurrency"`
+	AllowRegistration         bool     `json:"allowRegistration"`
+	AllowPasswordRegistration bool     `json:"allowPasswordRegistration"`
+	AllowOIDCRegistration     bool     `json:"allowOidcRegistration"`
+	CaptchaToken              string   `json:"captchaToken"`
+	Token                     string   `json:"token"`
 }
 
 type Role struct {
@@ -201,14 +211,14 @@ type Invitation struct {
 // group invitations, while the type can be extended without changing the UI
 // contract.
 type Notification struct {
-	ID         string    `json:"id"`
-	UserID     string    `json:"userId"`
-	Type       string    `json:"type"`
-	GroupID    string    `json:"groupId,omitempty"`
-	ResourceID string    `json:"resourceId,omitempty"`
+	ID         string     `json:"id"`
+	UserID     string     `json:"userId"`
+	Type       string     `json:"type"`
+	GroupID    string     `json:"groupId,omitempty"`
+	ResourceID string     `json:"resourceId,omitempty"`
 	ReadAt     *time.Time `json:"readAt,omitempty"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	CreatedAt  time.Time  `json:"createdAt"`
+	UpdatedAt  time.Time  `json:"updatedAt"`
 }
 
 type Subscription struct {

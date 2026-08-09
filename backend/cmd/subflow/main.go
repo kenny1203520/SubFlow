@@ -73,11 +73,26 @@ func main() {
 		}
 		base := application.New(stores)
 		base.Rates = exchange.NewCBCProvider()
+		app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(event *core.RecordRequestPasswordResetRequestEvent) error {
+			if err := base.VerifyCaptcha(event.Request.Context(), event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+				return event.BadRequestError("captcha_verification_failed", nil)
+			}
+			return event.Next()
+		})
+		app.OnRecordRequestOTPRequest("users").BindFunc(func(event *core.RecordCreateOTPRequestEvent) error {
+			if err := base.VerifyCaptcha(event.Request.Context(), event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+				return event.BadRequestError("captcha_verification_failed", nil)
+			}
+			return event.Next()
+		})
 		app.OnRecordAuthWithOAuth2Request("users").BindFunc(func(event *core.RecordAuthWithOAuth2RequestEvent) error {
 			if event.IsNewRecord {
 				settings, settingsErr := base.SetupStatus(event.Request.Context())
-				if settingsErr != nil || !settings.Initialized || !settings.AllowRegistration {
+				if settingsErr != nil || !settings.Initialized || !settings.AllowOIDCRegistration {
 					return event.ForbiddenError("New user registration is disabled", nil)
+				}
+				if event.OAuth2User == nil || event.OAuth2User.Email == "" {
+					return event.BadRequestError("oidc_verified_email_required", nil)
 				}
 			}
 			return event.Next()

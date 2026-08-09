@@ -51,10 +51,21 @@ export const useAuthStore = defineStore('auth', () => {
     ready.value = true
   }
 
-  async function register(input: { email: string; password: string; name: string }) {
+  async function register(input: { email: string; password: string; name: string; captchaToken?: string }) {
     const api = new ApiClient(() => '', () => {})
-    await api.post('/auth/register', { email: input.email, password: input.password, adminName: input.name })
+    await api.post('/auth/register', { email: input.email, password: input.password, adminName: input.name, captchaToken: input.captchaToken || '' })
     await pb.collection('users').requestVerification(input.email)
+  }
+  async function requestPasswordReset(email: string, captchaToken = '') {
+    await pb.collection('users').requestPasswordReset(email, { headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {} })
+  }
+  async function requestOTP(email: string, captchaToken = '') {
+    return pb.collection('users').requestOTP(email, { headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {} })
+  }
+  async function loginOTP(otpId: string, password: string, mfaId = '') {
+    await pb.collection('users').authWithOTP(otpId, password, mfaId ? { mfaId } : {})
+    authToken.value = pb.authStore.token; authValid.value = pb.authStore.isValid; record.value = pb.authStore.record
+    await refreshAccess(); ready.value = true
   }
 
   async function updateProfile(input: { name: string; timezone: string; default_currency?: string }) {
@@ -66,5 +77,5 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     pb.authStore.clear(); authToken.value = ''; authValid.value = false; record.value = null; permissions.value=[]
   }
-  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, updateProfile, oauthProviders, loginOAuth, refreshAccess, logout }
+  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, requestPasswordReset, requestOTP, loginOTP, updateProfile, oauthProviders, loginOAuth, refreshAccess, logout }
 })
