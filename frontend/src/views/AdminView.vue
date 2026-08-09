@@ -7,36 +7,172 @@ import type { AccessRole, AuditLog, User } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
+import { systemPermissionText } from '../locales/admin'
 import CurrencySelect from '../components/CurrencySelect.vue'
 import TimezoneSelect from '../components/TimezoneSelect.vue'
 import BaseInput from '../components/BaseInput.vue'
+import RoleSelect from '../components/RoleSelect.vue'
 
-const auth=useAuthStore(),workspace=useWorkspaceStore(),route=useRoute(),{tr,formatDate}=useI18n()
-const api=new ApiClient(()=>auth.token,auth.logout)
-const roles=ref<AccessRole[]>([]),users=ref<User[]>([]),logs=ref<AuditLog[]>([]),error=ref(''),saved=ref(false),loading=ref(false),query=ref('')
-const settings=ref({initialized:true,siteName:'SubFlow',defaultTimezone:'UTC',defaultCurrency:'TWD',allowRegistration:true})
-const editRole=ref<AccessRole|null>(null)
-const allPermissions=['system.roles.manage','system.users.assign','system.audit.read','system.settings.manage']
-const section=computed(() => String(route.params.section||'overview'))
-const can=(permission:string)=>auth.permissions.includes('*')||auth.permissions.includes(permission)
-const pbAdminUrl=computed(()=>{const base=import.meta.env.VITE_BACKEND_URL||window.location.origin;return new URL('/_/',base).toString()})
-async function loadRoles(){if(!can('system.roles.manage'))return;roles.value=(await api.get<AccessRole[]>('/system/roles')).data}
-async function loadUsers(){if(!can('system.users.assign'))return;users.value=(await api.get<User[]>(`/system/users?perPage=50&q=${encodeURIComponent(query.value)}`)).data}
-async function loadLogs(){if(!can('system.audit.read'))return;logs.value=(await api.get<AuditLog[]>('/system/audit-logs?perPage=50')).data}
-async function loadSettings(){if(!can('system.settings.manage'))return;settings.value=(await api.get<typeof settings.value>('/system/settings')).data}
-async function load(){loading.value=true;error.value='';try{await Promise.all([loadRoles(),loadUsers(),loadLogs(),loadSettings()])}catch{error.value=tr('requestFailed')}finally{loading.value=false}}
-async function saveSettings(){try{settings.value=(await api.patch<typeof settings.value>('/system/settings',settings.value)).data;await Promise.all([auth.refreshAccess()]);saved.value=true;setTimeout(()=>saved.value=false,1800)}catch{error.value=tr('requestFailed')}}
-function startRole(role?:AccessRole){editRole.value=role?{...role,permissions:[...role.permissions]}:{id:'',scope:'system',name:'',key:'',permissions:[],protected:false,createdAt:'',updatedAt:''}}
-async function saveRole(){if(!editRole.value)return;try{const value=editRole.value;if(value.id)await api.patch(`/system/roles/${value.id}`,value);else await api.post('/system/roles',{name:value.name,key:value.key,permissions:value.permissions});editRole.value=null;await loadRoles()}catch{error.value=tr('requestFailed')}}
-async function deleteRole(role:AccessRole){if(!confirm(tr('deleteGroupConfirm',{name:role.name})))return;try{await api.delete(`/system/roles/${role.id}`);await loadRoles()}catch{error.value=tr('requestFailed')}}
-async function assign(user:User,roleId:string){try{await api.request(`/system/users/${user.id}/role`,{method:'PUT',body:JSON.stringify({roleId})});await loadUsers();if(user.id===auth.record?.id)await auth.refreshAccess()}catch{error.value=tr('requestFailed')}}
-watch(section,()=>void load())
-onMounted(()=>void load())
+const auth = useAuthStore()
+const workspace = useWorkspaceStore()
+const route = useRoute()
+const { tr, formatDate, locale } = useI18n()
+const api = new ApiClient(() => auth.token, auth.logout)
+const roles = ref<AccessRole[]>([])
+const users = ref<User[]>([])
+const logs = ref<AuditLog[]>([])
+const error = ref('')
+const saved = ref(false)
+const loading = ref(false)
+const query = ref('')
+const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true })
+const editRole = ref<AccessRole | null>(null)
+const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
+const section = computed(() => String(route.params.section || 'overview'))
+const can = (permission: string) => auth.permissions.includes('*') || auth.permissions.includes(permission)
+const pbAdminUrl = computed(() => {
+  const base = import.meta.env.VITE_BACKEND_URL || window.location.origin
+  return new URL('/_/', base).toString()
+})
+
+function permissionInfo(permission: string) {
+  return systemPermissionText[locale.value][permission as keyof typeof systemPermissionText['zh-TW']] ?? { title: permission, description: permission }
+}
+
+async function loadRoles() { if (can('system.roles.manage')) roles.value = (await api.get<AccessRole[]>('/system/roles')).data }
+async function loadUsers() { if (can('system.users.assign')) users.value = (await api.get<User[]>(`/system/users?perPage=50&q=${encodeURIComponent(query.value)}`)).data }
+async function loadLogs() { if (can('system.audit.read')) logs.value = (await api.get<AuditLog[]>('/system/audit-logs?perPage=50')).data }
+async function loadSettings() { if (can('system.settings.manage')) settings.value = (await api.get<typeof settings.value>('/system/settings')).data }
+async function load() {
+  loading.value = true
+  error.value = ''
+  try { await Promise.all([loadRoles(), loadUsers(), loadLogs(), loadSettings()]) } catch { error.value = tr('requestFailed') } finally { loading.value = false }
+}
+async function saveSettings() {
+  try {
+    settings.value = (await api.patch<typeof settings.value>('/system/settings', settings.value)).data
+    await auth.refreshAccess()
+    saved.value = true
+    setTimeout(() => { saved.value = false }, 1800)
+  } catch { error.value = tr('requestFailed') }
+}
+function startRole(role?: AccessRole) {
+  editRole.value = role ? { ...role, permissions: [...role.permissions] } : { id: '', scope: 'system', name: '', key: '', permissions: [], protected: false, createdAt: '', updatedAt: '' }
+}
+async function saveRole() {
+  if (!editRole.value) return
+  try {
+    const value = editRole.value
+    if (value.id) await api.patch(`/system/roles/${value.id}`, value)
+    else await api.post('/system/roles', { name: value.name, key: value.key, permissions: value.permissions })
+    editRole.value = null
+    await loadRoles()
+  } catch { error.value = tr('requestFailed') }
+}
+async function deleteRole(role: AccessRole) {
+  if (!confirm(tr('deleteGroupConfirm', { name: role.name }))) return
+  try { await api.delete(`/system/roles/${role.id}`); await loadRoles() } catch { error.value = tr('requestFailed') }
+}
+async function assign(user: User, roleId: string) {
+  try {
+    await api.request(`/system/users/${user.id}/role`, { method: 'PUT', body: JSON.stringify({ roleId }) })
+    await loadUsers()
+    if (user.id === auth.record?.id) await auth.refreshAccess()
+  } catch { error.value = tr('requestFailed') }
+}
+
+watch(section, () => void load())
+onMounted(() => void load())
 </script>
-<template><section class="page admin-page"><div class="admin-header"><div><p class="eyebrow">{{tr('systemAdministration')}}</p><h1>{{tr('systemAdministration')}}</h1><p>{{tr('accountSettings')}}</p></div><a class="admin-console-link" :href="pbAdminUrl" target="_blank" rel="noopener">{{tr('openPocketBase')}} <span aria-hidden="true">↗</span></a></div><nav class="admin-tabs"><RouterLink :to="{name:'admin'}">{{tr('adminOverview')}}</RouterLink><RouterLink v-if="can('system.settings.manage')" :to="{name:'admin-section',params:{section:'settings'}}">{{tr('settings')}}</RouterLink><RouterLink v-if="can('system.users.assign')" :to="{name:'admin-section',params:{section:'users'}}">{{tr('userManagement')}}</RouterLink><RouterLink v-if="can('system.roles.manage')" :to="{name:'admin-section',params:{section:'roles'}}">{{tr('roleManagement')}}</RouterLink><RouterLink v-if="can('system.audit.read')" :to="{name:'admin-section',params:{section:'audit'}}">{{tr('auditLogs')}}</RouterLink></nav><p v-if="error" class="notice danger">{{error}}</p><p v-if="loading" class="notice">{{tr('processing')}}</p>
-<template v-if="section==='overview'"><div class="admin-grid"><section class="card"><h2>{{tr('settings')}}</h2><p>{{tr('siteName')}} · {{settings.siteName}}</p><RouterLink v-if="can('system.settings.manage')" class="ghost" :to="{name:'admin-section',params:{section:'settings'}}">{{tr('edit')}}</RouterLink></section><section class="card"><h2>{{tr('userManagement')}}</h2><p>{{tr('records',{count:users.length})}}</p><RouterLink v-if="can('system.users.assign')" class="ghost" :to="{name:'admin-section',params:{section:'users'}}">{{tr('members')}}</RouterLink></section><section class="card"><h2>{{tr('roleManagement')}}</h2><p>{{tr('records',{count:roles.length})}}</p><RouterLink v-if="can('system.roles.manage')" class="ghost" :to="{name:'admin-section',params:{section:'roles'}}">{{tr('settings')}}</RouterLink></section></div></template>
-<form v-else-if="section==='settings'&&can('system.settings.manage')" class="card form-card admin-form" @submit.prevent="saveSettings"><h2>{{tr('settings')}}</h2><BaseInput v-model="settings.siteName" :label="tr('siteName')" required :maxlength="120"/><label>{{tr('timezone')}}<TimezoneSelect v-model="settings.defaultTimezone"/></label><label>{{tr('currency')}}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies"/></label><label class="check"><input v-model="settings.allowRegistration" type="checkbox"><span>{{tr('allowRegistration')}}</span></label><div class="form-actions"><button class="primary">{{tr('saveChanges')}}</button><span v-if="saved" class="success">{{tr('saved')}}</span></div></form>
-<section v-else-if="section==='users'&&can('system.users.assign')" class="card admin-form"><div class="section-heading"><h2>{{tr('userManagement')}}</h2><BaseInput v-model="query" :label="tr('search')" @update:model-value="loadUsers"/></div><div class="data-list"><article v-for="user in users" :key="user.id" class="data-row"><div class="grow"><strong>{{user.name||tr('unnamedMember')}}</strong><small>{{user.email}}</small></div><select :value="user.systemRoleId" :aria-label="tr('assignRole')" @change="assign(user,($event.target as HTMLSelectElement).value)"><option value="" disabled>{{tr('assignRole')}}</option><option v-for="role in roles" :key="role.id" :value="role.id">{{role.name}}</option></select></article><p v-if="!users.length" class="empty-inline">{{tr('noUsers')}}</p></div></section>
-<section v-else-if="section==='roles'&&can('system.roles.manage')" class="admin-stack"><section class="card admin-form"><div class="section-heading"><h2>{{tr('roleManagement')}}</h2><button class="primary" @click="startRole()">{{tr('add')}}</button></div><div class="data-list"><article v-for="role in roles" :key="role.id" class="data-row"><div class="grow"><strong>{{role.name}}</strong><small>{{role.key}} · {{role.permissions.join(', ')||'—'}}</small></div><span v-if="role.protected" class="pill">{{tr('protectedRole')}}</span><button v-else class="ghost" @click="startRole(role)">{{tr('edit')}}</button><button v-if="!role.protected" class="danger-text" @click="deleteRole(role)">{{tr('delete')}}</button></article></div></section><form v-if="editRole" class="card admin-form" @submit.prevent="saveRole"><h2>{{editRole.id?tr('edit'):tr('add')}}</h2><BaseInput v-model="editRole.name" :label="tr('name')" required/><BaseInput v-model="editRole.key" :label="tr('category')" required :disabled="!!editRole.id"/><fieldset><legend>{{tr('permissions')}}</legend><label v-for="permission in allPermissions" :key="permission" class="check"><input v-model="editRole.permissions" type="checkbox" :value="permission"><span>{{permission}}</span></label></fieldset><div class="form-actions"><button class="primary">{{tr('save')}}</button><button type="button" class="ghost" @click="editRole=null">{{tr('cancel')}}</button></div></form></section>
-<section v-else-if="section==='audit'&&can('system.audit.read')" class="card admin-form"><h2>{{tr('auditLogs')}}</h2><div class="data-list"><article v-for="log in logs" :key="log.id" class="data-row"><div class="grow"><strong>{{log.action}}</strong><small>{{log.resource}} · {{formatDate(log.createdAt)}} · {{log.outcome}}</small></div></article><p v-if="!logs.length" class="empty-inline">{{tr('noSummary')}}</p></div></section>
-</section></template>
+
+<template>
+  <section class="page admin-page">
+    <div class="admin-header">
+      <div>
+        <p class="eyebrow">{{ tr('systemAdministration') }}</p>
+        <h1>{{ tr('systemAdministration') }}</h1>
+        <p>{{ tr('accountSettings') }}</p>
+      </div>
+      <a class="admin-console-link" :href="pbAdminUrl" target="_blank" rel="noopener">
+        {{ tr('openPocketBase') }} <span aria-hidden="true">↗</span>
+      </a>
+    </div>
+    <nav class="admin-tabs">
+      <RouterLink :to="{ name: 'admin' }">{{ tr('adminOverview') }}</RouterLink>
+      <RouterLink v-if="can('system.settings.manage')" :to="{ name: 'admin-section', params: { section: 'settings' } }">{{ tr('settings') }}</RouterLink>
+      <RouterLink v-if="can('system.users.assign')" :to="{ name: 'admin-section', params: { section: 'users' } }">{{ tr('userManagement') }}</RouterLink>
+      <RouterLink v-if="can('system.roles.manage')" :to="{ name: 'admin-section', params: { section: 'roles' } }">{{ tr('roleManagement') }}</RouterLink>
+      <RouterLink v-if="can('system.audit.read')" :to="{ name: 'admin-section', params: { section: 'audit' } }">{{ tr('auditLogs') }}</RouterLink>
+    </nav>
+    <p v-if="error" class="notice danger">{{ error }}</p>
+    <p v-if="loading" class="notice">{{ tr('processing') }}</p>
+
+    <template v-if="section === 'overview'">
+      <div class="admin-grid">
+        <section class="card"><h2>{{ tr('settings') }}</h2><p>{{ tr('siteName') }} · {{ settings.siteName }}</p><RouterLink v-if="can('system.settings.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'settings' } }">{{ tr('edit') }}</RouterLink></section>
+        <section class="card"><h2>{{ tr('userManagement') }}</h2><p>{{ tr('records', { count: users.length }) }}</p><RouterLink v-if="can('system.users.assign')" class="ghost" :to="{ name: 'admin-section', params: { section: 'users' } }">{{ tr('members') }}</RouterLink></section>
+        <section class="card"><h2>{{ tr('roleManagement') }}</h2><p>{{ tr('records', { count: roles.length }) }}</p><RouterLink v-if="can('system.roles.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'roles' } }">{{ tr('settings') }}</RouterLink></section>
+      </div>
+    </template>
+
+    <form v-else-if="section === 'settings' && can('system.settings.manage')" class="card form-card admin-form" @submit.prevent="saveSettings">
+      <h2>{{ tr('settings') }}</h2>
+      <BaseInput v-model="settings.siteName" :label="tr('siteName')" required :maxlength="120" />
+      <label>{{ tr('timezone') }}<TimezoneSelect v-model="settings.defaultTimezone" /></label>
+      <label>{{ tr('currency') }}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies" /></label>
+      <label class="check"><input v-model="settings.allowRegistration" type="checkbox"><span>{{ tr('allowRegistration') }}</span></label>
+      <div class="form-actions"><button class="primary">{{ tr('saveChanges') }}</button><span v-if="saved" class="success">{{ tr('saved') }}</span></div>
+    </form>
+
+    <section v-else-if="section === 'users' && can('system.users.assign')" class="card admin-form">
+      <div class="section-heading"><h2>{{ tr('userManagement') }}</h2><BaseInput v-model="query" :label="tr('search')" @update:model-value="loadUsers" /></div>
+      <div class="data-list">
+        <article v-for="user in users" :key="user.id" class="data-row">
+          <div class="grow"><strong>{{ user.name || tr('unnamedMember') }}</strong><small>{{ user.email }}</small></div>
+          <RoleSelect :model-value="user.systemRoleId || ''" :roles="roles" :label="tr('assignRole')" @update:model-value="assign(user, $event)" />
+        </article>
+        <p v-if="!users.length" class="empty-inline">{{ tr('noUsers') }}</p>
+      </div>
+    </section>
+
+    <section v-else-if="section === 'roles' && can('system.roles.manage')" class="admin-stack">
+      <section class="card admin-form">
+        <div class="section-heading"><h2>{{ tr('roleManagement') }}</h2><button class="primary" @click="startRole()">{{ tr('add') }}</button></div>
+        <div class="data-list">
+          <article v-for="role in roles" :key="role.id" class="data-row">
+            <div class="grow">
+              <strong>{{ role.name }}</strong><small>{{ role.key }}</small>
+              <div v-if="role.permissions.length" class="permission-summary">
+                <div v-for="permission in role.permissions" :key="permission" class="permission-display">
+                  <strong>{{ permissionInfo(permission).title }}</strong><small>{{ permissionInfo(permission).description }}</small>
+                </div>
+              </div>
+              <p v-else class="permission-empty">{{ tr('noSummary') }}</p>
+            </div>
+            <span v-if="role.protected" class="pill">{{ tr('protectedRole') }}</span>
+            <button v-else class="ghost" @click="startRole(role)">{{ tr('edit') }}</button>
+            <button v-if="!role.protected" class="danger-text" @click="deleteRole(role)">{{ tr('delete') }}</button>
+          </article>
+        </div>
+      </section>
+      <form v-if="editRole" class="card admin-form" @submit.prevent="saveRole">
+        <h2>{{ editRole.id ? tr('edit') : tr('add') }}</h2>
+        <BaseInput v-model="editRole.name" :label="tr('name')" required />
+        <BaseInput v-model="editRole.key" :label="tr('category')" required :disabled="!!editRole.id" />
+        <fieldset class="permission-options">
+          <legend>{{ tr('permissions') }}</legend>
+          <label v-for="permission in allPermissions" :key="permission" class="check permission-option">
+            <input v-model="editRole.permissions" type="checkbox" :value="permission">
+            <span><strong>{{ permissionInfo(permission).title }}</strong><small>{{ permissionInfo(permission).description }}</small></span>
+          </label>
+        </fieldset>
+        <div class="form-actions"><button class="primary">{{ tr('save') }}</button><button type="button" class="ghost" @click="editRole = null">{{ tr('cancel') }}</button></div>
+      </form>
+    </section>
+
+    <section v-else-if="section === 'audit' && can('system.audit.read')" class="card admin-form">
+      <h2>{{ tr('auditLogs') }}</h2>
+      <div class="data-list"><article v-for="log in logs" :key="log.id" class="data-row"><div class="grow"><strong>{{ log.action }}</strong><small>{{ log.resource }} · {{ formatDate(log.createdAt) }} · {{ log.outcome }}</small></div></article><p v-if="!logs.length" class="empty-inline">{{ tr('noSummary') }}</p></div>
+    </section>
+  </section>
+</template>
