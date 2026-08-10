@@ -29,6 +29,15 @@ type historicalFixture struct {
 // earlier billing dates are already behind the current NextBilling.
 func newHistoricalFixture(t *testing.T) *historicalFixture {
 	t.Helper()
+	return newHistoricalFixtureTZ(t, "UTC")
+}
+
+// newHistoricalFixtureTZ is identical to newHistoricalFixture but seeds the
+// group with the given IANA timezone, for cases where the group's non-UTC
+// offset matters (e.g. reproducing a client that formats/parses dates in the
+// group's local calendar day instead of preserving the exact instant).
+func newHistoricalFixtureTZ(t *testing.T, timezone string) *historicalFixture {
+	t.Helper()
 	app, err := tests.NewTestApp()
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +55,7 @@ func newHistoricalFixture(t *testing.T) *historicalFixture {
 		record := core.NewRecord(users)
 		record.Set("email", email)
 		record.Set("name", email)
-		record.Set("timezone", "UTC")
+		record.Set("timezone", timezone)
 		record.SetPassword("correct-horse-battery-staple")
 		if err = app.Save(record); err != nil {
 			t.Fatal(err)
@@ -61,7 +70,7 @@ func newHistoricalFixture(t *testing.T) *historicalFixture {
 	service.Now = func() time.Time { return time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC) }
 
 	ctx := context.Background()
-	group := &domain.Group{Name: "Test Group", Currency: domain.CurrencyTWD, Color: "#7057e8", OwnerID: ids[0], Timezone: "UTC"}
+	group := &domain.Group{Name: "Test Group", Currency: domain.CurrencyTWD, Color: "#7057e8", OwnerID: ids[0], Timezone: timezone}
 	if err = stores.Groups.Create(ctx, group); err != nil {
 		t.Fatal(err)
 	}
@@ -173,6 +182,53 @@ func TestUpdateSubscriptionRejectsPastDateOffSchedule(t *testing.T) {
 	edit.EffectiveBillingAt = f.pastBilling.AddDate(0, 0, 3) // not a billing date
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("expected ErrInvalid for a past date off the schedule, got %v", err)
+	}
+}
+
+// Reproduces the frontend timezone bug directly against the backend: a date
+// input that round-trips a UTC instant through a local calendar day (as the
+// buggy client did) can land 24h off the stored StartsOn, which used to trip
+// the one_off immutability guard and silently drop the whole edit. The fix
+// is on the frontend (it now omits an untouched date field entirely), but
+// this asserts the backend contract that makes that fix work: an omitted
+// StartsOn always falls back to the stored value, in any group timezone.
+func TestUpdateSubscriptionHistoricalEditSurvivesNonUTCTimezone(t *testing.T) {
+	f := newHistoricalFixtureTZ(t, "Asia/Taipei")
+	ctx := context.Background()
+
+	// A client that reconstructs StartsOn from a same-day-shifted local date
+	// (the old, buggy behaviour) sends an instant that no longer matches the
+	// stored one, and must still be rejected by the immutability guard.
+	shifted := *f.subscription
+	shifted.RevisionScope = "one_off"
+	shifted.EffectiveBillingAt = f.pastBilling
+	shifted.StartsOn = f.subscription.StartsOn.Add(-24 * time.Hour)
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, shifted); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("expected ErrInvalid for a shifted StartsOn, got %v", err)
+	}
+
+	// The corrected client omits StartsOn instead of reconstructing it; the
+	// backend's IsZero fallback must keep the exact original instant and let
+	// the historical edit through.
+	omitted := *f.subscription
+	omitted.StartsOn = time.Time{}
+	omitted.RevisionScope = "one_off"
+	omitted.EffectiveBillingAt = f.pastBilling
+	omitted.SplitMode = domain.SplitAmount
+	omitted.Splits = []domain.ExpenseSplit{
+		{UserID: f.owner, AmountMinor: 30000},
+		{UserID: f.member, AmountMinor: 0},
+	}
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, omitted); err != nil {
+		t.Fatalf("expected the historical edit to succeed with StartsOn omitted, got %v", err)
+	}
+
+	dashboard, err := f.service.WorkspaceDashboard(ctx, f.member, application.DashboardQuery{Scope: "group", GroupID: f.group.ID, Month: "2024-09"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dashboard.Currencies) != 1 || dashboard.Currencies[0].PersonalShareMinor != 0 {
+		t.Fatalf("expected the revision to apply, got %#v", dashboard.Currencies)
 	}
 }
 

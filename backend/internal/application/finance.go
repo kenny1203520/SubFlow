@@ -445,7 +445,7 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	if err = s.Stores.Settlements.Create(ctx, &value); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success")
+	s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
 	return &value, nil
 }
 func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error {
@@ -462,7 +462,7 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 	}
 	err = s.Stores.Settlements.Delete(ctx, id)
 	if err == nil {
-		s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "success")
+		s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
 	}
 	return err
 }

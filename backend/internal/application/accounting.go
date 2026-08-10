@@ -162,7 +162,7 @@ func (s *Service) postSubscriptionOccurrence(ctx context.Context, subscription *
 		if updateErr := s.Stores.Subscriptions.Update(tx, subscription); updateErr != nil {
 			return updateErr
 		}
-		s.audit(tx, "", subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success")
+		s.audit(tx, "", subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "amount_minor": expense.AmountMinor, "expense_id": expense.ID}, nil))
 		return nil
 	})
 }
@@ -208,7 +208,7 @@ func (s *Service) recordSubscriptionOccurrenceFailure(ctx context.Context, subsc
 	}); err != nil {
 		return err
 	}
-	s.audit(ctx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure")
+	s.audit(ctx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure", encodeAuditSummary(map[string]any{"billing_at": subscription.NextBilling.Format("2006-01-02"), "reason": reason}, nil))
 	return nil
 }
 
@@ -279,7 +279,7 @@ func (s *Service) CreateCategory(ctx context.Context, userID string, value domai
 	if err = s.Stores.Categories.Create(ctx, &value); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, value.GroupID, "category.created", "category", value.ID, "success")
+	s.audit(ctx, userID, value.GroupID, "category.created", "category", value.ID, "success", encodeAuditSummary(map[string]any{"name": value.CustomName, "scope": value.Scope, "icon": value.IconKey}, nil))
 	return &value, nil
 }
 
@@ -304,6 +304,7 @@ func (s *Service) UpdateCategory(ctx context.Context, userID string, value domai
 			return nil, domain.ErrForbidden
 		}
 	}
+	before := *current
 	if name := strings.TrimSpace(value.CustomName); name != "" {
 		current.CustomName = name
 	}
@@ -314,7 +315,11 @@ func (s *Service) UpdateCategory(ctx context.Context, userID string, value domai
 	if err = s.Stores.Categories.Update(ctx, current); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, current.GroupID, "category.updated", "category", current.ID, "success")
+	var categoryChanges changeSet
+	categoryChanges.addString("name", before.CustomName, current.CustomName)
+	categoryChanges.addBool("archived", before.Archived, current.Archived)
+	categoryChanges.addString("icon", before.IconKey, current.IconKey)
+	s.audit(ctx, userID, current.GroupID, "category.updated", "category", current.ID, "success", encodeAuditSummary(nil, categoryChanges))
 	return current, nil
 }
 

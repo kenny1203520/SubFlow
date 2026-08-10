@@ -32,8 +32,14 @@ type apiError struct {
 func (a *API) Register(router *http.ServeMux) {}
 
 func (a *API) RegisterRoutes(e *core.ServeEvent) {
-	protected := func(route *core.RequestEvent) error { return route.Next() }
-	_ = protected
+	// Applies to every route registered on e.Router (RouterGroup middlewares
+	// are resolved at dispatch time, not baked in per-route at registration),
+	// so unauthenticated routes like setup/register are covered too — both
+	// call s.audit and need the caller's IP/User-Agent same as anything else.
+	e.Router.BindFunc(func(re *core.RequestEvent) error {
+		re.Request = re.Request.WithContext(application.WithAuditRequestMeta(re.Request.Context(), application.AuditRequestMeta{IP: re.RealIP(), UserAgent: re.Request.UserAgent()}))
+		return re.Next()
+	})
 	bind := apis.RequireAuth("users")
 	e.Router.GET("/api/subflow/v1/setup/status", a.setupStatus)
 	e.Router.GET("/api/subflow/v1/auth/captcha/challenge", a.captchaChallenge)

@@ -23,10 +23,27 @@ func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, r
 	if len(summary) > 0 {
 		summaryText = strings.TrimSpace(summary[0])
 	}
-	payload := strings.Join([]string{actor, groupID, action, resource, resourceID, outcome, summaryText}, "|")
+	meta := auditRequestMetaFrom(ctx)
+	ip, userAgent := meta.IP, meta.UserAgent
+	// A context that never passed through the HTTP layer's middleware (a
+	// background job like PostDueSubscriptions, running from
+	// context.Background()) has no caller to record; say so explicitly
+	// rather than leaving the column blank and indistinguishable from a
+	// bug that failed to capture it.
+	if ip == "" {
+		ip = "system"
+	}
+	if userAgent == "" {
+		userAgent = "system"
+	}
+	// The "v2" prefix distinguishes this payload shape from any pre-IP/UA
+	// row, should a verifier ever need to tell them apart; nothing in this
+	// codebase re-derives or checks the hash today (grep confirms), so this
+	// change can't invalidate anything that currently depends on it.
+	payload := strings.Join([]string{"v2", actor, groupID, action, resource, resourceID, outcome, summaryText, ip, userAgent}, "|")
 	mac := hmac.New(sha256.New, []byte(key))
 	_, _ = mac.Write([]byte(payload))
-	_ = s.Stores.Audits.Create(ctx, &domain.AuditLog{ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, Hash: hex.EncodeToString(mac.Sum(nil))})
+	_ = s.Stores.Audits.Create(ctx, &domain.AuditLog{ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, IP: ip, UserAgent: userAgent, Hash: hex.EncodeToString(mac.Sum(nil))})
 }
 
 func generatedRoleKey(name string) string { sum := sha256.Sum256([]byte(name + time.Now().UTC().String())); return fmt.Sprintf("custom-%x", sum[:6]) }
@@ -149,7 +166,7 @@ func (s *Service) CreateSystemRole(ctx context.Context, userID string, value dom
 	if err = s.Stores.Roles.Create(ctx, &value); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, "", "system_role.created", "system_role", value.ID, "success")
+	s.audit(ctx, userID, "", "system_role.created", "system_role", value.ID, "success", encodeAuditSummary(map[string]any{"name": value.Name, "key": value.Key, "permissions": value.Permissions}, nil))
 	return &value, nil
 }
 func (s *Service) UpdateSystemRole(ctx context.Context, userID string, value domain.Role) (*domain.Role, error) {
@@ -163,6 +180,7 @@ func (s *Service) UpdateSystemRole(ctx context.Context, userID string, value dom
 	if current.Protected {
 		return nil, domain.ErrForbidden
 	}
+	before := *current
 	current.Name = strings.TrimSpace(value.Name)
 	current.Category = strings.TrimSpace(value.Category)
 	current.Permissions = value.Permissions
@@ -172,7 +190,11 @@ func (s *Service) UpdateSystemRole(ctx context.Context, userID string, value dom
 	if err = s.Stores.Roles.Update(ctx, current); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, "", "system_role.updated", "system_role", current.ID, "success")
+	var roleChanges changeSet
+	roleChanges.addString("name", before.Name, current.Name)
+	roleChanges.addString("category", before.Category, current.Category)
+	roleChanges.addStrings("permissions", before.Permissions, current.Permissions)
+	s.audit(ctx, userID, "", "system_role.updated", "system_role", current.ID, "success", encodeAuditSummary(nil, roleChanges))
 	return current, nil
 }
 func (s *Service) DeleteSystemRole(ctx context.Context, userID, id string) error {
@@ -188,7 +210,7 @@ func (s *Service) DeleteSystemRole(ctx context.Context, userID, id string) error
 	}
 	err = s.Stores.Roles.Delete(ctx, "system", id)
 	if err == nil {
-		s.audit(ctx, userID, "", "system_role.deleted", "system_role", id, "success")
+		s.audit(ctx, userID, "", "system_role.deleted", "system_role", id, "success", encodeAuditSummary(map[string]any{"name": role.Name, "key": role.Key}, nil))
 	}
 	return err
 }
@@ -206,7 +228,7 @@ func (s *Service) AssignSystemRole(ctx context.Context, userID, targetID, roleID
 	if err = s.Stores.Users.SetSystemRole(ctx, targetID, roleID); err != nil {
 		return err
 	}
-	s.audit(ctx, userID, "", "system_role.assigned", "user", targetID, "success")
+	s.audit(ctx, userID, "", "system_role.assigned", "user", targetID, "success", encodeAuditSummary(map[string]any{"role": role.Name}, nil))
 	return nil
 }
 func (s *Service) RecoverSystemAdmin(ctx context.Context, targetID string) error {
@@ -231,7 +253,7 @@ func (s *Service) RecoverSystemAdmin(ctx context.Context, targetID string) error
 				return domain.ErrConflict
 			}
 			if err = s.Stores.Users.SetSystemRole(ctx, targetID, role.ID); err == nil {
-				s.audit(ctx, targetID, "", "system_role.recovered", "user", targetID, "success")
+				s.audit(ctx, targetID, "", "system_role.recovered", "user", targetID, "success", encodeAuditSummary(map[string]any{"role": role.Name}, nil))
 			}
 			return err
 		}
@@ -269,7 +291,7 @@ func (s *Service) CreateGroupRole(ctx context.Context, userID string, value doma
 	if err = s.Stores.Roles.Create(ctx, &value); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, value.GroupID, "role.created", "group_role", value.ID, "success")
+	s.audit(ctx, userID, value.GroupID, "role.created", "group_role", value.ID, "success", encodeAuditSummary(map[string]any{"name": value.Name, "key": value.Key, "permissions": value.Permissions}, nil))
 	return &value, nil
 }
 func (s *Service) UpdateGroupRole(ctx context.Context, userID string, value domain.Role) (*domain.Role, error) {
@@ -283,6 +305,7 @@ func (s *Service) UpdateGroupRole(ctx context.Context, userID string, value doma
 	if current.Protected {
 		return nil, domain.ErrForbidden
 	}
+	before := *current
 	current.Name = strings.TrimSpace(value.Name)
 	current.Category = strings.TrimSpace(value.Category)
 	current.Permissions = value.Permissions
@@ -292,7 +315,11 @@ func (s *Service) UpdateGroupRole(ctx context.Context, userID string, value doma
 	if err = s.Stores.Roles.Update(ctx, current); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, current.GroupID, "role.updated", "group_role", current.ID, "success")
+	var groupRoleChanges changeSet
+	groupRoleChanges.addString("name", before.Name, current.Name)
+	groupRoleChanges.addString("category", before.Category, current.Category)
+	groupRoleChanges.addStrings("permissions", before.Permissions, current.Permissions)
+	s.audit(ctx, userID, current.GroupID, "role.updated", "group_role", current.ID, "success", encodeAuditSummary(nil, groupRoleChanges))
 	return current, nil
 }
 func (s *Service) DeleteGroupRole(ctx context.Context, userID, id string) error {
@@ -317,7 +344,7 @@ func (s *Service) DeleteGroupRole(ctx context.Context, userID, id string) error 
 	}
 	err = s.Stores.Roles.Delete(ctx, "group", id)
 	if err == nil {
-		s.audit(ctx, userID, current.GroupID, "role.deleted", "group_role", id, "success")
+		s.audit(ctx, userID, current.GroupID, "role.deleted", "group_role", id, "success", encodeAuditSummary(map[string]any{"name": current.Name, "key": current.Key}, nil))
 	}
 	return err
 }
@@ -341,7 +368,7 @@ func (s *Service) AssignGroupRole(ctx context.Context, userID, groupID, memberID
 	}
 	err = s.Stores.Memberships.UpdateRole(ctx, groupID, memberID, roleID)
 	if err == nil {
-		s.audit(ctx, userID, groupID, "role.assigned", "membership", memberID, "success")
+		s.audit(ctx, userID, groupID, "role.assigned", "membership", memberID, "success", encodeAuditSummary(map[string]any{"role": role.Name}, nil))
 	}
 	return err
 }
