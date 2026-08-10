@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -51,58 +50,32 @@ func (s *Service) expenseIsHistorical(ctx context.Context, userID string, value 
 	return value.IncurredOn.Before(start), nil
 }
 
-func historicalExpenseDetails(value *domain.Expense) string {
-	return fmt.Sprintf("title=%q, incurred_on=%s, amount_minor=%d", value.Title, value.IncurredOn.Format("2006-01-02"), value.AmountMinor)
+func historicalExpenseDetails(value *domain.Expense) map[string]any {
+	return map[string]any{"title": value.Title, "incurred_on": value.IncurredOn.Format("2006-01-02"), "amount_minor": value.AmountMinor}
 }
 
 func historicalExpenseChangeSummary(before, after *domain.Expense) string {
-	parts := make([]string, 0, 5)
-	if before.Title != after.Title {
-		parts = append(parts, fmt.Sprintf("title %q -> %q", before.Title, after.Title))
-	}
-	if before.IncurredOn.Format("2006-01-02") != after.IncurredOn.Format("2006-01-02") {
-		parts = append(parts, fmt.Sprintf("incurred_on %s -> %s", before.IncurredOn.Format("2006-01-02"), after.IncurredOn.Format("2006-01-02")))
-	}
-	if before.AmountMinor != after.AmountMinor {
-		parts = append(parts, fmt.Sprintf("amount_minor %d -> %d", before.AmountMinor, after.AmountMinor))
-	}
-	if before.PaidBy != after.PaidBy {
-		parts = append(parts, fmt.Sprintf("paid_by %q -> %q", before.PaidBy, after.PaidBy))
-	}
-	if before.CategoryID != after.CategoryID {
-		parts = append(parts, fmt.Sprintf("category_id %q -> %q", before.CategoryID, after.CategoryID))
-	}
-	if len(parts) == 0 {
-		return fmt.Sprintf("historical expense updated (%s)", historicalExpenseDetails(after))
-	}
-	return fmt.Sprintf("historical expense updated (%s; changes: %s)", historicalExpenseDetails(after), strings.Join(parts, "; "))
+	var changes changeSet
+	changes.addString("title", before.Title, after.Title)
+	changes.addString("incurred_on", before.IncurredOn.Format("2006-01-02"), after.IncurredOn.Format("2006-01-02"))
+	changes.addInt64("amount_minor", before.AmountMinor, after.AmountMinor)
+	changes.addString("paid_by", before.PaidBy, after.PaidBy)
+	changes.addString("category_id", before.CategoryID, after.CategoryID)
+	return encodeAuditSummary(historicalExpenseDetails(after), changes)
 }
 
-func historicalSubscriptionDetails(value *domain.Subscription, effective time.Time) string {
-	return fmt.Sprintf("name=%q, billing_at=%s, amount_minor=%d", value.Name, effective.Format("2006-01-02"), value.AmountMinor)
+func historicalSubscriptionDetails(value *domain.Subscription, effective time.Time) map[string]any {
+	return map[string]any{"name": value.Name, "billing_at": effective.Format("2006-01-02"), "amount_minor": value.AmountMinor}
 }
 
 func historicalSubscriptionChangeSummary(before, after *domain.Subscription, effective time.Time) string {
-	parts := make([]string, 0, 5)
-	if before.Name != after.Name {
-		parts = append(parts, fmt.Sprintf("name %q -> %q", before.Name, after.Name))
-	}
-	if before.AmountMinor != after.AmountMinor {
-		parts = append(parts, fmt.Sprintf("amount_minor %d -> %d", before.AmountMinor, after.AmountMinor))
-	}
-	if before.PaidBy != after.PaidBy {
-		parts = append(parts, fmt.Sprintf("paid_by %q -> %q", before.PaidBy, after.PaidBy))
-	}
-	if before.SplitMode != after.SplitMode {
-		parts = append(parts, fmt.Sprintf("split_mode %q -> %q", before.SplitMode, after.SplitMode))
-	}
-	if before.CategoryID != after.CategoryID {
-		parts = append(parts, fmt.Sprintf("category_id %q -> %q", before.CategoryID, after.CategoryID))
-	}
-	if len(parts) == 0 {
-		return fmt.Sprintf("historical subscription period updated (%s)", historicalSubscriptionDetails(after, effective))
-	}
-	return fmt.Sprintf("historical subscription period updated (%s; changes: %s)", historicalSubscriptionDetails(after, effective), strings.Join(parts, "; "))
+	var changes changeSet
+	changes.addString("name", before.Name, after.Name)
+	changes.addInt64("amount_minor", before.AmountMinor, after.AmountMinor)
+	changes.addString("paid_by", before.PaidBy, after.PaidBy)
+	changes.addString("split_mode", string(before.SplitMode), string(after.SplitMode))
+	changes.addString("category_id", before.CategoryID, after.CategoryID)
+	return encodeAuditSummary(historicalSubscriptionDetails(after, effective), changes)
 }
 
 func (s *Service) CreateGroup(ctx context.Context, userID string, group domain.Group) (*domain.Group, error) {
@@ -132,7 +105,7 @@ func (s *Service) CreateGroup(ctx context.Context, userID string, group domain.G
 		return s.Stores.Memberships.Create(tx, &domain.Membership{GroupID: group.ID, UserID: userID, Role: domain.RoleOwner})
 	})
 	if err == nil {
-		s.audit(ctx, userID, group.ID, "group.created", "group", group.ID, "success")
+		s.audit(ctx, userID, group.ID, "group.created", "group", group.ID, "success", encodeAuditSummary(map[string]any{"name": group.Name, "currency": group.Currency, "timezone": group.Timezone}, nil))
 	}
 	return &group, err
 }
@@ -175,7 +148,12 @@ func (s *Service) UpdateGroup(ctx context.Context, userID string, group domain.G
 	if err = s.Stores.Groups.Update(ctx, &group); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, group.ID, "group.updated", "group", group.ID, "success")
+	var groupChanges changeSet
+	groupChanges.addString("name", current.Name, group.Name)
+	groupChanges.addString("description", current.Description, group.Description)
+	groupChanges.addString("timezone", current.Timezone, group.Timezone)
+	groupChanges.addString("color", current.Color, group.Color)
+	s.audit(ctx, userID, group.ID, "group.updated", "group", group.ID, "success", encodeAuditSummary(nil, groupChanges))
 	return &group, nil
 }
 
@@ -183,9 +161,14 @@ func (s *Service) DeleteGroup(ctx context.Context, userID, id string) error {
 	if err := s.role(ctx, id, userID, true); err != nil {
 		return err
 	}
+	deleted, deletedErr := s.Stores.Groups.Get(ctx, id)
 	err := s.Stores.Groups.Delete(ctx, id)
 	if err == nil {
-		s.audit(ctx, userID, id, "group.deleted", "group", id, "success")
+		details := map[string]any(nil)
+		if deletedErr == nil {
+			details = map[string]any{"name": deleted.Name}
+		}
+		s.audit(ctx, userID, id, "group.deleted", "group", id, "success", encodeAuditSummary(details, nil))
 	}
 	return err
 }
@@ -208,7 +191,7 @@ func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID st
 	}
 	err = s.Stores.Memberships.Delete(ctx, groupID, memberID)
 	if err == nil {
-		s.audit(ctx, userID, groupID, "member.removed", "membership", memberID, "success")
+		s.audit(ctx, userID, groupID, "member.removed", "membership", memberID, "success", encodeAuditSummary(map[string]any{"role": string(role)}, nil))
 	}
 	return err
 }
@@ -302,9 +285,9 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 	}); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "subscription.created", "subscription", v.ID, "success")
+	s.audit(ctx, userID, v.GroupID, "subscription.created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor, "billing_cycle": v.BillingCycle, "split_mode": v.SplitMode}, nil))
 	if v.GroupID != "" {
-		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success")
+		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"scope": "future", "effective_billing_at": v.NextBilling.Format("2006-01-02")}, nil))
 	}
 	return &v, nil
 }
@@ -409,7 +392,7 @@ func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn strin
 	if err = s.Stores.Subscriptions.Update(ctx, v); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "subscription.stop_scheduled", "subscription", v.ID, "success")
+	s.audit(ctx, userID, v.GroupID, "subscription.stop_scheduled", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"ends_on": value.Format("2006-01-02")}, nil))
 	v.LifecycleStatus = domain.SubscriptionLifecycle(*v, s.Now())
 	return v, nil
 }
@@ -429,7 +412,7 @@ func (s *Service) ResumeSubscription(ctx context.Context, userID, id string) (*d
 	if err = s.Stores.Subscriptions.Update(ctx, v); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "subscription.stop_cancelled", "subscription", v.ID, "success")
+	s.audit(ctx, userID, v.GroupID, "subscription.stop_cancelled", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"name": v.Name}, nil))
 	v.LifecycleStatus = domain.SubscriptionLifecycle(*v, s.Now())
 	return v, nil
 }
@@ -538,7 +521,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		historical = effective.Before(current.NextBilling)
 		if historical {
 			if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.records.historical_write"); err != nil {
-				s.audit(ctx, userID, current.GroupID, "subscription.updated", "subscription", current.ID, "failure", fmt.Sprintf("historical subscription update denied (%s)", historicalSubscriptionDetails(current, effective)))
+				s.audit(ctx, userID, current.GroupID, "subscription.updated", "subscription", current.ID, "failure", encodeAuditSummary(historicalSubscriptionDetails(current, effective), nil))
 				return nil, err
 			}
 			// Reopening a closed period must not rewrite what the subscription
@@ -573,13 +556,9 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	}); err != nil {
 		return nil, err
 	}
-	if historical {
-		s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success", historicalSubscriptionChangeSummary(current, &v, effective))
-	} else {
-		s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success")
-	}
+	s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success", historicalSubscriptionChangeSummary(current, &v, effective))
 	if v.GroupID != "" {
-		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success")
+		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"scope": scope, "effective_billing_at": effective.Format("2006-01-02")}, nil))
 	}
 	return &v, nil
 }
@@ -660,7 +639,7 @@ func (s *Service) DeleteSubscription(ctx context.Context, userID, id string) err
 	}
 	err = s.Stores.Subscriptions.Delete(ctx, id)
 	if err == nil {
-		s.audit(ctx, userID, v.GroupID, "subscription.deleted", "subscription", id, "success")
+		s.audit(ctx, userID, v.GroupID, "subscription.deleted", "subscription", id, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor}, nil))
 	}
 	return err
 }
@@ -759,7 +738,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 	for i := range v.Splits {
 		v.Splits[i].ExpenseID = v.ID
 	}
-	s.audit(ctx, userID, v.GroupID, "expense.created", "expense", v.ID, "success")
+	s.audit(ctx, userID, v.GroupID, "expense.created", "expense", v.ID, "success", encodeAuditSummary(map[string]any{"title": v.Title, "amount_minor": v.AmountMinor, "incurred_on": v.IncurredOn.Format("2006-01-02"), "split_mode": v.SplitMode}, nil))
 	return &v, nil
 }
 func (s *Service) ListPersonalExpenses(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Expense], error) {
@@ -832,7 +811,7 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 		historicalUpdate = currentHistorical || requestedHistorical
 		if historicalUpdate {
 			if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.records.historical_write"); err != nil {
-				s.audit(ctx, userID, current.GroupID, "expense.updated", "expense", current.ID, "failure", fmt.Sprintf("historical expense update denied (%s -> %s)", historicalExpenseDetails(current), historicalExpenseDetails(&v)))
+				s.audit(ctx, userID, current.GroupID, "expense.updated", "expense", current.ID, "failure", encodeAuditSummary(map[string]any{"current": historicalExpenseDetails(current), "requested": historicalExpenseDetails(&v)}, nil))
 				return nil, err
 			}
 		}
@@ -894,11 +873,7 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 	}); err != nil {
 		return nil, err
 	}
-	if historicalUpdate {
-		s.audit(ctx, userID, v.GroupID, "expense.updated", "expense", v.ID, "success", historicalExpenseChangeSummary(current, &v))
-	} else {
-		s.audit(ctx, userID, v.GroupID, "expense.updated", "expense", v.ID, "success")
-	}
+	s.audit(ctx, userID, v.GroupID, "expense.updated", "expense", v.ID, "success", historicalExpenseChangeSummary(current, &v))
 	return &v, nil
 }
 func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
@@ -919,17 +894,13 @@ func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
 	}
 	if historical {
 		if err = s.groupPermission(ctx, userID, v.GroupID, "ledger.records.historical_write"); err != nil {
-			s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "failure", fmt.Sprintf("historical expense delete denied (%s)", historicalExpenseDetails(v)))
+			s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "failure", encodeAuditSummary(historicalExpenseDetails(v), nil))
 			return err
 		}
 	}
 	err = s.Stores.Expenses.Delete(ctx, id)
 	if err == nil {
-		if historical {
-			s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success", fmt.Sprintf("historical expense deleted (%s)", historicalExpenseDetails(v)))
-		} else {
-			s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success")
-		}
+		s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success", encodeAuditSummary(historicalExpenseDetails(v), nil))
 	}
 	return err
 }

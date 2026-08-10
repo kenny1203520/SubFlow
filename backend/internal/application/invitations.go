@@ -40,7 +40,7 @@ func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, gro
 	if recipient, findErr := s.Base.Stores.Users.FindByEmail(ctx, email); findErr == nil {
 		_ = s.Base.Stores.Notifications.Create(ctx, &domain.Notification{UserID: recipient.ID, Type: "group_invitation", GroupID: groupID, ResourceID: inv.ID})
 	}
-	s.Base.audit(ctx, userID, groupID, "invitation.created", "invitation", inv.ID, "success")
+	s.Base.audit(ctx, userID, groupID, "invitation.created", "invitation", inv.ID, "success", encodeAuditSummary(map[string]any{"email": email}, nil))
 	return s.deliver(ctx, inv, plain)
 }
 func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitation, plain string) (*domain.Invitation, error) {
@@ -114,7 +114,7 @@ func (s *CollaborationService) RevokeInvitation(ctx context.Context, userID, id 
 		return err
 	}
 	s.publish(ctx, "updated", *inv)
-	s.Base.audit(ctx, userID, inv.GroupID, "invitation.revoked", "invitation", inv.ID, "success")
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.revoked", "invitation", inv.ID, "success", encodeAuditSummary(map[string]any{"email": inv.Email}, nil))
 	return nil
 }
 func (s *CollaborationService) AcceptInvitation(ctx context.Context, userID, token string) (*domain.Invitation, error) {
@@ -149,7 +149,7 @@ func (s *CollaborationService) accept(ctx context.Context, userID string, inv *d
 	if err != nil {
 		return nil, err
 	}
-	s.Base.audit(ctx, userID, inv.GroupID, "invitation.accepted", "invitation", inv.ID, "success")
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.accepted", "invitation", inv.ID, "success", encodeAuditSummary(map[string]any{"email": inv.Email}, nil))
 	s.publish(ctx, "accepted", *inv)
 	return inv, nil
 }
@@ -161,10 +161,10 @@ func (s *CollaborationService) DeclineInvitation(ctx context.Context, userID, id
 	if inv.Status != domain.InvitationPending || domain.NormalizeEmail(user.Email) != domain.NormalizeEmail(inv.Email) { return nil, domain.ErrForbidden }
 	inv.Status = domain.InvitationDeclined
 	if err = s.Base.Stores.Transactions.Within(ctx, func(tx context.Context) error { if err := s.Base.Stores.Invitations.Update(tx, inv); err != nil { return err }; return s.Base.Stores.Notifications.MarkReadForResource(tx, userID, inv.ID, s.Base.Now().UTC()) }); err != nil { return nil, err }
-	s.Base.audit(ctx, userID, inv.GroupID, "invitation.declined", "invitation", inv.ID, "success"); s.publish(ctx, "updated", *inv); return inv, nil
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.declined", "invitation", inv.ID, "success", encodeAuditSummary(map[string]any{"email": inv.Email}, nil)); s.publish(ctx, "updated", *inv); return inv, nil
 }
 func (s *CollaborationService) ListNotifications(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Notification], error) { return s.Base.Stores.Notifications.ListForUser(ctx, userID, page) }
-func (s *CollaborationService) MarkNotificationRead(ctx context.Context, userID, id string) error { note, err := s.Base.Stores.Notifications.Get(ctx, id); if err != nil { return err }; if note.UserID != userID { return domain.ErrForbidden }; if note.ReadAt == nil { if err = s.Base.Stores.Notifications.MarkRead(ctx, id, s.Base.Now().UTC()); err == nil { s.Base.audit(ctx, userID, note.GroupID, "notification.read", "notification", id, "success") } }; return err }
+func (s *CollaborationService) MarkNotificationRead(ctx context.Context, userID, id string) error { note, err := s.Base.Stores.Notifications.Get(ctx, id); if err != nil { return err }; if note.UserID != userID { return domain.ErrForbidden }; if note.ReadAt == nil { if err = s.Base.Stores.Notifications.MarkRead(ctx, id, s.Base.Now().UTC()); err == nil { s.Base.audit(ctx, userID, note.GroupID, "notification.read", "notification", id, "success", encodeAuditSummary(map[string]any{"type": note.Type}, nil)) } }; return err }
 func (s *CollaborationService) publish(ctx context.Context, kind string, inv domain.Invitation) {
 	if s.Events != nil {
 		_ = s.Events.Publish(ctx, domain.Event{Type: kind, GroupID: inv.GroupID, Resource: "group_invitations", ResourceID: inv.ID, OccurredAt: s.Base.Now().UTC()})

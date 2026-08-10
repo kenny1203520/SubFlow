@@ -39,12 +39,12 @@ func (s *Service) ValidateSetupToken(ctx context.Context, token string) (domain.
 
 func (s *Service) InitializeSetup(ctx context.Context, input domain.SetupInput) (*domain.User, error) {
 	if !validSetup(input) {
-		s.audit(ctx, "", "", "setup.initialize", "system", "", "failed")
+		s.audit(ctx, "", "", "setup.initialize", "system", "", "failure", encodeAuditSummary(map[string]any{"reason": "invalid_input"}, nil))
 		return nil, domain.ErrInvalid
 	}
 	_, validToken, settingsErr := s.ValidateSetupToken(ctx, input.Token)
 	if settingsErr != nil || !validToken {
-		s.audit(ctx, "", "", "setup.initialize", "system", "", "failed")
+		s.audit(ctx, "", "", "setup.initialize", "system", "", "failure", encodeAuditSummary(map[string]any{"reason": "invalid_token"}, nil))
 		return nil, domain.ErrSetupToken
 	}
 	var created *domain.User
@@ -95,10 +95,10 @@ func (s *Service) InitializeSetup(ctx context.Context, input domain.SetupInput) 
 		return s.Stores.Settings.Save(tx, settings)
 	})
 	if err != nil {
-		s.audit(ctx, "", "", "setup.initialize", "system", "", "failed")
+		s.audit(ctx, "", "", "setup.initialize", "system", "", "failure", encodeAuditSummary(map[string]any{"reason": err.Error()}, nil))
 		return nil, err
 	}
-	s.audit(ctx, created.ID, "", "setup.initialize", "system", "", "success")
+	s.audit(ctx, created.ID, "", "setup.initialize", "system", "", "success", encodeAuditSummary(map[string]any{"site_name": input.SiteName, "admin_email": created.Email}, nil))
 	return created, nil
 }
 
@@ -131,7 +131,7 @@ func (s *Service) Register(ctx context.Context, input domain.SetupInput) (*domai
 			break
 		}
 	}
-	s.audit(ctx, created.ID, "", "user.registered", "user", created.ID, "success")
+	s.audit(ctx, created.ID, "", "user.registered", "user", created.ID, "success", encodeAuditSummary(map[string]any{"email": created.Email}, nil))
 	return created, nil
 }
 
@@ -182,7 +182,16 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	if err := s.Stores.Settings.Save(ctx, value); err != nil {
 		return domain.SystemSettings{}, err
 	}
-	s.audit(ctx, userID, "", "system.settings.updated", "system_settings", "primary", "success")
+	// Never put the captcha secret itself in the audit trail; only whether it changed.
+	var settingsChanges changeSet
+	settingsChanges.addString("site_name", current.SiteName, value.SiteName)
+	settingsChanges.addString("default_timezone", current.DefaultTimezone, value.DefaultTimezone)
+	settingsChanges.addString("default_currency", string(current.DefaultCurrency), string(value.DefaultCurrency))
+	settingsChanges.addBool("allow_password_registration", current.AllowPasswordRegistration, value.AllowPasswordRegistration)
+	settingsChanges.addBool("allow_oidc_registration", current.AllowOIDCRegistration, value.AllowOIDCRegistration)
+	settingsChanges.addString("captcha_provider", current.CaptchaProvider, value.CaptchaProvider)
+	settingsChanges.addBool("captcha_secret_changed", false, current.CaptchaSecretCiphertext != value.CaptchaSecretCiphertext)
+	s.audit(ctx, userID, "", "system.settings.updated", "system_settings", "primary", "success", encodeAuditSummary(nil, settingsChanges))
 	return s.sanitiseSettings(value), nil
 }
 
