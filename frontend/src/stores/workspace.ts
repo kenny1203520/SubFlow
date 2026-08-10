@@ -7,8 +7,13 @@ import { useAuthStore } from './auth'
 import { useI18n } from '../i18n'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'>
-type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'startsOn'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'|'billingInterval'>>
-type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'incurredOn'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'>>
+// startsOn is optional so an update can omit it when the user did not touch
+// the date input: the backend then keeps the exact stored instant instead of
+// a same-day reconstruction from the viewer's timezone, which would shift it
+// by up to 24h relative to the original (see dateInput.ts).
+type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'|'billingInterval'|'startsOn'>>
+// incurredOn is optional for the same reason startsOn is on SubscriptionInput.
+type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'|'incurredOn'>>
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const auth = useAuthStore()
@@ -62,7 +67,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return keys[code] ? tr(keys[code]) : tr('requestFailed')
   }
 
-  async function run(task: () => Promise<void>, key = 'general') {
+  // Returns whether the task succeeded, so a caller that needs to react to a
+  // failure (e.g. keep a form drawer open and show the error) can check it
+  // instead of assuming success like a bare `await run(...)` always did.
+  async function run(task: () => Promise<void>, key = 'general'): Promise<boolean> {
     busy[key] = (busy[key] || 0) + 1
     lastRetry = task
     error.value = ''
@@ -70,11 +78,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     permissionDenied.value = false
     try {
       await task()
+      return true
     } catch (reason) {
       const value = reason as { status?: number; message?: string }
       permissionDenied.value = value.status === 403
       error.value = value.message ?? ''
       errorCode.value = reason instanceof ApiError ? reason.code : 'internal_error'
+      return false
     } finally {
       busy[key] = Math.max(0, (busy[key] || 1) - 1)
     }
@@ -289,15 +299,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function markNotificationRead(id:string){await api.post(`/notifications/${id}/read`);notifications.value=notifications.value.map(item=>item.id===id?{...item,readAt:new Date().toISOString()}:item)}
 
   async function addSubscription(input: SubscriptionInput) {
-    if (!currentGroupId.value) return
-    await run(async () => {
+    if (!currentGroupId.value) return false
+    return run(async () => {
       await api.post<Subscription>(`/groups/${currentGroupId.value}/subscriptions`, input)
       await refreshGroup()
     })
   }
 
   async function updateSubscription(id: string, input: SubscriptionInput) {
-    await run(async () => {
+    return run(async () => {
       await api.patch<Subscription>(`/subscriptions/${id}`, input)
       if (currentGroupId.value) await refreshGroup()
       await refreshPersonal()
@@ -313,18 +323,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function addExpense(input: ExpenseInput) {
-    if (!currentGroupId.value) return
-    await run(async () => {
+    if (!currentGroupId.value) return false
+    return run(async () => {
       await api.post<Expense>(`/groups/${currentGroupId.value}/expenses`, input)
       await refreshGroup()
     })
   }
 
   async function addPersonalExpense(input: ExpenseInput) {
-    await run(async () => { await api.post<Expense>('/expenses', input); await refreshPersonal() })
+    return run(async () => { await api.post<Expense>('/expenses', input); await refreshPersonal() })
   }
   async function addPersonalSubscription(input: SubscriptionInput) {
-    await run(async () => { await api.post<Subscription>('/subscriptions', input); await refreshPersonal() })
+    return run(async () => { await api.post<Subscription>('/subscriptions', input); await refreshPersonal() })
   }
   async function stopSubscription(id: string, endsOn: string) {
     await run(async () => { await api.post<Subscription>(`/subscriptions/${id}/stop`, { endsOn }); await refreshPersonal(); if (currentGroupId.value) await refreshGroup() })
@@ -333,13 +343,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function billingDates(id: string, cursor = '', includePast = false) { return (await api.get<BillingDates>(`/subscriptions/${id}/billing-dates?limit=12${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${includePast ? '&includePast=true' : ''}`)).data }
 
   async function addSettlement(input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>) {
-    if (!currentGroupId.value) return
-    await run(async () => { await api.post<Settlement>(`/groups/${currentGroupId.value}/settlements`, input); await refreshGroup() }, 'settlements')
+    if (!currentGroupId.value) return false
+    return run(async () => { await api.post<Settlement>(`/groups/${currentGroupId.value}/settlements`, input); await refreshGroup() }, 'settlements')
   }
   async function deleteSettlement(id: string) { await run(async () => { await api.delete(`/settlements/${id}`); await refreshGroup() }, 'settlements') }
 
   async function updateExpense(id: string, input: ExpenseInput) {
-    await run(async () => {
+    return run(async () => {
       await api.patch<Expense>(`/expenses/${id}`, input)
       if (currentGroupId.value) await refreshGroup()
       await refreshPersonal()

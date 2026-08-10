@@ -797,6 +797,13 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 	historicalUpdate := false
 	v.GroupID = current.GroupID
 	v.OwnerID = current.OwnerID
+	// Mirrors the same fallback UpdateSubscription applies to StartsOn: an
+	// omitted date keeps the exact stored instant instead of forcing the
+	// caller to resend one, which a timezone-lossy client could shift by a
+	// day relative to what is actually stored.
+	if v.IncurredOn.IsZero() {
+		v.IncurredOn = current.IncurredOn
+	}
 	if current.GroupID == "" {
 		if current.OwnerID != userID {
 			return nil, domain.ErrForbidden
