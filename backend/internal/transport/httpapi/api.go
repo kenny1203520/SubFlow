@@ -36,6 +36,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	_ = protected
 	bind := apis.RequireAuth("users")
 	e.Router.GET("/api/subflow/v1/setup/status", a.setupStatus)
+	e.Router.GET("/api/subflow/v1/auth/captcha/challenge", a.captchaChallenge)
 	e.Router.POST("/api/subflow/v1/setup/initialize", a.initializeSetup)
 	e.Router.POST("/api/subflow/v1/auth/register", a.register)
 	e.Router.GET("/api/subflow/v1/groups", a.listGroups).Bind(bind)
@@ -341,7 +342,7 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	if settings.Initialized {
-		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaProvider": settings.CaptchaProvider, "captchaSiteKey": settings.CaptchaSiteKey}, nil)
+		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaProvider": settings.CaptchaProvider, "captchaSiteKey": settings.CaptchaSiteKey, "captchaChallengeUrl": settings.CaptchaChallengeURL}, nil)
 	}
 	_, valid, err := a.Service.ValidateSetupToken(e.Request.Context(), e.Request.URL.Query().Get("token"))
 	if err != nil {
@@ -351,6 +352,12 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 		return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": false}, nil)
 	}
 	return ok(e, http.StatusOK, map[string]any{"initialized": false, "setupAvailable": true, "siteName": settings.SiteName, "defaultTimezone": settings.DefaultTimezone, "defaultCurrency": settings.DefaultCurrency, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "currencies": a.Service.Currencies()}, nil)
+}
+
+func (a *API) captchaChallenge(e *core.RequestEvent) error {
+	challenge, err := a.Service.CommunityCaptchaChallenge(e.Request.Context(), e.Request.URL.Query().Get("flow"))
+	if err != nil { return fail(e, err) }
+	return e.JSON(http.StatusOK, challenge)
 }
 func (a *API) systemAccess(e *core.RequestEvent) error {
 	permissions, err := a.Service.SystemPermissions(e.Request.Context(), authID(e))

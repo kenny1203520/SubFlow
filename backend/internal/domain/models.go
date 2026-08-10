@@ -116,6 +116,8 @@ type SystemSettings struct {
 	AllowOIDCRegistration     bool     `json:"allowOidcRegistration"`
 	CaptchaProvider           string   `json:"captchaProvider,omitempty"`
 	CaptchaSiteKey            string   `json:"captchaSiteKey,omitempty"`
+	CaptchaChallengeURL       string   `json:"captchaChallengeUrl,omitempty"`
+	CaptchaVerifyURL          string   `json:"captchaVerifyUrl,omitempty"`
 	CaptchaSecret             string   `json:"captchaSecret,omitempty"`
 	CaptchaConfigured         bool     `json:"captchaConfigured"`
 	CaptchaSecretCiphertext   string   `json:"-"`

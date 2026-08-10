@@ -3,6 +3,7 @@ module subflow
 go 1.26.0
 
 require (
+	github.com/altcha-org/altcha-lib-go/v2 v2.0.0-20260725115309-2c4fc27a7b2d // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/disintegration/imaging v1.6.2 // indirect
 	github.com/domodwyer/mailyak/v3 v3.6.2 // indirect

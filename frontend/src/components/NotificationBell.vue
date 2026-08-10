@@ -14,7 +14,7 @@ async function decline(id:string){await workspace.declinePendingInvitation(id)}
 function opened(){void workspace.loadInvitationInbox?.();nextTick()}
 </script>
 <template>
-  <BaseDropdown v-model="open" class="notification-bell" :panel-label="tr('notifications')" @opened="opened">
+  <BaseDropdown v-model="open" class="notification-bell" :panel-label="tr('notifications')" panel-role="dialog" placement="bottom-end" mobile-sheet @opened="opened">
     <template #trigger="{toggle}">
       <button type="button" class="bell-trigger" :aria-label="tr('notifications')" :aria-expanded="open" @click="toggle">
         <span aria-hidden="true">♧</span><span v-if="unread" class="bell-count">{{unread}}</span>

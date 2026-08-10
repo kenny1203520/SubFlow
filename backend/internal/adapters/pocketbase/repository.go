@@ -831,7 +831,7 @@ func settingsFrom(record *core.Record) domain.SystemSettings {
 	if !password && !oidc && legacy {
 		password, oidc = true, true
 	}
-	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: record.GetString("captcha_provider"), CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: record.GetString("captcha_provider"), CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
 }
 
 func defaultSystemSettings() domain.SystemSettings {
@@ -880,6 +880,8 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	record.Set("allow_oidc_registration", value.AllowOIDCRegistration)
 	record.Set("captcha_provider", value.CaptchaProvider)
 	record.Set("captcha_site_key", value.CaptchaSiteKey)
+	record.Set("captcha_challenge_url", value.CaptchaChallengeURL)
+	record.Set("captcha_verify_url", value.CaptchaVerifyURL)
 	if value.CaptchaSecretCiphertext != "" {
 		record.Set("captcha_secret", value.CaptchaSecretCiphertext)
 	}

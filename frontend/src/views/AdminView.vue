@@ -28,7 +28,7 @@ const error = ref('')
 const saved = ref(false)
 const loading = ref(false)
 const query = ref('')
-const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaSecret: '', captchaConfigured: false })
+const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false })
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
 const section = computed(() => String(route.params.section || 'overview'))
@@ -131,9 +131,12 @@ onMounted(() => void load())
         <label class="check"><input v-model="settings.allowOidcRegistration" type="checkbox"><span>{{ tr('allowOidcRegistration') }}</span></label>
       </fieldset>
       <fieldset class="settings-section"><legend>{{ tr('captcha') }}</legend>
-        <BaseCombobox v-model="settings.captchaProvider" :label="tr('captchaProvider')" :options="[{value:'',label:tr('disabled')},{value:'recaptcha',label:'Google reCAPTCHA'},{value:'turnstile',label:'Cloudflare Turnstile'},{value:'hcaptcha',label:'hCaptcha'},{value:'altcha',label:'ALTCHA'}]" />
-        <BaseInput v-if="settings.captchaProvider" v-model="settings.captchaSiteKey" :label="tr('captchaSiteKey')" />
-        <PasswordField v-if="settings.captchaProvider" v-model="settings.captchaSecret" :label="tr('captchaSecret')" autocomplete="off" :help="settings.captchaConfigured ? tr('captchaConfigured') : tr('captchaNotConfigured')" />
+        <BaseCombobox v-model="settings.captchaProvider" :label="tr('captchaProvider')" :options="[{value:'',label:tr('disabled')},{value:'recaptcha',label:'Google reCAPTCHA'},{value:'turnstile',label:'Cloudflare Turnstile'},{value:'hcaptcha',label:'hCaptcha'},{value:'altcha_community',label:'ALTCHA Community'},{value:'altcha_sentinel',label:'ALTCHA Sentinel'}]" />
+        <BaseInput v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'&&settings.captchaProvider!=='altcha_sentinel'" v-model="settings.captchaSiteKey" :label="tr('captchaSiteKey')" />
+        <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaChallengeUrl" label="Sentinel challenge URL" help="Public ALTCHA Sentinel challenge endpoint." />
+        <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaVerifyUrl" label="Sentinel verification URL" help="Server-side /v1/verify/signature endpoint." />
+        <PasswordField v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'" v-model="settings.captchaSecret" :label="tr('captchaSecret')" autocomplete="off" :help="settings.captchaConfigured ? tr('captchaConfigured') : tr('captchaNotConfigured')" />
+        <p v-else-if="settings.captchaProvider==='altcha_community'" class="field-help">ALTCHA Community signing secret is generated and encrypted by SubFlow.</p>
       </fieldset>
       <div class="form-actions"><button class="primary">{{ tr('saveChanges') }}</button><span v-if="saved" class="success">{{ tr('saved') }}</span></div>
     </form>
