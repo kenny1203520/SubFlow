@@ -10,6 +10,9 @@ import LanguageSwitcher from './components/LanguageSwitcher.vue'
 import NotificationBell from './components/NotificationBell.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import PwaUpdatePrompt from './components/PwaUpdatePrompt.vue'
+import ToastContainer from './components/ToastContainer.vue'
+import TimezoneMismatchDialog from './components/TimezoneMismatchDialog.vue'
+import { browserTimezone } from './timezone'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
@@ -23,11 +26,30 @@ let hydratedUser = ''
 let hydration: Promise<void> | undefined
 useTheme()
 
+// Checked once per login/app-open (per the user's chosen cadence), not
+// persisted anywhere — a fresh mismatch check runs again next time they sign
+// in, even if they dismissed the last one.
+const timezoneChecked = ref(false)
+const timezoneMismatch = ref<{ saved: string; current: string } | undefined>()
+function checkTimezoneMismatch() {
+  if (timezoneChecked.value) return
+  timezoneChecked.value = true
+  const saved = auth.record?.timezone
+  const current = browserTimezone()
+  if (saved && current && saved !== current) timezoneMismatch.value = { saved, current }
+}
+async function applyDetectedTimezone() {
+  if (!timezoneMismatch.value || !auth.record) return
+  await auth.updateProfile({ name: auth.record.name, timezone: timezoneMismatch.value.current, default_currency: auth.record.defaultCurrency })
+  timezoneMismatch.value = undefined
+}
+
 async function hydrateWorkspace() {
   const userId = String(auth.record?.id || '')
   if (!userId || hydratedUser === userId) return
   if (!hydration) hydration = workspace.loadGroups().then(() => { hydratedUser = userId }).finally(() => { hydration = undefined })
   await hydration
+  checkTimezoneMismatch()
 }
 
 async function bootstrap() {
@@ -50,6 +72,8 @@ onMounted(() => void bootstrap())
 watch(() => auth.authenticated, authenticated => {
   if (authenticated) { void hydrateWorkspace(); return }
   hydratedUser = ''
+  timezoneChecked.value = false
+  timezoneMismatch.value = undefined
   workspace.clear()
   if (auth.ready && setup.initialized && route.name !== 'auth') void router.replace({ name: 'auth' })
 })
@@ -59,6 +83,8 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
 
 <template>
   <PwaUpdatePrompt />
+  <ToastContainer />
+  <TimezoneMismatchDialog :open="!!timezoneMismatch" :saved-timezone="timezoneMismatch?.saved||''" :current-timezone="timezoneMismatch?.current||''" @update="applyDetectedTimezone" @later="timezoneMismatch=undefined" />
   <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div>
   <RouterView v-else-if="!setup.initialized" />
   <RouterView v-else-if="!auth.authenticated" />

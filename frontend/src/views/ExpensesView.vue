@@ -24,7 +24,7 @@ const workspace=useWorkspaceStore(),auth=useAuthStore(),route=useRoute(),{tr,for
 function viewerTimezone(){return auth.record?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'}
 const personal=computed(()=>route.name==='personal-expenses')
 const list=computed(()=>personal.value?workspace.personalExpenses:workspace.expenses)
-const open=ref(false),editingId=ref(''),pendingDelete=ref<Expense>(),sourceItem=ref<Expense>(),formError=ref(''),rateValid=ref(true)
+const open=ref(false),editingId=ref(''),pendingDelete=ref<Expense>(),sourceItem=ref<Expense>(),formError=ref(''),rateValid=ref(true),exportError=ref(''),exporting=ref(false)
 const form=reactive({title:'',category:'',categoryId:'',amount:'',currency:'TWD' as Currency,rateMode:'automatic' as 'automatic'|'manual',exchangeRate:'',paidBy:'',incurredOn:todayInput(viewerTimezone()),notes:'',splitMode:'equal' as SplitMode,participants:{} as Record<string,boolean>,values:{} as Record<string,string>})
 // See SubscriptionsView.vue: only send incurredOn back when the user actually
 // touched the date input, so an untouched value keeps its exact stored
@@ -57,6 +57,7 @@ async function submit(){
   reset()
 }
 async function remove(){if(!pendingDelete.value)return;await workspace.deleteExpense(pendingDelete.value.id);await workspace.refreshPersonal();pendingDelete.value=undefined}
+async function exportLedger(){exportError.value='';exporting.value=true;try{await workspace.exportLedger(personal.value?undefined:workspace.currentGroupId)}catch{exportError.value=tr('exportFailed')}finally{exporting.value=false}}
 function recordCurrency(item:Expense){return item.currency||workspace.groups.find(group=>group.id===item.groupId)?.currency||'TWD'}
 function recordCategory(item:Expense){return `${categoryGlyph(item.categoryInfo)} ${categoryLabel(item.categoryInfo,item.category,tr)}`}
 function itemGroup(item:Expense){return workspace.groups.find(group=>group.id===item.groupId)}
@@ -72,7 +73,8 @@ onMounted(()=>{if(personal.value)void workspace.refreshPersonal();document.addEv
 onBeforeUnmount(()=>document.removeEventListener('click',openSourceFromBadge))
 </script>
 
-<template><section class="page ledger-page"><PersonalLedgerNav v-if="personal"/><div class="page-heading"><div><p class="eyebrow">{{tr(personal?'expensePersonal':'splitExpenses')}}</p><h1>{{tr(personal?'expensePersonal':'expenseGroup')}}</h1><p>{{tr('expenseDesc')}}</p></div><button class="primary" @click="create">{{tr('createExpense')}}</button></div>
+<template><section class="page ledger-page"><PersonalLedgerNav v-if="personal"/><div class="page-heading"><div><p class="eyebrow">{{tr(personal?'expensePersonal':'splitExpenses')}}</p><h1>{{tr(personal?'expensePersonal':'expenseGroup')}}</h1><p>{{tr('expenseDesc')}}</p></div><div class="page-heading-actions"><button class="ghost" :disabled="exporting" @click="exportLedger">{{tr('exportLedger')}}</button><button class="primary" @click="create">{{tr('createExpense')}}</button></div></div>
+  <div v-if="exportError" class="notice danger inline">{{exportError}}</div>
   <section class="card data-card"><div class="card-title"><h2>{{tr('recentExpenses')}}</h2><span>{{tr('records',{count:list.length})}}</span></div><div v-if="!personal&&workspace.groupErrors.expenses" class="resource-error"><p>{{workspace.groupErrors.expenses}}</p><button class="ghost" @click="workspace.refreshGroup()">{{tr('retry')}}</button></div><div v-else-if="list.length" class="data-table expense-table"><div class="data-table-head"><span>{{tr('item')}}</span><span>{{tr('source')}}</span><span>{{tr('payer')}}</span><span>{{tr('date')}}</span><span>{{tr('amount')}}</span><span></span></div><article v-for="item in list" :key="item.id" class="data-table-row"><div class="item-cell"><span class="service-icon expense">{{item.title.slice(0,1)}}</span><span><strong>{{item.title}}</strong><small>{{recordCategory(item)}}</small></span></div><span><span class="source-badge" :class="{shared:item.groupId}">{{itemGroup(item)?.name||tr('privateRecord')}}</span></span><span>{{workspace.members.find(m=>m.userId===item.paidBy)?.user?.name|| (item.paidBy===auth.record?.id?tr('myself'):'—')}}</span><span class="timezone-date"><strong>{{viewerDate(item.incurredOn)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small></span><span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="recordCurrency(item)"/><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span><span class="row-actions"><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('remove')" @click="pendingDelete=item">×</button></span></article></div><EmptyState v-else :title="tr('noExpenses')" :description="tr('noExpensesDesc')"/></section>
   <AppDrawer :open="open" :title="tr(editingId?'editExpense':'createExpense')" @close="open=false"><form class="form-card ledger-form" @submit.prevent="submit">
     <div v-if="formError" class="notice danger inline">{{formError}}</div><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div>
