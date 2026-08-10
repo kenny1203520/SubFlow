@@ -330,7 +330,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await run(async () => { await api.post<Subscription>(`/subscriptions/${id}/stop`, { endsOn }); await refreshPersonal(); if (currentGroupId.value) await refreshGroup() })
   }
   async function cancelSubscriptionStop(id: string) { await run(async () => { await api.delete<Subscription>(`/subscriptions/${id}/stop`); await refreshPersonal(); if (currentGroupId.value) await refreshGroup() }) }
-  async function billingDates(id: string, cursor = '') { return (await api.get<BillingDates>(`/subscriptions/${id}/billing-dates?limit=12${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)).data }
+  async function billingDates(id: string, cursor = '', includePast = false) { return (await api.get<BillingDates>(`/subscriptions/${id}/billing-dates?limit=12${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${includePast ? '&includePast=true' : ''}`)).data }
 
   async function addSettlement(input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>) {
     if (!currentGroupId.value) return

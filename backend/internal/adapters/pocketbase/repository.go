@@ -46,6 +46,12 @@ func (r *Repository) CreateGroup(ctx context.Context, group *domain.Group) error
 	if err := r.app(ctx).Save(record); err != nil {
 		return err
 	}
+	// Seed the protected owner/member roles now rather than waiting for the
+	// next EnsureSchema run, otherwise the group has no roles at all and every
+	// permission lookup for its members fails until the app restarts.
+	if err := ensureGroupRoleSeeds(r.app(ctx), record); err != nil {
+		return err
+	}
 	group.ID = record.Id
 	hydrateTimes(record, &group.CreatedAt, &group.UpdatedAt)
 	return nil

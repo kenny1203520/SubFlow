@@ -371,7 +371,11 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	return result, nil
 }
 
-func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, limit int) (BillingDatePage, error) {
+// includePast lists billing dates that have already gone by, so a caller with
+// ledger.records.historical_write can revise a closed period. It is ignored for
+// anyone without that permission rather than failing, so the picker degrades to
+// upcoming dates instead of erroring.
+func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, limit int, includePast bool) (BillingDatePage, error) {
 	subscription, err := s.Stores.Subscriptions.Get(ctx, id)
 	if err != nil {
 		return BillingDatePage{}, err
@@ -380,11 +384,17 @@ func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, l
 		if subscription.OwnerID != userID {
 			return BillingDatePage{}, domain.ErrForbidden
 		}
+		includePast = false
 	} else if err = s.role(ctx, subscription.GroupID, userID, false); err != nil {
 		return BillingDatePage{}, err
+	} else if includePast && s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write") != nil {
+		includePast = false
 	}
 	location := s.accountingLocation(ctx, userID, subscription.GroupID)
 	from := subscription.NextBilling.In(location)
+	if includePast {
+		from = subscription.StartsOn.In(location)
+	}
 	if cursor != "" {
 		value, parseErr := time.ParseInLocation("2006-01-02", cursor, location)
 		if parseErr != nil {

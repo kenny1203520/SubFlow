@@ -335,7 +335,8 @@ func (a *API) billingDates(e *core.RequestEvent) error {
 	if limit == 0 {
 		limit = 12
 	}
-	value, err := a.Service.BillingDates(e.Request.Context(), authID(e), e.Request.PathValue("id"), e.Request.URL.Query().Get("cursor"), limit)
+	includePast := e.Request.URL.Query().Get("includePast") == "true"
+	value, err := a.Service.BillingDates(e.Request.Context(), authID(e), e.Request.PathValue("id"), e.Request.URL.Query().Get("cursor"), limit, includePast)
 	if err != nil {
 		return fail(e, err)
 	}

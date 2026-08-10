@@ -78,6 +78,33 @@ func historicalExpenseChangeSummary(before, after *domain.Expense) string {
 	return fmt.Sprintf("historical expense updated (%s; changes: %s)", historicalExpenseDetails(after), strings.Join(parts, "; "))
 }
 
+func historicalSubscriptionDetails(value *domain.Subscription, effective time.Time) string {
+	return fmt.Sprintf("name=%q, billing_at=%s, amount_minor=%d", value.Name, effective.Format("2006-01-02"), value.AmountMinor)
+}
+
+func historicalSubscriptionChangeSummary(before, after *domain.Subscription, effective time.Time) string {
+	parts := make([]string, 0, 5)
+	if before.Name != after.Name {
+		parts = append(parts, fmt.Sprintf("name %q -> %q", before.Name, after.Name))
+	}
+	if before.AmountMinor != after.AmountMinor {
+		parts = append(parts, fmt.Sprintf("amount_minor %d -> %d", before.AmountMinor, after.AmountMinor))
+	}
+	if before.PaidBy != after.PaidBy {
+		parts = append(parts, fmt.Sprintf("paid_by %q -> %q", before.PaidBy, after.PaidBy))
+	}
+	if before.SplitMode != after.SplitMode {
+		parts = append(parts, fmt.Sprintf("split_mode %q -> %q", before.SplitMode, after.SplitMode))
+	}
+	if before.CategoryID != after.CategoryID {
+		parts = append(parts, fmt.Sprintf("category_id %q -> %q", before.CategoryID, after.CategoryID))
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("historical subscription period updated (%s)", historicalSubscriptionDetails(after, effective))
+	}
+	return fmt.Sprintf("historical subscription period updated (%s; changes: %s)", historicalSubscriptionDetails(after, effective), strings.Join(parts, "; "))
+}
+
 func (s *Service) CreateGroup(ctx context.Context, userID string, group domain.Group) (*domain.Group, error) {
 	group.Name = strings.TrimSpace(group.Name)
 	if group.Timezone == "" {
@@ -503,11 +530,23 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		scope = "future"
 	}
 	effective := v.EffectiveBillingAt
+	historical := false
 	if v.GroupID != "" {
 		if effective.IsZero() {
 			effective = current.NextBilling
 		}
-		if !subscriptionBillingDateAllowed(*current, effective, location) {
+		historical = effective.Before(current.NextBilling)
+		if historical {
+			if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.records.historical_write"); err != nil {
+				s.audit(ctx, userID, current.GroupID, "subscription.updated", "subscription", current.ID, "failure", fmt.Sprintf("historical subscription update denied (%s)", historicalSubscriptionDetails(current, effective)))
+				return nil, err
+			}
+			// Reopening a closed period must not rewrite what the subscription
+			// bills from now on, so a historical edit only ever revises that one
+			// occurrence.
+			scope = "one_off"
+		}
+		if !subscriptionBillingDateAllowed(*current, effective, location, historical) {
 			return nil, domain.ErrInvalid
 		}
 		if scope == "one_off" && (v.BillingCycle != current.BillingCycle || v.BillingInterval != current.BillingInterval || !v.StartsOn.Equal(current.StartsOn) || v.Status != current.Status) {
@@ -534,7 +573,11 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	}); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success")
+	if historical {
+		s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success", historicalSubscriptionChangeSummary(current, &v, effective))
+	} else {
+		s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success")
+	}
 	if v.GroupID != "" {
 		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success")
 	}
@@ -581,8 +624,11 @@ func applySubscriptionRevision(v *domain.Subscription, revision domain.Subscript
 	v.Notes = revision.Notes
 }
 
-func subscriptionBillingDateAllowed(subscription domain.Subscription, effective time.Time, location *time.Location) bool {
-	if effective.Before(subscription.NextBilling) {
+// allowPast is granted only to callers holding ledger.records.historical_write,
+// letting them revise a billing date that has already gone by. The date must
+// still land exactly on the subscription's schedule either way.
+func subscriptionBillingDateAllowed(subscription domain.Subscription, effective time.Time, location *time.Location, allowPast bool) bool {
+	if !allowPast && effective.Before(subscription.NextBilling) {
 		return false
 	}
 	start, target := subscription.StartsOn.In(location), effective.In(location)
