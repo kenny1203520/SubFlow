@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -40,4 +41,21 @@ func AppURL(configured, port string) string {
 		port = DefaultHTTPPort
 	}
 	return "http://localhost:" + port
+}
+
+// PublicAppURL resolves the browser-facing URL used in emails and one-time
+// setup links. Production must never silently emit an unusable localhost URL.
+func PublicAppURL(configured, port, environment string) (string, error) {
+	value := strings.TrimRight(strings.TrimSpace(configured), "/")
+	if value == "" {
+		if strings.EqualFold(strings.TrimSpace(environment), "production") {
+			return "", fmt.Errorf("SUBFLOW_APP_URL is required when SUBFLOW_ENV=production; set it to the public HTTPS URL served by Nginx")
+		}
+		return AppURL("", port), nil
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("invalid SUBFLOW_APP_URL %q: expected an absolute http(s) URL", configured)
+	}
+	return value, nil
 }

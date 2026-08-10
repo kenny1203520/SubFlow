@@ -19,7 +19,7 @@ type CollaborationService struct {
 }
 
 func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, groupID, email string) (*domain.Invitation, error) {
-	if err := s.Base.role(ctx, groupID, userID, true); err != nil {
+	if err := s.Base.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
 		return nil, err
 	}
 	email = domain.NormalizeEmail(email)
@@ -37,6 +37,10 @@ func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, gro
 	if err = s.Base.Stores.Invitations.Create(ctx, inv); err != nil {
 		return nil, err
 	}
+	if recipient, findErr := s.Base.Stores.Users.FindByEmail(ctx, email); findErr == nil {
+		_ = s.Base.Stores.Notifications.Create(ctx, &domain.Notification{UserID: recipient.ID, Type: "group_invitation", GroupID: groupID, ResourceID: inv.ID})
+	}
+	s.Base.audit(ctx, userID, groupID, "invitation.created", "invitation", inv.ID, "success")
 	return s.deliver(ctx, inv, plain)
 }
 func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitation, plain string) (*domain.Invitation, error) {
@@ -65,7 +69,7 @@ func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitati
 	return inv, nil
 }
 func (s *CollaborationService) ListInvitations(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Invitation], error) {
-	if err := s.Base.role(ctx, groupID, userID, true); err != nil {
+	if err := s.Base.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
 		return ports.Page[domain.Invitation]{}, err
 	}
 	return s.Base.Stores.Invitations.List(ctx, groupID, page)
@@ -75,7 +79,7 @@ func (s *CollaborationService) ResendInvitation(ctx context.Context, userID, id 
 	if err != nil {
 		return nil, err
 	}
-	if err = s.Base.role(ctx, inv.GroupID, userID, true); err != nil {
+	if err = s.Base.groupPermission(ctx, userID, inv.GroupID, "group.members.manage"); err != nil {
 		return nil, err
 	}
 	if inv.Status == domain.InvitationAccepted || inv.Status == domain.InvitationRevoked {
@@ -99,7 +103,7 @@ func (s *CollaborationService) RevokeInvitation(ctx context.Context, userID, id 
 	if err != nil {
 		return err
 	}
-	if err = s.Base.role(ctx, inv.GroupID, userID, true); err != nil {
+	if err = s.Base.groupPermission(ctx, userID, inv.GroupID, "group.members.manage"); err != nil {
 		return err
 	}
 	if inv.Status == domain.InvitationAccepted {
@@ -110,6 +114,7 @@ func (s *CollaborationService) RevokeInvitation(ctx context.Context, userID, id 
 		return err
 	}
 	s.publish(ctx, "updated", *inv)
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.revoked", "invitation", inv.ID, "success")
 	return nil
 }
 func (s *CollaborationService) AcceptInvitation(ctx context.Context, userID, token string) (*domain.Invitation, error) {
@@ -117,15 +122,12 @@ func (s *CollaborationService) AcceptInvitation(ctx context.Context, userID, tok
 	if err != nil {
 		return nil, err
 	}
+	return s.accept(ctx, userID, inv)
+}
+func (s *CollaborationService) accept(ctx context.Context, userID string, inv *domain.Invitation) (*domain.Invitation, error) {
 	now := s.Base.Now().UTC()
-	if inv.Status == domain.InvitationAccepted || inv.Status == domain.InvitationRevoked {
-		return nil, domain.ErrConflict
-	}
-	if !domain.InvitationUsable(*inv, now) {
-		inv.Status = domain.InvitationExpired
-		_ = s.Base.Stores.Invitations.Update(ctx, inv)
-		return nil, domain.ErrConflict
-	}
+	if inv.Status != domain.InvitationPending { return nil, domain.ErrConflict }
+	if !domain.InvitationUsable(*inv, now) { inv.Status = domain.InvitationExpired; _ = s.Base.Stores.Invitations.Update(ctx, inv); return nil, domain.ErrConflict }
 	user, err := s.Base.Stores.Users.Get(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -141,14 +143,28 @@ func (s *CollaborationService) AcceptInvitation(ctx context.Context, userID, tok
 		}
 		inv.Status = domain.InvitationAccepted
 		inv.AcceptedBy = userID
-		return s.Base.Stores.Invitations.Update(tx, inv)
+		if err := s.Base.Stores.Invitations.Update(tx, inv); err != nil { return err }
+		return s.Base.Stores.Notifications.MarkReadForResource(tx, userID, inv.ID, now)
 	})
 	if err != nil {
 		return nil, err
 	}
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.accepted", "invitation", inv.ID, "success")
 	s.publish(ctx, "accepted", *inv)
 	return inv, nil
 }
+func (s *CollaborationService) ListMyInvitations(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Invitation], error) { user, err := s.Base.Stores.Users.Get(ctx, userID); if err != nil { return ports.Page[domain.Invitation]{}, err }; return s.Base.Stores.Invitations.ListForEmail(ctx, domain.NormalizeEmail(user.Email), page) }
+func (s *CollaborationService) AcceptInvitationByID(ctx context.Context, userID, id string) (*domain.Invitation, error) { inv, err := s.Base.Stores.Invitations.Get(ctx, id); if err != nil { return nil, err }; return s.accept(ctx, userID, inv) }
+func (s *CollaborationService) DeclineInvitation(ctx context.Context, userID, id string) (*domain.Invitation, error) {
+	inv, err := s.Base.Stores.Invitations.Get(ctx, id); if err != nil { return nil, err }
+	user, err := s.Base.Stores.Users.Get(ctx, userID); if err != nil { return nil, err }
+	if inv.Status != domain.InvitationPending || domain.NormalizeEmail(user.Email) != domain.NormalizeEmail(inv.Email) { return nil, domain.ErrForbidden }
+	inv.Status = domain.InvitationDeclined
+	if err = s.Base.Stores.Transactions.Within(ctx, func(tx context.Context) error { if err := s.Base.Stores.Invitations.Update(tx, inv); err != nil { return err }; return s.Base.Stores.Notifications.MarkReadForResource(tx, userID, inv.ID, s.Base.Now().UTC()) }); err != nil { return nil, err }
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.declined", "invitation", inv.ID, "success"); s.publish(ctx, "updated", *inv); return inv, nil
+}
+func (s *CollaborationService) ListNotifications(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Notification], error) { return s.Base.Stores.Notifications.ListForUser(ctx, userID, page) }
+func (s *CollaborationService) MarkNotificationRead(ctx context.Context, userID, id string) error { note, err := s.Base.Stores.Notifications.Get(ctx, id); if err != nil { return err }; if note.UserID != userID { return domain.ErrForbidden }; if note.ReadAt == nil { if err = s.Base.Stores.Notifications.MarkRead(ctx, id, s.Base.Now().UTC()); err == nil { s.Base.audit(ctx, userID, note.GroupID, "notification.read", "notification", id, "success") } }; return err }
 func (s *CollaborationService) publish(ctx context.Context, kind string, inv domain.Invitation) {
 	if s.Events != nil {
 		_ = s.Events.Publish(ctx, domain.Event{Type: kind, GroupID: inv.GroupID, Resource: "group_invitations", ResourceID: inv.ID, OccurredAt: s.Base.Now().UTC()})

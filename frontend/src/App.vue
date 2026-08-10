@@ -1,65 +1,89 @@
 <script setup lang="ts">
-import { onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { onErrorCaptured, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useWorkspaceStore } from './stores/workspace'
+import { useSetupStore } from './stores/setup'
+import { useTheme } from './theme'
+import { useI18n } from './i18n'
+import LanguageSwitcher from './components/LanguageSwitcher.vue'
+import NotificationBell from './components/NotificationBell.vue'
+import ThemeSwitcher from './components/ThemeSwitcher.vue'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
+const setup = useSetupStore()
 const router = useRouter()
+const route = useRoute()
+const { tr } = useI18n()
+const routeError = ref<unknown>()
+const routeRetry = ref(0)
+let hydratedUser = ''
+let hydration: Promise<void> | undefined
+useTheme()
 
 async function hydrateWorkspace() {
-  await workspace.loadGroups()
-  if (workspace.currentGroupId) await workspace.selectGroup(workspace.currentGroupId)
+  const userId = String(auth.record?.id || '')
+  if (!userId || hydratedUser === userId) return
+  if (!hydration) hydration = workspace.loadGroups().then(() => { hydratedUser = userId }).finally(() => { hydration = undefined })
+  await hydration
 }
 
-onMounted(async () => {
+async function bootstrap() {
+	try { await setup.refresh() } catch { setup.status.initialized = true; setup.ready = true }
+	if (!setup.initialized) { if (route.name !== 'setup') await router.replace({ name: 'setup' }); return }
   await auth.initialize()
   if (auth.authenticated) await hydrateWorkspace()
-})
+}
 
-watch(() => auth.authenticated, (authenticated) => {
-  if (authenticated) {
-    void hydrateWorkspace()
-    return
-  }
-  workspace.clear()
-  if (auth.ready && router.currentRoute.value.path !== '/auth') void router.replace('/auth')
+function retryRoute() {
+  routeError.value = undefined
+  routeRetry.value++
+}
+
+onErrorCaptured(error => {
+  routeError.value = error
+  return false
 })
+onMounted(() => void bootstrap())
+watch(() => auth.authenticated, authenticated => {
+  if (authenticated) { void hydrateWorkspace(); return }
+  hydratedUser = ''
+  workspace.clear()
+  if (auth.ready && setup.initialized && route.name !== 'auth') void router.replace({ name: 'auth' })
+})
+watch(() => setup.initialized, initialized => { if (!initialized && route.name !== 'setup') void router.replace({ name: 'setup' }) })
+watch(() => route.fullPath, () => { routeError.value = undefined })
 </script>
 
 <template>
-  <div v-if="!auth.ready" class="splash">SubFlow 正在準備你的空間…</div>
+  <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div>
+  <RouterView v-else-if="!setup.initialized" />
   <RouterView v-else-if="!auth.authenticated" />
   <div v-else class="shell">
     <aside class="sidebar">
-      <RouterLink class="brand" to="/"><span>SF</span><strong>SubFlow</strong></RouterLink>
+      <RouterLink class="brand" :to="{ name: 'dashboard' }"><span>SF</span><strong>SubFlow</strong></RouterLink>
+      <p class="sidebar-label">{{ tr('workspace') }}</p>
       <nav>
-        <RouterLink to="/">總覽</RouterLink>
-        <RouterLink to="/groups">群組</RouterLink>
-        <RouterLink to="/members">成員與邀請</RouterLink>
-        <RouterLink to="/subscriptions">訂閱</RouterLink>
-        <RouterLink to="/expenses">共同支出</RouterLink>
+        <RouterLink :to="{ name: 'dashboard' }"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" /></svg><span>{{ tr('overview') }}</span></RouterLink>
+        <RouterLink :to="{ name: 'personal-expenses' }"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg><span>{{ tr('personalLedger') }}</span></RouterLink>
+        <RouterLink :to="{ name: 'groups' }"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3-8-3Zm0 5 8 3 8-3M4 16.5l8 3 8-3" /></svg><span>{{ tr('groups') }}</span></RouterLink>
       </nav>
       <div class="sidebar-bottom">
-        <RouterLink to="/profile">{{ auth.name }}</RouterLink>
-        <button class="ghost" @click="auth.logout">登出</button>
+        <RouterLink v-if="auth.canAdminister" class="admin-link" :to="{ name: 'admin' }"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7l-8-4Z" /></svg><span>{{ tr('systemAdministration') }}</span></RouterLink>
+        <RouterLink class="profile-link" :to="{ name: 'profile' }"><span class="user-avatar">{{ auth.name.slice(0, 1).toUpperCase() }}</span><span><small>{{ tr('accountSettings') }}</small>{{ auth.name }}</span></RouterLink>
+        <button class="logout-button" @click="auth.logout">{{ tr('logout') }}</button>
       </div>
     </aside>
     <main class="main">
       <header class="topbar">
-        <div>
-          <small>目前群組</small>
-          <select :value="workspace.currentGroupId" @change="workspace.selectGroup(($event.target as HTMLSelectElement).value)">
-            <option value="">請選擇群組</option>
-            <option v-for="group in workspace.groups" :key="group.id" :value="group.id">{{ group.name }}</option>
-          </select>
-        </div>
-        <span v-if="workspace.loading" class="sync">同步中</span>
+        <div><small class="topbar-label">SubFlow</small><strong>{{ tr('personalGroupFinance') }}</strong></div>
+        <div class="topbar-actions"><span v-if="workspace.loading" class="sync"><i></i>{{ tr('syncing') }}</span><NotificationBell /><ThemeSwitcher /><LanguageSwitcher /></div>
       </header>
-      <div v-if="workspace.permissionDenied" class="notice danger">你沒有權限查看或修改這個群組。</div>
-      <div v-else-if="workspace.error" class="notice">{{ workspace.error }} <button @click="workspace.refreshGroup">重試</button></div>
-      <RouterView />
+      <div v-if="workspace.permissionDenied" class="notice danger">{{ tr('forbidden') }}</div>
+      <div v-else-if="workspace.error" class="notice">{{ workspace.localizedError }} <button @click="workspace.retryLast">{{ tr('retry') }}</button></div>
+      <section v-if="routeError" class="page narrow"><div class="card error-state"><h1>{{ tr('routeError') }}</h1><p>{{ tr('routeErrorDesc') }}</p><div class="form-actions"><button class="primary" @click="retryRoute">{{ tr('retry') }}</button><RouterLink class="ghost" :to="{ name: 'dashboard' }">{{ tr('backToDashboard') }}</RouterLink></div></div></section>
+      <RouterView v-else v-slot="{ Component }"><component :is="Component" :key="`${route.matched[0]?.path || route.path}-${routeRetry}`" /></RouterView>
     </main>
   </div>
 </template>

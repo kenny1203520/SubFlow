@@ -46,6 +46,15 @@ func TestRepositoryCRUDContract(t *testing.T) {
 	if err = stores.Memberships.Create(ctx, member); err != nil {
 		t.Fatal(err)
 	}
+	category := &domain.Category{Scope: "group", GroupID: group.ID, CreatedBy: record.Id, CustomName: "Shared food"}
+	if err = stores.Categories.Create(ctx, category); err != nil {
+		t.Fatal(err)
+	}
+	if categories, listErr := stores.Categories.List(ctx, record.Id, group.ID, false); listErr != nil {
+		t.Fatalf("group category list contract failed: %v", listErr)
+	} else if !containsCategory(categories, category.ID) {
+		t.Fatalf("group category was not returned: %#v", categories)
+	}
 	if role, roleErr := stores.Memberships.GetRole(ctx, group.ID, record.Id); roleErr != nil || role != domain.RoleOwner {
 		t.Fatalf("unexpected role %q: %v", role, roleErr)
 	}
@@ -57,7 +66,7 @@ func TestRepositoryCRUDContract(t *testing.T) {
 	if found, findErr := stores.Invitations.GetByTokenHash(ctx, inv.TokenHash); findErr != nil || found.ID != inv.ID {
 		t.Fatalf("invitation lookup failed: %v", findErr)
 	}
-	sub := &domain.Subscription{GroupID: group.ID, Name: "Music", AmountMinor: 29900, Currency: domain.CurrencyTWD, BillingCycle: domain.BillingMonthly, NextBilling: now.AddDate(0, 0, 5), Status: domain.SubscriptionActive}
+	sub := &domain.Subscription{GroupID: group.ID, Name: "Music", AmountMinor: 29900, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, RateMode: domain.RateAutomatic, BillingCycle: domain.BillingMonthly, NextBilling: now.AddDate(0, 0, 5), Status: domain.SubscriptionActive}
 	if err = stores.Subscriptions.Create(ctx, sub); err != nil {
 		t.Fatal(err)
 	}
@@ -67,6 +76,9 @@ func TestRepositoryCRUDContract(t *testing.T) {
 	}
 	if list, listErr := stores.Subscriptions.List(ctx, group.ID, ports.PageRequest{Page: 1, PerPage: 20}); listErr != nil || len(list.Items) != 1 {
 		t.Fatalf("subscription list contract failed: %#v %v", list, listErr)
+	}
+	if automatic, listErr := stores.Subscriptions.ListAutomatic(ctx); listErr != nil || len(automatic) != 1 || automatic[0].ID != sub.ID {
+		t.Fatalf("automatic subscription list contract failed: %#v %v", automatic, listErr)
 	}
 	if list, listErr := stores.Expenses.List(ctx, group.ID, ports.PageRequest{Page: 1, PerPage: 20}); listErr != nil || len(list.Items) != 1 {
 		t.Fatalf("expense list contract failed: %#v %v", list, listErr)
@@ -87,4 +99,13 @@ func TestRepositoryCRUDContract(t *testing.T) {
 	if err = stores.Expenses.Delete(ctx, exp.ID); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func containsCategory(categories []domain.Category, id string) bool {
+	for _, category := range categories {
+		if category.ID == id {
+			return true
+		}
+	}
+	return false
 }

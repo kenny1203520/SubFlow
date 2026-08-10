@@ -33,3 +33,23 @@ func TestAppURL(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+func TestPublicAppURL(t *testing.T) {
+	cases := []struct {
+		name, configured, port, environment, want string
+		wantErr                                   bool
+	}{
+		{"development fallback", "", "5173", "development", "http://localhost:5173", false},
+		{"production requires public URL", "", "8080", "production", "", true},
+		{"production public URL", "https://subflow.example/", "8080", "production", "https://subflow.example", false},
+		{"invalid URL", "subflow.example", "8080", "production", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := PublicAppURL(tc.configured, tc.port, tc.environment)
+			if (err != nil) != tc.wantErr || got != tc.want {
+				t.Fatalf("PublicAppURL() = %q, %v; want %q, error=%v", got, err, tc.want, tc.wantErr)
+			}
+		})
+	}
+}

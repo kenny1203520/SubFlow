@@ -1,3 +1,5 @@
+github.com/altcha-org/altcha-lib-go/v2 v2.0.0-20260725115309-2c4fc27a7b2d h1:XpzSlCZV+/xWwAT1+SIWRLwUNmodQQeQHeR1ay1F9vw=
+github.com/altcha-org/altcha-lib-go/v2 v2.0.0-20260725115309-2c4fc27a7b2d/go.mod h1:SpmAda2tBJcOIZJ4P8zjHyKq5MrE3kQic0h9UT+m4IY=
 github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496/go.mod h1:oGkLhpf+kjZl6xBf758TQhh5XrAeiJv/7FRz/2spLIg=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=

@@ -3,8 +3,10 @@ package pocketbase
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"math"
+	"strings"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -108,12 +110,21 @@ func (r *Repository) CreateMembership(ctx context.Context, m *domain.Membership)
 	record.Set("group", m.GroupID)
 	record.Set("user", m.UserID)
 	record.Set("role", m.Role)
+	record.Set("role_ref", m.RoleID)
 	if err := r.app(ctx).Save(record); err != nil {
 		return err
 	}
 	m.ID = record.Id
 	m.CreatedAt = record.GetDateTime("created").Time()
 	return nil
+}
+func (r *Repository) UpdateMembershipRole(ctx context.Context, groupID, userID, roleID string) error {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionMembers, "group={:group} && user={:user}", dbx.Params{"group": groupID, "user": userID})
+	if err != nil {
+		return mapError(err)
+	}
+	record.Set("role_ref", roleID)
+	return r.app(ctx).Save(record)
 }
 func (r *Repository) GetRole(ctx context.Context, groupID, userID string) (domain.MemberRole, error) {
 	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionMembers, "group={:group} && user={:user}", dbx.Params{"group": groupID, "user": userID})
@@ -132,6 +143,11 @@ func (r *Repository) ListMemberships(ctx context.Context, groupID string, req po
 		m := membershipFrom(v)
 		if u, e := r.GetUser(ctx, m.UserID); e == nil {
 			m.User = u
+		}
+		if m.RoleID != "" {
+			if role, e := r.GetRoleRecord(ctx, "group", m.RoleID); e == nil {
+				m.RoleName = role.Name
+			}
 		}
 		items = append(items, m)
 	}
@@ -192,6 +208,21 @@ func (r *Repository) ListInvitations(ctx context.Context, groupID string, req po
 	count, _ := countFiltered(r.app(ctx), CollectionInvitations, "group={:group}", dbx.Params{"group": groupID})
 	return page(items, req, count), nil
 }
+func (r *Repository) ListInvitationsForEmail(ctx context.Context, email string, req ports.PageRequest) (ports.Page[domain.Invitation], error) {
+	recs, err := listRecords(r.app(ctx), CollectionInvitations, "email={:email} && status='pending'", req, dbx.Params{"email": email})
+	if err != nil {
+		return ports.Page[domain.Invitation]{}, err
+	}
+	items := make([]domain.Invitation, len(recs))
+	for i, v := range recs {
+		items[i] = *invitationFrom(v)
+		if group, e := r.GetGroup(ctx, items[i].GroupID); e == nil {
+			items[i].Group = group
+		}
+	}
+	count, _ := countFiltered(r.app(ctx), CollectionInvitations, "email={:email} && status='pending'", dbx.Params{"email": email})
+	return page(items, req, count), nil
+}
 func (r *Repository) UpdateInvitation(ctx context.Context, v *domain.Invitation) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionInvitations, v.ID)
 	if err != nil {
@@ -202,6 +233,62 @@ func (r *Repository) UpdateInvitation(ctx context.Context, v *domain.Invitation)
 		return err
 	}
 	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) CreateNotification(ctx context.Context, value *domain.Notification) error {
+	rec, err := newRecord(r.app(ctx), CollectionNotifications)
+	if err != nil {
+		return err
+	}
+	writeNotification(rec, value)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	value.ID = rec.Id
+	hydrateTimes(rec, &value.CreatedAt, &value.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetNotification(ctx context.Context, id string) (*domain.Notification, error) {
+	rec, err := r.app(ctx).FindRecordById(CollectionNotifications, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return notificationFrom(rec), nil
+}
+func (r *Repository) ListNotifications(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Notification], error) {
+	recs, err := listRecords(r.app(ctx), CollectionNotifications, "user={:user}", req, dbx.Params{"user": userID})
+	if err != nil {
+		return ports.Page[domain.Notification]{}, err
+	}
+	items := make([]domain.Notification, len(recs))
+	for i, rec := range recs {
+		items[i] = *notificationFrom(rec)
+	}
+	count, _ := countFiltered(r.app(ctx), CollectionNotifications, "user={:user}", dbx.Params{"user": userID})
+	return page(items, req, count), nil
+}
+func (r *Repository) MarkNotificationRead(ctx context.Context, id string, when time.Time) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionNotifications, id)
+	if err != nil {
+		return mapError(err)
+	}
+	rec.Set("read_at", when)
+	return r.app(ctx).Save(rec)
+}
+func (r *Repository) MarkNotificationsReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && resource_id={:resource}", "", 0, 0, map[string]any{"user": userID, "resource": resourceID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range recs {
+		if rec.GetDateTime("read_at").IsZero() {
+			rec.Set("read_at", when)
+			if err := r.app(ctx).Save(rec); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -237,6 +324,30 @@ func (r *Repository) ListSubscriptions(ctx context.Context, groupID string, req 
 	count, _ := countFiltered(r.app(ctx), CollectionSubscriptions, "group={:group}", dbx.Params{"group": groupID})
 	return page(items, req, count), nil
 }
+func (r *Repository) ListPersonalSubscriptions(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Subscription], error) {
+	recs, err := listRecords(r.app(ctx), CollectionSubscriptions, "owner={:user} || paid_by={:user}", req, dbx.Params{"user": userID})
+	if err != nil {
+		return ports.Page[domain.Subscription]{}, err
+	}
+	items := make([]domain.Subscription, len(recs))
+	for i, v := range recs {
+		items[i] = *subscriptionFrom(v)
+	}
+	count, _ := countFiltered(r.app(ctx), CollectionSubscriptions, "owner={:user} || paid_by={:user}", dbx.Params{"user": userID})
+	return page(items, req, count), nil
+}
+
+func (r *Repository) ListAutomaticSubscriptions(ctx context.Context) ([]domain.Subscription, error) {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "rate_mode='automatic' && group!=''", "next_billing", 0, 0, nil)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.Subscription, len(records))
+	for i, record := range records {
+		values[i] = *subscriptionFrom(record)
+	}
+	return values, nil
+}
 func (r *Repository) UpdateSubscription(ctx context.Context, v *domain.Subscription) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionSubscriptions, v.ID)
 	if err != nil {
@@ -255,6 +366,91 @@ func (r *Repository) DeleteSubscription(ctx context.Context, id string) error {
 		return mapError(err)
 	}
 	return r.app(ctx).Delete(rec)
+}
+
+func (r *Repository) CreateSubscriptionRevision(ctx context.Context, v *domain.SubscriptionRevision) error {
+	rec, err := newRecord(r.app(ctx), CollectionSubscriptionRevisions)
+	if err != nil {
+		return err
+	}
+	writeSubscriptionRevision(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, new(time.Time))
+	return nil
+}
+
+func (r *Repository) ListSubscriptionRevisions(ctx context.Context, subscriptionID string) ([]domain.SubscriptionRevision, error) {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptionRevisions, "subscription={:subscription}", "effective_at", 0, 0, dbx.Params{"subscription": subscriptionID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.SubscriptionRevision, len(recs))
+	for i, rec := range recs {
+		values[i] = *subscriptionRevisionFrom(rec)
+	}
+	return values, nil
+}
+
+func (r *Repository) CreateSubscriptionOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
+	rec, err := newRecord(r.app(ctx), CollectionSubscriptionOccurrences)
+	if err != nil {
+		return err
+	}
+	writeSubscriptionOccurrence(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return mapError(err)
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) GetSubscriptionOccurrence(ctx context.Context, subscriptionID string, billingAt time.Time) (*domain.SubscriptionOccurrence, error) {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionSubscriptionOccurrences, "subscription={:subscription} && billing_at={:billingAt}", dbx.Params{"subscription": subscriptionID, "billingAt": billingAt})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return subscriptionOccurrenceFrom(rec), nil
+}
+
+func (r *Repository) ListSubscriptionOccurrences(ctx context.Context, subscriptionID string) ([]domain.SubscriptionOccurrence, error) {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptionOccurrences, "subscription={:subscription}", "-billing_at", 0, 0, dbx.Params{"subscription": subscriptionID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.SubscriptionOccurrence, len(recs))
+	for i, rec := range recs {
+		values[i] = *subscriptionOccurrenceFrom(rec)
+	}
+	return values, nil
+}
+
+func (r *Repository) UpdateSubscriptionOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionSubscriptionOccurrences, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeSubscriptionOccurrence(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) ListDueSubscriptions(ctx context.Context, before time.Time) ([]domain.Subscription, error) {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "group!='' && status='active' && next_billing<={:before}", "next_billing", 0, 0, dbx.Params{"before": before})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.Subscription, len(recs))
+	for i, rec := range recs {
+		values[i] = *subscriptionFrom(rec)
+	}
+	return values, nil
 }
 
 func (r *Repository) CreateExpense(ctx context.Context, v *domain.Expense) error {
@@ -289,6 +485,18 @@ func (r *Repository) ListExpenses(ctx context.Context, groupID string, req ports
 	count, _ := countFiltered(r.app(ctx), CollectionExpenses, "group={:group}", dbx.Params{"group": groupID})
 	return page(items, req, count), nil
 }
+func (r *Repository) ListPersonalExpenses(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Expense], error) {
+	recs, err := listRecords(r.app(ctx), CollectionExpenses, "owner={:user} || paid_by={:user}", req, dbx.Params{"user": userID})
+	if err != nil {
+		return ports.Page[domain.Expense]{}, err
+	}
+	items := make([]domain.Expense, len(recs))
+	for i, v := range recs {
+		items[i] = *expenseFrom(v)
+	}
+	count, _ := countFiltered(r.app(ctx), CollectionExpenses, "owner={:user} || paid_by={:user}", dbx.Params{"user": userID})
+	return page(items, req, count), nil
+}
 func (r *Repository) UpdateExpense(ctx context.Context, v *domain.Expense) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionExpenses, v.ID)
 	if err != nil {
@@ -309,6 +517,340 @@ func (r *Repository) DeleteExpense(ctx context.Context, id string) error {
 	return r.app(ctx).Delete(rec)
 }
 
+func (r *Repository) ReplaceExpenseSplits(ctx context.Context, expenseID string, values []domain.ExpenseSplit) error {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExpenseSplits, "expense={:expense}", "", 0, 0, dbx.Params{"expense": expenseID})
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err = r.app(ctx).Delete(record); err != nil {
+			return err
+		}
+	}
+	for i := range values {
+		record, createErr := newRecord(r.app(ctx), CollectionExpenseSplits)
+		if createErr != nil {
+			return createErr
+		}
+		record.Set("expense", expenseID)
+		record.Set("user", values[i].UserID)
+		record.Set("amount_minor", values[i].AmountMinor)
+		record.Set("base_amount_minor", values[i].BaseAmountMinor)
+		record.Set("percentage_bp", values[i].PercentageBasisPoints)
+		if err = r.app(ctx).Save(record); err != nil {
+			return err
+		}
+		values[i].ID = record.Id
+		values[i].ExpenseID = expenseID
+	}
+	return nil
+}
+
+func (r *Repository) ListExpenseSplits(ctx context.Context, expenseID string) ([]domain.ExpenseSplit, error) {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExpenseSplits, "expense={:expense}", "user", 0, 0, dbx.Params{"expense": expenseID})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]domain.ExpenseSplit, len(records))
+	for i, record := range records {
+		result[i] = domain.ExpenseSplit{ID: record.Id, ExpenseID: expenseID, UserID: record.GetString("user"), AmountMinor: int64(record.GetFloat("amount_minor")), BaseAmountMinor: int64(record.GetFloat("base_amount_minor")), PercentageBasisPoints: int(record.GetFloat("percentage_bp"))}
+	}
+	return result, nil
+}
+
+func (r *Repository) CreateSettlement(ctx context.Context, v *domain.Settlement) error {
+	record, err := newRecord(r.app(ctx), CollectionSettlements)
+	if err != nil {
+		return err
+	}
+	writeSettlement(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetSettlement(ctx context.Context, id string) (*domain.Settlement, error) {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlements, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return settlementFrom(record), nil
+}
+func (r *Repository) ListSettlements(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Settlement], error) {
+	records, err := listRecords(r.app(ctx), CollectionSettlements, "group={:group}", req, dbx.Params{"group": groupID})
+	if err != nil {
+		return ports.Page[domain.Settlement]{}, err
+	}
+	items := make([]domain.Settlement, len(records))
+	for i, record := range records {
+		items[i] = *settlementFrom(record)
+	}
+	count, _ := countFiltered(r.app(ctx), CollectionSettlements, "group={:group}", dbx.Params{"group": groupID})
+	return page(items, req, count), nil
+}
+func (r *Repository) DeleteSettlement(ctx context.Context, id string) error {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlements, id)
+	if err != nil {
+		return mapError(err)
+	}
+	return r.app(ctx).Delete(record)
+}
+
+func (r *Repository) UpdateSettlement(ctx context.Context, v *domain.Settlement) error {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlements, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeSettlement(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) CreateCategory(ctx context.Context, v *domain.Category) error {
+	record, err := newRecord(r.app(ctx), CollectionCategories)
+	if err != nil {
+		return err
+	}
+	writeCategory(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetCategory(ctx context.Context, id string) (*domain.Category, error) {
+	record, err := r.app(ctx).FindRecordById(CollectionCategories, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return categoryFrom(record), nil
+}
+func (r *Repository) ListCategories(ctx context.Context, ownerID, groupID string, archived bool) ([]domain.Category, error) {
+	filter := "scope='system'"
+	params := dbx.Params{}
+	if groupID != "" {
+		// PocketBase filter identifiers are not SQL identifiers. Quoting the
+		// relation field with backticks makes the filter parser reject valid
+		// group category requests and previously surfaced as a 500 response.
+		filter += " || (scope='group' && group={:group})"
+		params["group"] = groupID
+	} else {
+		filter += " || (scope='personal' && owner={:owner})"
+		params["owner"] = ownerID
+	}
+	if !archived {
+		filter = "(" + filter + ") && archived=false"
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionCategories, filter, "scope,custom_name,system_key", 0, 0, params)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	result := make([]domain.Category, len(records))
+	for i, record := range records {
+		result[i] = *categoryFrom(record)
+	}
+	return result, nil
+}
+func (r *Repository) UpdateCategory(ctx context.Context, v *domain.Category) error {
+	record, err := r.app(ctx).FindRecordById(CollectionCategories, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeCategory(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func roleCollection(scope string) string {
+	if scope == "system" {
+		return CollectionSystemRoles
+	}
+	return CollectionGroupRoles
+}
+func writeRole(record *core.Record, v *domain.Role) {
+	record.Set("group", v.GroupID)
+	record.Set("name", v.Name)
+	record.Set("category", v.Category)
+	record.Set("key", v.Key)
+	record.Set("permissions", v.Permissions)
+	record.Set("protected", v.Protected)
+	record.Set("created_by", v.CreatedBy)
+}
+func roleFrom(record *core.Record, scope string) *domain.Role {
+	v := &domain.Role{ID: record.Id, Scope: scope, GroupID: record.GetString("group"), Name: record.GetString("name"), Category: record.GetString("category"), Key: record.GetString("key"), Protected: record.GetBool("protected"), CreatedBy: record.GetString("created_by")}
+	_ = json.Unmarshal([]byte(record.GetString("permissions")), &v.Permissions)
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func (r *Repository) CreateRole(ctx context.Context, v *domain.Role) error {
+	record, err := newRecord(r.app(ctx), roleCollection(v.Scope))
+	if err != nil {
+		return err
+	}
+	writeRole(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetRoleRecord(ctx context.Context, scope, id string) (*domain.Role, error) {
+	record, err := r.app(ctx).FindRecordById(roleCollection(scope), id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return roleFrom(record, scope), nil
+}
+func (r *Repository) ListRoles(ctx context.Context, scope, groupID string) ([]domain.Role, error) {
+	filter := ""
+	params := dbx.Params{}
+	if scope == "group" {
+		filter = "group={:group}"
+		params["group"] = groupID
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(roleCollection(scope), filter, "key", 0, 0, params)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.Role, len(records))
+	for i, record := range records {
+		values[i] = *roleFrom(record, scope)
+	}
+	return values, nil
+}
+func (r *Repository) UpdateRoleRecord(ctx context.Context, v *domain.Role) error {
+	record, err := r.app(ctx).FindRecordById(roleCollection(v.Scope), v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeRole(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) DeleteRoleRecord(ctx context.Context, scope, id string) error {
+	record, err := r.app(ctx).FindRecordById(roleCollection(scope), id)
+	if err != nil {
+		return mapError(err)
+	}
+	return r.app(ctx).Delete(record)
+}
+
+func (r *Repository) CreateAudit(ctx context.Context, v *domain.AuditLog) error {
+	record, err := newRecord(r.app(ctx), CollectionAuditLogs)
+	if err != nil {
+		return err
+	}
+	record.Set("actor", v.ActorID)
+	record.Set("group", v.GroupID)
+	record.Set("scope", v.Scope)
+	record.Set("action", v.Action)
+	record.Set("resource", v.Resource)
+	record.Set("resource_id", v.ResourceID)
+	record.Set("outcome", v.Outcome)
+	record.Set("summary", v.Summary)
+	record.Set("ip", v.IP)
+	record.Set("user_agent", v.UserAgent)
+	record.Set("hash", v.Hash)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	v.CreatedAt = record.GetDateTime("created").Time()
+	return nil
+}
+func (r *Repository) ListAudits(ctx context.Context, groupID string, query ports.AuditQuery) (ports.Page[domain.AuditLog], error) {
+	clauses := []string{}
+	params := dbx.Params{}
+	if groupID != "" {
+		clauses = append(clauses, "group={:group}")
+		params["group"] = groupID
+	}
+	if query.Action != "" {
+		clauses = append(clauses, "action={:action}")
+		params["action"] = query.Action
+	}
+	if query.Resource != "" {
+		clauses = append(clauses, "resource={:resource}")
+		params["resource"] = query.Resource
+	}
+	if query.Outcome != "" {
+		clauses = append(clauses, "outcome={:outcome}")
+		params["outcome"] = query.Outcome
+	}
+	if !query.From.IsZero() {
+		clauses = append(clauses, "created>={:from}")
+		params["from"] = query.From
+	}
+	if !query.To.IsZero() {
+		clauses = append(clauses, "created<={:to}")
+		params["to"] = query.To
+	}
+	if value := strings.TrimSpace(query.Query); value != "" {
+		clauses = append(clauses, "(action~{:query} || resource~{:query} || actor.name~{:query} || actor.email~{:query})")
+		params["query"] = value
+	}
+	filter := strings.Join(clauses, " && ")
+	records, err := listRecords(r.app(ctx), CollectionAuditLogs, filter, query.PageRequest, params)
+	if err != nil {
+		return ports.Page[domain.AuditLog]{}, err
+	}
+	values := make([]domain.AuditLog, len(records))
+	for i, record := range records {
+		values[i] = domain.AuditLog{ID: record.Id, ActorID: record.GetString("actor"), GroupID: record.GetString("group"), Scope: record.GetString("scope"), Action: record.GetString("action"), Resource: record.GetString("resource"), ResourceID: record.GetString("resource_id"), Outcome: record.GetString("outcome"), Summary: record.GetString("summary"), IP: record.GetString("ip"), UserAgent: record.GetString("user_agent"), Hash: record.GetString("hash"), CreatedAt: record.GetDateTime("created").Time()}
+		if values[i].ActorID != "" {
+			if actor, err := r.app(ctx).FindRecordById("users", values[i].ActorID); err == nil {
+				values[i].ActorName = actor.GetString("name")
+				if values[i].ActorName == "" {
+					values[i].ActorName = actor.Email()
+				}
+			}
+		}
+	}
+	count, err := countFiltered(r.app(ctx), CollectionAuditLogs, filter, params)
+	if err != nil {
+		return ports.Page[domain.AuditLog]{}, err
+	}
+	return page(values, query.PageRequest, count), nil
+}
+func (r *Repository) UpsertExchangeRate(ctx context.Context, v *domain.ExchangeRate) error {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date={:date}", dbx.Params{"base": v.BaseCurrency, "quote": v.QuoteCurrency, "date": v.EffectiveDate})
+	if err != nil {
+		record, err = newRecord(r.app(ctx), CollectionExchangeRates)
+		if err != nil {
+			return err
+		}
+	}
+	writeExchangeRate(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	return nil
+}
+func (r *Repository) LatestExchangeRate(ctx context.Context, from, to domain.Currency, date time.Time) (*domain.ExchangeRate, error) {
+	if from == to {
+		return &domain.ExchangeRate{BaseCurrency: from, QuoteCurrency: to, RateScaled: domain.ExchangeRateScale, Rate: "1", EffectiveDate: date, Provider: "identity", FetchedAt: time.Now()}, nil
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date<={:date}", "-effective_date", 1, 0, dbx.Params{"base": from, "quote": to, "date": date})
+	if err != nil || len(records) == 0 {
+		return nil, domain.ErrRateUnavailable
+	}
+	return exchangeRateFrom(records[0]), nil
+}
+
 func (r *Repository) GetUser(ctx context.Context, id string) (*domain.User, error) {
 	rec, err := r.app(ctx).FindRecordById("users", id)
 	if err != nil {
@@ -322,6 +864,144 @@ func (r *Repository) FindByEmail(ctx context.Context, email string) (*domain.Use
 		return nil, mapError(err)
 	}
 	return userFrom(rec), nil
+}
+func (r *Repository) ListUsers(ctx context.Context, req ports.PageRequest, query string) (ports.Page[domain.User], error) {
+	if req.Page < 1 {
+		req.Page = 1
+	}
+	if req.PerPage < 1 || req.PerPage > 100 {
+		req.PerPage = 25
+	}
+	records, err := r.app(ctx).FindRecordsByFilter("users", "", "name,email", 1000, 0, nil)
+	if err != nil {
+		return ports.Page[domain.User]{}, err
+	}
+	needle := strings.ToLower(strings.TrimSpace(query))
+	items := make([]domain.User, 0, len(records))
+	for _, record := range records {
+		value := userFrom(record)
+		if needle != "" && !strings.Contains(strings.ToLower(value.Name), needle) && !strings.Contains(strings.ToLower(value.Email), needle) {
+			continue
+		}
+		items = append(items, *value)
+	}
+	total := len(items)
+	start := (req.Page - 1) * req.PerPage
+	if start > total {
+		start = total
+	}
+	end := start + req.PerPage
+	if end > total {
+		end = total
+	}
+	pages := (total + req.PerPage - 1) / req.PerPage
+	if pages == 0 {
+		pages = 1
+	}
+	return ports.Page[domain.User]{Items: items[start:end], Page: req.Page, PerPage: req.PerPage, TotalItems: total, TotalPages: pages}, nil
+}
+func (r *Repository) SetUserSystemRole(ctx context.Context, id, roleID string) error {
+	record, err := r.app(ctx).FindRecordById("users", id)
+	if err != nil {
+		return mapError(err)
+	}
+	record.Set("system_role", roleID)
+	return r.app(ctx).Save(record)
+}
+
+func (r *Repository) CreateSetupUser(ctx context.Context, input domain.SetupInput) (*domain.User, error) {
+	record, err := newRecord(r.app(ctx), "users")
+	if err != nil {
+		return nil, err
+	}
+	record.Set("email", input.Email)
+	record.Set("password", input.Password)
+	record.Set("passwordConfirm", input.Password)
+	record.Set("name", input.AdminName)
+	record.Set("timezone", input.DefaultTimezone)
+	record.Set("default_currency", input.DefaultCurrency)
+	record.Set("verified", true)
+	if err = r.app(ctx).Save(record); err != nil {
+		return nil, err
+	}
+	return userFrom(record), nil
+}
+
+func (r *Repository) CountUsersBySystemRole(ctx context.Context, roleID string) (int, error) {
+	items, err := r.app(ctx).FindRecordsByFilter("users", "system_role={:role}", "", 1, 0, dbx.Params{"role": roleID})
+	if err != nil {
+		return 0, err
+	}
+	return len(items), nil
+}
+
+func settingsFrom(record *core.Record) domain.SystemSettings {
+	legacy := record.GetBool("allow_registration")
+	password := record.GetBool("allow_password_registration")
+	oidc := record.GetBool("allow_oidc_registration")
+	// A record created before the split has both new booleans false. Preserve
+	// the former policy until the administrator explicitly saves the settings.
+	if !password && !oidc && legacy {
+		password, oidc = true, true
+	}
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: record.GetString("captcha_provider"), CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+}
+
+func defaultSystemSettings() domain.SystemSettings {
+	return domain.SystemSettings{SiteName: "SubFlow", DefaultTimezone: "UTC", DefaultCurrency: domain.CurrencyTWD, AllowPasswordRegistration: true, AllowOIDCRegistration: true, AllowRegistration: true}
+}
+
+func (r *Repository) GetSystemSettings(ctx context.Context) (domain.SystemSettings, error) {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return defaultSystemSettings(), nil
+		}
+		return domain.SystemSettings{}, err
+	}
+	value := settingsFrom(record)
+	if value.SiteName == "" {
+		value.SiteName = "SubFlow"
+	}
+	if value.DefaultTimezone == "" {
+		value.DefaultTimezone = "UTC"
+	}
+	if value.DefaultCurrency == "" {
+		value.DefaultCurrency = domain.CurrencyTWD
+	}
+	return value, nil
+}
+
+func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.SystemSettings) error {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	if err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		record, err = newRecord(r.app(ctx), CollectionSystemSettings)
+		if err != nil {
+			return err
+		}
+		record.Set("key", "primary")
+	}
+	record.Set("initialized", value.Initialized)
+	record.Set("site_name", value.SiteName)
+	record.Set("default_timezone", value.DefaultTimezone)
+	record.Set("default_currency", value.DefaultCurrency)
+	record.Set("allow_registration", value.AllowPasswordRegistration)
+	record.Set("allow_password_registration", value.AllowPasswordRegistration)
+	record.Set("allow_oidc_registration", value.AllowOIDCRegistration)
+	record.Set("captcha_provider", value.CaptchaProvider)
+	record.Set("captcha_site_key", value.CaptchaSiteKey)
+	record.Set("captcha_challenge_url", value.CaptchaChallengeURL)
+	record.Set("captcha_verify_url", value.CaptchaVerifyURL)
+	if value.CaptchaSecretCiphertext != "" {
+		record.Set("captcha_secret", value.CaptchaSecretCiphertext)
+	}
+	if value.SetupTokenHash != "" {
+		record.Set("setup_secret_hash", value.SetupTokenHash)
+	}
+	return r.app(ctx).Save(record)
 }
 
 func newRecord(app core.App, name string) (*core.Record, error) {
@@ -385,16 +1065,20 @@ func writeGroup(r *core.Record, v *domain.Group) {
 	r.Set("name", v.Name)
 	r.Set("description", v.Description)
 	r.Set("currency", v.Currency)
+	r.Set("timezone", v.Timezone)
 	r.Set("color", v.Color)
 	r.Set("owner", v.OwnerID)
 }
 func groupFrom(r *core.Record) *domain.Group {
-	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Color: r.GetString("color"), OwnerID: r.GetString("owner")}
+	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Timezone: r.GetString("timezone"), Color: r.GetString("color"), OwnerID: r.GetString("owner")}
+	if v.Timezone == "" {
+		v.Timezone = "UTC"
+	}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
 func membershipFrom(r *core.Record) domain.Membership {
-	return domain.Membership{ID: r.Id, GroupID: r.GetString("group"), UserID: r.GetString("user"), Role: domain.MemberRole(r.GetString("role")), CreatedAt: r.GetDateTime("created").Time()}
+	return domain.Membership{ID: r.Id, GroupID: r.GetString("group"), UserID: r.GetString("user"), Role: domain.MemberRole(r.GetString("role")), RoleID: r.GetString("role_ref"), CreatedAt: r.GetDateTime("created").Time()}
 }
 func writeInvitation(r *core.Record, v *domain.Invitation) {
 	r.Set("group", v.GroupID)
@@ -410,36 +1094,187 @@ func invitationFrom(r *core.Record) *domain.Invitation {
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
+func writeNotification(r *core.Record, value *domain.Notification) {
+	r.Set("user", value.UserID)
+	r.Set("type", value.Type)
+	r.Set("group", value.GroupID)
+	r.Set("resource_id", value.ResourceID)
+	if value.ReadAt != nil {
+		r.Set("read_at", *value.ReadAt)
+	}
+}
+func notificationFrom(r *core.Record) *domain.Notification {
+	value := &domain.Notification{ID: r.Id, UserID: r.GetString("user"), Type: r.GetString("type"), GroupID: r.GetString("group"), ResourceID: r.GetString("resource_id")}
+	if read := r.GetDateTime("read_at").Time(); !read.IsZero() {
+		value.ReadAt = &read
+	}
+	hydrateTimes(r, &value.CreatedAt, &value.UpdatedAt)
+	return value
+}
 func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("group", v.GroupID)
+	r.Set("owner", v.OwnerID)
+	r.Set("paid_by", v.PaidBy)
+	r.Set("split_mode", v.SplitMode)
+	r.Set("splits", v.Splits)
 	r.Set("name", v.Name)
 	r.Set("category", v.Category)
+	r.Set("category_ref", v.CategoryID)
 	r.Set("amount_minor", v.AmountMinor)
 	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("rate_mode", v.RateMode)
 	r.Set("billing_cycle", v.BillingCycle)
+	r.Set("billing_interval", v.BillingInterval)
+	if v.StartsOn.IsZero() {
+		v.StartsOn = v.NextBilling
+	}
+	r.Set("starts_on", v.StartsOn)
+	if v.EndsOn != nil {
+		r.Set("ends_on", *v.EndsOn)
+	} else {
+		r.Set("ends_on", nil)
+	}
 	r.Set("next_billing", v.NextBilling)
 	r.Set("status", v.Status)
 	r.Set("notes", v.Notes)
 }
 func subscriptionFrom(r *core.Record) *domain.Subscription {
-	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), Name: r.GetString("name"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), BillingInterval: int(r.GetFloat("billing_interval")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	if raw, ok := r.GetRaw("splits").([]any); ok {
+		blob, _ := json.Marshal(raw)
+		_ = json.Unmarshal(blob, &v.Splits)
+	}
+	v.BillingInterval = domain.NormalizeBillingInterval(v.BillingCycle, v.BillingInterval)
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
+	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() {
+		v.EndsOn = &ends
+	}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func writeSubscriptionRevision(r *core.Record, v *domain.SubscriptionRevision) {
+	r.Set("subscription", v.SubscriptionID)
+	r.Set("scope", v.Scope)
+	r.Set("effective_at", v.EffectiveBillingAt)
+	r.Set("name", v.Name)
+	r.Set("category", v.Category)
+	r.Set("category_ref", v.CategoryID)
+	r.Set("amount_minor", v.AmountMinor)
+	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("rate_mode", v.RateMode)
+	r.Set("paid_by", v.PaidBy)
+	r.Set("split_mode", v.SplitMode)
+	r.Set("splits", v.Splits)
+	r.Set("notes", v.Notes)
+}
+func subscriptionRevisionFrom(r *core.Record) *domain.SubscriptionRevision {
+	v := &domain.SubscriptionRevision{ID: r.Id, SubscriptionID: r.GetString("subscription"), Scope: r.GetString("scope"), EffectiveBillingAt: r.GetDateTime("effective_at").Time(), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	if raw, ok := r.GetRaw("splits").([]any); ok {
+		blob, _ := json.Marshal(raw)
+		_ = json.Unmarshal(blob, &v.Splits)
+	}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
+	hydrateTimes(r, &v.CreatedAt, new(time.Time))
+	return v
+}
+func writeSubscriptionOccurrence(r *core.Record, v *domain.SubscriptionOccurrence) {
+	r.Set("subscription", v.SubscriptionID)
+	r.Set("revision", v.RevisionID)
+	r.Set("expense", v.ExpenseID)
+	r.Set("billing_at", v.BillingAt)
+	r.Set("status", v.Status)
+	r.Set("error", v.Error)
+}
+func subscriptionOccurrenceFrom(r *core.Record) *domain.SubscriptionOccurrence {
+	v := &domain.SubscriptionOccurrence{ID: r.Id, SubscriptionID: r.GetString("subscription"), RevisionID: r.GetString("revision"), ExpenseID: r.GetString("expense"), BillingAt: r.GetDateTime("billing_at").Time(), Status: r.GetString("status"), Error: r.GetString("error")}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
 func writeExpense(r *core.Record, v *domain.Expense) {
 	r.Set("group", v.GroupID)
+	r.Set("owner", v.OwnerID)
+	r.Set("subscription", v.SubscriptionID)
 	r.Set("title", v.Title)
 	r.Set("category", v.Category)
+	r.Set("category_ref", v.CategoryID)
 	r.Set("amount_minor", v.AmountMinor)
+	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("rate_mode", v.RateMode)
 	r.Set("paid_by", v.PaidBy)
 	r.Set("incurred_on", v.IncurredOn)
+	r.Set("split_mode", v.SplitMode)
 	r.Set("notes", v.Notes)
 }
 func expenseFrom(r *core.Record) *domain.Expense {
-	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), Title: r.GetString("title"), Category: r.GetString("category"), AmountMinor: int64(r.GetFloat("amount_minor")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), Notes: r.GetString("notes")}
+	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), SubscriptionID: r.GetString("subscription"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
+	if v.Currency == "" {
+		v.Currency = domain.CurrencyTWD
+	}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func writeSettlement(r *core.Record, v *domain.Settlement) {
+	r.Set("group", v.GroupID)
+	r.Set("from_user", v.FromUserID)
+	r.Set("to_user", v.ToUserID)
+	r.Set("created_by", v.CreatedBy)
+	r.Set("amount_minor", v.AmountMinor)
+	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("settled_on", v.SettledOn)
+	r.Set("notes", v.Notes)
+}
+func settlementFrom(r *core.Record) *domain.Settlement {
+	v := &domain.Settlement{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), CreatedBy: r.GetString("created_by"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), SettledOn: r.GetDateTime("settled_on").Time(), Notes: r.GetString("notes")}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
 func userFrom(r *core.Record) *domain.User {
-	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone")}
+	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone"), DefaultCurrency: domain.Currency(r.GetString("default_currency")), SystemRoleID: r.GetString("system_role")}
+}
+
+func writeCategory(r *core.Record, v *domain.Category) {
+	r.Set("scope", v.Scope)
+	r.Set("owner", v.OwnerID)
+	r.Set("group", v.GroupID)
+	r.Set("system_key", v.SystemKey)
+	r.Set("custom_name", v.CustomName)
+	r.Set("icon_key", v.IconKey)
+	r.Set("created_by", v.CreatedBy)
+	r.Set("archived", v.Archived)
+}
+func categoryFrom(r *core.Record) *domain.Category {
+	v := &domain.Category{ID: r.Id, Scope: r.GetString("scope"), OwnerID: r.GetString("owner"), GroupID: r.GetString("group"), SystemKey: r.GetString("system_key"), CustomName: r.GetString("custom_name"), IconKey: r.GetString("icon_key"), CreatedBy: r.GetString("created_by"), Archived: r.GetBool("archived")}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func writeExchangeRate(r *core.Record, v *domain.ExchangeRate) {
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("quote_currency", v.QuoteCurrency)
+	r.Set("rate_scaled", v.RateScaled)
+	r.Set("effective_date", v.EffectiveDate)
+	r.Set("provider", v.Provider)
+	r.Set("fetched_at", v.FetchedAt)
+}
+func exchangeRateFrom(r *core.Record) *domain.ExchangeRate {
+	v := &domain.ExchangeRate{ID: r.Id, BaseCurrency: domain.Currency(r.GetString("base_currency")), QuoteCurrency: domain.Currency(r.GetString("quote_currency")), RateScaled: int64(r.GetFloat("rate_scaled")), EffectiveDate: r.GetDateTime("effective_date").Time(), Provider: r.GetString("provider"), FetchedAt: r.GetDateTime("fetched_at").Time()}
+	v.Rate = domain.FormatRate(v.RateScaled)
+	return v
 }
