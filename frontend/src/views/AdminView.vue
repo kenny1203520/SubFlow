@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import './admin.css'
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ApiClient } from '../api/client'
-import type { AccessRole, AuditLog, User } from '../api/types'
+import type { AccessRole, AuditLog, Meta, User } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
@@ -14,20 +14,25 @@ import BaseInput from '../components/BaseInput.vue'
 import PasswordField from '../components/PasswordField.vue'
 import RoleSelect from '../components/RoleSelect.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
-import { auditPresentation } from '../utils/audit'
+import AuditFilterBar, { type AuditFilters } from '../components/AuditFilterBar.vue'
+import AuditLogList from '../components/AuditLogList.vue'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
-const route = useRoute()
-const { tr, formatDate, locale } = useI18n()
+const route = useRoute(), router = useRouter()
+const { tr, locale } = useI18n()
 const api = new ApiClient(() => auth.token, auth.logout)
 const roles = ref<AccessRole[]>([])
 const users = ref<User[]>([])
 const logs = ref<AuditLog[]>([])
+const logsMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
+const auditLoading = ref(false)
+const auditError = ref('')
 const error = ref('')
 const saved = ref(false)
 const loading = ref(false)
 const query = ref('')
+const auditFilters = reactive<AuditFilters>({ q:'', action:'', resource:'', outcome:'', from:'', to:'' })
 const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false })
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
@@ -43,11 +48,24 @@ const pbAdminUrl = computed(() => {
 function permissionInfo(permission: string) {
   return systemPermissionText[locale.value][permission as keyof typeof systemPermissionText['zh-TW']] ?? { title: permission, description: permission }
 }
-function auditInfo(log: AuditLog) { return auditPresentation(log, locale.value) }
-
 async function loadRoles() { if (can('system.roles.manage')) roles.value = (await api.get<AccessRole[]>('/system/roles')).data }
 async function loadUsers() { if (can('system.users.assign')) users.value = (await api.get<User[]>(`/system/users?perPage=50&q=${encodeURIComponent(query.value)}`)).data }
-async function loadLogs() { if (can('system.audit.read')) logs.value = (await api.get<AuditLog[]>('/system/audit-logs?perPage=50')).data }
+function readAuditFilters(): AuditFilters { return { q:String(route.query.q || ''), action:String(route.query.action || ''), resource:String(route.query.resource || ''), outcome:String(route.query.outcome || ''), from:String(route.query.from || ''), to:String(route.query.to || '') } }
+function auditQuery(page = Number(route.query.page || 1)) { const result:Record<string, string> = {}; for (const [key, value] of Object.entries(auditFilters)) if (value) result[key] = value; if (page > 1) result.page = String(page); return result }
+async function loadLogs() {
+  if (!can('system.audit.read')) return
+  auditLoading.value = true
+  auditError.value = ''
+  try {
+    const result = await api.get<AuditLog[]>(`/system/audit-logs?${new URLSearchParams({ ...auditQuery(), perPage:'25' }).toString()}`)
+    logs.value = result.data
+    logsMeta.value = result.meta || { page:1, perPage:25, totalItems:result.data.length, totalPages:1 }
+  } catch {
+    auditError.value = tr('requestFailed')
+  } finally {
+    auditLoading.value = false
+  }
+}
 async function loadSettings() { if (can('system.settings.manage')) settings.value = (await api.get<typeof settings.value>('/system/settings')).data }
 async function load() {
   loading.value = true
@@ -87,8 +105,10 @@ async function assign(user: User, roleId: string) {
   } catch { error.value = tr('requestFailed') }
 }
 
-watch(section, () => void load())
-onMounted(() => void load())
+function applyAuditFilters() { void router.replace({ query:auditQuery(1) }) }
+function resetAuditFilters() { void router.replace({ query:{} }) }
+function setAuditPage(page:number) { void router.replace({ query:auditQuery(page) }) }
+watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters()); void load() }, { immediate:true })
 </script>
 
 <template>
@@ -192,9 +212,9 @@ onMounted(() => void load())
       </form>
     </section>
 
-    <section v-else-if="section === 'audit' && can('system.audit.read')" class="card admin-form">
-      <h2>{{ tr('auditLogs') }}</h2>
-      <div class="data-list"><article v-for="log in logs" :key="log.id" class="data-row"><div class="grow"><strong>{{ auditInfo(log).action }}</strong><small>{{ auditInfo(log).actor }} · {{ auditInfo(log).resource }} · {{ formatDate(log.createdAt) }}</small></div><span class="pill">{{ auditInfo(log).outcome }}</span></article><p v-if="!logs.length" class="empty-inline">{{ tr('noSummary') }}</p></div>
+    <section v-else-if="section === 'audit' && can('system.audit.read')" class="admin-audit-stack">
+      <AuditFilterBar :model-value="auditFilters" @update:model-value="Object.assign(auditFilters, $event)" @apply="applyAuditFilters" @reset="resetAuditFilters" />
+      <AuditLogList :logs="logs" :meta="logsMeta" :loading="auditLoading" :error="auditError" @retry="loadLogs" @page="setAuditPage" />
     </section>
   </section>
 </template>

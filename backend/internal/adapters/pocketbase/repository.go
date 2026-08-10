@@ -686,14 +686,24 @@ func (r *Repository) CreateAudit(ctx context.Context, v *domain.AuditLog) error 
 	v.CreatedAt = record.GetDateTime("created").Time()
 	return nil
 }
-func (r *Repository) ListAudits(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.AuditLog], error) {
-	filter := ""
+func (r *Repository) ListAudits(ctx context.Context, groupID string, query ports.AuditQuery) (ports.Page[domain.AuditLog], error) {
+	clauses := []string{}
 	params := dbx.Params{}
 	if groupID != "" {
-		filter = "group={:group}"
+		clauses = append(clauses, "group={:group}")
 		params["group"] = groupID
 	}
-	records, err := listRecords(r.app(ctx), CollectionAuditLogs, filter, req, params)
+	if query.Action != "" { clauses = append(clauses, "action={:action}"); params["action"] = query.Action }
+	if query.Resource != "" { clauses = append(clauses, "resource={:resource}"); params["resource"] = query.Resource }
+	if query.Outcome != "" { clauses = append(clauses, "outcome={:outcome}"); params["outcome"] = query.Outcome }
+	if !query.From.IsZero() { clauses = append(clauses, "created>={:from}"); params["from"] = query.From }
+	if !query.To.IsZero() { clauses = append(clauses, "created<={:to}"); params["to"] = query.To }
+	if value := strings.TrimSpace(query.Query); value != "" {
+		clauses = append(clauses, "(action~{:query} || resource~{:query} || actor.name~{:query} || actor.email~{:query})")
+		params["query"] = value
+	}
+	filter := strings.Join(clauses, " && ")
+	records, err := listRecords(r.app(ctx), CollectionAuditLogs, filter, query.PageRequest, params)
 	if err != nil {
 		return ports.Page[domain.AuditLog]{}, err
 	}
@@ -709,8 +719,9 @@ func (r *Repository) ListAudits(ctx context.Context, groupID string, req ports.P
 			}
 		}
 	}
-	count, _ := countFiltered(r.app(ctx), CollectionAuditLogs, filter, params)
-	return page(values, req, count), nil
+	count, err := countFiltered(r.app(ctx), CollectionAuditLogs, filter, params)
+	if err != nil { return ports.Page[domain.AuditLog]{}, err }
+	return page(values, query.PageRequest, count), nil
 }
 func (r *Repository) UpsertExchangeRate(ctx context.Context, v *domain.ExchangeRate) error {
 	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date={:date}", dbx.Params{"base": v.BaseCurrency, "quote": v.QuoteCurrency, "date": v.EffectiveDate})

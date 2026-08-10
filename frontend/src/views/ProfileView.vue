@@ -13,7 +13,7 @@ async function submit() { await auth.updateProfile(form); saved.value = true; se
 async function resetPassword() { if (!auth.record?.email) return; resetBusy.value = true; try { await auth.requestPasswordReset(String(auth.record.email)); resetSent.value = true } finally { resetBusy.value = false } }
 </script>
 <template>
-    <section class="page narrow">
+    <section class="page profile-page">
         <div class="page-heading">
             <div>
                 <p class="eyebrow">{{t.profile}}</p>
@@ -22,14 +22,14 @@ async function resetPassword() { if (!auth.record?.email) return; resetBusy.valu
             </div>
         </div>
         <div class="profile-layout">
-            <form class="card form-card" @submit.prevent="submit">
+            <form class="card form-card profile-account" @submit.prevent="submit">
                 <h2>{{t.accountInfo}}</h2><label>{{ t.email }}<input :value="auth.record?.email"
                         disabled></label><label>{{ t.displayName }}<input v-model="form.name"
                         required></label><label>{{ t.timezone }}
                     <TimezoneSelect v-model="form.timezone" />
                 </label><label>{{t.currency}}<CurrencySelect v-model="form.default_currency" :currencies="workspace.currencies"/></label><button class="primary">{{ t.save }}</button><span v-if="saved" class="success">{{ t.saved }}</span>
             </form>
-            <section class="card form-card appearance-card">
+            <section class="card form-card profile-appearance">
                 <div>
                     <p class="eyebrow">{{t.appearance}}</p>
                     <h2>{{ t.theme }}</h2>
@@ -43,12 +43,12 @@ async function resetPassword() { if (!auth.record?.email) return; resetBusy.valu
                         type="button" :class="{ selected: preference === 'dark' }" @click="setTheme('dark')"><span
                             class="theme-preview dark-preview"></span><strong>{{ t.darkTheme }}</strong></button></div>
             </section>
-            <section class="card form-card">
+            <section class="card form-card profile-security">
                 <div><p class="eyebrow">{{t.loginSecurity}}</p><h2>{{ t.loginSecurity }}</h2><p class="setting-description">{{ t.passwordResetUnavailable }}</p></div>
                 <button type="button" class="ghost" :disabled="!auth.record?.email || resetBusy" @click="resetPassword">{{ resetBusy ? t.processing : t.resetPassword }}</button>
                 <p v-if="resetSent" class="success">{{ t.resetPasswordSent }}</p>
             </section>
-            <section class="card form-card"><CategoryManagement scope="personal" /></section>
+            <section class="card form-card profile-categories"><CategoryManagement scope="personal" /></section>
         </div>
     </section>
 </template>

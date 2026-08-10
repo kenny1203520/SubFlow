@@ -13,6 +13,18 @@ type PageRequest struct {
 	Sort    string
 }
 
+// AuditQuery keeps audit-specific filters separate from general list requests.
+// Dates are already normalized to UTC by the HTTP layer.
+type AuditQuery struct {
+	PageRequest
+	Query    string
+	Action   string
+	Resource string
+	Outcome  string
+	From     time.Time
+	To       time.Time
+}
+
 type Page[T any] struct {
 	Items      []T `json:"items"`
 	Page       int `json:"page"`
@@ -47,7 +59,7 @@ type RoleRepository interface {
 
 type AuditRepository interface {
 	Create(context.Context, *domain.AuditLog) error
-	List(context.Context, string, PageRequest) (Page[domain.AuditLog], error)
+	List(context.Context, string, AuditQuery) (Page[domain.AuditLog], error)
 }
 
 type InvitationRepository interface {

@@ -234,11 +234,11 @@ func (s *Service) RecoverSystemAdmin(ctx context.Context, targetID string) error
 	}
 	return domain.ErrNotFound
 }
-func (s *Service) ListSystemAudit(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.AuditLog], error) {
+func (s *Service) ListSystemAudit(ctx context.Context, userID string, query ports.AuditQuery) (ports.Page[domain.AuditLog], error) {
 	if err := s.systemPermission(ctx, userID, "system.audit.read"); err != nil {
 		return ports.Page[domain.AuditLog]{}, err
 	}
-	return s.Stores.Audits.List(ctx, "", page)
+	return s.Stores.Audits.List(ctx, "", query)
 }
 func (s *Service) CreateGroupRole(ctx context.Context, userID string, value domain.Role) (*domain.Role, error) {
 	if err := s.groupPermission(ctx, userID, value.GroupID, "group.roles.manage"); err != nil {
@@ -341,9 +341,9 @@ func (s *Service) AssignGroupRole(ctx context.Context, userID, groupID, memberID
 	}
 	return err
 }
-func (s *Service) ListGroupAudit(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.AuditLog], error) {
+func (s *Service) ListGroupAudit(ctx context.Context, userID, groupID string, query ports.AuditQuery) (ports.Page[domain.AuditLog], error) {
 	if err := s.groupPermission(ctx, userID, groupID, "group.audit.read"); err != nil {
 		return ports.Page[domain.AuditLog]{}, err
 	}
-	return s.Stores.Audits.List(ctx, groupID, page)
+	return s.Stores.Audits.List(ctx, groupID, query)
 }

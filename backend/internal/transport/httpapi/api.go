@@ -229,7 +229,7 @@ func (a *API) changeCurrency(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, value, nil)
 }
 
-var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}}
+var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}, "audits": {"created": true, "-created": true}}
 
 func pageRequest(e *core.RequestEvent, resource string) (ports.PageRequest, error) {
 	q := e.Request.URL.Query()
@@ -243,6 +243,29 @@ func pageRequest(e *core.RequestEvent, resource string) (ports.PageRequest, erro
 }
 func pageMeta[T any](p ports.Page[T]) map[string]int {
 	return map[string]int{"page": p.Page, "perPage": p.PerPage, "totalItems": p.TotalItems, "totalPages": p.TotalPages}
+}
+
+func (a *API) auditQuery(e *core.RequestEvent) (ports.AuditQuery, error) {
+	page, err := pageRequest(e, "audits")
+	if err != nil { return ports.AuditQuery{}, err }
+	query := e.Request.URL.Query()
+	result := ports.AuditQuery{PageRequest: page, Query: query.Get("q"), Action: query.Get("action"), Resource: query.Get("resource"), Outcome: query.Get("outcome")}
+	if result.Outcome != "" && result.Outcome != "success" && result.Outcome != "failure" { return ports.AuditQuery{}, domain.ErrInvalid }
+	location := time.UTC
+	if user, findErr := a.Service.Stores.Users.Get(e.Request.Context(), authID(e)); findErr == nil && user.Timezone != "" {
+		if value, loadErr := time.LoadLocation(user.Timezone); loadErr == nil { location = value }
+	}
+	parseDate := func(value string, end bool) (time.Time, error) {
+		if value == "" { return time.Time{}, nil }
+		date, parseErr := time.ParseInLocation("2006-01-02", value, location)
+		if parseErr != nil { return time.Time{}, domain.ErrInvalid }
+		if end { date = date.AddDate(0, 0, 1).Add(-time.Nanosecond) }
+		return date.UTC(), nil
+	}
+	if result.From, err = parseDate(query.Get("from"), false); err != nil { return ports.AuditQuery{}, err }
+	if result.To, err = parseDate(query.Get("to"), true); err != nil { return ports.AuditQuery{}, err }
+	if !result.From.IsZero() && !result.To.IsZero() && result.From.After(result.To) { return ports.AuditQuery{}, domain.ErrInvalid }
+	return result, nil
 }
 
 func (a *API) listGroups(e *core.RequestEvent) error {
@@ -448,7 +471,7 @@ func (a *API) assignGroupRole(e *core.RequestEvent) error {
 	return noContent(e)
 }
 func (a *API) listGroupAudit(e *core.RequestEvent) error {
-	p, err := pageRequest(e, "created")
+	p, err := a.auditQuery(e)
 	if err != nil {
 		return fail(e, err)
 	}
@@ -699,7 +722,7 @@ func (a *API) listSystemUsers(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, values.Items, pageMeta(values))
 }
 func (a *API) listSystemAudit(e *core.RequestEvent) error {
-	page, err := pageRequest(e, "audit logs")
+	page, err := a.auditQuery(e)
 	if err != nil {
 		return fail(e, err)
 	}

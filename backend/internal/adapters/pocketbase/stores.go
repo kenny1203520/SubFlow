@@ -172,8 +172,8 @@ func (r *RoleRepo) Delete(ctx context.Context, scope, id string) error {
 func (r *AuditRepo) Create(ctx context.Context, v *domain.AuditLog) error {
 	return r.CreateAudit(ctx, v)
 }
-func (r *AuditRepo) List(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.AuditLog], error) {
-	return r.ListAudits(ctx, groupID, req)
+func (r *AuditRepo) List(ctx context.Context, groupID string, query ports.AuditQuery) (ports.Page[domain.AuditLog], error) {
+	return r.ListAudits(ctx, groupID, query)
 }
 
 func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {

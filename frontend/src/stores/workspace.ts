@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Notification, Settlement, Subscription, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Meta, Notification, Settlement, Subscription, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useI18n } from '../i18n'
 
@@ -27,6 +27,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const settlements = ref<Settlement[]>([])
   const groupRoles = ref<AccessRole[]>([])
   const groupAuditLogs = ref<AuditLog[]>([])
+  const groupAuditMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
   const groupPermissions = ref<string[]>([])
   const groupErrors = reactive<Record<'access'|'members'|'subscriptions'|'expenses'|'settlements'|'summary', string>>({ access:'', members:'', subscriptions:'', expenses:'', settlements:'', summary:'' })
   const groupBusy = reactive<Record<'access'|'members'|'subscriptions'|'expenses'|'settlements'|'summary', number>>({ access:0, members:0, subscriptions:0, expenses:0, settlements:0, summary:0 })
@@ -113,6 +114,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       summary.value = null
       groupPermissions.value = []
       groupAuditLogs.value = []
+      groupAuditMeta.value = { page:1, perPage:25, totalItems:0, totalPages:0 }
       return
     }
     members.value = []
@@ -123,6 +125,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     summary.value = null
     groupPermissions.value = []
     groupAuditLogs.value = []
+    groupAuditMeta.value = { page:1, perPage:25, totalItems:0, totalPages:0 }
     for (const key of Object.keys(groupErrors) as Array<keyof typeof groupErrors>) groupErrors[key] = ''
     hydratingGroupId = id
     groupHydration = refreshGroup(request).finally(() => { if (hydratingGroupId === id) { hydratingGroupId='';groupHydration=undefined } })
@@ -230,7 +233,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function updateGroupRole(id:string,input:Pick<AccessRole,'name'|'category'|'permissions'>) { if (!currentGroupId.value) return; const role=(await api.patch<AccessRole>(`/groups/${currentGroupId.value}/roles/${id}`,input)).data;groupRoles.value=groupRoles.value.map(value=>value.id===id?role:value);return role }
   async function deleteGroupRole(id:string) { if (!currentGroupId.value) return; await api.delete(`/groups/${currentGroupId.value}/roles/${id}`); groupRoles.value=groupRoles.value.filter(value=>value.id!==id) }
   async function assignGroupRole(userId:string,roleId:string) { if (!currentGroupId.value) return;await api.request(`/groups/${currentGroupId.value}/members/${userId}/role`,{method:'PUT',body:JSON.stringify({roleId})});await refreshGroup() }
-  async function loadGroupAuditLogs() { if (!currentGroupId.value) return;groupAuditLogs.value=(await api.get<AuditLog[]>(`/groups/${currentGroupId.value}/audit-logs?perPage=100`)).data }
+  async function loadGroupAuditLogs(query = ''): Promise<Envelope<AuditLog[]> | undefined> {
+    if (!currentGroupId.value) return
+    const params = new URLSearchParams(query)
+    if (!params.has('perPage')) params.set('perPage', '25')
+    const result = await api.get<AuditLog[]>(`/groups/${currentGroupId.value}/audit-logs?${params.toString()}`)
+    groupAuditLogs.value = result.data
+    groupAuditMeta.value = result.meta || { page:1, perPage:25, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
 
   async function invite(email: string) {
     if (!currentGroupId.value) return
@@ -363,7 +374,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, pendingInvitations, notifications,
-    subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,
