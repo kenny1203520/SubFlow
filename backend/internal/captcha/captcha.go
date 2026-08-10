@@ -39,7 +39,7 @@ func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token
 	if provider == "" { return nil }
 	if secret == "" || token == "" { return errors.New("captcha token is required") }
 	switch provider {
-	case "altcha": provider = "altcha_community" // legacy setting compatibility
+	case "altcha": fallthrough // legacy setting compatibility
 	case "altcha_community":
 		payload, err := decodePayload(token); if err != nil { return err }
 		result, err := altcha.VerifySolution(altcha.VerifySolutionOptions{Challenge: payload.Challenge, Solution: payload.Solution, HMACSignatureSecret: secret})

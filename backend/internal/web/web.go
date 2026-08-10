@@ -65,7 +65,10 @@ func setSecurityHeaders(e *core.RequestEvent) {
 	headers.Set("X-Frame-Options", "SAMEORIGIN")
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")
 	headers.Set("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-	headers.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
+	// script-src/frame-src/connect-src allowlist the CAPTCHA providers CaptchaChallenge.vue
+	// can render (Turnstile, hCaptcha, reCAPTCHA, ALTCHA) so their widget script, challenge
+	// iframe, and verification XHR aren't blocked regardless of which provider is configured.
+	headers.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' https://challenges.cloudflare.com https://js.hcaptcha.com https://www.google.com/recaptcha/ https://www.gstatic.com/recaptcha/ https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data: blob:; connect-src 'self' https://challenges.cloudflare.com https://hcaptcha.com https://*.hcaptcha.com https://www.google.com; frame-src https://challenges.cloudflare.com https://newassets.hcaptcha.com https://www.google.com/recaptcha/; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self'")
 }
 func mustSub(root fs.FS, dir string) fs.FS {
 	sub, err := fs.Sub(root, dir)
