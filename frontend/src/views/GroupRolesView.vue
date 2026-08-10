@@ -15,7 +15,7 @@ const permissionOptions=['group.view','group.settings.manage','group.members.man
 const roleCategories=computed(()=>[...new Set(workspace.groupRoles.map(role=>role.category).filter(Boolean))])
 const grouped=computed(()=>{const values=new Map<string,AccessRole[]>();for(const role of workspace.groupRoles){const key=role.category||tr('ungroupedRoles');values.set(key,[...(values.get(key)||[]),role])}return values})
 function canManage(){return workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage')}
-function open(role?:AccessRole){editing.value=role;Object.assign(form,{name:role?.name||'',category:role?.category||'',permissions:[...(role?.permissions||[])]})}
+function open(role?:AccessRole){editing.value=role??{id:'',scope:'group',groupId:'',name:'',category:'',key:'',permissions:[],protected:false,createdAt:'',updatedAt:''};Object.assign(form,{name:role?.name||'',category:role?.category||'',permissions:[...(role?.permissions||[])]})}
 function toggle(permission:string){form.permissions=form.permissions.includes(permission)?form.permissions.filter(value=>value!==permission):[...form.permissions,permission]}
 async function save(){if(!form.name.trim())return;if(editing.value?.id)await workspace.updateGroupRole(editing.value.id,{name:form.name,category:form.category,permissions:form.permissions});else await workspace.createGroupRole({name:form.name,category:form.category,permissions:form.permissions});editing.value=undefined}
 async function remove(){if(removing.value){await workspace.deleteGroupRole(removing.value.id);removing.value=undefined}}
