@@ -52,14 +52,26 @@ func TestSubscriptionBillingDateAllowed(t *testing.T) {
 		BillingInterval: 1,
 	}
 
-	if !subscriptionBillingDateAllowed(subscription, startsOn.AddDate(0, 0, 14), location) {
+	if !subscriptionBillingDateAllowed(subscription, startsOn.AddDate(0, 0, 14), location, false) {
 		t.Fatal("expected a future weekly billing date to be accepted")
 	}
-	if subscriptionBillingDateAllowed(subscription, startsOn.AddDate(0, 0, 15), location) {
+	if subscriptionBillingDateAllowed(subscription, startsOn.AddDate(0, 0, 15), location, false) {
 		t.Fatal("expected a non-billing date to be rejected")
 	}
-	if subscriptionBillingDateAllowed(subscription, startsOn, location) {
+	if subscriptionBillingDateAllowed(subscription, startsOn, location, false) {
 		t.Fatal("expected a billing date before next billing to be rejected")
+	}
+
+	// A caller holding ledger.records.historical_write may reach back to a past
+	// billing date, but the date still has to land on the schedule.
+	if !subscriptionBillingDateAllowed(subscription, startsOn, location, true) {
+		t.Fatal("expected a past billing date to be accepted for a historical edit")
+	}
+	if subscriptionBillingDateAllowed(subscription, startsOn.AddDate(0, 0, 3), location, true) {
+		t.Fatal("expected a past non-billing date to stay rejected for a historical edit")
+	}
+	if subscriptionBillingDateAllowed(subscription, startsOn.AddDate(0, 0, -7), location, true) {
+		t.Fatal("expected a date before the subscription started to be rejected")
 	}
 }
 
