@@ -11,7 +11,7 @@ import { roleLabel } from '../role'
 const workspace=useWorkspaceStore(),{tr}=useI18n()
 const editing=ref<AccessRole|undefined>(), removing=ref<AccessRole|undefined>()
 const form=reactive({name:'',category:'',permissions:[] as string[]})
-const permissionOptions=['group.view','group.settings.manage','group.members.manage','group.roles.manage','group.audit.read','ledger.expenses.read','ledger.expenses.write','ledger.expenses.delete','ledger.subscriptions.read','ledger.subscriptions.write','ledger.subscriptions.delete','ledger.settlements.read','ledger.settlements.write','ledger.settlements.delete','categories.manage']
+const permissionOptions=['group.view','group.settings.manage','group.members.manage','group.roles.manage','group.audit.read','ledger.expenses.read','ledger.expenses.write','ledger.records.historical_write','ledger.expenses.delete','ledger.subscriptions.read','ledger.subscriptions.write','ledger.subscriptions.delete','ledger.settlements.read','ledger.settlements.write','ledger.settlements.delete','categories.manage']
 const roleCategories=computed(()=>[...new Set(workspace.groupRoles.map(role=>role.category).filter(Boolean))])
 const grouped=computed(()=>{const values=new Map<string,AccessRole[]>();for(const role of workspace.groupRoles){const key=role.category||tr('ungroupedRoles');values.set(key,[...(values.get(key)||[]),role])}return values})
 function canManage(){return workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage')}
