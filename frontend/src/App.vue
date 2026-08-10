@@ -9,6 +9,7 @@ import { useI18n } from './i18n'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
 import NotificationBell from './components/NotificationBell.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
+import PwaUpdatePrompt from './components/PwaUpdatePrompt.vue'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
@@ -57,6 +58,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
 </script>
 
 <template>
+  <PwaUpdatePrompt />
   <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div>
   <RouterView v-else-if="!setup.initialized" />
   <RouterView v-else-if="!auth.authenticated" />
