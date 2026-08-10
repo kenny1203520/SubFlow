@@ -1,3 +1,6 @@
+export function browserTimezone():string{
+  try{return Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC'}catch{return 'UTC'}
+}
 export function timezoneOffset(timeZone:string,date:Date|string=new Date()){
   try{
     const value=new Intl.DateTimeFormat('en-US',{timeZone,timeZoneName:'longOffset'}).formatToParts(new Date(date)).find(part=>part.type==='timeZoneName')?.value||'GMT'

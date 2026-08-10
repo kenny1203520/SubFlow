@@ -18,6 +18,16 @@ export class ApiClient {
     return body as Envelope<T>
   }
   get<T>(path:string){return this.request<T>(path)}
+  async getBlob(path:string):Promise<{blob:Blob;filename:string}>{
+    const headers=new Headers();headers.set('Accept','*/*');const token=this.token();if(token)headers.set('Authorization',bearer(token))
+    let response:Response
+    try{response=await fetch(`/api/subflow/v1${path}`,{headers})}catch{throw new ApiError(0,'network_error','Network request failed')}
+    if(response.status===401)this.unauthorized()
+    if(!response.ok){const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as ApiFailure;throw new ApiError(response.status,body.error?.code??'request_failed',body.error?.message??'Request failed',body.error?.fields)}
+    const disposition=response.headers.get('Content-Disposition')||''
+    const match=/filename="?([^"]+)"?/.exec(disposition)
+    return {blob:await response.blob(),filename:match?.[1]||'export.csv'}
+  }
   post<T>(path:string,body?:unknown){return this.request<T>(path,{method:'POST',body:body===undefined?undefined:JSON.stringify(body)})}
   patch<T>(path:string,body:unknown){return this.request<T>(path,{method:'PATCH',body:JSON.stringify(body)})}
   delete<T>(path:string){return this.request<T>(path,{method:'DELETE'})}
