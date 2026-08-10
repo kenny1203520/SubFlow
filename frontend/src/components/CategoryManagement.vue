@@ -8,7 +8,10 @@ import CategoryIconPicker from './CategoryIconPicker.vue'
 import BaseInput from './BaseInput.vue'
 import { categoryIcon, categoryLabel } from '../category'
 
-const props=defineProps<{scope:'personal'|'group';groupId?:string;canManage?:boolean}>()
+// canManage is typed boolean, so Vue auto-infers `default:false` for callers
+// that omit it (e.g. ProfileView.vue) unless withDefaults says otherwise —
+// without this, the add/edit/archive editor silently never renders there.
+const props=withDefaults(defineProps<{scope:'personal'|'group';groupId?:string;canManage?:boolean}>(),{canManage:true})
 const workspace=useWorkspaceStore(),{tr}=useI18n(),editing=ref<Category|undefined>()
 const form=reactive({name:'',icon:'tag'})
 const items=computed(()=>workspace.categories?.filter(item=>item.scope===props.scope&&!item.systemKey)||[])

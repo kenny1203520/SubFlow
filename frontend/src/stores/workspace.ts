@@ -4,6 +4,7 @@ import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
 import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Meta, Notification, Settlement, Subscription, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
+import { useToastStore } from './toast'
 import { useI18n } from '../i18n'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'>
@@ -17,6 +18,7 @@ type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'p
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const auth = useAuthStore()
+  const toast = useToastStore()
   const { tr } = useI18n()
   const api = new ApiClient(() => auth.token, auth.logout)
   const groups = ref<Group[]>([])
@@ -70,7 +72,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // Returns whether the task succeeded, so a caller that needs to react to a
   // failure (e.g. keep a form drawer open and show the error) can check it
   // instead of assuming success like a bare `await run(...)` always did.
-  async function run(task: () => Promise<void>, key = 'general'): Promise<boolean> {
+  // `notify` toasts the outcome; background reads (loadGroups, refreshPersonal,
+  // refreshDashboard) pass false since the user did not just trigger them.
+  async function run(task: () => Promise<void>, key = 'general', notify = true): Promise<boolean> {
     busy[key] = (busy[key] || 0) + 1
     lastRetry = task
     error.value = ''
@@ -78,12 +82,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     permissionDenied.value = false
     try {
       await task()
+      if (notify) toast.push('success', tr('actionSucceeded'))
       return true
     } catch (reason) {
       const value = reason as { status?: number; message?: string }
       permissionDenied.value = value.status === 403
       error.value = value.message ?? ''
       errorCode.value = reason instanceof ApiError ? reason.code : 'internal_error'
+      if (notify) toast.push('error', tr('actionFailed', { reason: localizedError.value }))
       return false
     } finally {
       busy[key] = Math.max(0, (busy[key] || 1) - 1)
@@ -100,7 +106,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 		  try { await loadInvitationInbox() } catch { pendingInvitations.value=[]; notifications.value=[] }
       if (currentGroupId.value && !groups.value.some(group => group.id === currentGroupId.value)) currentGroupId.value = ''
       if (!sseStarted) { sse = new SSEClient(() => auth.token, onEvent, auth.logout); sseStarted = true; void sse.start() }
-    }, 'groups')
+    }, 'groups', false)
   }
 
   async function loadCategories(scope:'personal'|'group',groupId='') { categories.value=(await api.get<Category[]>(`/categories?scope=${scope}${groupId?`&groupId=${encodeURIComponent(groupId)}`:''}`)).data }
@@ -191,13 +197,13 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       personalSubscriptions.value = subscriptionPage.data
       personalExpenses.value = expensePage.data
       personalSummary.value = dashboard.data
-    }, 'personal')
+    }, 'personal', false)
   }
 
   async function refreshDashboard(scope: 'personal'|'group'|'all', groupId: string, month: string) {
     if (scope === 'group') {
       if (groupId) await selectGroup(groupId)
-      await run(async () => { summary.value = (await api.get<DashboardSummary>(`/dashboard?scope=group&groupId=${encodeURIComponent(groupId)}&month=${encodeURIComponent(month)}`)).data }, 'dashboard')
+      await run(async () => { summary.value = (await api.get<DashboardSummary>(`/dashboard?scope=group&groupId=${encodeURIComponent(groupId)}&month=${encodeURIComponent(month)}`)).data }, 'dashboard', false)
       return
     }
     await refreshPersonal(scope, month)
@@ -364,6 +370,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
   }
 
+  async function exportLedger(groupId?: string) {
+    const { blob, filename } = await api.getBlob(groupId ? `/groups/${groupId}/export` : '/export/personal')
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    URL.revokeObjectURL(url)
+  }
+
   function clear() {
     sse?.stop()
     sseStarted = false
@@ -398,6 +416,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden,
+    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
   }
 })
