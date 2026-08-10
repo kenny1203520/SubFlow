@@ -1,11 +1,14 @@
 import { computed, ref } from 'vue'
 
 // Mirrors the responsive breakpoints already used in completion.css (700px/1100px).
-const mobile = typeof window === 'undefined' ? null : window.matchMedia('(max-width: 700px)')
-const tablet = typeof window === 'undefined' ? null : window.matchMedia('(max-width: 1100px)')
+// matchMedia is absent under jsdom and during SSR, so fall back to the desktop size.
+const query = typeof window !== 'undefined' && typeof window.matchMedia === 'function' ? (value: string) => window.matchMedia(value) : null
+const mobile = query?.('(max-width: 700px)') ?? null
+const tablet = query?.('(max-width: 1100px)') ?? null
 const tick = ref(0)
-mobile?.addEventListener('change', () => { tick.value++ })
-tablet?.addEventListener('change', () => { tick.value++ })
+const bump = () => { tick.value++ }
+mobile?.addEventListener?.('change', bump)
+tablet?.addEventListener?.('change', bump)
 
 export const defaultPageSize = computed(() => {
   void tick.value
