@@ -92,6 +92,25 @@ func subscriptionExpensesBetween(subscription domain.Subscription, from, to time
 	return values, nil
 }
 
+// subscriptionUserShare returns the portion of a subscription's displayAmount that
+// belongs to userID's split, so the dashboard can show the viewer's own monthly
+// subscription commitment alongside the group's total. Personal subscriptions (no
+// GroupID) belong entirely to their owner.
+func subscriptionUserShare(subscription domain.Subscription, userID, scope string, displayAmount int64) int64 {
+	if subscription.GroupID == "" {
+		return displayAmount
+	}
+	for _, split := range subscription.Splits {
+		if split.UserID == userID {
+			if scope == "group" {
+				return split.BaseAmountMinor
+			}
+			return split.AmountMinor
+		}
+	}
+	return 0
+}
+
 func (s *Service) accountingLocation(ctx context.Context, userID, groupID string) *time.Location {
 	location := time.UTC
 	zone := ""
@@ -271,9 +290,13 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		}
 		item := bucket(displayCurrency)
 		monthly, _ := domain.MonthlyEquivalentWithInterval(displayAmount, subscription.BillingCycle, subscription.BillingInterval)
+		subscriptionShare := subscriptionUserShare(subscription, userID, query.Scope, displayAmount)
+		personalMonthly, _ := domain.MonthlyEquivalentWithInterval(subscriptionShare, subscription.BillingCycle, subscription.BillingInterval)
 		item.MonthlySubscriptionMinor += monthly
+		item.PersonalMonthlySubscriptionMinor += personalMonthly
 		item.ActiveSubscriptions++
 		result.MonthlySubscriptionMinor += monthly
+		result.PersonalMonthlySubscriptionMinor += personalMonthly
 		result.ActiveSubscriptions++
 		recordStart, recordEnd := recordRange(subscription.GroupID)
 		location := s.accountingLocation(ctx, userID, subscription.GroupID)

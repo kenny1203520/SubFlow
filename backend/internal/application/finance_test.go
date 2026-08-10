@@ -77,3 +77,82 @@ func TestSubscriptionExpensesBetweenSkipsPostedOccurrences(t *testing.T) {
 		t.Fatalf("expected posted occurrence to be skipped, got %#v", values)
 	}
 }
+
+func TestSubscriptionExpensesBetweenPreservesSplitsForBalances(t *testing.T) {
+	location := time.UTC
+	billingAt := time.Date(2026, time.August, 10, 0, 0, 0, 0, location)
+	subscription := domain.Subscription{
+		ID:              "sub-3",
+		Name:            "Streaming",
+		AmountMinor:     1000,
+		Currency:        domain.CurrencyTWD,
+		BaseCurrency:    domain.CurrencyTWD,
+		BaseAmountMinor: 1000,
+		BillingCycle:    domain.BillingMonthly,
+		BillingInterval: 1,
+		StartsOn:        time.Date(2025, time.August, 10, 0, 0, 0, 0, location),
+		PaidBy:          "alice",
+		SplitMode:       domain.SplitAmount,
+		Splits: []domain.ExpenseSplit{
+			{UserID: "alice", AmountMinor: 500, BaseAmountMinor: 500},
+			{UserID: "bob", AmountMinor: 500, BaseAmountMinor: 500},
+		},
+	}
+
+	values, err := subscriptionExpensesBetween(subscription, time.Date(2026, time.August, 1, 0, 0, 0, 0, location), time.Date(2026, time.September, 1, 0, 0, 0, 0, location), location)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 1 {
+		t.Fatalf("expected 1 synthetic expense, got %d", len(values))
+	}
+	if !values[0].IncurredOn.Equal(billingAt) {
+		t.Fatalf("unexpected billing date: %#v", values[0].IncurredOn)
+	}
+	balances := domain.MemberBalances(values, nil)
+	got := map[string]int64{}
+	for _, balance := range balances {
+		got[balance.UserID] = balance.AmountMinor
+	}
+	if got["alice"] != 500 || got["bob"] != -500 {
+		t.Fatalf("unexpected balances for split subscription: %#v", got)
+	}
+}
+
+func TestSubscriptionUserShare(t *testing.T) {
+	shared := domain.Subscription{
+		ID:      "sub-shared",
+		GroupID: "group-1",
+		PaidBy:  "alice",
+		Splits: []domain.ExpenseSplit{
+			{UserID: "alice", AmountMinor: 300, BaseAmountMinor: 300},
+			{UserID: "bob", AmountMinor: 300, BaseAmountMinor: 300},
+			{UserID: "carol", AmountMinor: 300, BaseAmountMinor: 300},
+		},
+	}
+	personalOnly := domain.Subscription{ID: "sub-personal", PaidBy: "alice"}
+
+	cases := []struct {
+		name     string
+		sub      domain.Subscription
+		userID   string
+		scope    string
+		amount   int64
+		expected int64
+	}{
+		{"group scope reduces to viewer split", shared, "alice", "group", 900, 300},
+		{"personal scope reduces to viewer split", shared, "alice", "personal", 900, 300},
+		{"all scope reduces to viewer split", shared, "bob", "all", 900, 300},
+		{"non-participant gets zero share in group scope", shared, "dave", "group", 900, 0},
+		{"non-participant gets zero share", shared, "dave", "personal", 900, 0},
+		{"unshared personal subscription keeps full amount", personalOnly, "alice", "personal", 500, 500},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := subscriptionUserShare(testCase.sub, testCase.userID, testCase.scope, testCase.amount)
+			if got != testCase.expected {
+				t.Fatalf("expected %d, got %d", testCase.expected, got)
+			}
+		})
+	}
+}

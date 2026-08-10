@@ -356,13 +356,14 @@ type Settlement struct {
 }
 
 type CurrencyDashboard struct {
-	Currency                 Currency `json:"currency"`
-	CashOutflowMinor         int64    `json:"cashOutflowMinor"`
-	PersonalShareMinor       int64    `json:"personalShareMinor"`
-	ReimbursableMinor        int64    `json:"reimbursableMinor"`
-	MonthlySubscriptionMinor int64    `json:"monthlySubscriptionMinor"`
-	ActiveSubscriptions      int      `json:"activeSubscriptions"`
-	ChargeCount              int      `json:"chargeCount"`
+	Currency                         Currency `json:"currency"`
+	CashOutflowMinor                 int64    `json:"cashOutflowMinor"`
+	PersonalShareMinor               int64    `json:"personalShareMinor"`
+	ReimbursableMinor                int64    `json:"reimbursableMinor"`
+	MonthlySubscriptionMinor         int64    `json:"monthlySubscriptionMinor"`
+	PersonalMonthlySubscriptionMinor int64    `json:"personalMonthlySubscriptionMinor"`
+	ActiveSubscriptions              int      `json:"activeSubscriptions"`
+	ChargeCount                      int      `json:"chargeCount"`
 }
 
 type MemberBalance struct {
@@ -371,9 +372,10 @@ type MemberBalance struct {
 }
 
 type DashboardSummary struct {
-	Month                    string              `json:"month,omitempty"`
-	MonthlySubscriptionMinor int64               `json:"monthlySubscriptionMinor"`
-	MonthExpenseMinor        int64               `json:"monthExpenseMinor"`
+	Month                            string              `json:"month,omitempty"`
+	MonthlySubscriptionMinor         int64               `json:"monthlySubscriptionMinor"`
+	PersonalMonthlySubscriptionMinor int64               `json:"personalMonthlySubscriptionMinor"`
+	MonthExpenseMinor                int64               `json:"monthExpenseMinor"`
 	ActiveSubscriptions      int                 `json:"activeSubscriptions"`
 	Upcoming                 []Subscription      `json:"upcoming"`
 	Currencies               []CurrencyDashboard `json:"currencies,omitempty"`
