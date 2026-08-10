@@ -105,6 +105,11 @@ func main() {
 				app.Logger().Warn("subscription rate refresh failed", "operation", "refresh_automatic_subscriptions", "error", refreshErr)
 			}
 		})
+		app.Cron().MustAdd("subflow_subscription_posting", "* * * * *", func() {
+			if postErr := base.PostDueSubscriptions(context.Background()); postErr != nil {
+				app.Logger().Warn("subscription posting failed", "operation", "post_due_subscriptions", "error", postErr)
+			}
+		})
 		go func() {
 			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {
 				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)

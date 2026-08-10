@@ -13,20 +13,22 @@ import (
 )
 
 const (
-	CollectionGroups         = "groups"
-	CollectionMembers        = "group_members"
-	CollectionInvitations    = "group_invitations"
-	CollectionNotifications  = "notifications"
-	CollectionSubscriptions  = "subscriptions"
-	CollectionExpenses       = "expenses"
-	CollectionExpenseSplits  = "expense_splits"
-	CollectionSettlements    = "settlements"
-	CollectionCategories     = "categories"
-	CollectionExchangeRates  = "exchange_rates"
-	CollectionSystemRoles    = "system_roles"
-	CollectionGroupRoles     = "group_roles"
-	CollectionAuditLogs      = "audit_logs"
-	CollectionSystemSettings = "system_settings"
+	CollectionGroups                  = "groups"
+	CollectionMembers                 = "group_members"
+	CollectionInvitations             = "group_invitations"
+	CollectionNotifications           = "notifications"
+	CollectionSubscriptions           = "subscriptions"
+	CollectionSubscriptionRevisions   = "subscription_revisions"
+	CollectionSubscriptionOccurrences = "subscription_occurrences"
+	CollectionExpenses                = "expenses"
+	CollectionExpenseSplits           = "expense_splits"
+	CollectionSettlements             = "settlements"
+	CollectionCategories              = "categories"
+	CollectionExchangeRates           = "exchange_rates"
+	CollectionSystemRoles             = "system_roles"
+	CollectionGroupRoles              = "group_roles"
+	CollectionAuditLogs               = "audit_logs"
+	CollectionSystemSettings          = "system_settings"
 )
 
 var systemCategoryKeys = []string{"food_dining", "transport", "housing", "utilities", "shopping", "entertainment", "health", "education", "travel", "insurance", "software_digital", "memberships", "taxes_fees", "gifts_donations", "other"}
@@ -188,15 +190,29 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSubscriptions, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "paid_by", CollectionId: users.Id, MaxSelect: 1}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.SelectField{Name: "billing_cycle", Required: true, Values: []string{"daily", "every_n_days", "weekly", "every_n_weeks", "every_n_hours", "monthly", "quarterly", "yearly"}, MaxSelect: 1}, &core.NumberField{Name: "billing_interval", OnlyInt: true}, &core.DateField{Name: "starts_on", Required: true}, &core.DateField{Name: "ends_on"}, &core.DateField{Name: "next_billing", Required: true}, &core.SelectField{Name: "status", Required: true, Values: []string{"active", "paused", "cancelled"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "paid_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.JSONField{Name: "splits", MaxSize: 1024 * 128}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.SelectField{Name: "billing_cycle", Required: true, Values: []string{"daily", "every_n_days", "weekly", "every_n_weeks", "every_n_hours", "monthly", "quarterly", "yearly"}, MaxSelect: 1}, &core.NumberField{Name: "billing_interval", OnlyInt: true}, &core.DateField{Name: "starts_on", Required: true}, &core.DateField{Name: "ends_on"}, &core.DateField{Name: "next_billing", Required: true}, &core.SelectField{Name: "status", Required: true, Values: []string{"active", "paused", "cancelled"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_subscriptions_group_next", false, "`group`, next_billing", "")
 	})
 	if err != nil {
 		return "", err
 	}
+	revisions, err := ensureCollection(app, CollectionSubscriptionRevisions, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "subscription", Required: true, CollectionId: mustCollectionID(app, CollectionSubscriptions), MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "scope", Required: true, Values: []string{"future", "one_off"}, MaxSelect: 1}, &core.DateField{Name: "effective_at", Required: true}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "split_mode", Required: true, Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.JSONField{Name: "splits", MaxSize: 1024 * 128}, &core.TextField{Name: "notes", Max: 4000})
+		c.AddIndex("idx_subscription_revisions_effective", false, "subscription, effective_at", "")
+	})
+	if err != nil {
+		return "", err
+	}
 	_, err = ensureCollection(app, CollectionExpenses, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.DateField{Name: "incurred_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "subscription", CollectionId: mustCollectionID(app, CollectionSubscriptions), MaxSelect: 1}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.DateField{Name: "incurred_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_expenses_group_date", false, "`group`, incurred_on", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionSubscriptionOccurrences, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "subscription", Required: true, CollectionId: mustCollectionID(app, CollectionSubscriptions), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "revision", Required: true, CollectionId: revisions.Id, MaxSelect: 1}, &core.RelationField{Name: "expense", CollectionId: mustCollectionID(app, CollectionExpenses), MaxSelect: 1}, &core.DateField{Name: "billing_at", Required: true}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "posted", "failed"}, MaxSelect: 1}, &core.TextField{Name: "error", Max: 500})
+		c.AddIndex("idx_subscription_occurrence_unique", true, "subscription, billing_at", "")
 	})
 	if err != nil {
 		return "", err
@@ -427,6 +443,12 @@ func backfillFinance(app core.App) error {
 			subscription.Set("paid_by", payer)
 			changed = true
 		}
+		if subscription.GetString("split_mode") == "" {
+			payer := subscription.GetString("paid_by")
+			subscription.Set("split_mode", "amount")
+			subscription.Set("splits", []map[string]any{{"userId": payer, "amountMinor": int64(subscription.GetFloat("amount_minor")), "baseAmountMinor": int64(subscription.GetFloat("base_amount_minor"))}})
+			changed = true
+		}
 		if subscription.GetString("base_currency") == "" {
 			subscription.Set("base_currency", subscription.GetString("currency"))
 			subscription.Set("base_amount_minor", subscription.GetFloat("amount_minor"))
@@ -447,6 +469,45 @@ func backfillFinance(app core.App) error {
 			if err = app.Save(subscription); err != nil {
 				return err
 			}
+		}
+		if subscription.GetString("group") == "" {
+			continue
+		}
+		revisions, findErr := app.FindRecordsByFilter(CollectionSubscriptionRevisions, "subscription={:subscription}", "", 1, 0, map[string]any{"subscription": subscription.Id})
+		if findErr != nil {
+			return findErr
+		}
+		if len(revisions) != 0 {
+			continue
+		}
+		revision, createErr := newSchemaRecord(app, CollectionSubscriptionRevisions)
+		if createErr != nil {
+			return createErr
+		}
+		effective := subscription.GetDateTime("next_billing").Time()
+		if effective.IsZero() {
+			effective = subscription.GetDateTime("starts_on").Time()
+		}
+		payer := subscription.GetString("paid_by")
+		amount := subscription.GetFloat("amount_minor")
+		revision.Set("subscription", subscription.Id)
+		revision.Set("scope", "future")
+		revision.Set("effective_at", effective)
+		revision.Set("name", subscription.GetString("name"))
+		revision.Set("category", subscription.GetString("category"))
+		revision.Set("category_ref", subscription.GetString("category_ref"))
+		revision.Set("amount_minor", amount)
+		revision.Set("currency", subscription.GetString("currency"))
+		revision.Set("base_currency", subscription.GetString("base_currency"))
+		revision.Set("base_amount_minor", subscription.GetFloat("base_amount_minor"))
+		revision.Set("exchange_rate_scaled", subscription.GetFloat("exchange_rate_scaled"))
+		revision.Set("exchange_rate_date", subscription.GetDateTime("exchange_rate_date").Time())
+		revision.Set("rate_mode", subscription.GetString("rate_mode"))
+		revision.Set("paid_by", payer)
+		revision.Set("split_mode", "amount")
+		revision.Set("splits", []map[string]any{{"userId": payer, "amountMinor": int64(amount), "baseAmountMinor": int64(subscription.GetFloat("base_amount_minor"))}})
+		if createErr = app.Save(revision); createErr != nil {
+			return createErr
 		}
 	}
 	settlements, err := app.FindRecordsByFilter(CollectionSettlements, "", "", 0, 0, nil)

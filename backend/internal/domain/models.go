@@ -229,32 +229,76 @@ type Notification struct {
 }
 
 type Subscription struct {
-	ID               string             `json:"id"`
-	GroupID          string             `json:"groupId,omitempty"`
-	OwnerID          string             `json:"ownerId,omitempty"`
-	PaidBy           string             `json:"paidBy"`
-	Name             string             `json:"name"`
-	Category         string             `json:"category"`
-	CategoryID       string             `json:"categoryId,omitempty"`
-	CategoryInfo     *Category          `json:"categoryInfo,omitempty"`
-	AmountMinor      int64              `json:"amountMinor"`
-	Currency         Currency           `json:"currency"`
-	BaseCurrency     Currency           `json:"baseCurrency"`
-	BaseAmountMinor  int64              `json:"baseAmountMinor"`
-	ExchangeRate     string             `json:"exchangeRate"`
-	RateScaled       int64              `json:"-"`
-	ExchangeRateDate time.Time          `json:"exchangeRateDate"`
-	RateMode         RateMode           `json:"rateMode"`
-	BillingCycle     BillingCycle       `json:"billingCycle"`
-	BillingInterval  int                `json:"billingInterval"`
-	StartsOn         time.Time          `json:"startsOn"`
-	EndsOn           *time.Time         `json:"endsOn,omitempty"`
-	NextBilling      time.Time          `json:"nextBilling"`
-	Status           SubscriptionStatus `json:"status"`
-	LifecycleStatus  string             `json:"lifecycleStatus,omitempty"`
-	Notes            string             `json:"notes"`
-	CreatedAt        time.Time          `json:"createdAt"`
-	UpdatedAt        time.Time          `json:"updatedAt"`
+	ID                 string                   `json:"id"`
+	GroupID            string                   `json:"groupId,omitempty"`
+	OwnerID            string                   `json:"ownerId,omitempty"`
+	PaidBy             string                   `json:"paidBy"`
+	Name               string                   `json:"name"`
+	Category           string                   `json:"category"`
+	CategoryID         string                   `json:"categoryId,omitempty"`
+	CategoryInfo       *Category                `json:"categoryInfo,omitempty"`
+	AmountMinor        int64                    `json:"amountMinor"`
+	Currency           Currency                 `json:"currency"`
+	BaseCurrency       Currency                 `json:"baseCurrency"`
+	BaseAmountMinor    int64                    `json:"baseAmountMinor"`
+	ExchangeRate       string                   `json:"exchangeRate"`
+	RateScaled         int64                    `json:"-"`
+	ExchangeRateDate   time.Time                `json:"exchangeRateDate"`
+	RateMode           RateMode                 `json:"rateMode"`
+	BillingCycle       BillingCycle             `json:"billingCycle"`
+	BillingInterval    int                      `json:"billingInterval"`
+	StartsOn           time.Time                `json:"startsOn"`
+	EndsOn             *time.Time               `json:"endsOn,omitempty"`
+	NextBilling        time.Time                `json:"nextBilling"`
+	Status             SubscriptionStatus       `json:"status"`
+	LifecycleStatus    string                   `json:"lifecycleStatus,omitempty"`
+	Notes              string                   `json:"notes"`
+	SplitMode          SplitMode                `json:"splitMode,omitempty"`
+	Splits             []ExpenseSplit           `json:"splits,omitempty"`
+	RevisionScope      string                   `json:"revisionScope,omitempty"`
+	EffectiveBillingAt time.Time                `json:"effectiveBillingAt,omitempty"`
+	Revisions          []SubscriptionRevision   `json:"revisions,omitempty"`
+	Occurrences        []SubscriptionOccurrence `json:"occurrences,omitempty"`
+	CreatedAt          time.Time                `json:"createdAt"`
+	UpdatedAt          time.Time                `json:"updatedAt"`
+}
+
+// SubscriptionRevision is an immutable accounting snapshot.  A future
+// revision applies from EffectiveBillingAt onward, while an one_off revision
+// only applies to that exact legal billing date.
+type SubscriptionRevision struct {
+	ID                 string         `json:"id"`
+	SubscriptionID     string         `json:"subscriptionId"`
+	Scope              string         `json:"scope"`
+	EffectiveBillingAt time.Time      `json:"effectiveBillingAt"`
+	Name               string         `json:"name"`
+	Category           string         `json:"category"`
+	CategoryID         string         `json:"categoryId,omitempty"`
+	AmountMinor        int64          `json:"amountMinor"`
+	Currency           Currency       `json:"currency"`
+	BaseCurrency       Currency       `json:"baseCurrency"`
+	BaseAmountMinor    int64          `json:"baseAmountMinor"`
+	ExchangeRate       string         `json:"exchangeRate"`
+	RateScaled         int64          `json:"-"`
+	ExchangeRateDate   time.Time      `json:"exchangeRateDate"`
+	RateMode           RateMode       `json:"rateMode"`
+	PaidBy             string         `json:"paidBy"`
+	SplitMode          SplitMode      `json:"splitMode"`
+	Splits             []ExpenseSplit `json:"splits,omitempty"`
+	Notes              string         `json:"notes,omitempty"`
+	CreatedAt          time.Time      `json:"createdAt"`
+}
+
+type SubscriptionOccurrence struct {
+	ID             string    `json:"id"`
+	SubscriptionID string    `json:"subscriptionId"`
+	RevisionID     string    `json:"revisionId"`
+	ExpenseID      string    `json:"expenseId,omitempty"`
+	BillingAt      time.Time `json:"billingAt"`
+	Status         string    `json:"status"`
+	Error          string    `json:"error,omitempty"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type Expense struct {
@@ -277,6 +321,7 @@ type Expense struct {
 	IncurredOn       time.Time      `json:"incurredOn"`
 	Notes            string         `json:"notes"`
 	SplitMode        SplitMode      `json:"splitMode,omitempty"`
+	SubscriptionID   string         `json:"subscriptionId,omitempty"`
 	Splits           []ExpenseSplit `json:"splits,omitempty"`
 	CreatedAt        time.Time      `json:"createdAt"`
 	UpdatedAt        time.Time      `json:"updatedAt"`

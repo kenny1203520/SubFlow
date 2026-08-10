@@ -83,6 +83,135 @@ func (s *Service) RefreshAutomaticSubscriptions(ctx context.Context) error {
 	return nil
 }
 
+// PostDueSubscriptions turns every due group subscription into the immutable
+// expense that represents that billing occurrence.  The occurrence record is
+// created in the same transaction as the expense and has a unique
+// (subscription, billing_at) index, so repeated scheduler runs are safe.
+func (s *Service) PostDueSubscriptions(ctx context.Context) error {
+	values, err := s.Stores.Subscriptions.ListDue(ctx, s.Now())
+	if err != nil {
+		return err
+	}
+	for i := range values {
+		if err := s.postSubscriptionOccurrence(ctx, &values[i]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Service) postSubscriptionOccurrence(ctx context.Context, subscription *domain.Subscription) error {
+	if subscription.GroupID == "" || domain.SubscriptionLifecycle(*subscription, s.Now()) == "ended" {
+		return nil
+	}
+	revisions, err := s.Stores.Subscriptions.ListRevisions(ctx, subscription.ID)
+	if err != nil {
+		return err
+	}
+	revision, ok := subscriptionRevisionAt(revisions, subscription.NextBilling)
+	if !ok {
+		return s.recordSubscriptionOccurrenceFailure(ctx, subscription, "subscription_version_missing")
+	}
+	members, err := s.memberIDs(ctx, subscription.GroupID)
+	if err != nil {
+		return err
+	}
+	splits, err := domain.CanonicalSplits(revision.AmountMinor, revision.PaidBy, revision.SplitMode, revision.Splits, members)
+	if err != nil {
+		return s.recordSubscriptionOccurrenceFailure(ctx, subscription, "subscription_split_invalid")
+	}
+	for i := range splits {
+		splits[i].BaseAmountMinor, err = domain.ConvertMinor(splits[i].AmountMinor, revision.Currency, revision.BaseCurrency, revision.RateScaled)
+		if err != nil {
+			return s.recordSubscriptionOccurrenceFailure(ctx, subscription, "subscription_conversion_invalid")
+		}
+	}
+	splits = domain.CanonicalBaseSplits(revision.BaseAmountMinor, revision.PaidBy, splits)
+	billingAt := subscription.NextBilling
+	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, billingAt); findErr == nil {
+			return nil
+		} else if !errors.Is(findErr, domain.ErrNotFound) {
+			return findErr
+		}
+		expense := domain.Expense{
+			GroupID: subscription.GroupID, SubscriptionID: subscription.ID,
+			Title: revision.Name, Category: revision.Category, CategoryID: revision.CategoryID,
+			AmountMinor: revision.AmountMinor, Currency: revision.Currency,
+			BaseCurrency: revision.BaseCurrency, BaseAmountMinor: revision.BaseAmountMinor,
+			RateScaled: revision.RateScaled, ExchangeRate: revision.ExchangeRate,
+			ExchangeRateDate: revision.ExchangeRateDate, RateMode: revision.RateMode,
+			PaidBy: revision.PaidBy, IncurredOn: billingAt, SplitMode: revision.SplitMode,
+			Notes: revision.Notes, Splits: splits,
+		}
+		if createErr := s.Stores.Expenses.Create(tx, &expense); createErr != nil {
+			return createErr
+		}
+		if splitErr := s.Stores.Expenses.ReplaceSplits(tx, expense.ID, splits); splitErr != nil {
+			return splitErr
+		}
+		occurrence := domain.SubscriptionOccurrence{SubscriptionID: subscription.ID, RevisionID: revision.ID, ExpenseID: expense.ID, BillingAt: billingAt, Status: "posted"}
+		if createErr := s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence); createErr != nil {
+			return createErr
+		}
+		next, nextErr := domain.NextBillingWithInterval(subscription.StartsOn, subscription.BillingCycle, subscription.BillingInterval, billingAt.Add(time.Nanosecond))
+		if nextErr != nil {
+			return nextErr
+		}
+		subscription.NextBilling = next
+		if updateErr := s.Stores.Subscriptions.Update(tx, subscription); updateErr != nil {
+			return updateErr
+		}
+		s.audit(tx, "", subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success")
+		return nil
+	})
+}
+
+func subscriptionRevisionAt(values []domain.SubscriptionRevision, billingAt time.Time) (domain.SubscriptionRevision, bool) {
+	var selected domain.SubscriptionRevision
+	found := false
+	for _, value := range values {
+		if value.EffectiveBillingAt.After(billingAt) {
+			continue
+		}
+		if value.Scope == "one_off" && !value.EffectiveBillingAt.Equal(billingAt) {
+			continue
+		}
+		if !found || value.EffectiveBillingAt.After(selected.EffectiveBillingAt) || (value.EffectiveBillingAt.Equal(selected.EffectiveBillingAt) && value.Scope == "one_off") {
+			selected, found = value, true
+		}
+	}
+	return selected, found
+}
+
+func (s *Service) recordSubscriptionOccurrenceFailure(ctx context.Context, subscription *domain.Subscription, reason string) error {
+	occurrence := domain.SubscriptionOccurrence{SubscriptionID: subscription.ID, BillingAt: subscription.NextBilling, Status: "failed", Error: reason}
+	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, subscription.NextBilling); findErr == nil {
+			return nil
+		} else if !errors.Is(findErr, domain.ErrNotFound) {
+			return findErr
+		}
+		// A failed record has no revision relation. Persist a copy of the latest
+		// version so the failure remains diagnosable without mutating history.
+		revisions, listErr := s.Stores.Subscriptions.ListRevisions(tx, subscription.ID)
+		if listErr != nil {
+			return listErr
+		}
+		if revision, ok := subscriptionRevisionAt(revisions, subscription.NextBilling); ok {
+			occurrence.RevisionID = revision.ID
+		}
+		if occurrence.RevisionID == "" {
+			return domain.ErrInvalid
+		}
+		return s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence)
+	}); err != nil {
+		return err
+	}
+	s.audit(ctx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure")
+	return nil
+}
+
 func (s *Service) conversion(ctx context.Context, currency, base domain.Currency, amount int64, mode domain.RateMode, supplied string, date time.Time) (int64, int64, string, time.Time, error) {
 	if base == "" {
 		base = currency

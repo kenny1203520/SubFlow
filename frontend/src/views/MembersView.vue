@@ -5,6 +5,7 @@ import EmptyState from '../components/EmptyState.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useI18n } from '../i18n'
 import RoleSelect from '../components/RoleSelect.vue'
+import { roleLabel } from '../role'
 
 const workspace = useWorkspaceStore()
 const email = ref('')
@@ -23,6 +24,10 @@ async function removeMember(userId: string, label: string) {
 }
 async function confirmRemoval(){if(!pendingRemoval.value)return;await workspace.removeMember(pendingRemoval.value.userId);pendingRemoval.value=undefined}
 async function assignRole(userId:string,roleId:string){if(roleId)await workspace.assignGroupRole(userId,roleId)}
+function memberRoleLabel(roleId?:string, fallback?:string, legacyRole?:string) {
+    const role = workspace.groupRoles.find(value => value.id === roleId)
+    return roleLabel(role, tr) || (legacyRole === 'owner' ? tr('owner') : legacyRole === 'member' ? tr('member') : fallback || tr('member'))
+}
 onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
 </script>
 
@@ -44,7 +49,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
                             1).toUpperCase() }}</div>
                         <div class="grow"><strong>{{ member.user?.name || tr('unnamedMember') }}</strong><small>{{
                                 member.user?.email }}</small></div>
-                        <span class="pill">{{ member.roleName || tr(member.role) }}</span>
+                        <span class="pill">{{ memberRoleLabel(member.roleId, member.roleName, member.role) }}</span>
                         <RoleSelect v-if="canManageRoles && member.role !== 'owner' && workspace.groupRoles.length" :model-value="member.roleId||''" :roles="workspace.groupRoles" :label="tr('assignRole')" @update:model-value="assignRole(member.userId,$event)" />
                         <button v-if="canManageMembers && member.role !== 'owner'" class="ghost danger-text"
                             @click="removeMember(member.userId, member.user?.name || member.user?.email || tr('thisMember'))">{{tr('remove')}}</button>

@@ -368,6 +368,91 @@ func (r *Repository) DeleteSubscription(ctx context.Context, id string) error {
 	return r.app(ctx).Delete(rec)
 }
 
+func (r *Repository) CreateSubscriptionRevision(ctx context.Context, v *domain.SubscriptionRevision) error {
+	rec, err := newRecord(r.app(ctx), CollectionSubscriptionRevisions)
+	if err != nil {
+		return err
+	}
+	writeSubscriptionRevision(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, new(time.Time))
+	return nil
+}
+
+func (r *Repository) ListSubscriptionRevisions(ctx context.Context, subscriptionID string) ([]domain.SubscriptionRevision, error) {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptionRevisions, "subscription={:subscription}", "effective_at", 0, 0, dbx.Params{"subscription": subscriptionID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.SubscriptionRevision, len(recs))
+	for i, rec := range recs {
+		values[i] = *subscriptionRevisionFrom(rec)
+	}
+	return values, nil
+}
+
+func (r *Repository) CreateSubscriptionOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
+	rec, err := newRecord(r.app(ctx), CollectionSubscriptionOccurrences)
+	if err != nil {
+		return err
+	}
+	writeSubscriptionOccurrence(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return mapError(err)
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) GetSubscriptionOccurrence(ctx context.Context, subscriptionID string, billingAt time.Time) (*domain.SubscriptionOccurrence, error) {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionSubscriptionOccurrences, "subscription={:subscription} && billing_at={:billingAt}", dbx.Params{"subscription": subscriptionID, "billingAt": billingAt})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return subscriptionOccurrenceFrom(rec), nil
+}
+
+func (r *Repository) ListSubscriptionOccurrences(ctx context.Context, subscriptionID string) ([]domain.SubscriptionOccurrence, error) {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptionOccurrences, "subscription={:subscription}", "-billing_at", 0, 0, dbx.Params{"subscription": subscriptionID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.SubscriptionOccurrence, len(recs))
+	for i, rec := range recs {
+		values[i] = *subscriptionOccurrenceFrom(rec)
+	}
+	return values, nil
+}
+
+func (r *Repository) UpdateSubscriptionOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionSubscriptionOccurrences, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeSubscriptionOccurrence(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) ListDueSubscriptions(ctx context.Context, before time.Time) ([]domain.Subscription, error) {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "group!='' && status='active' && next_billing<={:before}", "next_billing", 0, 0, dbx.Params{"before": before})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.Subscription, len(recs))
+	for i, rec := range recs {
+		values[i] = *subscriptionFrom(rec)
+	}
+	return values, nil
+}
+
 func (r *Repository) CreateExpense(ctx context.Context, v *domain.Expense) error {
 	rec, err := newRecord(r.app(ctx), CollectionExpenses)
 	if err != nil {
@@ -1030,6 +1115,8 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("group", v.GroupID)
 	r.Set("owner", v.OwnerID)
 	r.Set("paid_by", v.PaidBy)
+	r.Set("split_mode", v.SplitMode)
+	r.Set("splits", v.Splits)
 	r.Set("name", v.Name)
 	r.Set("category", v.Category)
 	r.Set("category_ref", v.CategoryID)
@@ -1056,7 +1143,11 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("notes", v.Notes)
 }
 func subscriptionFrom(r *core.Record) *domain.Subscription {
-	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), BillingInterval: int(r.GetFloat("billing_interval")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), BillingInterval: int(r.GetFloat("billing_interval")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	if raw, ok := r.GetRaw("splits").([]any); ok {
+		blob, _ := json.Marshal(raw)
+		_ = json.Unmarshal(blob, &v.Splits)
+	}
 	v.BillingInterval = domain.NormalizeBillingInterval(v.BillingCycle, v.BillingInterval)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() {
@@ -1065,9 +1156,52 @@ func subscriptionFrom(r *core.Record) *domain.Subscription {
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
+func writeSubscriptionRevision(r *core.Record, v *domain.SubscriptionRevision) {
+	r.Set("subscription", v.SubscriptionID)
+	r.Set("scope", v.Scope)
+	r.Set("effective_at", v.EffectiveBillingAt)
+	r.Set("name", v.Name)
+	r.Set("category", v.Category)
+	r.Set("category_ref", v.CategoryID)
+	r.Set("amount_minor", v.AmountMinor)
+	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("rate_mode", v.RateMode)
+	r.Set("paid_by", v.PaidBy)
+	r.Set("split_mode", v.SplitMode)
+	r.Set("splits", v.Splits)
+	r.Set("notes", v.Notes)
+}
+func subscriptionRevisionFrom(r *core.Record) *domain.SubscriptionRevision {
+	v := &domain.SubscriptionRevision{ID: r.Id, SubscriptionID: r.GetString("subscription"), Scope: r.GetString("scope"), EffectiveBillingAt: r.GetDateTime("effective_at").Time(), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	if raw, ok := r.GetRaw("splits").([]any); ok {
+		blob, _ := json.Marshal(raw)
+		_ = json.Unmarshal(blob, &v.Splits)
+	}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
+	hydrateTimes(r, &v.CreatedAt, new(time.Time))
+	return v
+}
+func writeSubscriptionOccurrence(r *core.Record, v *domain.SubscriptionOccurrence) {
+	r.Set("subscription", v.SubscriptionID)
+	r.Set("revision", v.RevisionID)
+	r.Set("expense", v.ExpenseID)
+	r.Set("billing_at", v.BillingAt)
+	r.Set("status", v.Status)
+	r.Set("error", v.Error)
+}
+func subscriptionOccurrenceFrom(r *core.Record) *domain.SubscriptionOccurrence {
+	v := &domain.SubscriptionOccurrence{ID: r.Id, SubscriptionID: r.GetString("subscription"), RevisionID: r.GetString("revision"), ExpenseID: r.GetString("expense"), BillingAt: r.GetDateTime("billing_at").Time(), Status: r.GetString("status"), Error: r.GetString("error")}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
 func writeExpense(r *core.Record, v *domain.Expense) {
 	r.Set("group", v.GroupID)
 	r.Set("owner", v.OwnerID)
+	r.Set("subscription", v.SubscriptionID)
 	r.Set("title", v.Title)
 	r.Set("category", v.Category)
 	r.Set("category_ref", v.CategoryID)
@@ -1084,7 +1218,7 @@ func writeExpense(r *core.Record, v *domain.Expense) {
 	r.Set("notes", v.Notes)
 }
 func expenseFrom(r *core.Record) *domain.Expense {
-	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	v := &domain.Expense{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), SubscriptionID: r.GetString("subscription"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), IncurredOn: r.GetDateTime("incurred_on").Time(), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if v.Currency == "" {
 		v.Currency = domain.CurrencyTWD

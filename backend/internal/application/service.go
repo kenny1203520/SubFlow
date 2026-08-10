@@ -204,10 +204,42 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 	if !validSubscription(&v) {
 		return nil, domain.ErrInvalid
 	}
-	if err := s.Stores.Subscriptions.Create(ctx, &v); err != nil {
+	if v.GroupID != "" {
+		members, memberErr := s.memberIDs(ctx, v.GroupID)
+		if memberErr != nil {
+			return nil, memberErr
+		}
+		if len(v.Splits) == 0 {
+			v.SplitMode, v.Splits = domain.SplitAmount, []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}
+		}
+		v.Splits, err = domain.CanonicalSplits(v.AmountMinor, v.PaidBy, v.SplitMode, v.Splits, members)
+		if err != nil {
+			return nil, err
+		}
+		for i := range v.Splits {
+			v.Splits[i].BaseAmountMinor, err = domain.ConvertMinor(v.Splits[i].AmountMinor, v.Currency, v.BaseCurrency, v.RateScaled)
+			if err != nil {
+				return nil, err
+			}
+		}
+		v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
+	}
+	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if createErr := s.Stores.Subscriptions.Create(tx, &v); createErr != nil {
+			return createErr
+		}
+		if v.GroupID == "" {
+			return nil
+		}
+		revision := subscriptionRevision(v, "future", v.NextBilling)
+		return s.Stores.Subscriptions.CreateRevision(tx, &revision)
+	}); err != nil {
 		return nil, err
 	}
 	s.audit(ctx, userID, v.GroupID, "subscription.created", "subscription", v.ID, "success")
+	if v.GroupID != "" {
+		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success")
+	}
 	return &v, nil
 }
 func (s *Service) ListPersonalSubscriptions(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Subscription], error) {
@@ -216,6 +248,7 @@ func (s *Service) ListPersonalSubscriptions(ctx context.Context, userID string, 
 		for i := range result.Items {
 			result.Items[i].LifecycleStatus = domain.SubscriptionLifecycle(result.Items[i], s.Now())
 			result.Items[i].CategoryInfo = s.hydrateCategory(ctx, result.Items[i].CategoryID)
+			s.hydrateSubscription(ctx, &result.Items[i])
 		}
 	}
 	return result, err
@@ -343,6 +376,7 @@ func (s *Service) ListSubscriptions(ctx context.Context, userID, groupID string,
 		for i := range result.Items {
 			result.Items[i].LifecycleStatus = domain.SubscriptionLifecycle(result.Items[i], s.Now())
 			result.Items[i].CategoryInfo = s.hydrateCategory(ctx, result.Items[i].CategoryID)
+			s.hydrateSubscription(ctx, &result.Items[i])
 		}
 	}
 	return result, err
@@ -354,7 +388,9 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	}
 	v.GroupID = current.GroupID
 	v.OwnerID = current.OwnerID
-	v.PaidBy = current.PaidBy
+	if v.PaidBy == "" {
+		v.PaidBy = current.PaidBy
+	}
 	if current.GroupID == "" {
 		if current.OwnerID != userID {
 			return nil, domain.ErrForbidden
@@ -400,11 +436,126 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	if !validSubscription(&v) {
 		return nil, domain.ErrInvalid
 	}
-	if err = s.Stores.Subscriptions.Update(ctx, &v); err != nil {
+	if v.GroupID != "" {
+		members, memberErr := s.memberIDs(ctx, v.GroupID)
+		if memberErr != nil {
+			return nil, memberErr
+		}
+		if len(v.Splits) == 0 {
+			v.SplitMode, v.Splits = current.SplitMode, current.Splits
+		}
+		if len(v.Splits) == 0 {
+			v.SplitMode, v.Splits = domain.SplitAmount, []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}
+		}
+		v.Splits, err = domain.CanonicalSplits(v.AmountMinor, v.PaidBy, v.SplitMode, v.Splits, members)
+		if err != nil {
+			return nil, err
+		}
+		for i := range v.Splits {
+			v.Splits[i].BaseAmountMinor, err = domain.ConvertMinor(v.Splits[i].AmountMinor, v.Currency, v.BaseCurrency, v.RateScaled)
+			if err != nil {
+				return nil, err
+			}
+		}
+		v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
+	}
+	scope := v.RevisionScope
+	if scope != "one_off" {
+		scope = "future"
+	}
+	effective := v.EffectiveBillingAt
+	if v.GroupID != "" {
+		if effective.IsZero() {
+			effective = current.NextBilling
+		}
+		if !subscriptionBillingDateAllowed(*current, effective, location) {
+			return nil, domain.ErrInvalid
+		}
+		if scope == "one_off" && (v.BillingCycle != current.BillingCycle || v.BillingInterval != current.BillingInterval || !v.StartsOn.Equal(current.StartsOn) || v.Status != current.Status) {
+			return nil, domain.ErrInvalid
+		}
+	}
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		// A one-off revision intentionally leaves the subscription's current and
+		// future defaults untouched. The revision resolver applies it only to its
+		// exact, not-yet-posted billing occurrence.
+		if v.GroupID == "" || scope == "future" {
+			if updateErr := s.Stores.Subscriptions.Update(tx, &v); updateErr != nil {
+				return updateErr
+			}
+		}
+		if v.GroupID == "" {
+			return nil
+		}
+		if occurrence, occurrenceErr := s.Stores.Subscriptions.GetOccurrence(tx, v.ID, effective); occurrenceErr == nil && occurrence.ExpenseID != "" {
+			return domain.ErrConflict
+		}
+		revision := subscriptionRevision(v, scope, effective)
+		return s.Stores.Subscriptions.CreateRevision(tx, &revision)
+	}); err != nil {
 		return nil, err
 	}
 	s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success")
+	if v.GroupID != "" {
+		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success")
+	}
 	return &v, nil
+}
+func subscriptionRevision(v domain.Subscription, scope string, effective time.Time) domain.SubscriptionRevision {
+	return domain.SubscriptionRevision{SubscriptionID: v.ID, Scope: scope, EffectiveBillingAt: effective, Name: v.Name, Category: v.Category, CategoryID: v.CategoryID, AmountMinor: v.AmountMinor, Currency: v.Currency, BaseCurrency: v.BaseCurrency, BaseAmountMinor: v.BaseAmountMinor, ExchangeRate: v.ExchangeRate, RateScaled: v.RateScaled, ExchangeRateDate: v.ExchangeRateDate, RateMode: v.RateMode, PaidBy: v.PaidBy, SplitMode: v.SplitMode, Splits: append([]domain.ExpenseSplit(nil), v.Splits...), Notes: v.Notes}
+}
+func (s *Service) hydrateSubscription(ctx context.Context, v *domain.Subscription) {
+	if v.GroupID == "" {
+		return
+	}
+	values, err := s.Stores.Subscriptions.ListRevisions(ctx, v.ID)
+	if err != nil {
+		return
+	}
+	v.Revisions = values
+	if occurrences, occurrenceErr := s.Stores.Subscriptions.ListOccurrences(ctx, v.ID); occurrenceErr == nil {
+		v.Occurrences = occurrences
+	}
+	if revision, ok := subscriptionRevisionAt(values, v.NextBilling); ok {
+		applySubscriptionRevision(v, revision)
+	}
+}
+func applySubscriptionRevision(v *domain.Subscription, revision domain.SubscriptionRevision) {
+	v.Name = revision.Name
+	v.Category = revision.Category
+	v.CategoryID = revision.CategoryID
+	v.AmountMinor = revision.AmountMinor
+	v.Currency = revision.Currency
+	v.BaseCurrency = revision.BaseCurrency
+	v.BaseAmountMinor = revision.BaseAmountMinor
+	v.ExchangeRate = revision.ExchangeRate
+	v.RateScaled = revision.RateScaled
+	v.ExchangeRateDate = revision.ExchangeRateDate
+	v.RateMode = revision.RateMode
+	v.PaidBy = revision.PaidBy
+	v.SplitMode = revision.SplitMode
+	v.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+	v.Notes = revision.Notes
+}
+
+func subscriptionBillingDateAllowed(subscription domain.Subscription, effective time.Time, location *time.Location) bool {
+	if effective.Before(subscription.NextBilling) {
+		return false
+	}
+	start, target := subscription.StartsOn.In(location), effective.In(location)
+	for index := 0; index < 12000; index++ {
+		value, err := domain.BillingDateWithInterval(start, subscription.BillingCycle, subscription.BillingInterval, index)
+		if err != nil {
+			return false
+		}
+		if value.Equal(target) {
+			return true
+		}
+		if value.After(target) {
+			return false
+		}
+	}
+	return false
 }
 func (s *Service) DeleteSubscription(ctx context.Context, userID, id string) error {
 	v, err := s.Stores.Subscriptions.Get(ctx, id)

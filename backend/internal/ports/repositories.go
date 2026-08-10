@@ -88,6 +88,13 @@ type SubscriptionRepository interface {
 	ListAutomatic(context.Context) ([]domain.Subscription, error)
 	Update(context.Context, *domain.Subscription) error
 	Delete(context.Context, string) error
+	CreateRevision(context.Context, *domain.SubscriptionRevision) error
+	ListRevisions(context.Context, string) ([]domain.SubscriptionRevision, error)
+	CreateOccurrence(context.Context, *domain.SubscriptionOccurrence) error
+	GetOccurrence(context.Context, string, time.Time) (*domain.SubscriptionOccurrence, error)
+	ListOccurrences(context.Context, string) ([]domain.SubscriptionOccurrence, error)
+	UpdateOccurrence(context.Context, *domain.SubscriptionOccurrence) error
+	ListDue(context.Context, time.Time) ([]domain.Subscription, error)
 }
 
 type ExpenseRepository interface {

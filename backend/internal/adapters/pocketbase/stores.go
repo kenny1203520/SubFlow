@@ -70,12 +70,24 @@ func (r *InvitationRepo) List(ctx context.Context, groupID string, req ports.Pag
 func (r *InvitationRepo) Update(ctx context.Context, v *domain.Invitation) error {
 	return r.UpdateInvitation(ctx, v)
 }
-func (r *InvitationRepo) ListForEmail(ctx context.Context, email string, req ports.PageRequest) (ports.Page[domain.Invitation], error) { return r.ListInvitationsForEmail(ctx, email, req) }
-func (r *NotificationRepo) Create(ctx context.Context, v *domain.Notification) error { return r.CreateNotification(ctx, v) }
-func (r *NotificationRepo) Get(ctx context.Context, id string) (*domain.Notification, error) { return r.GetNotification(ctx, id) }
-func (r *NotificationRepo) ListForUser(ctx context.Context, id string, req ports.PageRequest) (ports.Page[domain.Notification], error) { return r.ListNotifications(ctx, id, req) }
-func (r *NotificationRepo) MarkRead(ctx context.Context, id string, when time.Time) error { return r.MarkNotificationRead(ctx, id, when) }
-func (r *NotificationRepo) MarkReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error { return r.MarkNotificationsReadForResource(ctx, userID, resourceID, when) }
+func (r *InvitationRepo) ListForEmail(ctx context.Context, email string, req ports.PageRequest) (ports.Page[domain.Invitation], error) {
+	return r.ListInvitationsForEmail(ctx, email, req)
+}
+func (r *NotificationRepo) Create(ctx context.Context, v *domain.Notification) error {
+	return r.CreateNotification(ctx, v)
+}
+func (r *NotificationRepo) Get(ctx context.Context, id string) (*domain.Notification, error) {
+	return r.GetNotification(ctx, id)
+}
+func (r *NotificationRepo) ListForUser(ctx context.Context, id string, req ports.PageRequest) (ports.Page[domain.Notification], error) {
+	return r.ListNotifications(ctx, id, req)
+}
+func (r *NotificationRepo) MarkRead(ctx context.Context, id string, when time.Time) error {
+	return r.MarkNotificationRead(ctx, id, when)
+}
+func (r *NotificationRepo) MarkReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error {
+	return r.MarkNotificationsReadForResource(ctx, userID, resourceID, when)
+}
 
 func (r *SubscriptionRepo) Create(ctx context.Context, v *domain.Subscription) error {
 	return r.CreateSubscription(ctx, v)
@@ -97,6 +109,27 @@ func (r *SubscriptionRepo) ListPersonal(ctx context.Context, userID string, req 
 }
 func (r *SubscriptionRepo) ListAutomatic(ctx context.Context) ([]domain.Subscription, error) {
 	return r.ListAutomaticSubscriptions(ctx)
+}
+func (r *SubscriptionRepo) CreateRevision(ctx context.Context, v *domain.SubscriptionRevision) error {
+	return r.CreateSubscriptionRevision(ctx, v)
+}
+func (r *SubscriptionRepo) ListRevisions(ctx context.Context, subscriptionID string) ([]domain.SubscriptionRevision, error) {
+	return r.ListSubscriptionRevisions(ctx, subscriptionID)
+}
+func (r *SubscriptionRepo) CreateOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
+	return r.CreateSubscriptionOccurrence(ctx, v)
+}
+func (r *SubscriptionRepo) GetOccurrence(ctx context.Context, subscriptionID string, billingAt time.Time) (*domain.SubscriptionOccurrence, error) {
+	return r.GetSubscriptionOccurrence(ctx, subscriptionID, billingAt)
+}
+func (r *SubscriptionRepo) ListOccurrences(ctx context.Context, subscriptionID string) ([]domain.SubscriptionOccurrence, error) {
+	return r.ListSubscriptionOccurrences(ctx, subscriptionID)
+}
+func (r *SubscriptionRepo) UpdateOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
+	return r.UpdateSubscriptionOccurrence(ctx, v)
+}
+func (r *SubscriptionRepo) ListDue(ctx context.Context, before time.Time) ([]domain.Subscription, error) {
+	return r.ListDueSubscriptions(ctx, before)
 }
 
 func (r *ExpenseRepo) Create(ctx context.Context, v *domain.Expense) error {
