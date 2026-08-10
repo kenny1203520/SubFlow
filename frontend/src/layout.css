@@ -1,15 +1,17 @@
 :root {
-  --page-max-width: 1680px;
+  --page-max-width: 100%;
   --page-gutter: clamp(20px, 3vw, 48px);
   --page-stack: clamp(24px, 3vw, 40px);
   --card-gap: clamp(16px, 2vw, 28px);
 }
 
-.page { width:min(100%, var(--page-max-width)); max-width:none; margin-inline:auto; padding:var(--page-stack) var(--page-gutter) clamp(48px, 6vw, 88px); }
+.page { width:100%; max-width:none; margin-inline:0; padding:var(--page-stack) var(--page-gutter) clamp(48px, 6vw, 88px); }
 .page.narrow:not(.profile-page) { width:min(100%, 1080px); }
-.admin-page { width:min(100%, var(--page-max-width)); max-width:none; }
+.admin-page { width:100%; max-width:none; }
 .admin-page .admin-form { width:100%; max-width:none; }
 .group-workspace .page { width:100%; max-width:none; }
+.group-workspace .settings-form { width:min(100%, 1080px); max-width:none; }
+.group-workspace .settings-form + section { width:100%; max-width:none; }
 
 .profile-layout { display:grid; grid-template-columns:minmax(0, 1.45fr) minmax(320px, .9fr); grid-template-areas:"account appearance" "account security" "categories categories"; align-items:start; gap:var(--card-gap); }
 .profile-account { grid-area:account; }

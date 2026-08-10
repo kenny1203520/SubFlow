@@ -22,11 +22,27 @@ function positionPanel() {
   if (!root.value || !panel.value) return
   const rect = root.value.getBoundingClientRect()
   const padding = 12
+  const offset = 8
   const width = Math.min(Math.max(rect.width, panel.value.offsetWidth), window.innerWidth - padding * 2)
   const left = props.placement === 'bottom-end'
     ? Math.max(padding, Math.min(rect.right - width, window.innerWidth - width - padding))
     : Math.max(padding, Math.min(rect.left, window.innerWidth - width - padding))
-  panelStyle.value = { left: `${left}px`, top: `${Math.min(rect.bottom + 8, window.innerHeight - padding)}px`, width: `${width}px` }
+  const spaceBelow = Math.max(0, window.innerHeight - rect.bottom - padding - offset)
+  const spaceAbove = Math.max(0, rect.top - padding - offset)
+  const openUpward = panel.value.offsetHeight > spaceBelow && spaceAbove > spaceBelow
+  const availableHeight = openUpward ? spaceAbove : spaceBelow
+  const visibleHeight = Math.min(panel.value.offsetHeight, availableHeight)
+  const top = openUpward
+    ? Math.max(padding, rect.top - visibleHeight - offset)
+    : Math.min(rect.bottom + offset, window.innerHeight - padding)
+
+  panelStyle.value = {
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${width}px`,
+    maxHeight: `${availableHeight}px`,
+    '--dropdown-available-height': `${availableHeight}px`,
+  }
 }
 function onPointerDown(event: PointerEvent) {
   const target = event.target as Node
