@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"subflow/internal/domain"
+	"subflow/internal/security"
 )
 
 func TestSetupInputValidation(t *testing.T) {
@@ -29,5 +30,16 @@ func TestSetupTokenComparison(t *testing.T) {
 	}
 	if equalSetupToken("", "") {
 		t.Fatal("empty token hash must never enable setup")
+	}
+}
+
+func TestCaptchaSecretValueSupportsPlaintextFallback(t *testing.T) {
+	service := &Service{Cipher: security.NewSettingsCipher("")}
+	secret, err := service.captchaSecretValue("plain:shared-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if secret != "shared-secret" {
+		t.Fatalf("expected plaintext secret fallback, got %q", secret)
 	}
 }
