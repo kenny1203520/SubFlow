@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -37,6 +38,44 @@ func (s *Service) role(ctx context.Context, groupID, userID string, ownerOnly bo
 		return domain.ErrForbidden
 	}
 	return nil
+}
+
+func (s *Service) expenseIsHistorical(ctx context.Context, userID string, value *domain.Expense) (bool, error) {
+	if value.GroupID == "" {
+		return false, nil
+	}
+	start, _, err := s.monthRange(ctx, userID, value.GroupID, "")
+	if err != nil {
+		return false, err
+	}
+	return value.IncurredOn.Before(start), nil
+}
+
+func historicalExpenseDetails(value *domain.Expense) string {
+	return fmt.Sprintf("title=%q, incurred_on=%s, amount_minor=%d", value.Title, value.IncurredOn.Format("2006-01-02"), value.AmountMinor)
+}
+
+func historicalExpenseChangeSummary(before, after *domain.Expense) string {
+	parts := make([]string, 0, 5)
+	if before.Title != after.Title {
+		parts = append(parts, fmt.Sprintf("title %q -> %q", before.Title, after.Title))
+	}
+	if before.IncurredOn.Format("2006-01-02") != after.IncurredOn.Format("2006-01-02") {
+		parts = append(parts, fmt.Sprintf("incurred_on %s -> %s", before.IncurredOn.Format("2006-01-02"), after.IncurredOn.Format("2006-01-02")))
+	}
+	if before.AmountMinor != after.AmountMinor {
+		parts = append(parts, fmt.Sprintf("amount_minor %d -> %d", before.AmountMinor, after.AmountMinor))
+	}
+	if before.PaidBy != after.PaidBy {
+		parts = append(parts, fmt.Sprintf("paid_by %q -> %q", before.PaidBy, after.PaidBy))
+	}
+	if before.CategoryID != after.CategoryID {
+		parts = append(parts, fmt.Sprintf("category_id %q -> %q", before.CategoryID, after.CategoryID))
+	}
+	if len(parts) == 0 {
+		return fmt.Sprintf("historical expense updated (%s)", historicalExpenseDetails(after))
+	}
+	return fmt.Sprintf("historical expense updated (%s; changes: %s)", historicalExpenseDetails(after), strings.Join(parts, "; "))
 }
 
 func (s *Service) CreateGroup(ctx context.Context, userID string, group domain.Group) (*domain.Group, error) {
@@ -705,6 +744,7 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 	if err != nil {
 		return nil, err
 	}
+	historicalUpdate := false
 	v.GroupID = current.GroupID
 	v.OwnerID = current.OwnerID
 	if current.GroupID == "" {
@@ -720,6 +760,24 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 	} else {
 		if err = s.role(ctx, current.GroupID, userID, false); err != nil {
 			return nil, err
+		}
+		currentHistorical, historicalErr := s.expenseIsHistorical(ctx, userID, current)
+		if historicalErr != nil {
+			return nil, historicalErr
+		}
+		requestedHistorical := false
+		if !v.IncurredOn.IsZero() {
+			requestedHistorical, historicalErr = s.expenseIsHistorical(ctx, userID, &v)
+			if historicalErr != nil {
+				return nil, historicalErr
+			}
+		}
+		historicalUpdate = currentHistorical || requestedHistorical
+		if historicalUpdate {
+			if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.records.historical_write"); err != nil {
+				s.audit(ctx, userID, current.GroupID, "expense.updated", "expense", current.ID, "failure", fmt.Sprintf("historical expense update denied (%s -> %s)", historicalExpenseDetails(current), historicalExpenseDetails(&v)))
+				return nil, err
+			}
 		}
 		members, memberErr := s.memberIDs(ctx, current.GroupID)
 		if memberErr != nil {
@@ -779,7 +837,11 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 	}); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "expense.updated", "expense", v.ID, "success")
+	if historicalUpdate {
+		s.audit(ctx, userID, v.GroupID, "expense.updated", "expense", v.ID, "success", historicalExpenseChangeSummary(current, &v))
+	} else {
+		s.audit(ctx, userID, v.GroupID, "expense.updated", "expense", v.ID, "success")
+	}
 	return &v, nil
 }
 func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
@@ -794,9 +856,23 @@ func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
 	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
 		return err
 	}
+	historical, historicalErr := s.expenseIsHistorical(ctx, userID, v)
+	if historicalErr != nil {
+		return historicalErr
+	}
+	if historical {
+		if err = s.groupPermission(ctx, userID, v.GroupID, "ledger.records.historical_write"); err != nil {
+			s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "failure", fmt.Sprintf("historical expense delete denied (%s)", historicalExpenseDetails(v)))
+			return err
+		}
+	}
 	err = s.Stores.Expenses.Delete(ctx, id)
 	if err == nil {
-		s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success")
+		if historical {
+			s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success", fmt.Sprintf("historical expense deleted (%s)", historicalExpenseDetails(v)))
+		} else {
+			s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success")
+		}
 	}
 	return err
 }
