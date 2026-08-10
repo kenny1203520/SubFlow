@@ -72,7 +72,7 @@ func main() {
 			return err
 		}
 		base := application.New(stores)
-		base.Rates = exchange.NewCBCProvider()
+		base.Rates = exchange.NewOpenERAPIProvider()
 		app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(event *core.RecordRequestPasswordResetRequestEvent) error {
 			if err := base.VerifyCaptcha(event.Request.Context(), event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
 				return event.BadRequestError("captcha_verification_failed", nil)
