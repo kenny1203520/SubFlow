@@ -1,11 +1,17 @@
-﻿import { defineConfig, loadEnv } from 'vite'
+﻿import { readFileSync } from 'node:fs'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// package.json is the single source of truth for the released version; the
+// About page reads it back through import.meta.env.VITE_APP_VERSION.
+const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   const backend = env.VITE_BACKEND_URL || 'http://localhost:8080'
   return {
+    define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version) },
     plugins: [
       vue(),
       VitePWA({

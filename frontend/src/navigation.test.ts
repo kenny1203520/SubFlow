@@ -13,6 +13,8 @@ vi.mock('./stores/workspace',()=>({useWorkspaceStore:()=>workspace}))
 vi.mock('./stores/setup',()=>({useSetupStore:()=>setup}))
 vi.mock('./pocketbase',()=>({pb:{authStore:{isValid:true}}}))
 vi.mock('./theme',()=>({useTheme:()=>({preference:{value:'system'},resolved:{value:'dark'},setTheme:vi.fn(),toggle:vi.fn()})}))
+// Supplied by vite-plugin-pwa at build time; it does not resolve under vitest.
+vi.mock('virtual:pwa-register/vue',()=>({useRegisterSW:()=>({needRefresh:{value:false},offlineReady:{value:false},updateServiceWorker:vi.fn()})}))
 
 import App from './App.vue'
 import { routes } from './router'
@@ -23,7 +25,7 @@ describe('navigation stability',()=>{
     const router=createRouter({history:createMemoryHistory(),routes})
     await router.push('/');await router.isReady()
     const wrapper=mount(App,{global:{plugins:[router],stubs:{LanguageSwitcher:true,ThemeSwitcher:true}}})
-    const targets=['/','/personal/expenses','/personal/subscriptions','/groups','/groups/group-1/overview','/groups/group-1/expenses','/groups/group-1/subscriptions','/groups/group-1/members','/groups/group-1/audit','/groups/group-1/settings']
+    const targets=['/','/personal/expenses','/personal/subscriptions','/groups','/groups/group-1/overview','/groups/group-1/expenses','/groups/group-1/subscriptions','/groups/group-1/members','/groups/group-1/audit','/groups/group-1/settings','/about']
     for(let index=0;index<36;index++){await router.push(targets[index%targets.length]);await new Promise(resolve=>setTimeout(resolve,0));const context=`route ${router.currentRoute.value.fullPath}, iteration ${index}`;expect(wrapper.find('.main').exists(),context).toBe(true);expect(wrapper.find('.error-state').exists(),context).toBe(false);expect(wrapper.find('.main section').exists(),context).toBe(true)}
     wrapper.unmount()
   })

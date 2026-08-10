@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AuditFilterBar, { type AuditFilters } from '../components/AuditFilterBar.vue'
 import AuditLogList from '../components/AuditLogList.vue'
@@ -10,15 +10,19 @@ import { defaultPageSize } from '../pageSize'
 const route = useRoute(), router = useRouter(), workspace = useWorkspaceStore(), { tr } = useI18n()
 const loading = ref(false), error = ref('')
 const filters = reactive<AuditFilters>({ q:'', action:'', resource:'', outcome:'', from:'', to:'' })
-const pageSize = ref(defaultPageSize.value)
+// Page size lives in the URL alongside the filters so that changing it always
+// alters the route and re-triggers the loader below, and so the view can be
+// shared or reloaded with the same size.
+const pageSize = computed(() => Number(route.query.perPage) || defaultPageSize.value)
 
 function readFilters(): AuditFilters {
   return { q:String(route.query.q || ''), action:String(route.query.action || ''), resource:String(route.query.resource || ''), outcome:String(route.query.outcome || ''), from:String(route.query.from || ''), to:String(route.query.to || '') }
 }
-function queryFor(page = Number(route.query.page || 1)) {
+function queryFor(page = Number(route.query.page || 1), perPage = pageSize.value) {
   const query:Record<string, string> = {}
   for (const [key, value] of Object.entries(filters)) if (value) query[key] = value
   if (page > 1) query.page = String(page)
+  if (perPage !== defaultPageSize.value) query.perPage = String(perPage)
   return query
 }
 async function load() {
@@ -29,7 +33,7 @@ async function load() {
 function apply() { void router.replace({ query:queryFor(1) }) }
 function reset() { void router.replace({ query:{} }) }
 function setPage(page:number) { void router.replace({ query:queryFor(page) }) }
-function setPageSize(value:number) { pageSize.value = value; void router.replace({ query:queryFor(1) }) }
+function setPageSize(value:number) { void router.replace({ query:queryFor(1, value) }) }
 watch(() => route.fullPath, () => { Object.assign(filters, readFilters()); void load() }, { immediate:true })
 </script>
 

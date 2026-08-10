@@ -12,6 +12,7 @@ import ProfileView from './views/ProfileView.vue'
 import InviteView from './views/InviteView.vue'
 import GroupWorkspaceView from './views/GroupWorkspaceView.vue'
 import AdminView from './views/AdminView.vue'
+import AboutView from './views/AboutView.vue'
 import SetupView from './views/SetupView.vue'
 
 export const routes: RouteRecordRaw[] = [
@@ -39,6 +40,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/subscriptions', redirect: { name: 'personal-subscriptions' } },
   { path: '/expenses', redirect: { name: 'personal-expenses' } },
   { path: '/profile', name: 'profile', component: ProfileView },
+  { path: '/about', name: 'about', component: AboutView },
   { path: '/admin', name: 'admin', component: AdminView },
   { path: '/admin/:section(settings|users|roles|audit)', name: 'admin-section', component: AdminView },
   { path: '/:pathMatch(.*)*', redirect: { name: 'dashboard' } },

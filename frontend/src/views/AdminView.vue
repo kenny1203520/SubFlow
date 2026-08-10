@@ -34,7 +34,8 @@ const saved = ref(false)
 const loading = ref(false)
 const query = ref('')
 const auditFilters = reactive<AuditFilters>({ q:'', action:'', resource:'', outcome:'', from:'', to:'' })
-const auditPageSize = ref(defaultPageSize.value)
+// Kept in the URL so changing it always changes the route and re-runs load().
+const auditPageSize = computed(() => Number(route.query.perPage) || defaultPageSize.value)
 const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false })
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
@@ -53,7 +54,7 @@ function permissionInfo(permission: string) {
 async function loadRoles() { if (can('system.roles.manage')) roles.value = (await api.get<AccessRole[]>('/system/roles')).data }
 async function loadUsers() { if (can('system.users.assign')) users.value = (await api.get<User[]>(`/system/users?perPage=50&q=${encodeURIComponent(query.value)}`)).data }
 function readAuditFilters(): AuditFilters { return { q:String(route.query.q || ''), action:String(route.query.action || ''), resource:String(route.query.resource || ''), outcome:String(route.query.outcome || ''), from:String(route.query.from || ''), to:String(route.query.to || '') } }
-function auditQuery(page = Number(route.query.page || 1)) { const result:Record<string, string> = {}; for (const [key, value] of Object.entries(auditFilters)) if (value) result[key] = value; if (page > 1) result.page = String(page); return result }
+function auditQuery(page = Number(route.query.page || 1), perPage = auditPageSize.value) { const result:Record<string, string> = {}; for (const [key, value] of Object.entries(auditFilters)) if (value) result[key] = value; if (page > 1) result.page = String(page); if (perPage !== defaultPageSize.value) result.perPage = String(perPage); return result }
 async function loadLogs() {
   if (!can('system.audit.read')) return
   auditLoading.value = true
@@ -121,7 +122,7 @@ async function assign(user: User, roleId: string) {
 function applyAuditFilters() { void router.replace({ query:auditQuery(1) }) }
 function resetAuditFilters() { void router.replace({ query:{} }) }
 function setAuditPage(page:number) { void router.replace({ query:auditQuery(page) }) }
-function setAuditPageSize(value:number) { auditPageSize.value = value; void router.replace({ query:auditQuery(1) }) }
+function setAuditPageSize(value:number) { void router.replace({ query:auditQuery(1, value) }) }
 watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters()); void load() }, { immediate:true })
 </script>
 
