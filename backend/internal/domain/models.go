@@ -42,9 +42,14 @@ const (
 type BillingCycle string
 
 const (
-	BillingMonthly   BillingCycle = "monthly"
-	BillingQuarterly BillingCycle = "quarterly"
-	BillingYearly    BillingCycle = "yearly"
+	BillingDaily       BillingCycle = "daily"
+	BillingEveryNDays  BillingCycle = "every_n_days"
+	BillingWeekly      BillingCycle = "weekly"
+	BillingEveryNWeeks BillingCycle = "every_n_weeks"
+	BillingEveryNHours BillingCycle = "every_n_hours"
+	BillingMonthly     BillingCycle = "monthly"
+	BillingQuarterly   BillingCycle = "quarterly"
+	BillingYearly      BillingCycle = "yearly"
 )
 
 type SplitMode string
@@ -241,6 +246,7 @@ type Subscription struct {
 	ExchangeRateDate time.Time          `json:"exchangeRateDate"`
 	RateMode         RateMode           `json:"rateMode"`
 	BillingCycle     BillingCycle       `json:"billingCycle"`
+	BillingInterval  int                `json:"billingInterval"`
 	StartsOn         time.Time          `json:"startsOn"`
 	EndsOn           *time.Time         `json:"endsOn,omitempty"`
 	NextBilling      time.Time          `json:"nextBilling"`

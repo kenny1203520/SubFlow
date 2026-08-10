@@ -5,7 +5,7 @@ export interface Category { id:string;scope:'system'|'personal'|'group';ownerId?
 export interface ExchangeRate { baseCurrency:Currency;quoteCurrency:Currency;rate:string;effectiveDate:string;provider:string;fetchedAt:string;stale?:boolean }
 export interface CurrencyChangePreview { from:Currency;to:Currency;affected:number;missing:{resource:string;id:string;from:Currency;to:Currency;date:string}[] }
 export type Role = 'owner' | 'member'
-export type BillingCycle = 'monthly' | 'quarterly' | 'yearly'
+export type BillingCycle = 'daily' | 'every_n_days' | 'weekly' | 'every_n_weeks' | 'every_n_hours' | 'monthly' | 'quarterly' | 'yearly'
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
 
 export interface Group { id:string;name:string;description:string;currency:Currency;timezone:string;color:string;ownerId:string;createdAt:string;updatedAt:string }
@@ -20,7 +20,7 @@ export interface Notification { id:string;userId:string;type:string;groupId?:str
 export type SplitMode='equal'|'amount'|'percentage'
 export interface ExpenseSplit { id?:string;expenseId?:string;userId:string;amountMinor:number;baseAmountMinor?:number;percentageBasisPoints?:number }
 interface ConvertedRecord { categoryId?:string;categoryInfo?:Category;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;exchangeRateDate:string;rateMode:RateMode }
-export interface Subscription extends ConvertedRecord { id:string;groupId?:string;ownerId?:string;paidBy:string;name:string;category:string;amountMinor:number;currency:Currency;billingCycle:BillingCycle;startsOn:string;endsOn?:string;nextBilling:string;status:SubscriptionStatus;lifecycleStatus?:'active'|'paused'|'ending'|'ended'|'cancelled';notes:string;createdAt:string;updatedAt:string }
+export interface Subscription extends ConvertedRecord { id:string;groupId?:string;ownerId?:string;paidBy:string;name:string;category:string;amountMinor:number;currency:Currency;billingCycle:BillingCycle;billingInterval?:number;startsOn:string;endsOn?:string;nextBilling:string;status:SubscriptionStatus;lifecycleStatus?:'active'|'paused'|'ending'|'ended'|'cancelled';notes:string;createdAt:string;updatedAt:string }
 export interface Expense extends ConvertedRecord { id:string;groupId?:string;ownerId?:string;title:string;category:string;amountMinor:number;currency:Currency;paidBy:string;incurredOn:string;notes:string;splitMode?:SplitMode;splits?:ExpenseSplit[];createdAt:string;updatedAt:string }
 export interface Settlement { id:string;groupId:string;fromUserId:string;toUserId:string;createdBy:string;amountMinor:number;currency:Currency;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;exchangeRateDate:string;settledOn:string;notes:string;createdAt:string;updatedAt:string }
 export interface CurrencyDashboard { currency:Currency;cashOutflowMinor:number;personalShareMinor:number;reimbursableMinor:number;monthlySubscriptionMinor:number;activeSubscriptions:number;chargeCount?:number }

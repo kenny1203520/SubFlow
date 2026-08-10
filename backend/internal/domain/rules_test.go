@@ -45,6 +45,51 @@ func TestMonthlyEquivalent(t *testing.T) {
 	}
 }
 
+func TestFlexibleSubscriptionCycles(t *testing.T) {
+	start := time.Date(2026, time.August, 10, 9, 30, 0, 0, time.UTC)
+	cases := []struct {
+		name            string
+		cycle           BillingCycle
+		interval, index int
+		want            time.Time
+	}{
+		{"daily", BillingDaily, 1, 2, time.Date(2026, time.August, 12, 9, 30, 0, 0, time.UTC)},
+		{"every three days", BillingEveryNDays, 3, 2, time.Date(2026, time.August, 16, 9, 30, 0, 0, time.UTC)},
+		{"weekly", BillingWeekly, 1, 2, time.Date(2026, time.August, 24, 9, 30, 0, 0, time.UTC)},
+		{"every two weeks", BillingEveryNWeeks, 2, 2, time.Date(2026, time.September, 7, 9, 30, 0, 0, time.UTC)},
+		{"every six hours", BillingEveryNHours, 6, 2, time.Date(2026, time.August, 10, 21, 30, 0, 0, time.UTC)},
+	}
+	for _, tt := range cases {
+		got, err := BillingDateWithInterval(start, tt.cycle, tt.interval, tt.index)
+		if err != nil || !got.Equal(tt.want) {
+			t.Fatalf("%s: got %v, want %v (%v)", tt.name, got, tt.want, err)
+		}
+	}
+}
+
+func TestFlexibleCycleMonthlyEquivalent(t *testing.T) {
+	cases := []struct {
+		cycle    BillingCycle
+		interval int
+		want     int64
+	}{
+		{BillingDaily, 1, 36500},
+		{BillingEveryNDays, 2, 18250},
+		{BillingWeekly, 1, 5200},
+		{BillingEveryNWeeks, 2, 2600},
+		{BillingEveryNHours, 24, 36500},
+	}
+	for _, tt := range cases {
+		got, err := MonthlyEquivalentWithInterval(1200, tt.cycle, tt.interval)
+		if err != nil || got != tt.want {
+			t.Fatalf("%s/%d: got %d, want %d (%v)", tt.cycle, tt.interval, got, tt.want, err)
+		}
+	}
+	if ValidBillingCycle(BillingEveryNDays, 0) || ValidBillingCycle(BillingEveryNHours, 8761) {
+		t.Fatal("invalid interval accepted")
+	}
+}
+
 func TestInvitationToken(t *testing.T) {
 	plain, hash, err := NewInvitationToken()
 	if err != nil || plain == "" || hash == plain {

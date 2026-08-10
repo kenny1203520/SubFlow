@@ -693,11 +693,26 @@ func (r *Repository) ListAudits(ctx context.Context, groupID string, query ports
 		clauses = append(clauses, "group={:group}")
 		params["group"] = groupID
 	}
-	if query.Action != "" { clauses = append(clauses, "action={:action}"); params["action"] = query.Action }
-	if query.Resource != "" { clauses = append(clauses, "resource={:resource}"); params["resource"] = query.Resource }
-	if query.Outcome != "" { clauses = append(clauses, "outcome={:outcome}"); params["outcome"] = query.Outcome }
-	if !query.From.IsZero() { clauses = append(clauses, "created>={:from}"); params["from"] = query.From }
-	if !query.To.IsZero() { clauses = append(clauses, "created<={:to}"); params["to"] = query.To }
+	if query.Action != "" {
+		clauses = append(clauses, "action={:action}")
+		params["action"] = query.Action
+	}
+	if query.Resource != "" {
+		clauses = append(clauses, "resource={:resource}")
+		params["resource"] = query.Resource
+	}
+	if query.Outcome != "" {
+		clauses = append(clauses, "outcome={:outcome}")
+		params["outcome"] = query.Outcome
+	}
+	if !query.From.IsZero() {
+		clauses = append(clauses, "created>={:from}")
+		params["from"] = query.From
+	}
+	if !query.To.IsZero() {
+		clauses = append(clauses, "created<={:to}")
+		params["to"] = query.To
+	}
 	if value := strings.TrimSpace(query.Query); value != "" {
 		clauses = append(clauses, "(action~{:query} || resource~{:query} || actor.name~{:query} || actor.email~{:query})")
 		params["query"] = value
@@ -720,7 +735,9 @@ func (r *Repository) ListAudits(ctx context.Context, groupID string, query ports
 		}
 	}
 	count, err := countFiltered(r.app(ctx), CollectionAuditLogs, filter, params)
-	if err != nil { return ports.Page[domain.AuditLog]{}, err }
+	if err != nil {
+		return ports.Page[domain.AuditLog]{}, err
+	}
 	return page(values, query.PageRequest, count), nil
 }
 func (r *Repository) UpsertExchangeRate(ctx context.Context, v *domain.ExchangeRate) error {
@@ -1024,6 +1041,7 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("exchange_rate_date", v.ExchangeRateDate)
 	r.Set("rate_mode", v.RateMode)
 	r.Set("billing_cycle", v.BillingCycle)
+	r.Set("billing_interval", v.BillingInterval)
 	if v.StartsOn.IsZero() {
 		v.StartsOn = v.NextBilling
 	}
@@ -1038,7 +1056,8 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 	r.Set("notes", v.Notes)
 }
 func subscriptionFrom(r *core.Record) *domain.Subscription {
-	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), BillingInterval: int(r.GetFloat("billing_interval")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
+	v.BillingInterval = domain.NormalizeBillingInterval(v.BillingCycle, v.BillingInterval)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() {
 		v.EndsOn = &ends

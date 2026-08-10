@@ -28,7 +28,7 @@ watch(groupId, () => void activate());
                 <p class="eyebrow">{{tr('groupWorkspace')}}</p>
                 <h1>{{ group?.name || tr("groupWorkspace") }}</h1>
                 <p>{{ group?.description || tr("groupWorkspaceDesc") }}</p>
-                <div v-if="group" class="workspace-facts"><span>{{currencyLabel(group.currency)}}</span><span>{{timezoneLabel(group.timezone)}}</span><span>{{tr('records',{count:workspace.members.length})}}</span><RouterLink :to="`/groups/${groupId}/settings`">{{tr('settings')}} →</RouterLink></div>
+                <div v-if="group" class="workspace-facts"><span>{{currencyLabel(group.currency)}}</span><span>{{timezoneLabel(group.timezone)}}</span><span>{{tr('memberCount',{count:workspace.members.length})}}</span><RouterLink :to="`/groups/${groupId}/settings`">{{tr('settings')}} →</RouterLink></div>
             </div>
         </div>
         <nav class="group-tabs" :aria-label="tr('groupWorkspace')">

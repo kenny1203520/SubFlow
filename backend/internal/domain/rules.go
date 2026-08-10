@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"math"
 	"math/big"
 	"sort"
 	"strconv"
@@ -171,10 +172,30 @@ func CanManageGroup(role MemberRole) bool { return role == RoleOwner }
 func CanManageRecords(role MemberRole) bool { return role == RoleOwner || role == RoleMember }
 
 func MonthlyEquivalent(amount int64, cycle BillingCycle) (int64, error) {
+	return MonthlyEquivalentWithInterval(amount, cycle, 1)
+}
+
+// MonthlyEquivalentWithInterval estimates the monthly cost for the selected
+// billing cadence. Interval is only meaningful for every-N cadences.
+func MonthlyEquivalentWithInterval(amount int64, cycle BillingCycle, interval int) (int64, error) {
 	if amount < 0 {
 		return 0, ErrInvalid
 	}
+	interval = normalizeBillingInterval(cycle, interval)
+	if interval < 1 {
+		return 0, ErrInvalid
+	}
 	switch cycle {
+	case BillingDaily:
+		return monthlyRatio(amount, 365, 12)
+	case BillingEveryNDays:
+		return monthlyRatio(amount, 365, 12*int64(interval))
+	case BillingWeekly:
+		return monthlyRatio(amount, 52, 12)
+	case BillingEveryNWeeks:
+		return monthlyRatio(amount, 52, 12*int64(interval))
+	case BillingEveryNHours:
+		return monthlyRatio(amount, 365*24, 12*int64(interval))
 	case BillingMonthly:
 		return amount, nil
 	case BillingQuarterly:
@@ -186,12 +207,53 @@ func MonthlyEquivalent(amount int64, cycle BillingCycle) (int64, error) {
 	}
 }
 
+func monthlyRatio(amount, numerator, denominator int64) (int64, error) {
+	if denominator < 1 || numerator < 1 || amount > math.MaxInt64/numerator {
+		return 0, ErrInvalid
+	}
+	return (amount*numerator + denominator/2) / denominator, nil
+}
+
+func ValidBillingCycle(cycle BillingCycle, interval int) bool {
+	if normalizeBillingInterval(cycle, interval) < 1 {
+		return false
+	}
+	switch cycle {
+	case BillingDaily, BillingEveryNDays, BillingWeekly, BillingEveryNWeeks, BillingEveryNHours, BillingMonthly, BillingQuarterly, BillingYearly:
+		return true
+	default:
+		return false
+	}
+}
+
+func NormalizeBillingInterval(cycle BillingCycle, interval int) int {
+	return normalizeBillingInterval(cycle, interval)
+}
+
+func normalizeBillingInterval(cycle BillingCycle, interval int) int {
+	switch cycle {
+	case BillingEveryNDays, BillingEveryNWeeks, BillingEveryNHours:
+		if interval < 1 || interval > 8760 {
+			return 0
+		}
+		return interval
+	case BillingDaily, BillingWeekly, BillingMonthly, BillingQuarterly, BillingYearly:
+		return 1
+	default:
+		return 0
+	}
+}
+
 func NextBilling(start time.Time, cycle BillingCycle, now time.Time) (time.Time, error) {
+	return NextBillingWithInterval(start, cycle, 1, now)
+}
+
+func NextBillingWithInterval(start time.Time, cycle BillingCycle, interval int, now time.Time) (time.Time, error) {
 	if start.IsZero() {
 		return time.Time{}, ErrInvalid
 	}
 	for index := 0; index < 12000; index++ {
-		value, err := BillingDate(start, cycle, index)
+		value, err := BillingDateWithInterval(start, cycle, interval, index)
 		if err != nil {
 			return time.Time{}, err
 		}
@@ -203,8 +265,32 @@ func NextBilling(start time.Time, cycle BillingCycle, now time.Time) (time.Time,
 }
 
 func BillingDate(start time.Time, cycle BillingCycle, index int) (time.Time, error) {
+	return BillingDateWithInterval(start, cycle, 1, index)
+}
+
+func BillingDateWithInterval(start time.Time, cycle BillingCycle, interval, index int) (time.Time, error) {
 	if start.IsZero() || index < 0 {
 		return time.Time{}, ErrInvalid
+	}
+	interval = normalizeBillingInterval(cycle, interval)
+	if interval < 1 {
+		return time.Time{}, ErrInvalid
+	}
+	switch cycle {
+	case BillingDaily:
+		return start.AddDate(0, 0, index), nil
+	case BillingEveryNDays:
+		return start.AddDate(0, 0, index*interval), nil
+	case BillingWeekly:
+		return start.AddDate(0, 0, index*7), nil
+	case BillingEveryNWeeks:
+		return start.AddDate(0, 0, index*7*interval), nil
+	case BillingEveryNHours:
+		hours := int64(index) * int64(interval)
+		if hours > math.MaxInt64/int64(time.Hour) {
+			return time.Time{}, ErrInvalid
+		}
+		return start.Add(time.Duration(hours) * time.Hour), nil
 	}
 	months := 0
 	switch cycle {
@@ -229,12 +315,16 @@ func BillingDate(start time.Time, cycle BillingCycle, index int) (time.Time, err
 }
 
 func BillingDates(start time.Time, cycle BillingCycle, from time.Time, limit int) ([]time.Time, error) {
-	if limit < 1 || limit > 100 {
+	return BillingDatesWithInterval(start, cycle, 1, from, limit)
+}
+
+func BillingDatesWithInterval(start time.Time, cycle BillingCycle, interval int, from time.Time, limit int) ([]time.Time, error) {
+	if limit < 1 || limit > 1200 {
 		return nil, ErrInvalid
 	}
 	dates := make([]time.Time, 0, limit)
 	for i := 0; i < 12000 && len(dates) < limit; i++ {
-		value, err := BillingDate(start, cycle, i)
+		value, err := BillingDateWithInterval(start, cycle, interval, i)
 		if err != nil {
 			return nil, err
 		}

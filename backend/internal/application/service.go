@@ -148,7 +148,7 @@ func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID st
 }
 
 func validSubscription(v *domain.Subscription) bool {
-	return strings.TrimSpace(v.Name) != "" && v.AmountMinor >= 0 && domain.IsCurrency(v.Currency) && (v.BillingCycle == domain.BillingMonthly || v.BillingCycle == domain.BillingQuarterly || v.BillingCycle == domain.BillingYearly) && (v.Status == domain.SubscriptionActive || v.Status == domain.SubscriptionPaused || v.Status == domain.SubscriptionCancelled) && (!v.StartsOn.IsZero() || !v.NextBilling.IsZero())
+	return strings.TrimSpace(v.Name) != "" && v.AmountMinor >= 0 && domain.IsCurrency(v.Currency) && domain.ValidBillingCycle(v.BillingCycle, v.BillingInterval) && (v.Status == domain.SubscriptionActive || v.Status == domain.SubscriptionPaused || v.Status == domain.SubscriptionCancelled) && (!v.StartsOn.IsZero() || !v.NextBilling.IsZero())
 }
 func (s *Service) CreateSubscription(ctx context.Context, userID string, v domain.Subscription) (*domain.Subscription, error) {
 	if v.RateMode == "" {
@@ -197,7 +197,8 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 		return nil, err
 	}
 	v.BaseAmountMinor, v.RateScaled, v.ExchangeRate, v.ExchangeRateDate = baseAmount, rate, rateText, rateDate
-	if next, err := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now().In(location)); err == nil {
+	v.BillingInterval = domain.NormalizeBillingInterval(v.BillingCycle, v.BillingInterval)
+	if next, err := domain.NextBillingWithInterval(v.StartsOn, v.BillingCycle, v.BillingInterval, s.Now().In(location)); err == nil {
 		v.NextBilling = next
 	}
 	if !validSubscription(&v) {
@@ -235,7 +236,7 @@ func (s *Service) PersonalDashboard(ctx context.Context, userID string, all bool
 	for _, item := range subs.Items {
 		item.LifecycleStatus = domain.SubscriptionLifecycle(item, now)
 		if item.LifecycleStatus == "active" || item.LifecycleStatus == "ending" {
-			amount, _ := domain.MonthlyEquivalent(item.AmountMinor, item.BillingCycle)
+			amount, _ := domain.MonthlyEquivalentWithInterval(item.AmountMinor, item.BillingCycle, item.BillingInterval)
 			bucket := totals[item.Currency]
 			if bucket == nil {
 				bucket = &domain.CurrencyDashboard{Currency: item.Currency}
@@ -288,7 +289,7 @@ func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn strin
 			return nil, domain.ErrInvalid
 		}
 	}
-	dates, dateErr := domain.BillingDates(v.StartsOn.In(location), v.BillingCycle, v.NextBilling.In(location), 1200)
+	dates, dateErr := domain.BillingDatesWithInterval(v.StartsOn.In(location), v.BillingCycle, v.BillingInterval, v.NextBilling.In(location), 1200)
 	if dateErr != nil {
 		return nil, dateErr
 	}
@@ -366,7 +367,8 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	}
 	location := s.accountingLocation(ctx, userID, current.GroupID)
 	v.StartsOn = v.StartsOn.In(location)
-	if next, nextErr := domain.NextBilling(v.StartsOn, v.BillingCycle, s.Now().In(location)); nextErr == nil {
+	v.BillingInterval = domain.NormalizeBillingInterval(v.BillingCycle, v.BillingInterval)
+	if next, nextErr := domain.NextBillingWithInterval(v.StartsOn, v.BillingCycle, v.BillingInterval, s.Now().In(location)); nextErr == nil {
 		v.NextBilling = next
 	} else {
 		return nil, nextErr
@@ -665,7 +667,7 @@ func (s *Service) Dashboard(ctx context.Context, userID, groupID string) (domain
 	for _, v := range subs.Items {
 		if v.Status == domain.SubscriptionActive {
 			result.ActiveSubscriptions++
-			m, _ := domain.MonthlyEquivalent(v.AmountMinor, v.BillingCycle)
+			m, _ := domain.MonthlyEquivalentWithInterval(v.AmountMinor, v.BillingCycle, v.BillingInterval)
 			result.MonthlySubscriptionMinor += m
 			if !v.NextBilling.Before(now) && v.NextBilling.Before(now.AddDate(0, 1, 0)) {
 				result.Upcoming = append(result.Upcoming, v)

@@ -188,14 +188,14 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			displayCurrency, displayAmount = subscription.BaseCurrency, subscription.BaseAmountMinor
 		}
 		item := bucket(displayCurrency)
-		monthly, _ := domain.MonthlyEquivalent(displayAmount, subscription.BillingCycle)
+		monthly, _ := domain.MonthlyEquivalentWithInterval(displayAmount, subscription.BillingCycle, subscription.BillingInterval)
 		item.MonthlySubscriptionMinor += monthly
 		item.ActiveSubscriptions++
 		result.MonthlySubscriptionMinor += monthly
 		result.ActiveSubscriptions++
 		recordStart, recordEnd := recordRange(subscription.GroupID)
 		location := s.accountingLocation(ctx, userID, subscription.GroupID)
-		dates, _ := domain.BillingDates(subscription.StartsOn.In(location), subscription.BillingCycle, recordStart, 4)
+		dates, _ := domain.BillingDatesWithInterval(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, recordStart, 4)
 		for _, date := range dates {
 			if !date.Before(recordEnd) {
 				break
@@ -264,7 +264,7 @@ func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, l
 		}
 		from = value.AddDate(0, 0, 1)
 	}
-	dates, err := domain.BillingDates(subscription.StartsOn.In(location), subscription.BillingCycle, from, limit)
+	dates, err := domain.BillingDatesWithInterval(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, from, limit)
 	if err != nil {
 		return BillingDatePage{}, err
 	}
