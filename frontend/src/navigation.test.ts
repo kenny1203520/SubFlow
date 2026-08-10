@@ -24,7 +24,7 @@ describe('navigation stability',()=>{
   it('keeps rendering after more than thirty route changes',async()=>{
     const router=createRouter({history:createMemoryHistory(),routes})
     await router.push('/');await router.isReady()
-    const wrapper=mount(App,{global:{plugins:[router],stubs:{LanguageSwitcher:true,ThemeSwitcher:true}}})
+    const wrapper=mount(App,{global:{plugins:[router],stubs:{LanguageSwitcher:true,ThemeSwitcher:true,ToastContainer:true,TimezoneMismatchDialog:true}}})
     const targets=['/','/personal/expenses','/personal/subscriptions','/groups','/groups/group-1/overview','/groups/group-1/expenses','/groups/group-1/subscriptions','/groups/group-1/members','/groups/group-1/audit','/groups/group-1/settings','/about']
     for(let index=0;index<36;index++){await router.push(targets[index%targets.length]);await new Promise(resolve=>setTimeout(resolve,0));const context=`route ${router.currentRoute.value.fullPath}, iteration ${index}`;expect(wrapper.find('.main').exists(),context).toBe(true);expect(wrapper.find('.error-state').exists(),context).toBe(false);expect(wrapper.find('.main section').exists(),context).toBe(true)}
     wrapper.unmount()
@@ -33,7 +33,7 @@ describe('navigation stability',()=>{
     workspace.groupErrors.subscriptions='Subscriptions could not be loaded'
     const router=createRouter({history:createMemoryHistory(),routes})
     await router.push('/groups/group-1/subscriptions');await router.isReady()
-    const wrapper=mount(App,{global:{plugins:[router],stubs:{LanguageSwitcher:true,ThemeSwitcher:true}}})
+    const wrapper=mount(App,{global:{plugins:[router],stubs:{LanguageSwitcher:true,ThemeSwitcher:true,ToastContainer:true,TimezoneMismatchDialog:true}}})
     expect(wrapper.find('.error-state').exists()).toBe(false)
     expect(wrapper.find('.resource-error').text()).toContain('Subscriptions could not be loaded')
     wrapper.unmount()

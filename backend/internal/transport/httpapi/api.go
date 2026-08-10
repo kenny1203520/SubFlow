@@ -98,6 +98,8 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/settlements", a.listSettlements).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/settlements", a.createSettlement).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/settlements/{id}", a.deleteSettlement).Bind(bind)
+	e.Router.GET("/api/subflow/v1/export/personal", a.exportPersonalLedger).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/export", a.exportGroupLedger).Bind(bind)
 }
 
 func authID(e *core.RequestEvent) string {
@@ -668,6 +670,22 @@ func (a *API) deleteSettlement(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return noContent(e)
+}
+func (a *API) exportPersonalLedger(e *core.RequestEvent) error {
+	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), "")
+	if err != nil {
+		return fail(e, err)
+	}
+	e.Response.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	return e.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
+}
+func (a *API) exportGroupLedger(e *core.RequestEvent) error {
+	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), groupID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	e.Response.Header().Set("Content-Disposition", `attachment; filename="`+filename+`"`)
+	return e.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
 }
 func (a *API) listSystemRoles(e *core.RequestEvent) error {
 	values, err := a.Service.ListSystemRoles(e.Request.Context(), authID(e))
