@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
@@ -76,6 +77,26 @@ func currencyValues() []string {
 		result[i] = string(value.Code)
 	}
 	return result
+}
+
+func mergePermissions(current, desired []string) ([]string, bool) {
+	seen := make(map[string]struct{}, len(current)+len(desired))
+	result := make([]string, 0, len(current)+len(desired))
+	for _, value := range current {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	for _, value := range desired {
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	return result, len(result) != len(current)
 }
 
 // EnsureSchema installs the SubFlow baseline idempotently. Domain collections
@@ -565,7 +586,7 @@ func ensureRoleSeeds(app core.App) error {
 	return nil
 }
 func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
-	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.expenses.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.write", "ledger.settlements.delete", "categories.manage"}
+	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.records.historical_write", "ledger.expenses.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.write", "ledger.settlements.delete", "categories.manage"}
 	for _, seed := range []struct {
 		key, name   string
 		permissions []string
@@ -583,6 +604,18 @@ func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
 			record.Set("protected", true)
 			if err = app.Save(record); err != nil {
 				return err
+			}
+		} else if seed.key == "owner" {
+			current := []string{}
+			if err = json.Unmarshal([]byte(record.GetString("permissions")), &current); err != nil {
+				return err
+			}
+			merged, changed := mergePermissions(current, seed.permissions)
+			if changed {
+				record.Set("permissions", merged)
+				if err = app.Save(record); err != nil {
+					return err
+				}
 			}
 		}
 		members, err := app.FindRecordsByFilter(CollectionMembers, "group={:group} && role={:role}", "", 0, 0, map[string]any{"group": group.Id, "role": seed.key})

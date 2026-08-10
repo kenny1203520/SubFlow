@@ -3,13 +3,17 @@ import { computed, onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import EmptyState from '../components/EmptyState.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import Pagination from '../components/Pagination.vue'
+import PageSizeSelect from '../components/PageSizeSelect.vue'
 import { useI18n } from '../i18n'
 import RoleSelect from '../components/RoleSelect.vue'
 import { roleLabel } from '../role'
+import { defaultPageSize } from '../pageSize'
 
 const workspace = useWorkspaceStore()
 const email = ref('')
 const pendingRemoval = ref<{userId:string;label:string}>()
+const invitationsPageSize = ref(defaultPageSize.value)
 const { tr, formatDate } = useI18n()
 const canManageMembers=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.members.manage'))
 const canManageRoles=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage'))
@@ -18,6 +22,8 @@ async function invite() {
     await workspace.invite(email.value)
     email.value = ''
 }
+function setInvitationsPage(page:number) { void workspace.loadInvitations(page, invitationsPageSize.value) }
+function setInvitationsPageSize(value:number) { invitationsPageSize.value = value; void workspace.loadInvitations(1, value) }
 
 async function removeMember(userId: string, label: string) {
     pendingRemoval.value={userId,label}
@@ -64,7 +70,11 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
                     <button class="primary" :disabled="workspace.loading">{{tr('sendInvitation')}}</button>
                 </form>
                 <div class="card invitations">
-                    <h2>{{tr('invitationHistory')}}</h2>
+                    <div class="audit-list-heading">
+                        <h2>{{tr('invitationHistory')}}</h2>
+                        <span v-if="workspace.invitationsMeta.totalItems" class="pill">{{ tr('auditResults', { count: workspace.invitationsMeta.totalItems }) }}</span>
+                        <PageSizeSelect :model-value="invitationsPageSize" @update:model-value="setInvitationsPageSize" />
+                    </div>
                     <div v-if="workspace.invitations.length">
                         <div v-for="item in workspace.invitations" :key="item.id" class="invite">
                             <div><strong>{{ item.email }}</strong><small>{{ tr(item.status==='delivery_failed'?'deliveryFailed':item.status) }} · {{ formatDate(item.expiresAt) }}</small><a v-if="item.debugUrl"
@@ -77,6 +87,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
                         </div>
                     </div>
                     <p v-else class="empty-inline">{{tr('noInvitations')}}</p>
+                    <Pagination :meta="workspace.invitationsMeta" @page="setInvitationsPage" />
                 </div>
             </div>
             <div v-else class="card owner-note">

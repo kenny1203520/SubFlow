@@ -15,6 +15,106 @@ type BillingDatePage struct {
 	NextCursor string      `json:"nextCursor,omitempty"`
 }
 
+func billingDatesBetween(start time.Time, cycle domain.BillingCycle, interval int, from, to time.Time) ([]time.Time, error) {
+	if !from.Before(to) {
+		return nil, nil
+	}
+	dates := make([]time.Time, 0)
+	for index := 0; index < 12000; index++ {
+		value, err := domain.BillingDateWithInterval(start, cycle, interval, index)
+		if err != nil {
+			return nil, err
+		}
+		if value.Before(from) {
+			continue
+		}
+		if !value.Before(to) {
+			break
+		}
+		dates = append(dates, value)
+	}
+	return dates, nil
+}
+
+func subscriptionHasPostedOccurrence(subscription domain.Subscription, billingAt time.Time) bool {
+	for _, occurrence := range subscription.Occurrences {
+		if occurrence.BillingAt.Equal(billingAt) && occurrence.ExpenseID != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt time.Time) domain.Expense {
+	result := domain.Expense{GroupID: subscription.GroupID, OwnerID: subscription.OwnerID, SubscriptionID: subscription.ID, Title: subscription.Name, Category: subscription.Category, CategoryID: subscription.CategoryID, AmountMinor: subscription.AmountMinor, Currency: subscription.Currency, BaseCurrency: subscription.BaseCurrency, BaseAmountMinor: subscription.BaseAmountMinor, ExchangeRate: subscription.ExchangeRate, RateScaled: subscription.RateScaled, ExchangeRateDate: subscription.ExchangeRateDate, RateMode: subscription.RateMode, PaidBy: subscription.PaidBy, IncurredOn: billingAt, Notes: subscription.Notes, SplitMode: subscription.SplitMode, Splits: append([]domain.ExpenseSplit(nil), subscription.Splits...)}
+	if revision, ok := subscriptionRevisionAt(subscription.Revisions, billingAt); ok {
+		result.Title = revision.Name
+		result.Category = revision.Category
+		result.CategoryID = revision.CategoryID
+		result.AmountMinor = revision.AmountMinor
+		result.Currency = revision.Currency
+		result.BaseCurrency = revision.BaseCurrency
+		result.BaseAmountMinor = revision.BaseAmountMinor
+		result.ExchangeRate = revision.ExchangeRate
+		result.RateScaled = revision.RateScaled
+		result.ExchangeRateDate = revision.ExchangeRateDate
+		result.RateMode = revision.RateMode
+		result.PaidBy = revision.PaidBy
+		result.Notes = revision.Notes
+		result.SplitMode = revision.SplitMode
+		// A revision without splits must not discard the subscription's own,
+		// otherwise the fallback below charges the payer the full amount.
+		if len(revision.Splits) > 0 {
+			result.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+		}
+	}
+	if len(result.Splits) == 0 {
+		result.SplitMode = domain.SplitAmount
+		result.Splits = []domain.ExpenseSplit{{UserID: result.PaidBy, AmountMinor: result.AmountMinor, BaseAmountMinor: result.BaseAmountMinor}}
+	}
+	return result
+}
+
+func subscriptionExpensesBetween(subscription domain.Subscription, from, to time.Time, location *time.Location) ([]domain.Expense, error) {
+	if location == nil {
+		location = time.UTC
+	}
+	dates, err := billingDatesBetween(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, from, to)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]domain.Expense, 0, len(dates))
+	for _, date := range dates {
+		if subscription.EndsOn != nil && date.After(*subscription.EndsOn) {
+			break
+		}
+		if subscriptionHasPostedOccurrence(subscription, date) {
+			continue
+		}
+		values = append(values, subscriptionExpenseOccurrence(subscription, date))
+	}
+	return values, nil
+}
+
+// subscriptionUserShare returns the portion of a subscription's displayAmount that
+// belongs to userID's split, so the dashboard can show the viewer's own monthly
+// subscription commitment alongside the group's total. Personal subscriptions (no
+// GroupID) belong entirely to their owner.
+func subscriptionUserShare(subscription domain.Subscription, userID, scope string, displayAmount int64) int64 {
+	if subscription.GroupID == "" {
+		return displayAmount
+	}
+	for _, split := range subscription.Splits {
+		if split.UserID == userID {
+			if scope == "group" {
+				return split.BaseAmountMinor
+			}
+			return split.AmountMinor
+		}
+	}
+	return 0
+}
+
 func (s *Service) accountingLocation(ctx context.Context, userID, groupID string) *time.Location {
 	location := time.UTC
 	zone := ""
@@ -143,10 +243,10 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		value, _ := time.ParseInLocation("2006-01", start.Format("2006-01"), location)
 		return value, value.AddDate(0, 1, 0)
 	}
-	for _, expense := range expenses {
+	consumeExpense := func(expense domain.Expense) {
 		recordStart, recordEnd := recordRange(expense.GroupID)
 		if expense.IncurredOn.Before(recordStart) || !expense.IncurredOn.Before(recordEnd) {
-			continue
+			return
 		}
 		displayCurrency, displayAmount := expense.Currency, expense.AmountMinor
 		if query.Scope == "group" {
@@ -177,7 +277,12 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		}
 		result.MonthExpenseMinor += displayAmount
 	}
+	for _, expense := range expenses {
+		consumeExpense(expense)
+	}
 	now := s.Now()
+	monthSubscriptionExpenses := make([]domain.Expense, 0)
+	historicalSubscriptionExpenses := make([]domain.Expense, 0)
 	for _, subscription := range subscriptions {
 		lifecycle := domain.SubscriptionLifecycle(subscription, now)
 		if lifecycle != "active" && lifecycle != "ending" {
@@ -189,22 +294,42 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		}
 		item := bucket(displayCurrency)
 		monthly, _ := domain.MonthlyEquivalentWithInterval(displayAmount, subscription.BillingCycle, subscription.BillingInterval)
+		subscriptionShare := subscriptionUserShare(subscription, userID, query.Scope, displayAmount)
+		personalMonthly, _ := domain.MonthlyEquivalentWithInterval(subscriptionShare, subscription.BillingCycle, subscription.BillingInterval)
 		item.MonthlySubscriptionMinor += monthly
+		item.PersonalMonthlySubscriptionMinor += personalMonthly
 		item.ActiveSubscriptions++
 		result.MonthlySubscriptionMinor += monthly
+		result.PersonalMonthlySubscriptionMinor += personalMonthly
 		result.ActiveSubscriptions++
 		recordStart, recordEnd := recordRange(subscription.GroupID)
 		location := s.accountingLocation(ctx, userID, subscription.GroupID)
-		dates, _ := domain.BillingDatesWithInterval(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, recordStart, 4)
+		dates, _ := billingDatesBetween(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, recordStart, recordEnd)
+		addedUpcoming := false
 		for _, date := range dates {
-			if !date.Before(recordEnd) {
-				break
-			}
 			if subscription.EndsOn == nil || !date.After(*subscription.EndsOn) {
 				item.ChargeCount++
-				result.Upcoming = append(result.Upcoming, subscription)
+				if !addedUpcoming {
+					result.Upcoming = append(result.Upcoming, subscription)
+					addedUpcoming = true
+				}
 			}
 		}
+		monthExpenses, err := subscriptionExpensesBetween(subscription, recordStart, recordEnd, location)
+		if err != nil {
+			return result, err
+		}
+		monthSubscriptionExpenses = append(monthSubscriptionExpenses, monthExpenses...)
+		if query.Scope == "group" {
+			historicalExpenses, err := subscriptionExpensesBetween(subscription, subscription.StartsOn.In(location), end, location)
+			if err != nil {
+				return result, err
+			}
+			historicalSubscriptionExpenses = append(historicalSubscriptionExpenses, historicalExpenses...)
+		}
+	}
+	for _, expense := range monthSubscriptionExpenses {
+		consumeExpense(expense)
 	}
 	keys := make([]string, 0, len(buckets))
 	for currency := range buckets {
@@ -222,8 +347,11 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if loadErr != nil {
 			return result, loadErr
 		}
-		filteredExpenses := allExpenses.Items[:0]
-		for _, expense := range allExpenses.Items {
+		filteredExpenses := make([]domain.Expense, 0, len(allExpenses.Items)+len(historicalSubscriptionExpenses))
+		filteredExpenses = append(filteredExpenses, allExpenses.Items...)
+		filteredExpenses = append(filteredExpenses, historicalSubscriptionExpenses...)
+		filteredExpenses = filteredExpenses[:0]
+		for _, expense := range append(allExpenses.Items, historicalSubscriptionExpenses...) {
 			if expense.IncurredOn.Before(end) {
 				filteredExpenses = append(filteredExpenses, expense)
 			}

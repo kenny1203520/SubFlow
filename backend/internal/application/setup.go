@@ -1,8 +1,8 @@
 package application
 
 import (
-	"crypto/rand"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"fmt"
@@ -149,22 +149,29 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	if err != nil {
 		return domain.SystemSettings{}, err
 	}
-	if value.CaptchaProvider == "altcha" { value.CaptchaProvider = "altcha_community" }
+	if value.CaptchaProvider == "altcha" {
+		value.CaptchaProvider = "altcha_community"
+	}
 	if value.CaptchaProvider != "" && value.CaptchaProvider != "recaptcha" && value.CaptchaProvider != "turnstile" && value.CaptchaProvider != "hcaptcha" && value.CaptchaProvider != "altcha_community" && value.CaptchaProvider != "altcha_sentinel" {
 		return domain.SystemSettings{}, domain.ErrInvalid
 	}
 	if value.CaptchaProvider == "altcha_community" && value.CaptchaSecret == "" && current.CaptchaSecretCiphertext == "" {
-		key := make([]byte, 32); if _, err := rand.Read(key); err != nil { return domain.SystemSettings{}, err }; value.CaptchaSecret = fmt.Sprintf("%x", key)
+		key := make([]byte, 32)
+		if _, err := rand.Read(key); err != nil {
+			return domain.SystemSettings{}, err
+		}
+		value.CaptchaSecret = fmt.Sprintf("%x", key)
 	}
 	if value.CaptchaSecret != "" {
-		if !s.Cipher.Available() {
-			return domain.SystemSettings{}, domain.ErrInvalid
+		if s.Cipher.Available() {
+			ciphertext, cipherErr := s.Cipher.Encrypt(value.CaptchaSecret)
+			if cipherErr != nil {
+				return domain.SystemSettings{}, cipherErr
+			}
+			value.CaptchaSecretCiphertext = ciphertext
+		} else {
+			value.CaptchaSecretCiphertext = "plain:" + value.CaptchaSecret
 		}
-		ciphertext, cipherErr := s.Cipher.Encrypt(value.CaptchaSecret)
-		if cipherErr != nil {
-			return domain.SystemSettings{}, cipherErr
-		}
-		value.CaptchaSecretCiphertext = ciphertext
 	} else {
 		value.CaptchaSecretCiphertext = current.CaptchaSecretCiphertext
 	}
@@ -194,12 +201,29 @@ func (s *Service) sanitiseSettings(value domain.SystemSettings) domain.SystemSet
 	return value
 }
 
+func (s *Service) captchaSecretValue(ciphertext string) (string, error) {
+	if ciphertext == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(ciphertext, "plain:") {
+		return strings.TrimPrefix(ciphertext, "plain:"), nil
+	}
+	secret, err := s.Cipher.Decrypt(ciphertext)
+	if err == nil {
+		return secret, nil
+	}
+	if !s.Cipher.Available() {
+		return ciphertext, nil
+	}
+	return "", err
+}
+
 func (s *Service) VerifyCaptcha(ctx context.Context, token, remoteIP string) error {
 	settings, err := s.Stores.Settings.Get(ctx)
 	if err != nil || settings.CaptchaProvider == "" {
 		return err
 	}
-	secret, err := s.Cipher.Decrypt(settings.CaptchaSecretCiphertext)
+	secret, err := s.captchaSecretValue(settings.CaptchaSecretCiphertext)
 	if err != nil {
 		return err
 	}
@@ -207,8 +231,16 @@ func (s *Service) VerifyCaptcha(ctx context.Context, token, remoteIP string) err
 }
 
 func (s *Service) CommunityCaptchaChallenge(ctx context.Context, flow string) (any, error) {
-	settings, err := s.Stores.Settings.Get(ctx); if err != nil { return nil, err }
-	if settings.CaptchaProvider != "altcha_community" && settings.CaptchaProvider != "altcha" { return nil, domain.ErrNotFound }
-	secret, err := s.Cipher.Decrypt(settings.CaptchaSecretCiphertext); if err != nil { return nil, err }
+	settings, err := s.Stores.Settings.Get(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if settings.CaptchaProvider != "altcha_community" && settings.CaptchaProvider != "altcha" {
+		return nil, domain.ErrNotFound
+	}
+	secret, err := s.captchaSecretValue(settings.CaptchaSecretCiphertext)
+	if err != nil {
+		return nil, err
+	}
 	return s.Captcha.CreateCommunityChallenge(secret, flow)
 }

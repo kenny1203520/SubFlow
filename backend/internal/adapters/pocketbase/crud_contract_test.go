@@ -101,6 +101,91 @@ func TestRepositoryCRUDContract(t *testing.T) {
 	}
 }
 
+// Subscription splits live in a JSON column rather than a child collection, so
+// they only survive a full write/read cycle through the record layer. The
+// in-memory finance tests never touch the adapter and cannot catch a broken
+// round-trip here.
+func TestSubscriptionSplitsSurviveRoundTrip(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	if err = EnsureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	users, err := app.FindCollectionByNameOrId("users")
+	if err != nil {
+		t.Fatal(err)
+	}
+	members := make([]string, 0, 3)
+	for _, email := range []string{"a@example.com", "b@example.com", "c@example.com"} {
+		record := core.NewRecord(users)
+		record.Set("email", email)
+		record.Set("name", email)
+		record.Set("timezone", "Asia/Taipei")
+		record.SetPassword("correct-horse-battery-staple")
+		if err = app.Save(record); err != nil {
+			t.Fatal(err)
+		}
+		members = append(members, record.Id)
+	}
+	ctx := context.Background()
+	stores := NewStores(app)
+	group := &domain.Group{Name: "Home", Currency: domain.CurrencyTWD, Color: "#7057e8", OwnerID: members[0]}
+	if err = stores.Groups.Create(ctx, group); err != nil {
+		t.Fatal(err)
+	}
+	splits := []domain.ExpenseSplit{
+		{UserID: members[0], AmountMinor: 10000, BaseAmountMinor: 10000},
+		{UserID: members[1], AmountMinor: 10000, BaseAmountMinor: 10000},
+		{UserID: members[2], AmountMinor: 10000, BaseAmountMinor: 10000},
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	sub := &domain.Subscription{GroupID: group.ID, Name: "YouTube", AmountMinor: 30000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, BaseAmountMinor: 30000, RateMode: domain.RateAutomatic, BillingCycle: domain.BillingMonthly, NextBilling: now.AddDate(0, 0, 5), Status: domain.SubscriptionActive, PaidBy: members[0], SplitMode: domain.SplitEqual, Splits: splits}
+	if err = stores.Subscriptions.Create(ctx, sub); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := stores.Subscriptions.Get(ctx, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertSplits(t, "subscription", loaded.Splits, splits)
+
+	revision := &domain.SubscriptionRevision{SubscriptionID: sub.ID, Scope: "future", EffectiveBillingAt: sub.NextBilling, Name: sub.Name, AmountMinor: sub.AmountMinor, Currency: sub.Currency, BaseCurrency: sub.BaseCurrency, BaseAmountMinor: sub.BaseAmountMinor, RateMode: sub.RateMode, PaidBy: sub.PaidBy, SplitMode: sub.SplitMode, Splits: splits}
+	if err = stores.Subscriptions.CreateRevision(ctx, revision); err != nil {
+		t.Fatal(err)
+	}
+	revisions, err := stores.Subscriptions.ListRevisions(ctx, sub.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(revisions) != 1 {
+		t.Fatalf("expected 1 revision, got %d", len(revisions))
+	}
+	assertSplits(t, "revision", revisions[0].Splits, splits)
+}
+
+func assertSplits(t *testing.T, label string, got, want []domain.ExpenseSplit) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s splits were not restored: want %d, got %d (%#v)", label, len(want), len(got), got)
+	}
+	found := map[string]domain.ExpenseSplit{}
+	for _, split := range got {
+		found[split.UserID] = split
+	}
+	for _, split := range want {
+		actual, ok := found[split.UserID]
+		if !ok {
+			t.Fatalf("%s splits missing user %s: %#v", label, split.UserID, got)
+		}
+		if actual.AmountMinor != split.AmountMinor || actual.BaseAmountMinor != split.BaseAmountMinor {
+			t.Fatalf("%s split for %s: want %d/%d, got %d/%d", label, split.UserID, split.AmountMinor, split.BaseAmountMinor, actual.AmountMinor, actual.BaseAmountMinor)
+		}
+	}
+}
+
 func containsCategory(categories []domain.Category, id string) bool {
 	for _, category := range categories {
 		if category.ID == id {

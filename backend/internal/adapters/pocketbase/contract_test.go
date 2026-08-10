@@ -1,6 +1,7 @@
 package pocketbase
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -50,5 +51,15 @@ func TestEnsureSchemaWithSetupURLReturnsOneTimeLink(t *testing.T) {
 	}
 	if second, secondErr := EnsureSchemaWithSetupURL(app, "http://localhost:5173"); secondErr != nil || second != "" {
 		t.Fatalf("second setup link = %q, %v", second, secondErr)
+	}
+}
+
+func TestMergePermissionsBackfillsMissingEntries(t *testing.T) {
+	merged, changed := mergePermissions([]string{"group.view", "ledger.expenses.write"}, []string{"group.view", "ledger.expenses.write", "ledger.records.historical_write"})
+	if !changed {
+		t.Fatal("expected missing permissions to be backfilled")
+	}
+	if want := []string{"group.view", "ledger.expenses.write", "ledger.records.historical_write"}; !reflect.DeepEqual(merged, want) {
+		t.Fatalf("merged permissions = %#v, want %#v", merged, want)
 	}
 }

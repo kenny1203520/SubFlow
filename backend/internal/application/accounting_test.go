@@ -1,6 +1,7 @@
 package application
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -59,5 +60,16 @@ func TestSubscriptionBillingDateAllowed(t *testing.T) {
 	}
 	if subscriptionBillingDateAllowed(subscription, startsOn, location) {
 		t.Fatal("expected a billing date before next billing to be rejected")
+	}
+}
+
+func TestHistoricalExpenseChangeSummaryIncludesDetails(t *testing.T) {
+	before := &domain.Expense{Title: "Lunch", IncurredOn: time.Date(2026, time.July, 10, 0, 0, 0, 0, time.UTC), AmountMinor: 1200, PaidBy: "alice", CategoryID: "food-old"}
+	after := &domain.Expense{Title: "Team lunch", IncurredOn: time.Date(2026, time.July, 12, 0, 0, 0, 0, time.UTC), AmountMinor: 1500, PaidBy: "bob", CategoryID: "food-new"}
+	summary := historicalExpenseChangeSummary(before, after)
+	for _, want := range []string{"historical expense updated", "title \"Lunch\" -> \"Team lunch\"", "incurred_on 2026-07-10 -> 2026-07-12", "amount_minor 1200 -> 1500", "paid_by \"alice\" -> \"bob\"", "category_id \"food-old\" -> \"food-new\""} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("summary %q missing %q", summary, want)
+		}
 	}
 }

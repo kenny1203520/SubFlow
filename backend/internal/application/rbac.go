@@ -14,15 +14,19 @@ import (
 	"subflow/internal/ports"
 )
 
-func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, resourceID, outcome string) {
+func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, resourceID, outcome string, summary ...string) {
 	key := os.Getenv("SUBFLOW_AUDIT_HMAC_KEY")
 	if key == "" {
 		key = "subflow-audit-local"
 	}
-	payload := strings.Join([]string{actor, groupID, action, resource, resourceID, outcome}, "|")
+	summaryText := ""
+	if len(summary) > 0 {
+		summaryText = strings.TrimSpace(summary[0])
+	}
+	payload := strings.Join([]string{actor, groupID, action, resource, resourceID, outcome, summaryText}, "|")
 	mac := hmac.New(sha256.New, []byte(key))
 	_, _ = mac.Write([]byte(payload))
-	_ = s.Stores.Audits.Create(ctx, &domain.AuditLog{ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Hash: hex.EncodeToString(mac.Sum(nil))})
+	_ = s.Stores.Audits.Create(ctx, &domain.AuditLog{ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, Hash: hex.EncodeToString(mac.Sum(nil))})
 }
 
 func generatedRoleKey(name string) string { sum := sha256.Sum256([]byte(name + time.Now().UTC().String())); return fmt.Sprintf("custom-%x", sum[:6]) }

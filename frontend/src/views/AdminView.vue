@@ -16,6 +16,7 @@ import RoleSelect from '../components/RoleSelect.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
 import AuditFilterBar, { type AuditFilters } from '../components/AuditFilterBar.vue'
 import AuditLogList from '../components/AuditLogList.vue'
+import { defaultPageSize } from '../pageSize'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
@@ -33,6 +34,7 @@ const saved = ref(false)
 const loading = ref(false)
 const query = ref('')
 const auditFilters = reactive<AuditFilters>({ q:'', action:'', resource:'', outcome:'', from:'', to:'' })
+const auditPageSize = ref(defaultPageSize.value)
 const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false })
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
@@ -57,9 +59,9 @@ async function loadLogs() {
   auditLoading.value = true
   auditError.value = ''
   try {
-    const result = await api.get<AuditLog[]>(`/system/audit-logs?${new URLSearchParams({ ...auditQuery(), perPage:'25' }).toString()}`)
+    const result = await api.get<AuditLog[]>(`/system/audit-logs?${new URLSearchParams({ ...auditQuery(), perPage:String(auditPageSize.value) }).toString()}`)
     logs.value = result.data
-    logsMeta.value = result.meta || { page:1, perPage:25, totalItems:result.data.length, totalPages:1 }
+    logsMeta.value = result.meta || { page:1, perPage:auditPageSize.value, totalItems:result.data.length, totalPages:1 }
   } catch {
     auditError.value = tr('requestFailed')
   } finally {
@@ -71,6 +73,17 @@ async function load() {
   loading.value = true
   error.value = ''
   try { await Promise.all([loadRoles(), loadUsers(), loadLogs(), loadSettings()]) } catch { error.value = tr('requestFailed') } finally { loading.value = false }
+}
+function updateCaptchaProvider(value: string) {
+  settings.value.captchaProvider = value
+  if (!value || value === 'altcha_community') {
+    settings.value.captchaSiteKey = ''
+    settings.value.captchaSecret = ''
+  }
+  if (value !== 'altcha_sentinel') {
+    settings.value.captchaChallengeUrl = ''
+    settings.value.captchaVerifyUrl = ''
+  }
 }
 async function saveSettings() {
   try {
@@ -108,6 +121,7 @@ async function assign(user: User, roleId: string) {
 function applyAuditFilters() { void router.replace({ query:auditQuery(1) }) }
 function resetAuditFilters() { void router.replace({ query:{} }) }
 function setAuditPage(page:number) { void router.replace({ query:auditQuery(page) }) }
+function setAuditPageSize(value:number) { auditPageSize.value = value; void router.replace({ query:auditQuery(1) }) }
 watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters()); void load() }, { immediate:true })
 </script>
 
@@ -151,7 +165,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
         <label class="check"><input v-model="settings.allowOidcRegistration" type="checkbox"><span>{{ tr('allowOidcRegistration') }}</span></label>
       </fieldset>
       <fieldset class="settings-section"><legend>{{ tr('captcha') }}</legend>
-        <BaseCombobox v-model="settings.captchaProvider" :label="tr('captchaProvider')" :options="[{value:'',label:tr('disabled')},{value:'recaptcha',label:'Google reCAPTCHA'},{value:'turnstile',label:'Cloudflare Turnstile'},{value:'hcaptcha',label:'hCaptcha'},{value:'altcha_community',label:'ALTCHA Community'},{value:'altcha_sentinel',label:'ALTCHA Sentinel'}]" />
+        <BaseCombobox :model-value="settings.captchaProvider" :label="tr('captchaProvider')" :options="[{value:'',label:tr('disabled')},{value:'recaptcha',label:'Google reCAPTCHA'},{value:'turnstile',label:'Cloudflare Turnstile'},{value:'hcaptcha',label:'hCaptcha'},{value:'altcha_community',label:'ALTCHA Community'},{value:'altcha_sentinel',label:'ALTCHA Sentinel'}]" @update:model-value="updateCaptchaProvider" />
         <BaseInput v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'&&settings.captchaProvider!=='altcha_sentinel'" v-model="settings.captchaSiteKey" :label="tr('captchaSiteKey')" />
         <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaChallengeUrl" label="Sentinel challenge URL" help="Public ALTCHA Sentinel challenge endpoint." />
         <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaVerifyUrl" label="Sentinel verification URL" help="Server-side /v1/verify/signature endpoint." />
@@ -214,7 +228,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
 
     <section v-else-if="section === 'audit' && can('system.audit.read')" class="admin-audit-stack">
       <AuditFilterBar :model-value="auditFilters" @update:model-value="Object.assign(auditFilters, $event)" @apply="applyAuditFilters" @reset="resetAuditFilters" />
-      <AuditLogList :logs="logs" :meta="logsMeta" :loading="auditLoading" :error="auditError" @retry="loadLogs" @page="setAuditPage" />
+      <AuditLogList :logs="logs" :meta="logsMeta" :page-size="auditPageSize" :loading="auditLoading" :error="auditError" @retry="loadLogs" @page="setAuditPage" @update:page-size="setAuditPageSize" />
     </section>
   </section>
 </template>

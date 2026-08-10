@@ -20,6 +20,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentGroupId = ref('')
   const members = ref<Membership[]>([])
   const invitations = ref<Invitation[]>([])
+  const invitationsMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
   const pendingInvitations = ref<Invitation[]>([])
   const notifications = ref<Notification[]>([])
   const subscriptions = ref<Subscription[]>([])
@@ -109,6 +110,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (!id) {
       members.value = []
       invitations.value = []
+      invitationsMeta.value = { page:1, perPage:25, totalItems:0, totalPages:0 }
       subscriptions.value = []
       expenses.value = []
       summary.value = null
@@ -119,6 +121,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }
     members.value = []
     invitations.value = []
+    invitationsMeta.value = { page:1, perPage:25, totalItems:0, totalPages:0 }
     subscriptions.value = []
     expenses.value = []
     settlements.value = []
@@ -154,10 +157,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     ])
     if (expectedRequest === groupRequest && id === currentGroupId.value) {
       if (groupPermissions.value.includes('group.members.manage')) {
-        try { invitations.value = (await api.get<Invitation[]>(`/groups/${id}/invitations?perPage=100`)).data } catch { invitations.value = [] }
+        try { await loadInvitations() } catch { invitations.value = [] }
       } else invitations.value = []
       loadedGroupId = id
     }
+  }
+
+  async function loadInvitations(page = 1, perPage = invitationsMeta.value.perPage || 25) {
+    if (!currentGroupId.value) return
+    const result = await api.get<Invitation[]>(`/groups/${currentGroupId.value}/invitations?${new URLSearchParams({ page:String(page), perPage:String(perPage) }).toString()}`)
+    invitations.value = result.data
+    invitationsMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    return result
   }
 
   async function refreshPersonal(scope: 'personal'|'all' = 'personal', month = '') {
@@ -373,7 +384,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   return {
-    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, pendingInvitations, notifications,
+    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
     subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
