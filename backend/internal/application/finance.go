@@ -62,7 +62,11 @@ func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt t
 		result.PaidBy = revision.PaidBy
 		result.Notes = revision.Notes
 		result.SplitMode = revision.SplitMode
-		result.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+		// A revision without splits must not discard the subscription's own,
+		// otherwise the fallback below charges the payer the full amount.
+		if len(revision.Splits) > 0 {
+			result.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+		}
 	}
 	if len(result.Splits) == 0 {
 		result.SplitMode = domain.SplitAmount

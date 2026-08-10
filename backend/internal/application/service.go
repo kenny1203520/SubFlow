@@ -573,7 +573,11 @@ func applySubscriptionRevision(v *domain.Subscription, revision domain.Subscript
 	v.RateMode = revision.RateMode
 	v.PaidBy = revision.PaidBy
 	v.SplitMode = revision.SplitMode
-	v.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+	// Keep the subscription's own splits when a revision carries none, so a
+	// revision without split data cannot silently drop the participants.
+	if len(revision.Splits) > 0 {
+		v.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+	}
 	v.Notes = revision.Notes
 }
 

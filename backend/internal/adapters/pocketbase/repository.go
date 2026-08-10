@@ -1144,10 +1144,7 @@ func writeSubscription(r *core.Record, v *domain.Subscription) {
 }
 func subscriptionFrom(r *core.Record) *domain.Subscription {
 	v := &domain.Subscription{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), BillingCycle: domain.BillingCycle(r.GetString("billing_cycle")), BillingInterval: int(r.GetFloat("billing_interval")), StartsOn: r.GetDateTime("starts_on").Time(), NextBilling: r.GetDateTime("next_billing").Time(), Status: domain.SubscriptionStatus(r.GetString("status")), Notes: r.GetString("notes")}
-	if raw, ok := r.GetRaw("splits").([]any); ok {
-		blob, _ := json.Marshal(raw)
-		_ = json.Unmarshal(blob, &v.Splits)
-	}
+	_ = json.Unmarshal([]byte(r.GetString("splits")), &v.Splits)
 	v.BillingInterval = domain.NormalizeBillingInterval(v.BillingCycle, v.BillingInterval)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if ends := r.GetDateTime("ends_on").Time(); !ends.IsZero() {
@@ -1177,10 +1174,7 @@ func writeSubscriptionRevision(r *core.Record, v *domain.SubscriptionRevision) {
 }
 func subscriptionRevisionFrom(r *core.Record) *domain.SubscriptionRevision {
 	v := &domain.SubscriptionRevision{ID: r.Id, SubscriptionID: r.GetString("subscription"), Scope: r.GetString("scope"), EffectiveBillingAt: r.GetDateTime("effective_at").Time(), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
-	if raw, ok := r.GetRaw("splits").([]any); ok {
-		blob, _ := json.Marshal(raw)
-		_ = json.Unmarshal(blob, &v.Splits)
-	}
+	_ = json.Unmarshal([]byte(r.GetString("splits")), &v.Splits)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	hydrateTimes(r, &v.CreatedAt, new(time.Time))
 	return v
