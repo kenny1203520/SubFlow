@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-11
+
+### Fixed
+- 手機版（螢幕寬度 900px 以下）完全無法使用「個人資料」「系統管理」與「登出」：底部導覽列取代側邊欄後，原本放置這些項目的區塊被整個隱藏且沒有替代入口。現在底部導覽列新增第 5 個「個人設定」分頁，並將系統管理連結與登出按鈕移至個人資料頁，桌面版側邊欄行為不變。
+
 ## [0.1.1] - 2026-08-11
 
 ### Fixed
@@ -64,6 +69,7 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/kenny1203520/SubFlow/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kenny1203520/SubFlow/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kenny1203520/SubFlow/releases/tag/v0.1.0
