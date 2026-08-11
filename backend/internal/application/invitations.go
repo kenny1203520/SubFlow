@@ -80,7 +80,11 @@ func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitati
 		}
 		return inv, nil
 	}
-	if err = s.Mailer.SendInvitation(ctx, *inv, *group, link); err != nil {
+	inviterName := ""
+	if inviter, inviterErr := s.Base.Stores.Users.Get(ctx, inv.InvitedBy); inviterErr == nil {
+		inviterName = inviter.Name
+	}
+	if err = s.Mailer.SendInvitation(ctx, *inv, *group, inviterName, link); err != nil {
 		inv.Status = domain.InvitationDeliveryFailed
 		_ = s.Base.Stores.Invitations.Update(ctx, inv)
 		return nil, err
