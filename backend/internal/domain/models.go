@@ -117,6 +117,14 @@ type User struct {
 	LinkedUserID string `json:"linkedUserId,omitempty"`
 }
 
+// LinkedProvider is an OAuth2 provider linked to a user's account (see
+// Service.ListLinkedProviders / UnlinkProvider), letting them sign in with
+// that provider directly instead of email/password.
+type LinkedProvider struct {
+	Provider string    `json:"provider"`
+	Created  time.Time `json:"created"`
+}
+
 // SystemSettings is the single installation-wide configuration record. It is
 // intentionally separate from a user profile so the initial setup can be
 // completed exactly once.

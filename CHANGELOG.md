@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-08-12
+
+### Added
+- 個人設定頁新增「第三方登入」：可將 Google／Spotify／OIDC 等登入方式連結到目前帳號（即使該登入方式回報的 Email 與帳號 Email 不同），之後即可用該方式直接登入，不需再輸入密碼；同一頁也可以查看已連結項目並取消連結。
+
+### Fixed
+- 個人設定頁的「帳號管理」卡片（0.1.2 新增）沒有標題與說明，且「登出」按鈕因為置於格線版面中被拉伸成整排寬度、文字置中，看起來像是排版錯誤：補上與其他卡片一致的標題區塊，並將按鈕改用彈性排版，不再被拉伸。
+- 群組邀請信寄送失敗（一律回報伺服器錯誤）：邀請信原本使用獨立的 SMTP 寄信邏輯，需要另外設定一組環境變數，與 PocketBase 自身（透過管理後台設定、密碼重設信也使用）的郵件設定互不相通；現在邀請信改用 PocketBase 內建的寄信機制，只要 PocketBase 本身的郵件設定正常即可寄送。
+
 ## [0.1.3] - 2026-08-11
 
 ### Fixed
@@ -74,7 +83,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/kenny1203520/SubFlow/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kenny1203520/SubFlow/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kenny1203520/SubFlow/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kenny1203520/SubFlow/compare/v0.1.0...v0.1.1
