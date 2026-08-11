@@ -1,0 +1,32 @@
+name: subflow
+
+services:
+  subflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${SUBFLOW_IMAGE:-subflow:local}
+    restart: unless-stopped
+    environment:
+      SUBFLOW_HTTP_PORT: ${SUBFLOW_HTTP_PORT:-8080}
+      SUBFLOW_DATA_DRIVER: ${SUBFLOW_DATA_DRIVER:-pocketbase}
+      SUBFLOW_ENV: ${SUBFLOW_ENV:-development}
+      SUBFLOW_APP_URL: ${SUBFLOW_APP_URL:-http://localhost:8080}
+      SUBFLOW_SMTP_HOST: ${SUBFLOW_SMTP_HOST:-}
+      SUBFLOW_SMTP_PORT: ${SUBFLOW_SMTP_PORT:-587}
+      SUBFLOW_SMTP_USER: ${SUBFLOW_SMTP_USER:-}
+      SUBFLOW_SMTP_PASSWORD: ${SUBFLOW_SMTP_PASSWORD:-}
+      SUBFLOW_SMTP_FROM: ${SUBFLOW_SMTP_FROM:-}
+    ports:
+      - "${SUBFLOW_PUBLISH_PORT:-8080}:${SUBFLOW_HTTP_PORT:-8080}"
+    volumes:
+      - pb_data:/app/pb_data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:$${SUBFLOW_HTTP_PORT:-8080}/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+      start_period: 15s
+
+volumes:
+  pb_data:

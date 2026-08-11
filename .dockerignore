@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+**/node_modules
+**/dist
+backend/pb_data
+backend/subflow
+backend/subflow.exe
+backend/db
+*.log

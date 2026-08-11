@@ -1,0 +1,22 @@
+.about-page{width:min(100%,880px);margin:0 auto}
+.about-hero{display:grid;justify-items:center;gap:14px;text-align:center;margin-bottom:28px}
+.about-mark{display:grid;place-items:center;width:72px;height:72px;border-radius:22px;background:linear-gradient(135deg,#7c7df9,#5959dc);color:#fff;font-size:24px;font-weight:800;box-shadow:0 14px 30px color-mix(in srgb,var(--brand) 30%,transparent)}
+.about-hero h1{margin:0;font-size:clamp(30px,4vw,40px);letter-spacing:-.04em}
+.about-hero p{max-width:560px;margin:0;color:var(--muted);font-size:14px;line-height:1.7}
+.about-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:20px}
+.about-fact{display:flex;align-items:center;gap:14px;padding:20px}
+.about-fact-icon{display:grid;place-items:center;flex:0 0 auto;width:44px;height:44px;border-radius:14px;background:var(--brand-soft);color:var(--brand)}
+.about-fact-icon svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.about-fact small{display:block;margin-bottom:4px;color:var(--muted);font-size:12px}
+.about-fact strong{font-size:20px;letter-spacing:-.02em}
+.about-links{padding:0}
+.about-links>h2{margin:0;padding:18px 22px 14px;font-size:16px}
+.about-link{display:flex;align-items:center;gap:14px;padding:15px 22px;border-top:1px solid var(--line);color:var(--ink);text-decoration:none;font-size:14px;font-weight:650}
+.about-link:hover{background:var(--brand-soft);color:var(--brand)}
+.about-link-icon{display:grid;place-items:center;flex:0 0 auto;width:34px;height:34px;border-radius:11px;background:var(--surface-soft);color:var(--brand)}
+.about-link-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.about-link .grow{display:grid;gap:2px;min-width:0}
+.about-link small{color:var(--muted);font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.about-link-arrow{margin-left:auto;color:var(--muted)}
+.about-footer{margin:26px 0 0;color:var(--muted);text-align:center;font-size:12px}
+@media(max-width:700px){.about-facts{grid-template-columns:1fr}.about-link,.about-links>h2{padding-inline:18px}}
