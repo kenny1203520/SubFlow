@@ -9,7 +9,7 @@ export type BillingCycle = 'daily' | 'every_n_days' | 'weekly' | 'every_n_weeks'
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
 
 export interface Group { id:string;name:string;description:string;currency:Currency;timezone:string;color:string;ownerId:string;createdAt:string;updatedAt:string }
-export interface User { id:string;email:string;name:string;avatar?:string;timezone:string;defaultCurrency?:Currency;systemRoleId?:string }
+export interface User { id:string;email:string;name:string;avatar?:string;timezone:string;defaultCurrency?:Currency;systemRoleId?:string;placeholder?:boolean;linkedUserId?:string }
 export interface SystemAccess { permissions:string[] }
 export interface GroupAccess { permissions:string[] }
 export interface Membership { id:string;groupId:string;userId:string;role:Role;roleId?:string;roleName?:string;user?:User;createdAt:string }

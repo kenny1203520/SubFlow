@@ -22,6 +22,7 @@ func (a *CollaborationAPI) RegisterRoutes(e *core.ServeEvent) {
 	bind := apis.RequireAuth("users")
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/invitations", a.list).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/invitations", a.create).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/temp-members", a.createTempMember).Bind(bind)
 	e.Router.POST("/api/subflow/v1/invitations/{id}/resend", a.resend).Bind(bind)
 	e.Router.POST("/api/subflow/v1/invitations/{id}/revoke", a.revoke).Bind(bind)
 	e.Router.POST("/api/subflow/v1/invitations/accept", a.accept).Bind(bind)
@@ -45,12 +46,26 @@ func (a *CollaborationAPI) list(e *core.RequestEvent) error {
 }
 func (a *CollaborationAPI) create(e *core.RequestEvent) error {
 	var body struct {
-		Email string `json:"email"`
+		Email               string `json:"email"`
+		TargetPlaceholderID string `json:"targetPlaceholderId"`
 	}
 	if err := e.BindBody(&body); err != nil {
 		return fail(e, domain.ErrInvalid)
 	}
-	v, err := a.Service.CreateInvitation(e.Request.Context(), authID(e), groupID(e), body.Email)
+	v, err := a.Service.CreateInvitationBinding(e.Request.Context(), authID(e), groupID(e), body.Email, body.TargetPlaceholderID)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, v, nil)
+}
+func (a *CollaborationAPI) createTempMember(e *core.RequestEvent) error {
+	var body struct {
+		Name string `json:"name"`
+	}
+	if err := e.BindBody(&body); err != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	v, err := a.Service.Base.CreateTempMember(e.Request.Context(), authID(e), groupID(e), body.Name)
 	if err != nil {
 		return fail(e, err)
 	}
