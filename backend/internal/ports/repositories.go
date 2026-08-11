@@ -67,6 +67,11 @@ type InvitationRepository interface {
 	Get(context.Context, string) (*domain.Invitation, error)
 	GetByTokenHash(context.Context, string) (*domain.Invitation, error)
 	FindPending(context.Context, string, string) (*domain.Invitation, error)
+	// FindPendingByTarget finds a still-pending invitation already targeting
+	// the given placeholder in the group, so a second invite can't be sent
+	// to the same placeholder while one is outstanding (see
+	// CollaborationService.CreateInvitationBinding).
+	FindPendingByTarget(ctx context.Context, groupID, placeholderID string) (*domain.Invitation, error)
 	List(context.Context, string, PageRequest) (Page[domain.Invitation], error)
 	Update(context.Context, *domain.Invitation) error
 	ListForEmail(context.Context, string, PageRequest) (Page[domain.Invitation], error)
