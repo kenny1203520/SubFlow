@@ -7,7 +7,7 @@ import TimezoneSelect from '../components/TimezoneSelect.vue'
 import CurrencySelect from '../components/CurrencySelect.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import CategoryManagement from '../components/CategoryManagement.vue'
-const auth = useAuthStore(), workspace=useWorkspaceStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), { t } = useI18n(), { preference, setTheme } = useTheme()
+const auth = useAuthStore(), workspace=useWorkspaceStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), { t, tr } = useI18n(), { preference, setTheme } = useTheme()
 const form = reactive({ name: String(auth.record?.name || ''), timezone: String(auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone), default_currency:String(auth.record?.defaultCurrency||'TWD') })
 async function submit() { await auth.updateProfile(form); saved.value = true; setTimeout(() => saved.value = false, 1800) }
 async function resetPassword() { if (!auth.record?.email) return; resetBusy.value = true; try { await auth.requestPasswordReset(String(auth.record.email)); resetSent.value = true } finally { resetBusy.value = false } }
@@ -49,6 +49,10 @@ async function resetPassword() { if (!auth.record?.email) return; resetBusy.valu
                 <p v-if="resetSent" class="success">{{ t.resetPasswordSent }}</p>
             </section>
             <section class="card form-card profile-categories"><CategoryManagement scope="personal" /></section>
+            <section class="card form-card profile-account-actions">
+                <RouterLink v-if="auth.canAdminister" class="ghost" :to="{ name: 'admin' }">{{ tr('systemAdministration') }}</RouterLink>
+                <button type="button" class="ghost danger-text" @click="auth.logout">{{ t.logout }}</button>
+            </section>
         </div>
     </section>
 </template>
