@@ -61,7 +61,7 @@ func main() {
 		return mailer.ConfigurePocketBase(e.App, smtpMailer)
 	})
 	app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(e *core.RecordRequestPasswordResetRequestEvent) error {
-		if environment != "" && environment != "development" && !smtpMailer.Configured() {
+		if environment != "" && environment != "development" && !e.App.Settings().SMTP.Enabled {
 			return errors.New("SMTP is required for password reset outside development")
 		}
 		return e.Next()
@@ -116,7 +116,7 @@ func main() {
 			}
 		}()
 		(&httpapi.API{Service: base}).RegisterRoutes(e)
-		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: smtpMailer, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
+		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: &mailer.Native{App: e.App}, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
 		web.Register(e)
 		fmt.Print(setupStartupNotice(setupLink))
 		return e.Next()
