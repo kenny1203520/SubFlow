@@ -183,11 +183,49 @@ func (s *Service) DeleteGroup(ctx context.Context, userID, id string) error {
 	}
 	return err
 }
+// ListMembers hides bound placeholders from the members-list display: once a
+// temp member is bound to a real account, its membership row is kept forever
+// (historical expense/settlement records still reference the placeholder's
+// own ID — see RemoveMember), but showing both the placeholder row and the
+// real account's row makes the group look like it has more people than it
+// does. This filtering is local to the display path — memberIDs() and the
+// dashboard call Stores.Memberships.List directly and must keep seeing the
+// placeholder as a valid participant for split/history correctness.
 func (s *Service) ListMembers(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Membership], error) {
 	if err := s.role(ctx, groupID, userID, false); err != nil {
 		return ports.Page[domain.Membership]{}, err
 	}
-	return s.Stores.Memberships.List(ctx, groupID, page)
+	if page.Page < 1 {
+		page.Page = 1
+	}
+	if page.PerPage < 1 || page.PerPage > 100 {
+		page.PerPage = 25
+	}
+	all, err := s.Stores.Memberships.List(ctx, groupID, ports.PageRequest{Page: 1, PerPage: 1000, Sort: page.Sort})
+	if err != nil {
+		return ports.Page[domain.Membership]{}, err
+	}
+	items := make([]domain.Membership, 0, len(all.Items))
+	for _, item := range all.Items {
+		if item.User != nil && item.User.Placeholder && item.User.LinkedUserID != "" {
+			continue
+		}
+		items = append(items, item)
+	}
+	total := len(items)
+	start := (page.Page - 1) * page.PerPage
+	if start > total {
+		start = total
+	}
+	end := start + page.PerPage
+	if end > total {
+		end = total
+	}
+	pages := (total + page.PerPage - 1) / page.PerPage
+	if pages == 0 {
+		pages = 1
+	}
+	return ports.Page[domain.Membership]{Items: items[start:end], Page: page.Page, PerPage: page.PerPage, TotalItems: total, TotalPages: pages}, nil
 }
 func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID string) error {
 	if err := s.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
