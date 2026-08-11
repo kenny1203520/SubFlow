@@ -24,12 +24,16 @@ func value(key, fallback string) string {
 	return fallback
 }
 func (m *SMTP) Configured() bool { return m.Host != "" && m.From != "" }
-func (m *SMTP) SendInvitation(ctx context.Context, inv domain.Invitation, group domain.Group, url string) error {
+func (m *SMTP) SendInvitation(ctx context.Context, inv domain.Invitation, group domain.Group, inviterName, url string) error {
 	if !m.Configured() {
 		return fmt.Errorf("smtp is not configured")
 	}
-	subject := "SubFlow 群組邀請"
-	body := fmt.Sprintf("你已受邀加入 %s。\r\n\r\n%s\r\n", group.Name, url)
+	subject := fmt.Sprintf("邀請你加入「%s」— SubFlow", group.Name)
+	intro := fmt.Sprintf("你已受邀加入群組「%s」。", group.Name)
+	if inviterName != "" {
+		intro = fmt.Sprintf("%s 邀請你加入群組「%s」。", inviterName, group.Name)
+	}
+	body := fmt.Sprintf("%s\r\n\r\n%s\r\n", intro, url)
 	message := []byte("From: " + m.From + "\r\nTo: " + inv.Email + "\r\nSubject: " + subject + "\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n" + body)
 	address := net.JoinHostPort(m.Host, m.Port)
 	auth := smtp.Auth(nil)
@@ -78,7 +82,7 @@ func (m *SMTP) SendInvitation(ctx context.Context, inv domain.Invitation, group 
 type DevelopmentSink struct{}
 
 func (*DevelopmentSink) Configured() bool { return true }
-func (*DevelopmentSink) SendInvitation(context.Context, domain.Invitation, domain.Group, string) error {
+func (*DevelopmentSink) SendInvitation(context.Context, domain.Invitation, domain.Group, string, string) error {
 	return nil
 }
 func ModeMailer(environment string) *SMTP { return FromEnv() }
