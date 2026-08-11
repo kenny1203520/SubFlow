@@ -140,6 +140,10 @@ type UserDirectory interface {
 	CreatePlaceholder(context.Context, string) (*domain.User, error)
 	LinkPlaceholder(ctx context.Context, placeholderID, realUserID string) error
 	Delete(context.Context, string) error
+	// ListExternalAuths and UnlinkExternalAuth back the "connected accounts"
+	// feature (see application.Service.ListLinkedProviders / UnlinkProvider).
+	ListExternalAuths(ctx context.Context, userID string) ([]domain.LinkedProvider, error)
+	UnlinkExternalAuth(ctx context.Context, userID, provider string) error
 }
 
 type SystemSettingsRepository interface {

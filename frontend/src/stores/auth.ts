@@ -5,6 +5,8 @@ import { useI18n } from '../i18n'
 import { ApiClient } from '../api/client'
 import type { SystemAccess } from '../api/types'
 
+export class ProviderLinkedElsewhereError extends Error {}
+
 export const useAuthStore = defineStore('auth', () => {
   const { tr } = useI18n()
   const record = ref(pb.authStore.record)
@@ -74,8 +76,31 @@ export const useAuthStore = defineStore('auth', () => {
   }
   async function oauthProviders() { const methods=await pb.collection('users').listAuthMethods(); return methods.oauth2?.providers||[] }
   async function loginOAuth(provider:string) { await pb.collection('users').authWithOAuth2({provider,createData:{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,default_currency:'TWD'}}); await refreshAccess() }
+  // Calling authWithOAuth2 while already authenticated makes PocketBase link
+  // the provider to the CURRENT record instead of matching/creating by
+  // email — unless that provider is already linked to a different account,
+  // in which case PocketBase silently authenticates as that other account
+  // instead. Detect the mismatch and bail out rather than leaving the
+  // session pointed at a stranger's account.
+  async function linkOAuth(provider: string) {
+    const originalId = record.value?.id
+    await pb.collection('users').authWithOAuth2({ provider })
+    if (pb.authStore.record?.id !== originalId) {
+      logout()
+      throw new ProviderLinkedElsewhereError(tr('providerLinkedElsewhere'))
+    }
+    await refreshAccess()
+  }
+  async function listLinkedProviders() {
+    const api = new ApiClient(() => pb.authStore.token, logout)
+    return (await api.get<{ provider: string; created: string }[]>('/auth/external-auths')).data
+  }
+  async function unlinkProvider(provider: string) {
+    const api = new ApiClient(() => pb.authStore.token, logout)
+    await api.delete(`/auth/external-auths/${encodeURIComponent(provider)}`)
+  }
   function logout() {
     pb.authStore.clear(); authToken.value = ''; authValid.value = false; record.value = null; permissions.value=[]
   }
-  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, requestPasswordReset, requestOTP, loginOTP, updateProfile, oauthProviders, loginOAuth, refreshAccess, logout }
+  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, requestPasswordReset, requestOTP, loginOTP, updateProfile, oauthProviders, loginOAuth, linkOAuth, listLinkedProviders, unlinkProvider, refreshAccess, logout }
 })

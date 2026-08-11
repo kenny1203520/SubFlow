@@ -45,6 +45,8 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/auth/captcha/challenge", a.captchaChallenge)
 	e.Router.POST("/api/subflow/v1/setup/initialize", a.initializeSetup)
 	e.Router.POST("/api/subflow/v1/auth/register", a.register)
+	e.Router.GET("/api/subflow/v1/auth/external-auths", a.listExternalAuths).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/auth/external-auths/{provider}", a.unlinkExternalAuth).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups", a.listGroups).Bind(bind)
 	e.Router.GET("/api/subflow/v1/currencies", a.currencies).Bind(bind)
 	e.Router.GET("/api/subflow/v1/categories", a.listCategories).Bind(bind)
@@ -390,6 +392,19 @@ func (a *API) captchaChallenge(e *core.RequestEvent) error {
 	challenge, err := a.Service.CommunityCaptchaChallenge(e.Request.Context(), e.Request.URL.Query().Get("flow"))
 	if err != nil { return fail(e, err) }
 	return e.JSON(http.StatusOK, challenge)
+}
+func (a *API) listExternalAuths(e *core.RequestEvent) error {
+	providers, err := a.Service.ListLinkedProviders(e.Request.Context(), authID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, providers, nil)
+}
+func (a *API) unlinkExternalAuth(e *core.RequestEvent) error {
+	if err := a.Service.UnlinkProvider(e.Request.Context(), authID(e), e.Request.PathValue("provider")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
 }
 func (a *API) systemAccess(e *core.RequestEvent) error {
 	permissions, err := a.Service.SystemPermissions(e.Request.Context(), authID(e))
