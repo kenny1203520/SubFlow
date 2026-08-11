@@ -918,6 +918,44 @@ func (r *Repository) SetUserSystemRole(ctx context.Context, id, roleID string) e
 	return r.app(ctx).Save(record)
 }
 
+func (r *Repository) ListUserExternalAuths(ctx context.Context, userID string) ([]domain.LinkedProvider, error) {
+	record, err := r.app(ctx).FindRecordById("users", userID)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	auths, err := r.app(ctx).FindAllExternalAuthsByRecord(record)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	items := make([]domain.LinkedProvider, 0, len(auths))
+	for _, auth := range auths {
+		items = append(items, domain.LinkedProvider{Provider: auth.Provider(), Created: auth.Created().Time()})
+	}
+	return items, nil
+}
+
+// UnlinkUserExternalAuth deletes the external-auth relation for userID +
+// provider. Delete bypasses collection API rules entirely, so the
+// RecordRef()==userID check below is the only thing preventing a caller
+// from unlinking a provider that belongs to someone else's account.
+func (r *Repository) UnlinkUserExternalAuth(ctx context.Context, userID, provider string) error {
+	record, err := r.app(ctx).FindRecordById("users", userID)
+	if err != nil {
+		return mapError(err)
+	}
+	auths, err := r.app(ctx).FindAllExternalAuthsByRecord(record)
+	if err != nil {
+		return mapError(err)
+	}
+	for _, auth := range auths {
+		if auth.Provider() != provider || auth.RecordRef() != userID {
+			continue
+		}
+		return r.app(ctx).Delete(auth)
+	}
+	return domain.ErrNotFound
+}
+
 func (r *Repository) CreateSetupUser(ctx context.Context, input domain.SetupInput) (*domain.User, error) {
 	record, err := newRecord(r.app(ctx), "users")
 	if err != nil {

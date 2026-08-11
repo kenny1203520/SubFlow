@@ -236,6 +236,12 @@ func (r *UserRepo) LinkPlaceholder(ctx context.Context, placeholderID, realUserI
 func (r *UserRepo) Delete(ctx context.Context, id string) error {
 	return r.Repository.DeleteUser(ctx, id)
 }
+func (r *UserRepo) ListExternalAuths(ctx context.Context, userID string) ([]domain.LinkedProvider, error) {
+	return r.Repository.ListUserExternalAuths(ctx, userID)
+}
+func (r *UserRepo) UnlinkExternalAuth(ctx context.Context, userID, provider string) error {
+	return r.Repository.UnlinkUserExternalAuth(ctx, userID, provider)
+}
 func (r *SystemSettingsRepo) Get(ctx context.Context) (domain.SystemSettings, error) {
 	return r.Repository.GetSystemSettings(ctx)
 }

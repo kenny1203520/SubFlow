@@ -110,6 +110,17 @@ func (s *Service) CreateGroup(ctx context.Context, userID string, group domain.G
 	return &group, err
 }
 
+func (s *Service) ListLinkedProviders(ctx context.Context, userID string) ([]domain.LinkedProvider, error) {
+	return s.Stores.Users.ListExternalAuths(ctx, userID)
+}
+func (s *Service) UnlinkProvider(ctx context.Context, userID, provider string) error {
+	err := s.Stores.Users.UnlinkExternalAuth(ctx, userID, provider)
+	if err == nil {
+		s.audit(ctx, userID, "", "user.provider_unlinked", "user", userID, "success", encodeAuditSummary(map[string]any{"provider": provider}, nil))
+	}
+	return err
+}
+
 func (s *Service) ListGroups(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Group], error) {
 	return s.Stores.Groups.ListForUser(ctx, userID, page)
 }
