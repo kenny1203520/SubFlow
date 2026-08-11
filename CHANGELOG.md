@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-11
+
+### Fixed
+- 已安裝 PWA 的瀏覽器連到 `/_/` 會被導回 SubFlow 自己的首頁，而非 PocketBase 後台：Service Worker 的導覽快取回退規則（`navigateFallbackDenylist`）只排除了 `/api/`，未排除 `/_/`，導致已安裝過 Service Worker 的瀏覽器一律把該路徑的導覽請求改回應用程式首頁；停用瀏覽器快取無法繞過此問題，只有無痕視窗（未安裝過 Service Worker）或直接繞過瀏覽器才不受影響。現已將 `/_/` 加入排除清單。**此修正需要瀏覽器安裝到新版 Service Worker 才會生效**：既有訪客可透過既有的更新提示、或手動重新整理兩次／清除該網站的 Service Worker 來套用新版。
+
 ## [0.1.2] - 2026-08-11
 
 ### Fixed
@@ -69,7 +74,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/kenny1203520/SubFlow/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kenny1203520/SubFlow/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/kenny1203520/SubFlow/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kenny1203520/SubFlow/releases/tag/v0.1.0
