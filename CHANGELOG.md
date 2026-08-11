@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-08-12
+
+### Fixed
+- 已綁定真實帳號的臨時成員，在「成員」列表中仍會以獨立一列顯示（標示「已綁定」），讓群組看起來人數比實際多；現在成員列表會隱藏已綁定的臨時成員，只顯示真實帳號那一列（分帳與歷史紀錄仍會正確透過綁定關係解析，不受影響）。
+- 同一個臨時成員可以同時被兩筆邀請瞄準（例如先邀請 B、還沒接受又邀請 C），若兩邊都點選接受，會各自成功、且都被標記為「已接受」，實際上臨時成員只會綁到其中一人，造成資料不一致且沒有任何錯誤提示。現在：邀請時若該臨時成員已有其他待接受的邀請，會直接拒絕建立第二筆；且綁定當下也會確認尚未被別人綁定，確保「先接受者獲勝、後接受者收到明確錯誤」而不是靜默覆蓋。
+
 ## [0.1.5] - 2026-08-12
 
 ### Changed
@@ -88,7 +94,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.6...HEAD
+[0.1.6]: https://github.com/kenny1203520/SubFlow/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/kenny1203520/SubFlow/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kenny1203520/SubFlow/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kenny1203520/SubFlow/compare/v0.1.2...v0.1.3
