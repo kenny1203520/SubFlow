@@ -189,11 +189,52 @@ func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID st
 	if role == domain.RoleOwner {
 		return domain.ErrForbidden
 	}
-	err = s.Stores.Memberships.Delete(ctx, groupID, memberID)
-	if err == nil {
-		s.audit(ctx, userID, groupID, "member.removed", "membership", memberID, "success", encodeAuditSummary(map[string]any{"role": string(role)}, nil))
+	// A bound placeholder is a permanent alias target for historical
+	// expense_splits/settlements/subscriptions (see WorkspaceDashboard's
+	// alias resolution) — removing it would make old records display an
+	// unresolvable name, so refuse rather than silently corrupting history.
+	member, memberErr := s.Stores.Users.Get(ctx, memberID)
+	if memberErr == nil && member.Placeholder && member.LinkedUserID != "" {
+		return domain.ErrConflict
 	}
-	return err
+	if err = s.Stores.Memberships.Delete(ctx, groupID, memberID); err != nil {
+		return err
+	}
+	// An unbound placeholder has no other purpose once its membership is
+	// gone; clean up the orphaned users row rather than leaving it dangling.
+	if memberErr == nil && member.Placeholder && member.LinkedUserID == "" {
+		_ = s.Stores.Users.Delete(ctx, memberID)
+	}
+	s.audit(ctx, userID, groupID, "member.removed", "membership", memberID, "success", encodeAuditSummary(map[string]any{"role": string(role)}, nil))
+	return nil
+}
+
+// CreateTempMember adds a placeholder "temp member" to a group so expense
+// and subscription splitting can proceed before everyone has actually
+// joined. The placeholder is a real users record (see
+// UserDirectory.CreatePlaceholder) with a normal group_members row, so every
+// existing split/paid-by/settlement validation path treats it exactly like
+// any other member; it just can't log in. See CollaborationService.accept
+// for how it later gets bound to a real account.
+func (s *Service) CreateTempMember(ctx context.Context, userID, groupID, displayName string) (*domain.Membership, error) {
+	if err := s.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
+		return nil, err
+	}
+	displayName = strings.TrimSpace(displayName)
+	if displayName == "" {
+		return nil, domain.ErrInvalid
+	}
+	placeholder, err := s.Stores.Users.CreatePlaceholder(ctx, displayName)
+	if err != nil {
+		return nil, err
+	}
+	membership := &domain.Membership{GroupID: groupID, UserID: placeholder.ID, Role: domain.RoleMember}
+	if err = s.Stores.Memberships.Create(ctx, membership); err != nil {
+		return nil, err
+	}
+	membership.User = placeholder
+	s.audit(ctx, userID, groupID, "temp_member.created", "membership", membership.ID, "success", encodeAuditSummary(map[string]any{"name": displayName}, nil))
+	return membership, nil
 }
 
 func validSubscription(v *domain.Subscription) bool {

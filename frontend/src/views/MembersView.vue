@@ -12,6 +12,8 @@ import { defaultPageSize } from '../pageSize'
 
 const workspace = useWorkspaceStore()
 const email = ref('')
+const tempMemberName = ref('')
+const bindTarget = ref<{userId:string;label:string}>()
 const pendingRemoval = ref<{userId:string;label:string}>()
 const invitationsPageSize = ref(defaultPageSize.value)
 const { tr, formatDate } = useI18n()
@@ -19,8 +21,15 @@ const canManageMembers=computed(()=>workspace.groupPermissions.includes('*')||wo
 const canManageRoles=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage'))
 
 async function invite() {
-    await workspace.invite(email.value)
+    await workspace.invite(email.value, bindTarget.value?.userId)
     email.value = ''
+    bindTarget.value = undefined
+}
+function startBinding(userId:string, label:string) { bindTarget.value = { userId, label } }
+async function addTempMember() {
+    if (!tempMemberName.value.trim()) return
+    await workspace.createTempMember(tempMemberName.value.trim())
+    tempMemberName.value = ''
 }
 function setInvitationsPage(page:number) { void workspace.loadInvitations(page, invitationsPageSize.value) }
 function setInvitationsPageSize(value:number) { invitationsPageSize.value = value; void workspace.loadInvitations(1, value) }
@@ -56,16 +65,28 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
                         <div class="grow"><strong>{{ member.user?.name || tr('unnamedMember') }}</strong><small>{{
                                 member.user?.email }}</small></div>
                         <span class="pill">{{ memberRoleLabel(member.roleId, member.roleName, member.role) }}</span>
+                        <span v-if="member.user?.placeholder" class="pill">{{ member.user?.linkedUserId ? tr('tempMemberBound') : tr('tempMember') }}</span>
                         <RoleSelect v-if="canManageRoles && member.role !== 'owner' && workspace.groupRoles.length" :model-value="member.roleId||''" :roles="workspace.groupRoles" :label="tr('assignRole')" @update:model-value="assignRole(member.userId,$event)" />
+                        <button v-if="canManageMembers && member.user?.placeholder && !member.user?.linkedUserId" class="ghost"
+                            @click="startBinding(member.userId, member.user?.name || tr('thisMember'))">{{tr('bindTempMember')}}</button>
                         <button v-if="canManageMembers && member.role !== 'owner'" class="ghost danger-text"
                             @click="removeMember(member.userId, member.user?.name || member.user?.email || tr('thisMember'))">{{tr('remove')}}</button>
                     </div>
                 </div>
                 <EmptyState v-else :title="tr('noMemberData')" :description="tr('noMemberDataDesc')" />
             </div>
+            <div v-if="canManageMembers" class="card">
+                <h2>{{tr('addTempMember')}}</h2>
+                <p class="field-help">{{tr('addTempMemberDesc')}}</p>
+                <form class="form-card" @submit.prevent="addTempMember">
+                    <label>{{tr('displayName')}}<input v-model="tempMemberName" required :placeholder="tr('addTempMember')"></label>
+                    <button class="primary" :disabled="workspace.loading">{{tr('addTempMember')}}</button>
+                </form>
+            </div>
             <div v-if="canManageMembers">
                 <form class="card form-card" @submit.prevent="invite">
                     <h2>{{tr('inviteMember')}}</h2>
+                    <div v-if="bindTarget" class="notice inline">{{tr('bindingInviteNotice',{name:bindTarget.label})}} <button type="button" @click="bindTarget=undefined">{{tr('cancel')}}</button></div>
                     <label>Email<input v-model="email" type="email" required placeholder="friend@example.com"></label>
                     <button class="primary" :disabled="workspace.loading">{{tr('sendInvitation')}}</button>
                 </form>

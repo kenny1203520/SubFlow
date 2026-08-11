@@ -135,6 +135,11 @@ type UserDirectory interface {
 	SetSystemRole(context.Context, string, string) error
 	Create(context.Context, domain.SetupInput) (*domain.User, error)
 	CountBySystemRole(context.Context, string) (int, error)
+	// CreatePlaceholder, LinkPlaceholder and Delete back the "temp member"
+	// feature (see application.Service.CreateTempMember).
+	CreatePlaceholder(context.Context, string) (*domain.User, error)
+	LinkPlaceholder(ctx context.Context, placeholderID, realUserID string) error
+	Delete(context.Context, string) error
 }
 
 type SystemSettingsRepository interface {
