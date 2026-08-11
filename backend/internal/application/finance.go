@@ -366,9 +366,55 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 				filteredSettlements = append(filteredSettlements, settlement)
 			}
 		}
-		result.Balances = domain.MemberBalances(filteredExpenses, filteredSettlements)
+		resolvedExpenses, resolvedSettlements := s.resolvePlaceholderAliases(ctx, filteredExpenses, filteredSettlements)
+		result.Balances = domain.MemberBalances(resolvedExpenses, resolvedSettlements)
 	}
 	return result, nil
+}
+
+// resolvePlaceholderAliases folds a bound placeholder "temp member" (see
+// Service.CreateTempMember / CollaborationService.accept) into the real
+// account it's linked to, so a balance accrued while someone was still a
+// placeholder correctly counts toward their real account's total once they
+// join, without rewriting any stored expense_splits/settlements rows. Stored
+// history keeps pointing at the placeholder's own ID; only this read-time
+// aggregation resolves through the link.
+func (s *Service) resolvePlaceholderAliases(ctx context.Context, expenses []domain.Expense, settlements []domain.Settlement) ([]domain.Expense, []domain.Settlement) {
+	aliases := map[string]string{}
+	resolve := func(id string) string {
+		if id == "" {
+			return id
+		}
+		if linked, ok := aliases[id]; ok {
+			return linked
+		}
+		linked := id
+		if user, err := s.Stores.Users.Get(ctx, id); err == nil && user.Placeholder && user.LinkedUserID != "" {
+			linked = user.LinkedUserID
+		}
+		aliases[id] = linked
+		return linked
+	}
+	resolvedExpenses := make([]domain.Expense, len(expenses))
+	for i, expense := range expenses {
+		expense.PaidBy = resolve(expense.PaidBy)
+		if len(expense.Splits) > 0 {
+			splits := make([]domain.ExpenseSplit, len(expense.Splits))
+			for j, split := range expense.Splits {
+				split.UserID = resolve(split.UserID)
+				splits[j] = split
+			}
+			expense.Splits = splits
+		}
+		resolvedExpenses[i] = expense
+	}
+	resolvedSettlements := make([]domain.Settlement, len(settlements))
+	for i, settlement := range settlements {
+		settlement.FromUserID = resolve(settlement.FromUserID)
+		settlement.ToUserID = resolve(settlement.ToUserID)
+		resolvedSettlements[i] = settlement
+	}
+	return resolvedExpenses, resolvedSettlements
 }
 
 // includePast lists billing dates that have already gone by, so a caller with

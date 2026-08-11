@@ -106,6 +106,15 @@ type User struct {
 	Timezone        string   `json:"timezone"`
 	DefaultCurrency Currency `json:"defaultCurrency"`
 	SystemRoleID    string   `json:"systemRoleId,omitempty"`
+	// Placeholder marks a login-incapable stand-in identity created for a
+	// group member who hasn't joined yet (see Service.CreateTempMember).
+	Placeholder bool `json:"placeholder,omitempty"`
+	// LinkedUserID is set once a placeholder has been bound to a real
+	// account (see CollaborationService.accept). Historical expense_splits,
+	// settlements and subscriptions keep referencing the placeholder's own
+	// ID rather than being rewritten, so callers that need "who does this
+	// balance really belong to" resolve through this field.
+	LinkedUserID string `json:"linkedUserId,omitempty"`
 }
 
 // SystemSettings is the single installation-wide configuration record. It is
@@ -211,6 +220,11 @@ type Invitation struct {
 	UpdatedAt  time.Time        `json:"updatedAt"`
 	DebugURL   string           `json:"debugUrl,omitempty"`
 	Group      *Group           `json:"groupInfo,omitempty"`
+	// TargetPlaceholderID, when set, is the user ID of a placeholder "temp
+	// member" (see Service.CreateTempMember). Accepting this invitation
+	// binds that placeholder to the accepting user rather than only
+	// creating a fresh membership.
+	TargetPlaceholderID string `json:"targetPlaceholderId,omitempty"`
 }
 
 // Notification is deliberately small and resource-oriented so its displayed

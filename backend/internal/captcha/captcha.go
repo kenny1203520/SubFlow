@@ -2,7 +2,6 @@ package captcha
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -10,29 +9,28 @@ import (
 	"strings"
 	"time"
 
-	altcha "github.com/altcha-org/altcha-lib-go/v2"
+	altcha "github.com/altcha-org/altcha-lib-go"
+	altchav2 "github.com/altcha-org/altcha-lib-go/v2"
 )
 
 type Verifier struct{ Client *http.Client }
 
 func NewVerifier() Verifier { return Verifier{Client: &http.Client{Timeout: 8 * time.Second}} }
 
-// CreateCommunityChallenge creates a short-lived, signed ALTCHA Community v2
-// challenge. The caller exposes it through its own public endpoint.
+// CreateCommunityChallenge creates a short-lived, signed classic ALTCHA
+// challenge (flat algorithm/challenge/salt/maxNumber/signature JSON). This
+// must stay on the classic protocol because the frontend loads the public
+// `altcha` CDN widget, which only understands that shape — the newer KDF v2
+// protocol (altcha-lib-go/v2) produces a differently-shaped challenge the
+// widget can't parse, which is what caused every Community verification to
+// fail with the widget's own generic error.
 func (v Verifier) CreateCommunityChallenge(secret, flow string) (altcha.Challenge, error) {
-	if secret == "" { return altcha.Challenge{}, errors.New("altcha secret is required") }
-	expires := time.Now().Add(5 * time.Minute)
-	return altcha.CreateChallenge(altcha.CreateChallengeOptions{Algorithm: "SHA-256", Cost: 10000, ExpiresAt: &expires, Data: map[string]interface{}{"flow": flow}, HMACSignatureSecret: secret})
-}
-
-func decodePayload(token string) (altcha.Payload, error) {
-	var payload altcha.Payload
-	if json.Unmarshal([]byte(token), &payload) == nil { return payload, nil }
-	for _, encoding := range []*base64.Encoding{base64.RawURLEncoding, base64.URLEncoding, base64.RawStdEncoding, base64.StdEncoding} {
-		decoded, err := encoding.DecodeString(token)
-		if err == nil && json.Unmarshal(decoded, &payload) == nil { return payload, nil }
+	if secret == "" {
+		return altcha.Challenge{}, errors.New("altcha secret is required")
 	}
-	return payload, errors.New("invalid altcha payload")
+	expires := time.Now().Add(5 * time.Minute)
+	params := url.Values{"flow": {flow}}
+	return altcha.CreateChallenge(altcha.ChallengeOptions{Algorithm: altcha.SHA256, HMACKey: secret, Expires: &expires, Params: params})
 }
 
 func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token, remoteIP string) error {
@@ -41,13 +39,12 @@ func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token
 	switch provider {
 	case "altcha": fallthrough // legacy setting compatibility
 	case "altcha_community":
-		payload, err := decodePayload(token); if err != nil { return err }
-		result, err := altcha.VerifySolution(altcha.VerifySolutionOptions{Challenge: payload.Challenge, Solution: payload.Solution, HMACSignatureSecret: secret})
-		if err != nil || !result.Verified { return errors.New("captcha verification failed") }
+		ok, err := altcha.VerifySolution(token, secret, true)
+		if err != nil || !ok { return errors.New("captcha verification failed") }
 		return nil
 	case "altcha_sentinel":
 		if verifyURL == "" { return errors.New("altcha sentinel verify url is required") }
-		result, err := altcha.VerifyServer(ctx, altcha.VerifyServerOptions{URL: verifyURL, Payload: token, Secret: secret, HTTPClient: v.Client})
+		result, err := altchav2.VerifyServer(ctx, altchav2.VerifyServerOptions{URL: verifyURL, Payload: token, Secret: secret, HTTPClient: v.Client})
 		if err != nil || !result.Verified { return errors.New("captcha verification failed") }
 		return nil
 	}

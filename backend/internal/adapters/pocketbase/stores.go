@@ -227,6 +227,15 @@ func (r *UserRepo) Create(ctx context.Context, input domain.SetupInput) (*domain
 func (r *UserRepo) CountBySystemRole(ctx context.Context, roleID string) (int, error) {
 	return r.Repository.CountUsersBySystemRole(ctx, roleID)
 }
+func (r *UserRepo) CreatePlaceholder(ctx context.Context, name string) (*domain.User, error) {
+	return r.Repository.CreatePlaceholder(ctx, name)
+}
+func (r *UserRepo) LinkPlaceholder(ctx context.Context, placeholderID, realUserID string) error {
+	return r.Repository.LinkPlaceholder(ctx, placeholderID, realUserID)
+}
+func (r *UserRepo) Delete(ctx context.Context, id string) error {
+	return r.Repository.DeleteUser(ctx, id)
+}
 func (r *SystemSettingsRepo) Get(ctx context.Context) (domain.SystemSettings, error) {
 	return r.Repository.GetSystemSettings(ctx)
 }
