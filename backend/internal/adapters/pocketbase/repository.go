@@ -205,6 +205,13 @@ func (r *Repository) FindPending(ctx context.Context, groupID, email string) (*d
 	}
 	return invitationFrom(rec), nil
 }
+func (r *Repository) FindPendingByTarget(ctx context.Context, groupID, placeholderID string) (*domain.Invitation, error) {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionInvitations, "group={:group} && target_placeholder={:placeholder} && status='pending'", dbx.Params{"group": groupID, "placeholder": placeholderID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return invitationFrom(rec), nil
+}
 func (r *Repository) ListInvitations(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Invitation], error) {
 	recs, err := listRecords(r.app(ctx), CollectionInvitations, "group={:group}", req, dbx.Params{"group": groupID})
 	if err != nil {
@@ -1007,10 +1014,20 @@ func (r *Repository) CreatePlaceholder(ctx context.Context, name string) (*domai
 // touches expense_splits/settlements/subscriptions rows that already
 // reference the placeholder's ID — those keep resolving through this link
 // rather than being rewritten (see WorkspaceDashboard's alias resolution).
+//
+// The existing-link check guards against two invitations targeting the same
+// placeholder both being accepted: this always runs inside the caller's
+// accept() transaction (Stores.Transactions.Within), so whichever accept's
+// transaction commits first wins this check cleanly and the loser's whole
+// transaction (including its new membership and Accepted status) rolls back
+// instead of silently overwriting the link.
 func (r *Repository) LinkPlaceholder(ctx context.Context, placeholderID, realUserID string) error {
 	record, err := r.app(ctx).FindRecordById("users", placeholderID)
 	if err != nil {
 		return mapError(err)
+	}
+	if existing := record.GetString("linked_user_id"); existing != "" && existing != realUserID {
+		return domain.ErrConflict
 	}
 	record.Set("linked_user_id", realUserID)
 	return r.app(ctx).Save(record)
