@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-11
+
+### Fixed
+- 以 `docker compose` 搭配 bind mount（如 `./pb_data:/app/pb_data`）啟動時，PocketBase 回報 `unable to open database file`：容器內建的 `nonroot` 使用者對 host 建立的目錄（通常是 root 所有）沒有寫入權限。容器現在預設以 root 啟動、由新增的 `entrypoint.sh` 一次性修正 `/app/pb_data` 的擁有者後才切換回 `nonroot` 執行實際程式，維持執行期非 root 的安全性，同時讓一般 `docker compose up` 不需要使用者手動調整 volume 權限。
+
 ## [0.1.0] - 2026-08-11
 
 首個公開版本。SubFlow 是個人與群組共用的記帳系統，用於追蹤共同支出、訂閱與分帳結果。
@@ -59,5 +64,6 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/kenny1203520/SubFlow/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/kenny1203520/SubFlow/releases/tag/v0.1.0
