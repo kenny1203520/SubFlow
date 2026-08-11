@@ -23,9 +23,10 @@ COPY --from=runtime-deps /usr/share/zoneinfo /usr/share/zoneinfo
 WORKDIR /app
 COPY --from=backend-builder --chown=65532:65532 /out/subflow /app/subflow
 COPY --from=backend-builder --chown=65532:65532 /out/pb_data /app/pb_data
-USER nonroot
+COPY --chmod=755 entrypoint.sh /app/entrypoint.sh
+USER 0
 ENV SUBFLOW_HTTP_PORT=8080
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=8s --retries=5 CMD wget -q --spider "http://127.0.0.1:${SUBFLOW_HTTP_PORT:-8080}/api/health" || exit 1
-ENTRYPOINT ["/app/subflow"]
+ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["serve", "--dir=/app/pb_data"]
