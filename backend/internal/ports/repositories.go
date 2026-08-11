@@ -162,7 +162,10 @@ type EventPublisher interface {
 }
 
 type Mailer interface {
-	SendInvitation(context.Context, domain.Invitation, domain.Group, string) error
+	// inviterName is a best-effort display name for domain.Invitation.InvitedBy,
+	// resolved by the caller since Mailer implementations don't have a
+	// UserDirectory of their own; it may be empty.
+	SendInvitation(ctx context.Context, inv domain.Invitation, group domain.Group, inviterName, url string) error
 	Configured() bool
 }
 
