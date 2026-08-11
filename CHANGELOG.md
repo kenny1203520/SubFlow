@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-12
+
+### Changed
+- 重新設計群組邀請信：改為 HTML 郵件（保留純文字版本供不支援 HTML 的信箱），版面比照 PocketBase 內建的密碼重設／驗證信樣式（白底、圓角黑色按鈕），並內嵌 SubFlow 圖示、顯示邀請人與群組名稱、群組簡介與邀請到期日；主旨也改為包含群組名稱，不再是容易被當作垃圾信的通用文字。寄件者名稱仍沿用 PocketBase 後台設定的 Sender name。
+
 ## [0.1.4] - 2026-08-12
 
 ### Added
@@ -83,7 +88,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/kenny1203520/SubFlow/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/kenny1203520/SubFlow/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/kenny1203520/SubFlow/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/kenny1203520/SubFlow/compare/v0.1.1...v0.1.2
