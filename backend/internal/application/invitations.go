@@ -48,6 +48,9 @@ func (s *CollaborationService) CreateInvitationBinding(ctx context.Context, user
 		if role, err := s.Base.Stores.Memberships.GetRole(ctx, groupID, targetPlaceholderID); err != nil || role == "" {
 			return nil, domain.ErrInvalid
 		}
+		if _, err := s.Base.Stores.Invitations.FindPendingByTarget(ctx, groupID, targetPlaceholderID); err == nil {
+			return nil, domain.ErrConflict
+		}
 	}
 	plain, hash, err := domain.NewInvitationToken()
 	if err != nil {
