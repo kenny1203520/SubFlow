@@ -57,6 +57,7 @@
 - 個人設定頁的自訂分類管理元件因 Vue 對 boolean prop 的預設值推斷，在未顯式傳入 `canManage` 時一律視為 `false`，導致新增／編輯／刪除分類的介面完全不會顯示。
 - 匯出流水帳的訂閱紀錄只會寫出一列（且日期與金額可能對不上同一期），現在會依實際扣款期數列出每一筆已發生的紀錄；所有匯出日期改用群組時區（個人匯出則用使用者時區）顯示，不再一律顯示 UTC。
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
+- Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
 [Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/kenny1203520/SubFlow/releases/tag/v0.1.0
