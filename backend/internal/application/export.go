@@ -19,6 +19,8 @@ const exportPageSize = 100
 // filter: the existing list queries have none, and the user asked for full
 // history.
 func (s *Service) ExportLedger(ctx context.Context, userID, groupID string) ([]byte, string, error) {
+	loc := s.exportLocation(ctx, userID, groupID)
+
 	names := map[string]string{}
 	lookupName := func(id string) string {
 		if id == "" {
@@ -46,14 +48,16 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID string) ([]b
 			return nil, "", err
 		}
 		for _, v := range expenses {
-			_ = w.Write(expenseRow(v, lookupName))
+			_ = w.Write(expenseRow(v, loc, lookupName))
 		}
 		subs, err := listAllPersonalSubscriptions(ctx, s, userID)
 		if err != nil {
 			return nil, "", err
 		}
 		for _, v := range subs {
-			_ = w.Write(subscriptionRow(v, lookupName))
+			for _, row := range subscriptionRows(v, loc, lookupName) {
+				_ = w.Write(row)
+			}
 		}
 	} else {
 		if err := s.role(ctx, groupID, userID, false); err != nil {
@@ -64,21 +68,23 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID string) ([]b
 			return nil, "", err
 		}
 		for _, v := range expenses {
-			_ = w.Write(expenseRow(v, lookupName))
+			_ = w.Write(expenseRow(v, loc, lookupName))
 		}
 		subs, err := listAllSubscriptions(ctx, s, userID, groupID)
 		if err != nil {
 			return nil, "", err
 		}
 		for _, v := range subs {
-			_ = w.Write(subscriptionRow(v, lookupName))
+			for _, row := range subscriptionRows(v, loc, lookupName) {
+				_ = w.Write(row)
+			}
 		}
 		settlements, err := listAllSettlements(ctx, s, userID, groupID)
 		if err != nil {
 			return nil, "", err
 		}
 		for _, v := range settlements {
-			_ = w.Write(settlementRow(v, lookupName))
+			_ = w.Write(settlementRow(v, loc, lookupName))
 		}
 	}
 
@@ -93,6 +99,26 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID string) ([]b
 	}
 	filename := fmt.Sprintf("subflow-ledger-%s-%s.csv", scope, s.Now().UTC().Format("20060102-150405"))
 	return buf.Bytes(), filename, nil
+}
+
+// exportLocation resolves which timezone dates should be shown in: the
+// group's accounting timezone first (matching how the app already computes
+// billing/month boundaries in group time), falling back to the viewer's own
+// timezone, and finally UTC if neither is set or valid.
+func (s *Service) exportLocation(ctx context.Context, userID, groupID string) *time.Location {
+	if groupID != "" {
+		if group, err := s.Stores.Groups.Get(ctx, groupID); err == nil {
+			if loc, locErr := time.LoadLocation(group.Timezone); locErr == nil {
+				return loc
+			}
+		}
+	}
+	if user, err := s.Stores.Users.Get(ctx, userID); err == nil {
+		if loc, locErr := time.LoadLocation(user.Timezone); locErr == nil {
+			return loc
+		}
+	}
+	return time.UTC
 }
 
 func listAllPersonalExpenses(ctx context.Context, s *Service, userID string) ([]domain.Expense, error) {
@@ -166,22 +192,48 @@ func listAllSettlements(ctx context.Context, s *Service, userID, groupID string)
 }
 
 func formatAmount(minor int64) string { return fmt.Sprintf("%.2f", float64(minor)/100) }
-func formatDate(t time.Time) string {
+func formatDate(t time.Time, loc *time.Location) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.Format("2006-01-02")
+	return t.In(loc).Format("2006-01-02")
 }
 
-func expenseRow(v domain.Expense, lookupName func(string) string) []string {
-	return []string{"支出", formatDate(v.IncurredOn), v.Title, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), "", v.Notes}
+func expenseRow(v domain.Expense, loc *time.Location, lookupName func(string) string) []string {
+	return []string{"支出", formatDate(v.IncurredOn, loc), v.Title, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), "", v.Notes}
 }
 
-func subscriptionRow(v domain.Subscription, lookupName func(string) string) []string {
-	return []string{"訂閱", formatDate(v.StartsOn), v.Name, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), string(v.Status), v.Notes}
+// subscriptionRows returns one row per billing period that isn't already
+// represented by an expense row. A "posted" occurrence always has a matching
+// Expense (created by postSubscriptionOccurrence), so including it here too
+// would double the amount in the exported ledger; a "failed" occurrence never
+// gets an Expense, so it's the only period-level detail worth surfacing. A
+// subscription with no occurrences yet (nothing has billed) still gets one
+// row so it isn't silently missing from the export.
+func subscriptionRows(v domain.Subscription, loc *time.Location, lookupName func(string) string) [][]string {
+	revisionByID := make(map[string]domain.SubscriptionRevision, len(v.Revisions))
+	for _, revision := range v.Revisions {
+		revisionByID[revision.ID] = revision
+	}
+
+	var rows [][]string
+	for _, occurrence := range v.Occurrences {
+		if occurrence.Status == "posted" {
+			continue
+		}
+		name, category, amount, currency, paidBy := v.Name, v.Category, v.AmountMinor, v.Currency, v.PaidBy
+		if revision, ok := revisionByID[occurrence.RevisionID]; ok {
+			name, category, amount, currency, paidBy = revision.Name, revision.Category, revision.AmountMinor, revision.Currency, revision.PaidBy
+		}
+		rows = append(rows, []string{"訂閱", formatDate(occurrence.BillingAt, loc), name, formatAmount(amount), string(currency), category, lookupName(paidBy), occurrence.Status, v.Notes})
+	}
+	if len(rows) == 0 {
+		rows = append(rows, []string{"訂閱", formatDate(v.StartsOn, loc), v.Name, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), string(v.Status), v.Notes})
+	}
+	return rows
 }
 
-func settlementRow(v domain.Settlement, lookupName func(string) string) []string {
+func settlementRow(v domain.Settlement, loc *time.Location, lookupName func(string) string) []string {
 	party := fmt.Sprintf("%s → %s", lookupName(v.FromUserID), lookupName(v.ToUserID))
-	return []string{"還款", formatDate(v.SettledOn), "", formatAmount(v.AmountMinor), string(v.Currency), "", party, "", v.Notes}
+	return []string{"還款", formatDate(v.SettledOn, loc), "", formatAmount(v.AmountMinor), string(v.Currency), "", party, "", v.Notes}
 }

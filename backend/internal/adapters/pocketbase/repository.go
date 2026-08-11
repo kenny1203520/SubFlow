@@ -2,9 +2,12 @@ package pocketbase
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
 	"time"
@@ -933,6 +936,56 @@ func (r *Repository) CreateSetupUser(ctx context.Context, input domain.SetupInpu
 	return userFrom(record), nil
 }
 
+// CreatePlaceholder creates a login-incapable "temp member" identity: a real
+// users record (required, since group_members/expense_splits/settlements all
+// have hard-required relations to users) with a synthetic, unresolvable
+// email and a random, never-shared password, so it can be a full participant
+// in splits and settlements without anyone being able to sign into it.
+func (r *Repository) CreatePlaceholder(ctx context.Context, name string) (*domain.User, error) {
+	record, err := newRecord(r.app(ctx), "users")
+	if err != nil {
+		return nil, err
+	}
+	raw := make([]byte, 16)
+	if _, err = rand.Read(raw); err != nil {
+		return nil, err
+	}
+	suffix := hex.EncodeToString(raw)
+	password := suffix + "Aa1!"
+	record.Set("email", fmt.Sprintf("placeholder-%s@placeholder.invalid", suffix))
+	record.Set("emailVisibility", false)
+	record.Set("password", password)
+	record.Set("passwordConfirm", password)
+	record.Set("name", name)
+	record.Set("verified", false)
+	record.Set("placeholder", true)
+	if err = r.app(ctx).Save(record); err != nil {
+		return nil, err
+	}
+	return userFrom(record), nil
+}
+
+// LinkPlaceholder marks a placeholder as bound to a real account. It never
+// touches expense_splits/settlements/subscriptions rows that already
+// reference the placeholder's ID — those keep resolving through this link
+// rather than being rewritten (see WorkspaceDashboard's alias resolution).
+func (r *Repository) LinkPlaceholder(ctx context.Context, placeholderID, realUserID string) error {
+	record, err := r.app(ctx).FindRecordById("users", placeholderID)
+	if err != nil {
+		return mapError(err)
+	}
+	record.Set("linked_user_id", realUserID)
+	return r.app(ctx).Save(record)
+}
+
+func (r *Repository) DeleteUser(ctx context.Context, id string) error {
+	record, err := r.app(ctx).FindRecordById("users", id)
+	if err != nil {
+		return mapError(err)
+	}
+	return r.app(ctx).Delete(record)
+}
+
 func (r *Repository) CountUsersBySystemRole(ctx context.Context, roleID string) (int, error) {
 	items, err := r.app(ctx).FindRecordsByFilter("users", "system_role={:role}", "", 1, 0, dbx.Params{"role": roleID})
 	if err != nil {
@@ -1094,9 +1147,10 @@ func writeInvitation(r *core.Record, v *domain.Invitation) {
 	r.Set("invited_by", v.InvitedBy)
 	r.Set("accepted_by", v.AcceptedBy)
 	r.Set("expires_at", v.ExpiresAt)
+	r.Set("target_placeholder", v.TargetPlaceholderID)
 }
 func invitationFrom(r *core.Record) *domain.Invitation {
-	v := &domain.Invitation{ID: r.Id, GroupID: r.GetString("group"), Email: r.GetString("email"), TokenHash: r.GetString("token_hash"), Status: domain.InvitationStatus(r.GetString("status")), InvitedBy: r.GetString("invited_by"), AcceptedBy: r.GetString("accepted_by"), ExpiresAt: r.GetDateTime("expires_at").Time()}
+	v := &domain.Invitation{ID: r.Id, GroupID: r.GetString("group"), Email: r.GetString("email"), TokenHash: r.GetString("token_hash"), Status: domain.InvitationStatus(r.GetString("status")), InvitedBy: r.GetString("invited_by"), AcceptedBy: r.GetString("accepted_by"), ExpiresAt: r.GetDateTime("expires_at").Time(), TargetPlaceholderID: r.GetString("target_placeholder")}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
@@ -1247,7 +1301,7 @@ func settlementFrom(r *core.Record) *domain.Settlement {
 	return v
 }
 func userFrom(r *core.Record) *domain.User {
-	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone"), DefaultCurrency: domain.Currency(r.GetString("default_currency")), SystemRoleID: r.GetString("system_role")}
+	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone"), DefaultCurrency: domain.Currency(r.GetString("default_currency")), SystemRoleID: r.GetString("system_role"), Placeholder: r.GetBool("placeholder"), LinkedUserID: r.GetString("linked_user_id")}
 }
 
 func writeCategory(r *core.Record, v *domain.Category) {

@@ -270,11 +270,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return result
   }
 
-  async function invite(email: string) {
+  async function invite(email: string, targetPlaceholderId?: string) {
     if (!currentGroupId.value) return
     await run(async () => {
-      const invitation = (await api.post<Invitation>(`/groups/${currentGroupId.value}/invitations`, { email })).data
+      const invitation = (await api.post<Invitation>(`/groups/${currentGroupId.value}/invitations`, { email, targetPlaceholderId })).data
       invitations.value.unshift(invitation)
+    })
+  }
+
+  async function createTempMember(name: string) {
+    if (!currentGroupId.value) return false
+    return run(async () => {
+      await api.post<Membership>(`/groups/${currentGroupId.value}/temp-members`, { name })
+      await refreshGroup()
     })
   }
 
@@ -414,7 +422,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
     subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
-    refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, resendInvitation,
+    refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
   }

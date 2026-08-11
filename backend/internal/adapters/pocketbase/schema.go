@@ -129,7 +129,21 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		users.Fields.Add(&core.TextField{Name: "system_role", Max: 32})
 		usersChanged = true
 	}
+	if users.Fields.GetByName("placeholder") == nil {
+		users.Fields.Add(&core.BoolField{Name: "placeholder"})
+		usersChanged = true
+	}
 	if usersChanged {
+		if err = app.Save(users); err != nil {
+			return "", err
+		}
+	}
+	// linked_user_id is a self-relation, so it must be added after the users
+	// collection has an Id to relate to (it always does by this point, but the
+	// separate save keeps the pattern identical to the other conditional
+	// fields above).
+	if users.Fields.GetByName("linked_user_id") == nil {
+		users.Fields.Add(&core.RelationField{Name: "linked_user_id", CollectionId: users.Id, MaxSelect: 1})
 		if err = app.Save(users); err != nil {
 			return "", err
 		}
@@ -182,7 +196,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionInvitations, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.EmailField{Name: "email", Required: true}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.DateField{Name: "expires_at", Required: true}, &core.RelationField{Name: "invited_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "accepted_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "delivery_failed", "accepted", "declined", "revoked", "expired"}, MaxSelect: 1})
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.EmailField{Name: "email", Required: true}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.DateField{Name: "expires_at", Required: true}, &core.RelationField{Name: "invited_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "accepted_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "delivery_failed", "accepted", "declined", "revoked", "expired"}, MaxSelect: 1}, &core.RelationField{Name: "target_placeholder", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_invitations_token", true, "token_hash", "")
 		c.AddIndex("idx_invitations_group_email", false, "`group`, email", "")
 	})

@@ -19,6 +19,14 @@ type CollaborationService struct {
 }
 
 func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, groupID, email string) (*domain.Invitation, error) {
+	return s.CreateInvitationBinding(ctx, userID, groupID, email, "")
+}
+
+// CreateInvitationBinding is CreateInvitation with an optional target: when
+// targetPlaceholderID is set, accepting this invitation binds that
+// placeholder "temp member" (see Service.CreateTempMember) to the accepting
+// user instead of only creating a fresh membership — see accept() below.
+func (s *CollaborationService) CreateInvitationBinding(ctx context.Context, userID, groupID, email, targetPlaceholderID string) (*domain.Invitation, error) {
 	if err := s.Base.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
 		return nil, err
 	}
@@ -29,11 +37,23 @@ func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, gro
 	if _, err := s.Base.Stores.Invitations.FindPending(ctx, groupID, email); err == nil {
 		return nil, domain.ErrConflict
 	}
+	if targetPlaceholderID != "" {
+		placeholder, err := s.Base.Stores.Users.Get(ctx, targetPlaceholderID)
+		if err != nil {
+			return nil, err
+		}
+		if !placeholder.Placeholder || placeholder.LinkedUserID != "" {
+			return nil, domain.ErrConflict
+		}
+		if role, err := s.Base.Stores.Memberships.GetRole(ctx, groupID, targetPlaceholderID); err != nil || role == "" {
+			return nil, domain.ErrInvalid
+		}
+	}
 	plain, hash, err := domain.NewInvitationToken()
 	if err != nil {
 		return nil, err
 	}
-	inv := &domain.Invitation{GroupID: groupID, Email: email, TokenHash: hash, Status: domain.InvitationPending, InvitedBy: userID, ExpiresAt: s.Base.Now().UTC().Add(7 * 24 * time.Hour)}
+	inv := &domain.Invitation{GroupID: groupID, Email: email, TokenHash: hash, Status: domain.InvitationPending, InvitedBy: userID, ExpiresAt: s.Base.Now().UTC().Add(7 * 24 * time.Hour), TargetPlaceholderID: targetPlaceholderID}
 	if err = s.Base.Stores.Invitations.Create(ctx, inv); err != nil {
 		return nil, err
 	}
@@ -138,6 +158,15 @@ func (s *CollaborationService) accept(ctx context.Context, userID string, inv *d
 	err = s.Base.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if _, roleErr := s.Base.Stores.Memberships.GetRole(tx, inv.GroupID, userID); roleErr != nil {
 			if err := s.Base.Stores.Memberships.Create(tx, &domain.Membership{GroupID: inv.GroupID, UserID: userID, Role: domain.RoleMember}); err != nil {
+				return err
+			}
+		}
+		if inv.TargetPlaceholderID != "" {
+			// Historical expense_splits/settlements/subscriptions keep
+			// pointing at the placeholder's own ID rather than being
+			// rewritten — see WorkspaceDashboard's alias resolution, which
+			// folds a bound placeholder's balance into this linked account.
+			if err := s.Base.Stores.Users.LinkPlaceholder(tx, inv.TargetPlaceholderID, userID); err != nil {
 				return err
 			}
 		}
