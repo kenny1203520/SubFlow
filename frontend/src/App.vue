@@ -97,6 +97,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
         <RouterLink :to="{ name: 'personal-expenses' }"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg><span>{{ tr('personalLedger') }}</span></RouterLink>
         <RouterLink :to="{ name: 'groups' }"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3-8-3Zm0 5 8 3 8-3M4 16.5l8 3 8-3" /></svg><span>{{ tr('groups') }}</span></RouterLink>
         <RouterLink :to="{ name: 'about' }"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg><span>{{ tr('about') }}</span></RouterLink>
+        <RouterLink class="mobile-only-link" :to="{ name: 'profile' }"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg><span>{{ tr('profile') }}</span></RouterLink>
       </nav>
       <div class="sidebar-bottom">
         <RouterLink v-if="auth.canAdminister" class="admin-link" :to="{ name: 'admin' }"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7l-8-4Z" /></svg><span>{{ tr('systemAdministration') }}</span></RouterLink>
