@@ -482,8 +482,15 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	if err != nil {
 		return nil, err
 	}
-	if userID != value.FromUserID && userID != group.OwnerID {
-		return nil, domain.ErrForbidden
+	// Recording your own repayment (self -> anyone) is a basic action every
+	// member can do; recording on someone else's behalf (any from/to pair)
+	// requires the dedicated permission so it isn't silently open to whoever
+	// happens to hold the default member role.
+	if userID != value.FromUserID {
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
+			s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
+			return nil, domain.ErrForbidden
+		}
 	}
 	value.CreatedBy = userID
 	value.Currency, value.BaseCurrency = group.Currency, group.Currency
@@ -499,12 +506,14 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 	if err != nil {
 		return err
 	}
-	group, err := s.Stores.Groups.Get(ctx, value.GroupID)
-	if err != nil {
+	if _, err = s.Stores.Groups.Get(ctx, value.GroupID); err != nil {
 		return err
 	}
-	if value.CreatedBy != userID && group.OwnerID != userID {
-		return domain.ErrForbidden
+	if value.CreatedBy != userID {
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
+			s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
+			return domain.ErrForbidden
+		}
 	}
 	err = s.Stores.Settlements.Delete(ctx, id)
 	if err == nil {
