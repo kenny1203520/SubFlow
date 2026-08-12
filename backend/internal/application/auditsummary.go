@@ -69,6 +69,16 @@ func (c *changeSet) addBool(field string, before, after bool) {
 		*c = append(*c, auditChange{Field: field, Before: before, After: after})
 	}
 }
+
+// addAny compares two JSON-marshalable values (e.g. expense splits) by their
+// encoded form, for fields whose underlying type isn't directly comparable.
+func (c *changeSet) addAny(field string, before, after any) {
+	beforeJSON, _ := json.Marshal(before)
+	afterJSON, _ := json.Marshal(after)
+	if string(beforeJSON) != string(afterJSON) {
+		*c = append(*c, auditChange{Field: field, Before: before, After: after})
+	}
+}
 func (c *changeSet) addStrings(field string, before, after []string) {
 	if len(before) != len(after) {
 		*c = append(*c, auditChange{Field: field, Before: before, After: after})

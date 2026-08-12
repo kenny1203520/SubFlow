@@ -127,6 +127,7 @@ func (r *Repository) CreateMembership(ctx context.Context, m *domain.Membership)
 	m.CreatedAt = record.GetDateTime("created").Time()
 	return nil
 }
+
 // UpdateMembershipRole writes both the RBAC role_ref relation and the legacy
 // role enum column. Keeping the enum in sync matters because some gates
 // (domain.CanManageGroup, via Service.role with ownerOnly=true) still check
@@ -1350,6 +1351,11 @@ func writeSubscriptionRevision(r *core.Record, v *domain.SubscriptionRevision) {
 	r.Set("subscription", v.SubscriptionID)
 	r.Set("scope", v.Scope)
 	r.Set("effective_at", v.EffectiveBillingAt)
+	if v.EndBillingAt != nil {
+		r.Set("end_billing_at", *v.EndBillingAt)
+	} else {
+		r.Set("end_billing_at", nil)
+	}
 	r.Set("name", v.Name)
 	r.Set("category", v.Category)
 	r.Set("category_ref", v.CategoryID)
@@ -1367,6 +1373,9 @@ func writeSubscriptionRevision(r *core.Record, v *domain.SubscriptionRevision) {
 }
 func subscriptionRevisionFrom(r *core.Record) *domain.SubscriptionRevision {
 	v := &domain.SubscriptionRevision{ID: r.Id, SubscriptionID: r.GetString("subscription"), Scope: r.GetString("scope"), EffectiveBillingAt: r.GetDateTime("effective_at").Time(), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	if end := r.GetDateTime("end_billing_at").Time(); !end.IsZero() {
+		v.EndBillingAt = &end
+	}
 	_ = json.Unmarshal([]byte(r.GetString("splits")), &v.Splits)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	hydrateTimes(r, &v.CreatedAt, new(time.Time))
