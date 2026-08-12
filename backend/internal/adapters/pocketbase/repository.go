@@ -860,7 +860,19 @@ func (r *Repository) LatestExchangeRate(ctx context.Context, from, to domain.Cur
 	if from == to {
 		return &domain.ExchangeRate{BaseCurrency: from, QuoteCurrency: to, RateScaled: domain.ExchangeRateScale, Rate: "1", EffectiveDate: date, Provider: "identity", FetchedAt: time.Now()}, nil
 	}
-	records, err := r.app(ctx).FindRecordsByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date<={:date}", "-effective_date", 1, 0, dbx.Params{"base": from, "quote": to, "date": date})
+	// Exchange rates are conceptually day-granular ("the rate as of this
+	// calendar day"), but a stored row's effective_date carries whatever
+	// exact timestamp the provider reported (e.g. 00:00:01, or PocketBase's
+	// own millisecond-precision datetime formatting). Comparing with an
+	// inclusive "<=" against the exact instant of `date` is fragile: a row
+	// for the very same calendar day can sit a few milliseconds later in
+	// wall-clock time and spuriously fail that comparison, making an
+	// otherwise-fresh same-day cache entry invisible. Use an exclusive
+	// next-day boundary instead so any row dated anywhere within the
+	// requested calendar day (in UTC) is found.
+	day := date.UTC()
+	upperBound := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date<{:date}", "-effective_date", 1, 0, dbx.Params{"base": from, "quote": to, "date": upperBound})
 	if err != nil || len(records) == 0 {
 		return nil, domain.ErrRateUnavailable
 	}
