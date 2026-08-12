@@ -233,6 +233,57 @@ func TestExportLedgerSkipsPostedOccurrenceButIncludesFailed(t *testing.T) {
 	}
 }
 
+// The export must fully reflect how an expense was divided among members,
+// not just its total, or a group can't reconcile who owes what from the CSV.
+func TestExportLedgerIncludesExpenseSplitDetail(t *testing.T) {
+	service, stores, ownerID, groupID := newExportFixtureTZ(t, "UTC")
+	ctx := context.Background()
+
+	created, err := stores.Users.Create(ctx, domain.SetupInput{AdminName: "Other Member", Email: "export-other@example.com", Password: "correct-horse-battery-staple"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = stores.Memberships.Create(ctx, &domain.Membership{GroupID: groupID, UserID: created.ID, Role: domain.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = service.CreateExpense(ctx, ownerID, domain.Expense{
+		GroupID: groupID, Title: "Split Dinner", AmountMinor: 10000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
+		PaidBy: ownerID, IncurredOn: time.Date(2026, time.August, 3, 0, 0, 0, 0, time.UTC),
+		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: ownerID}, {UserID: created.ID}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _, err := service.ExportLedger(ctx, ownerID, groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := csv.NewReader(strings.NewReader(strings.TrimPrefix(string(data), "\xEF\xBB\xBF")))
+	rows, err := reader.ReadAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	header := rows[0]
+	if header[8] != "分帳明細" {
+		t.Fatalf("expected the split-detail header at index 8, got %#v", header)
+	}
+	found := false
+	for _, row := range rows[1:] {
+		if row[2] != "Split Dinner" {
+			continue
+		}
+		found = true
+		detail := row[8]
+		if !strings.Contains(detail, "Export Owner:50.00") || !strings.Contains(detail, "Other Member:50.00") {
+			t.Fatalf("expected both participants' 50/50 shares in split detail, got %q", detail)
+		}
+	}
+	if !found {
+		t.Fatalf("expected to find the Split Dinner row, got %#v", rows)
+	}
+}
+
 // Reproduces the same UTC-vs-local-day bug class already fixed once in the
 // date-input forms, this time in the export's date formatting: a record
 // incurred late at night UTC is a different calendar day in Asia/Taipei, and
