@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useAuthStore } from '../stores/auth'
 import EmptyState from '../components/EmptyState.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import Pagination from '../components/Pagination.vue'
@@ -11,6 +12,7 @@ import { roleLabel } from '../role'
 import { defaultPageSize } from '../pageSize'
 
 const workspace = useWorkspaceStore()
+const auth = useAuthStore()
 const email = ref('')
 const tempMemberName = ref('')
 const bindTarget = ref<{userId:string;label:string}>()
@@ -19,6 +21,15 @@ const invitationsPageSize = ref(defaultPageSize.value)
 const { tr, formatDate } = useI18n()
 const canManageMembers=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.members.manage'))
 const canManageRoles=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage'))
+
+function memberLabel(userId?:string) { const member=workspace.members.find(value=>value.userId===userId); return member?.user?.name||member?.user?.email||tr('thisMember') }
+const isTransferTarget = computed(()=>workspace.ownershipTransfer?.status==='pending'&&workspace.ownershipTransfer.toUserId===auth.record?.id)
+// Placeholders can't sign in, so they can't hold the owner slot.
+const transferCandidates = computed(()=>workspace.members.filter(member=>member.userId!==auth.record?.id&&!member.user?.placeholder))
+const transferTarget = ref('')
+async function startTransfer() { if(!transferTarget.value) return; if(await workspace.createOwnershipTransfer(transferTarget.value)) transferTarget.value='' }
+async function cancelTransfer() { if(workspace.ownershipTransfer) await workspace.cancelOwnershipTransfer(workspace.ownershipTransfer.id) }
+async function respondTransfer(accept:boolean) { if(workspace.ownershipTransfer) await workspace.respondOwnershipTransfer(workspace.ownershipTransfer.id, accept) }
 
 async function invite() {
     await workspace.invite(email.value, bindTarget.value?.userId)
@@ -43,7 +54,7 @@ function memberRoleLabel(roleId?:string, fallback?:string, legacyRole?:string) {
     const role = workspace.groupRoles.find(value => value.id === roleId)
     return roleLabel(role, tr) || (legacyRole === 'owner' ? tr('owner') : legacyRole === 'member' ? tr('member') : fallback || tr('member'))
 }
-onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
+onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void workspace.loadOwnershipTransfer()})
 </script>
 
 <template>
@@ -74,6 +85,30 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles()})
                     </div>
                 </div>
                 <EmptyState v-else :title="tr('noMemberData')" :description="tr('noMemberDataDesc')" />
+            </div>
+            <div v-if="workspace.isOwner || isTransferTarget" class="card">
+                <h2>{{tr('transferOwnership')}}</h2>
+                <p class="field-help">{{tr('transferOwnershipDesc')}}</p>
+                <div v-if="workspace.ownershipTransfer" class="notice inline">
+                    <template v-if="workspace.isOwner">
+                        <p>{{tr('transferPendingFor',{name:memberLabel(workspace.ownershipTransfer.toUserId)})}}</p>
+                        <button class="ghost danger-text" :disabled="workspace.loading" @click="cancelTransfer">{{tr('cancelTransfer')}}</button>
+                    </template>
+                    <template v-else>
+                        <p>{{tr('transferOfferedBy',{name:memberLabel(workspace.ownershipTransfer.fromUserId)})}}</p>
+                        <button class="primary" :disabled="workspace.loading" @click="respondTransfer(true)">{{tr('acceptTransfer')}}</button>
+                        <button class="ghost" :disabled="workspace.loading" @click="respondTransfer(false)">{{tr('declineTransfer')}}</button>
+                    </template>
+                </div>
+                <form v-else-if="workspace.isOwner" class="form-card" @submit.prevent="startTransfer">
+                    <label>{{tr('transferTo')}}
+                        <select v-model="transferTarget" required>
+                            <option value="" disabled>{{tr('chooseMember')}}</option>
+                            <option v-for="member in transferCandidates" :key="member.userId" :value="member.userId">{{member.user?.name || member.user?.email}}</option>
+                        </select>
+                    </label>
+                    <button class="primary" :disabled="workspace.loading || !transferTarget">{{tr('startTransfer')}}</button>
+                </form>
             </div>
             <div v-if="canManageMembers" class="card">
                 <h2>{{tr('addTempMember')}}</h2>
