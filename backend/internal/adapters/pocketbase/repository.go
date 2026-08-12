@@ -127,12 +127,27 @@ func (r *Repository) CreateMembership(ctx context.Context, m *domain.Membership)
 	m.CreatedAt = record.GetDateTime("created").Time()
 	return nil
 }
+// UpdateMembershipRole writes both the RBAC role_ref relation and the legacy
+// role enum column. Keeping the enum in sync matters because some gates
+// (domain.CanManageGroup, via Service.role with ownerOnly=true) still check
+// the enum rather than resolved permissions; without this, a membership
+// reassigned to the protected "owner" group_roles record would pass
+// permission-based checks but still be refused by enum-based ones.
 func (r *Repository) UpdateMembershipRole(ctx context.Context, groupID, userID, roleID string) error {
 	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionMembers, "group={:group} && user={:user}", dbx.Params{"group": groupID, "user": userID})
 	if err != nil {
 		return mapError(err)
 	}
+	role, err := r.app(ctx).FindRecordById(CollectionGroupRoles, roleID)
+	if err != nil {
+		return mapError(err)
+	}
+	enumRole := domain.RoleMember
+	if role.GetString("key") == "owner" {
+		enumRole = domain.RoleOwner
+	}
 	record.Set("role_ref", roleID)
+	record.Set("role", enumRole)
 	return r.app(ctx).Save(record)
 }
 func (r *Repository) GetRole(ctx context.Context, groupID, userID string) (domain.MemberRole, error) {
@@ -245,6 +260,46 @@ func (r *Repository) UpdateInvitation(ctx context.Context, v *domain.Invitation)
 		return mapError(err)
 	}
 	writeInvitation(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) CreateOwnershipTransfer(ctx context.Context, v *domain.OwnershipTransfer) error {
+	rec, err := newRecord(r.app(ctx), CollectionOwnershipTransfers)
+	if err != nil {
+		return err
+	}
+	writeOwnershipTransfer(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetOwnershipTransfer(ctx context.Context, id string) (*domain.OwnershipTransfer, error) {
+	rec, err := r.app(ctx).FindRecordById(CollectionOwnershipTransfers, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return ownershipTransferFrom(rec), nil
+}
+func (r *Repository) FindPendingOwnershipTransfer(ctx context.Context, groupID string) (*domain.OwnershipTransfer, error) {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionOwnershipTransfers, "group={:group} && status='pending'", dbx.Params{"group": groupID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return ownershipTransferFrom(rec), nil
+}
+func (r *Repository) UpdateOwnershipTransfer(ctx context.Context, v *domain.OwnershipTransfer) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionOwnershipTransfers, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeOwnershipTransfer(rec, v)
 	if err = r.app(ctx).Save(rec); err != nil {
 		return err
 	}
@@ -1218,6 +1273,17 @@ func writeInvitation(r *core.Record, v *domain.Invitation) {
 }
 func invitationFrom(r *core.Record) *domain.Invitation {
 	v := &domain.Invitation{ID: r.Id, GroupID: r.GetString("group"), Email: r.GetString("email"), TokenHash: r.GetString("token_hash"), Status: domain.InvitationStatus(r.GetString("status")), InvitedBy: r.GetString("invited_by"), AcceptedBy: r.GetString("accepted_by"), ExpiresAt: r.GetDateTime("expires_at").Time(), TargetPlaceholderID: r.GetString("target_placeholder")}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func writeOwnershipTransfer(r *core.Record, v *domain.OwnershipTransfer) {
+	r.Set("group", v.GroupID)
+	r.Set("from_user", v.FromUserID)
+	r.Set("to_user", v.ToUserID)
+	r.Set("status", v.Status)
+}
+func ownershipTransferFrom(r *core.Record) *domain.OwnershipTransfer {
+	v := &domain.OwnershipTransfer{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), Status: domain.OwnershipTransferStatus(r.GetString("status"))}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }

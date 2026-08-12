@@ -17,6 +17,7 @@ const (
 	CollectionGroups                  = "groups"
 	CollectionMembers                 = "group_members"
 	CollectionInvitations             = "group_invitations"
+	CollectionOwnershipTransfers      = "group_ownership_transfers"
 	CollectionNotifications           = "notifications"
 	CollectionSubscriptions           = "subscriptions"
 	CollectionSubscriptionRevisions   = "subscription_revisions"
@@ -199,6 +200,13 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.EmailField{Name: "email", Required: true}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.DateField{Name: "expires_at", Required: true}, &core.RelationField{Name: "invited_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "accepted_by", CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "delivery_failed", "accepted", "declined", "revoked", "expired"}, MaxSelect: 1}, &core.RelationField{Name: "target_placeholder", CollectionId: users.Id, MaxSelect: 1})
 		c.AddIndex("idx_invitations_token", true, "token_hash", "")
 		c.AddIndex("idx_invitations_group_email", false, "`group`, email", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionOwnershipTransfers, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "accepted", "declined", "cancelled"}, MaxSelect: 1})
+		c.AddIndex("idx_ownership_transfers_group_status", false, "`group`, status", "")
 	})
 	if err != nil {
 		return "", err

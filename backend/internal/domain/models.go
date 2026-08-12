@@ -215,6 +215,30 @@ type Membership struct {
 	CreatedAt time.Time  `json:"createdAt"`
 }
 
+type OwnershipTransferStatus string
+
+const (
+	OwnershipTransferPending   OwnershipTransferStatus = "pending"
+	OwnershipTransferAccepted  OwnershipTransferStatus = "accepted"
+	OwnershipTransferDeclined  OwnershipTransferStatus = "declined"
+	OwnershipTransferCancelled OwnershipTransferStatus = "cancelled"
+)
+
+// OwnershipTransfer is an invite-and-accept handoff of a group's single
+// owner slot: the current owner proposes a target member, and only that
+// member accepting actually moves Group.OwnerID (see
+// CollaborationService-style flow in application.Service). A group can have
+// at most one pending transfer at a time.
+type OwnershipTransfer struct {
+	ID         string                  `json:"id"`
+	GroupID    string                  `json:"groupId"`
+	FromUserID string                  `json:"fromUserId"`
+	ToUserID   string                  `json:"toUserId"`
+	Status     OwnershipTransferStatus `json:"status"`
+	CreatedAt  time.Time               `json:"createdAt"`
+	UpdatedAt  time.Time               `json:"updatedAt"`
+}
+
 type Invitation struct {
 	ID         string           `json:"id"`
 	GroupID    string           `json:"groupId"`
