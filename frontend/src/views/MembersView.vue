@@ -21,6 +21,10 @@ const invitationsPageSize = ref(defaultPageSize.value)
 const { tr, formatDate } = useI18n()
 const canManageMembers=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.members.manage'))
 const canManageRoles=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage'))
+// The owner role can only change hands via the ownership-transfer flow
+// below, not this generic per-member role assignment (the backend rejects
+// it), so it must not be offered here as a selectable option.
+const assignableRoles=computed(()=>workspace.groupRoles.filter(role=>role.key!=='owner'))
 
 function memberLabel(userId?:string) { const member=workspace.members.find(value=>value.userId===userId); return member?.user?.name||member?.user?.email||tr('thisMember') }
 const isTransferTarget = computed(()=>workspace.ownershipTransfer?.status==='pending'&&workspace.ownershipTransfer.toUserId===auth.record?.id)
@@ -77,7 +81,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                                 member.user?.email }}</small></div>
                         <span class="pill">{{ memberRoleLabel(member.roleId, member.roleName, member.role) }}</span>
                         <span v-if="member.user?.placeholder" class="pill">{{ member.user?.linkedUserId ? tr('tempMemberBound') : tr('tempMember') }}</span>
-                        <RoleSelect v-if="canManageRoles && member.role !== 'owner' && workspace.groupRoles.length" :model-value="member.roleId||''" :roles="workspace.groupRoles" :label="tr('assignRole')" @update:model-value="assignRole(member.userId,$event)" />
+                        <RoleSelect v-if="canManageRoles && member.role !== 'owner' && workspace.groupRoles.length" :model-value="member.roleId||''" :roles="assignableRoles" :label="tr('assignRole')" @update:model-value="assignRole(member.userId,$event)" />
                         <button v-if="canManageMembers && member.user?.placeholder && !member.user?.linkedUserId" class="ghost"
                             @click="startBinding(member.userId, member.user?.name || tr('thisMember'))">{{tr('bindTempMember')}}</button>
                         <button v-if="canManageMembers && member.role !== 'owner'" class="ghost danger-text"
