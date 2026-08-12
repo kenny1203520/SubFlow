@@ -141,7 +141,7 @@ func fail(e *core.RequestEvent, err error) error {
 	case errors.Is(err, domain.ErrRateUnavailable):
 		status = http.StatusUnprocessableEntity
 		code = "rate_unavailable"
-		message = "exchange rate unavailable"
+		message = "目前無法取得匯率"
 	case errors.Is(err, domain.ErrSetupDisabled):
 		status = http.StatusGone
 		code = "setup_disabled"

@@ -13,6 +13,10 @@ import (
 
 type RateProvider interface {
 	Quote(context.Context, domain.Currency, domain.Currency, time.Time) (*domain.ExchangeRate, error)
+	// QuoteAll returns every quote currency the provider knows for a single
+	// base currency in one call, letting RefreshReferenceRates pre-warm broad
+	// cache coverage without one HTTP round trip per currency pair.
+	QuoteAll(context.Context, domain.Currency, time.Time) (map[domain.Currency]*domain.ExchangeRate, error)
 }
 
 func (s *Service) Currencies() []domain.CurrencyInfo { return domain.ActiveCurrencies() }
@@ -54,11 +58,32 @@ func (s *Service) QuoteRate(ctx context.Context, from, to domain.Currency, date 
 	return rate, nil
 }
 
+// referenceRateBases are pre-warmed as base currencies each refresh cycle.
+// Because the upstream feed returns every quote currency for a single base
+// in one call (see OpenERAPIProvider.QuoteAll), warming a handful of common
+// bases yields broad, largely bidirectional cache coverage (TWD-quoted,
+// USD-quoted, etc.) instead of only the 4 fixed TWD pairs this used to warm,
+// without making one HTTP call per currency pair.
+var referenceRateBases = []domain.Currency{domain.CurrencyUSD, domain.CurrencyEUR, domain.CurrencyJPY, "GBP", domain.CurrencyTWD}
+
 func (s *Service) RefreshReferenceRates(ctx context.Context) error {
+	if s.Rates == nil {
+		return nil
+	}
 	today := s.Now().UTC()
-	for _, pair := range [][2]domain.Currency{{"USD", "TWD"}, {"EUR", "TWD"}, {"JPY", "TWD"}, {"GBP", "TWD"}} {
-		if _, err := s.QuoteRate(ctx, pair[0], pair[1], today); err != nil && !errors.Is(err, domain.ErrRateUnavailable) {
+	for _, base := range referenceRateBases {
+		rates, err := s.Rates.QuoteAll(ctx, base, today)
+		if err != nil {
+			if errors.Is(err, domain.ErrRateUnavailable) {
+				s.audit(ctx, "", "", "exchange_rate.refresh_failed", "exchange_rate", string(base), "failure", encodeAuditSummary(map[string]any{"base": base}, nil))
+				continue
+			}
 			return err
+		}
+		for _, rate := range rates {
+			if err = s.Stores.ExchangeRates.Upsert(ctx, rate); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
