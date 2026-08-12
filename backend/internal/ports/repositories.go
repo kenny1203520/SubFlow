@@ -77,6 +77,15 @@ type InvitationRepository interface {
 	ListForEmail(context.Context, string, PageRequest) (Page[domain.Invitation], error)
 }
 
+type OwnershipTransferRepository interface {
+	Create(context.Context, *domain.OwnershipTransfer) error
+	Get(context.Context, string) (*domain.OwnershipTransfer, error)
+	// FindPending finds a still-pending transfer for the group, so a second
+	// transfer can't be started while one is outstanding.
+	FindPending(ctx context.Context, groupID string) (*domain.OwnershipTransfer, error)
+	Update(context.Context, *domain.OwnershipTransfer) error
+}
+
 type NotificationRepository interface {
 	Create(context.Context, *domain.Notification) error
 	Get(context.Context, string) (*domain.Notification, error)
