@@ -323,4 +323,3 @@ func TestExportLedgerUsesGroupTimezoneForDates(t *testing.T) {
 		t.Fatalf("expected to find the late-night expense row, got %#v", rows)
 	}
 }
-

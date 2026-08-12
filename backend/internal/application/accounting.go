@@ -125,6 +125,25 @@ func (s *Service) PostDueSubscriptions(ctx context.Context) error {
 	return nil
 }
 
+// revisionSplits computes the per-member split for a revision, converted to
+// base currency. Shared by postSubscriptionOccurrence (a new billing period)
+// and regeneratePostedOccurrences (rewriting an already-posted period after
+// a historical edit changes which revision now governs it), so both paths
+// compute amounts identically.
+func revisionSplits(revision domain.SubscriptionRevision, members []string) ([]domain.ExpenseSplit, error) {
+	splits, err := domain.CanonicalSplits(revision.AmountMinor, revision.PaidBy, revision.SplitMode, revision.Splits, members)
+	if err != nil {
+		return nil, err
+	}
+	for i := range splits {
+		splits[i].BaseAmountMinor, err = domain.ConvertMinor(splits[i].AmountMinor, revision.Currency, revision.BaseCurrency, revision.RateScaled)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return domain.CanonicalBaseSplits(revision.BaseAmountMinor, revision.PaidBy, splits), nil
+}
+
 func (s *Service) postSubscriptionOccurrence(ctx context.Context, subscription *domain.Subscription) error {
 	if subscription.GroupID == "" || domain.SubscriptionLifecycle(*subscription, s.Now()) == "ended" {
 		return nil
@@ -141,17 +160,10 @@ func (s *Service) postSubscriptionOccurrence(ctx context.Context, subscription *
 	if err != nil {
 		return err
 	}
-	splits, err := domain.CanonicalSplits(revision.AmountMinor, revision.PaidBy, revision.SplitMode, revision.Splits, members)
+	splits, err := revisionSplits(revision, members)
 	if err != nil {
 		return s.recordSubscriptionOccurrenceFailure(ctx, subscription, "subscription_split_invalid")
 	}
-	for i := range splits {
-		splits[i].BaseAmountMinor, err = domain.ConvertMinor(splits[i].AmountMinor, revision.Currency, revision.BaseCurrency, revision.RateScaled)
-		if err != nil {
-			return s.recordSubscriptionOccurrenceFailure(ctx, subscription, "subscription_conversion_invalid")
-		}
-	}
-	splits = domain.CanonicalBaseSplits(revision.BaseAmountMinor, revision.PaidBy, splits)
 	billingAt := subscription.NextBilling
 	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, billingAt); findErr == nil {
@@ -202,11 +214,87 @@ func subscriptionRevisionAt(values []domain.SubscriptionRevision, billingAt time
 		if value.Scope == "one_off" && !value.EffectiveBillingAt.Equal(billingAt) {
 			continue
 		}
+		// A bounded (A-through-B) future revision only governs billing dates
+		// through its EndBillingAt; once billingAt moves past that, the
+		// period reverts to whatever revision (or the subscription's own
+		// defaults) would otherwise apply, as if this revision didn't exist.
+		if value.EndBillingAt != nil && value.EndBillingAt.Before(billingAt) {
+			continue
+		}
 		if !found || value.EffectiveBillingAt.After(selected.EffectiveBillingAt) || (value.EffectiveBillingAt.Equal(selected.EffectiveBillingAt) && value.Scope == "one_off") {
 			selected, found = value, true
 		}
 	}
 	return selected, found
+}
+
+// regeneratePostedOccurrences re-resolves which revision now governs each
+// already-posted (has a real Expense) billing period after an edit, and
+// rewrites that Expense + its splits in place for any period whose governing
+// revision changed. This is what makes a historical edit's "this period
+// onward" (or a bounded A-through-B range) retroactively apply to periods
+// that had already billed, instead of only affecting future ones. Ordinary,
+// present-day edits never touch a posted period here since nothing at or
+// after NextBilling has posted yet.
+func (s *Service) regeneratePostedOccurrences(ctx context.Context, subscription *domain.Subscription, userID string) error {
+	revisions, err := s.Stores.Subscriptions.ListRevisions(ctx, subscription.ID)
+	if err != nil {
+		return err
+	}
+	occurrences, err := s.Stores.Subscriptions.ListOccurrences(ctx, subscription.ID)
+	if err != nil {
+		return err
+	}
+	members, err := s.memberIDs(ctx, subscription.GroupID)
+	if err != nil {
+		return err
+	}
+	for _, occurrence := range occurrences {
+		if occurrence.Status != "posted" || occurrence.ExpenseID == "" {
+			continue
+		}
+		revision, ok := subscriptionRevisionAt(revisions, occurrence.BillingAt)
+		if !ok || revision.ID == occurrence.RevisionID {
+			continue
+		}
+		expense, getErr := s.Stores.Expenses.Get(ctx, occurrence.ExpenseID)
+		if getErr != nil {
+			return getErr
+		}
+		splits, splitErr := revisionSplits(revision, members)
+		if splitErr != nil {
+			return splitErr
+		}
+		before := *expense
+		expense.Title, expense.Category, expense.CategoryID = revision.Name, revision.Category, revision.CategoryID
+		expense.AmountMinor, expense.Currency = revision.AmountMinor, revision.Currency
+		expense.BaseCurrency, expense.BaseAmountMinor = revision.BaseCurrency, revision.BaseAmountMinor
+		expense.RateScaled, expense.ExchangeRate, expense.ExchangeRateDate, expense.RateMode = revision.RateScaled, revision.ExchangeRate, revision.ExchangeRateDate, revision.RateMode
+		expense.PaidBy, expense.SplitMode, expense.Notes = revision.PaidBy, revision.SplitMode, revision.Notes
+		expense.Splits = splits
+		if updateErr := s.Stores.Expenses.Update(ctx, expense); updateErr != nil {
+			return updateErr
+		}
+		if replaceErr := s.Stores.Expenses.ReplaceSplits(ctx, expense.ID, splits); replaceErr != nil {
+			return replaceErr
+		}
+		occurrence.RevisionID = revision.ID
+		if updateErr := s.Stores.Subscriptions.UpdateOccurrence(ctx, &occurrence); updateErr != nil {
+			return updateErr
+		}
+		s.audit(ctx, userID, subscription.GroupID, "subscription.occurrence_regenerated", "expense", expense.ID, "success", occurrenceRegenerationSummary(&before, expense, occurrence.BillingAt))
+	}
+	return nil
+}
+
+func occurrenceRegenerationSummary(before, after *domain.Expense, billingAt time.Time) string {
+	var changes changeSet
+	changes.addInt64("amount_minor", before.AmountMinor, after.AmountMinor)
+	changes.addString("currency", string(before.Currency), string(after.Currency))
+	changes.addString("paid_by", before.PaidBy, after.PaidBy)
+	changes.addString("split_mode", string(before.SplitMode), string(after.SplitMode))
+	changes.addAny("splits", before.Splits, after.Splits)
+	return encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "expense_id": after.ID}, changes)
 }
 
 func (s *Service) recordSubscriptionOccurrenceFailure(ctx context.Context, subscription *domain.Subscription, reason string) error {

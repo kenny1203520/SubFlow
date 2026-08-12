@@ -13,10 +13,12 @@ import (
 	"subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/domain"
+	"subflow/internal/ports"
 )
 
 type historicalFixture struct {
 	service      *application.Service
+	stores       adapters.Stores
 	group        *domain.Group
 	subscription *domain.Subscription
 	owner        string
@@ -105,6 +107,7 @@ func newHistoricalFixtureTZ(t *testing.T, timezone string) *historicalFixture {
 	}
 	return &historicalFixture{
 		service:      service,
+		stores:       stores,
 		group:        group,
 		subscription: created,
 		owner:        ids[0],
@@ -229,6 +232,179 @@ func TestUpdateSubscriptionHistoricalEditSurvivesNonUTCTimezone(t *testing.T) {
 	}
 	if len(dashboard.Currencies) != 1 || dashboard.Currencies[0].PersonalShareMinor != 0 {
 		t.Fatalf("expected the revision to apply, got %#v", dashboard.Currencies)
+	}
+}
+
+// scope=future with a historical EffectiveBillingAt and no EndBillingAt
+// means "this period onward, indefinitely" — every month at or after the
+// edited period should reflect it, not just the one exact period.
+func TestUpdateSubscriptionFutureScopeHistoricalEditAppliesOnwardIndefinitely(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	secondBilling := f.pastBilling.AddDate(0, 1, 0) // 2024-10-11
+
+	edit := *f.subscription
+	edit.RevisionScope = "future"
+	edit.EffectiveBillingAt = secondBilling
+	edit.SplitMode = domain.SplitAmount
+	edit.Splits = []domain.ExpenseSplit{
+		{UserID: f.owner, AmountMinor: 30000},
+		{UserID: f.member, AmountMinor: 0},
+	}
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
+		t.Fatalf("owner should be allowed to revise a period onward: %v", err)
+	}
+
+	before, err := f.service.WorkspaceDashboard(ctx, f.member, application.DashboardQuery{Scope: "group", GroupID: f.group.ID, Month: "2024-09"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before.Currencies) != 1 || before.Currencies[0].PersonalShareMinor != 15000 {
+		t.Fatalf("expected the period before the edit to keep the original 15000 share, got %#v", before.Currencies)
+	}
+
+	for _, month := range []string{"2024-10", "2024-11", "2024-12"} {
+		dashboard, err := f.service.WorkspaceDashboard(ctx, f.member, application.DashboardQuery{Scope: "group", GroupID: f.group.ID, Month: month})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(dashboard.Currencies) != 1 || dashboard.Currencies[0].PersonalShareMinor != 0 {
+			t.Fatalf("expected %s to reflect the onward edit (share 0), got %#v", month, dashboard.Currencies)
+		}
+	}
+}
+
+// scope=future with both EffectiveBillingAt and EndBillingAt bounds the edit
+// to a closed A-through-B range; periods outside the range must revert to
+// whatever would otherwise apply (here, the subscription's original split).
+func TestUpdateSubscriptionBoundedRangeAppliesOnlyWithinRange(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	start := f.pastBilling.AddDate(0, 1, 0) // 2024-10-11
+	end := f.pastBilling.AddDate(0, 2, 0)   // 2024-11-11
+
+	edit := *f.subscription
+	edit.RevisionScope = "future"
+	edit.EffectiveBillingAt = start
+	edit.EndBillingAt = &end
+	edit.SplitMode = domain.SplitAmount
+	edit.Splits = []domain.ExpenseSplit{
+		{UserID: f.owner, AmountMinor: 30000},
+		{UserID: f.member, AmountMinor: 0},
+	}
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
+		t.Fatalf("owner should be allowed to revise a bounded range: %v", err)
+	}
+
+	cases := map[string]int64{
+		"2024-09": 15000, // before the range: untouched
+		"2024-10": 0,     // in range
+		"2024-11": 0,     // in range (inclusive end)
+		"2024-12": 15000, // after the range: reverts to the original split
+	}
+	for month, want := range cases {
+		dashboard, err := f.service.WorkspaceDashboard(ctx, f.member, application.DashboardQuery{Scope: "group", GroupID: f.group.ID, Month: month})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(dashboard.Currencies) != 1 || dashboard.Currencies[0].PersonalShareMinor != want {
+			t.Fatalf("%s: want share %d, got %#v", month, want, dashboard.Currencies)
+		}
+	}
+}
+
+func TestUpdateSubscriptionEndBillingBeforeEffectiveRejected(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	end := f.pastBilling.AddDate(0, 0, 0)
+	start := f.pastBilling.AddDate(0, 1, 0)
+
+	edit := *f.subscription
+	edit.RevisionScope = "future"
+	edit.EffectiveBillingAt = start
+	edit.EndBillingAt = &end
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("expected ErrInvalid when end_billing_at precedes effective_billing_at, got %v", err)
+	}
+}
+
+// A historical edit must retroactively rewrite an already-posted period's
+// real Expense (and its splits), not just create a revision that only
+// governs still-unposted future occurrences.
+func TestUpdateSubscriptionRetroactivelyRegeneratesPostedOccurrence(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	secondBilling := f.pastBilling.AddDate(0, 1, 0) // 2024-10-11
+
+	revisions, err := f.stores.Subscriptions.ListRevisions(ctx, f.subscription.ID)
+	if err != nil || len(revisions) == 0 {
+		t.Fatalf("expected an initial revision, got %v (err=%v)", revisions, err)
+	}
+	originalRevisionID := revisions[0].ID
+
+	postedExpense := domain.Expense{
+		GroupID: f.group.ID, SubscriptionID: f.subscription.ID, Title: "YouTube", AmountMinor: 30000,
+		Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, PaidBy: f.owner, IncurredOn: secondBilling,
+		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: f.owner, AmountMinor: 15000}, {UserID: f.member, AmountMinor: 15000}},
+	}
+	if err = f.stores.Expenses.Create(ctx, &postedExpense); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.stores.Expenses.ReplaceSplits(ctx, postedExpense.ID, postedExpense.Splits); err != nil {
+		t.Fatal(err)
+	}
+	occurrence := domain.SubscriptionOccurrence{SubscriptionID: f.subscription.ID, RevisionID: originalRevisionID, ExpenseID: postedExpense.ID, BillingAt: secondBilling, Status: "posted"}
+	if err = f.stores.Subscriptions.CreateOccurrence(ctx, &occurrence); err != nil {
+		t.Fatal(err)
+	}
+
+	// AmountMinor deliberately stays non-zero for both sides: PocketBase's
+	// NumberField treats a Required field's zero value as blank, which is a
+	// pre-existing, unrelated quirk of the expense_splits schema (also
+	// latent in the ordinary, non-historical posting path) — not something
+	// this test is exercising.
+	edit := *f.subscription
+	edit.RevisionScope = "one_off"
+	edit.EffectiveBillingAt = secondBilling
+	edit.SplitMode = domain.SplitAmount
+	edit.Splits = []domain.ExpenseSplit{
+		{UserID: f.owner, AmountMinor: 29000},
+		{UserID: f.member, AmountMinor: 1000},
+	}
+	if _, err = f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
+		t.Fatalf("owner should be allowed to retroactively revise the posted period: %v", err)
+	}
+
+	updated, err := f.stores.Expenses.Get(ctx, postedExpense.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.AmountMinor != 30000 {
+		t.Fatalf("expected the total amount to stay 30000, got %d", updated.AmountMinor)
+	}
+	updatedSplits, err := f.stores.Expenses.ListSplits(ctx, postedExpense.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberShare := int64(-1)
+	for _, split := range updatedSplits {
+		if split.UserID == f.member {
+			memberShare = split.AmountMinor
+		}
+	}
+	if memberShare != 1000 {
+		t.Fatalf("expected the posted expense's member split to be retroactively rewritten to 1000, got %d (splits=%#v)", memberShare, updated.Splits)
+	}
+
+	logs, err := f.stores.Audits.List(ctx, f.group.ID, ports.AuditQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 50}, Action: "subscription.occurrence_regenerated"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if logs.TotalItems != 1 {
+		t.Fatalf("expected exactly 1 occurrence_regenerated audit entry, got %d: %#v", logs.TotalItems, logs.Items)
+	}
+	if logs.Items[0].ResourceID != postedExpense.ID {
+		t.Fatalf("expected the audit entry to reference the regenerated expense, got %#v", logs.Items[0])
 	}
 }
 

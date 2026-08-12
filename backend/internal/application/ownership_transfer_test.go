@@ -251,4 +251,3 @@ func containsPermission(permissions []string, target string) bool {
 	}
 	return false
 }
-
