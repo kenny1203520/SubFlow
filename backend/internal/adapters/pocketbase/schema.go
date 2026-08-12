@@ -604,7 +604,7 @@ func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
 	for _, seed := range []struct {
 		key, name   string
 		permissions []string
-	}{{"owner", "Owner", all}, {"member", "Member", []string{"group.view", "ledger.expenses.read", "ledger.expenses.write", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.settlements.read", "ledger.settlements.write", "categories.manage"}}} {
+	}{{"owner", "Owner", all}, {"member", "Member", []string{"group.view", "ledger.expenses.read", "ledger.expenses.write", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.settlements.read", "categories.manage"}}} {
 		record, err := app.FindFirstRecordByFilter(CollectionGroupRoles, "group={:group} && key={:key}", map[string]any{"group": group.Id, "key": seed.key})
 		if err != nil {
 			record, err = newSchemaRecord(app, CollectionGroupRoles)
