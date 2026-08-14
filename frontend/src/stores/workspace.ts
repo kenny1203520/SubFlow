@@ -331,12 +331,34 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function declinePendingInvitation(id:string){await run(async()=>{await api.post(`/invitations/${id}/decline`);pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id);notifications.value=notifications.value.map(item=>item.resourceId===id?{...item,readAt:new Date().toISOString()}:item)})}
   async function markNotificationRead(id:string){await api.post(`/notifications/${id}/read`);notifications.value=notifications.value.map(item=>item.id===id?{...item,readAt:new Date().toISOString()}:item)}
 
-  async function addSubscription(input: SubscriptionInput) {
+  async function addSubscription(input: SubscriptionInput, backfill = false) {
     if (!currentGroupId.value) return false
-    return run(async () => {
-      await api.post<Subscription>(`/groups/${currentGroupId.value}/subscriptions`, input)
+    let createdId = ''
+    const ok = await run(async () => {
+      const response = await api.post<Subscription>(`/groups/${currentGroupId.value}/subscriptions`, input)
+      createdId = response.data.id
       await refreshGroup()
     })
+    if (ok && backfill && createdId) await backfillSubscription(createdId)
+    return ok
+  }
+
+  // Posts real Expense/occurrence records for the historical periods between
+  // a group subscription's StartsOn and today, closing the gap left by
+  // CreateSubscription always starting NextBilling from "now" (see the
+  // backend's Service.BackfillSubscriptionPeriods). Reports its own success
+  // toast with the actual count instead of the generic one from run(), since
+  // "backfilled 0 periods" vs "backfilled 23 periods" is the whole point of
+  // calling this.
+  async function backfillSubscription(id: string) {
+    let created = 0
+    const ok = await run(async () => {
+      const response = await api.post<{ created: number }>(`/subscriptions/${id}/backfill`)
+      created = response.data.created
+      if (currentGroupId.value) await refreshGroup()
+    }, 'general', false)
+    toast.push(ok ? 'success' : 'error', ok ? tr('subscriptionBackfillDone', { count: created }) : tr('actionFailed', { reason: localizedError.value }))
+    return ok ? created : -1
   }
 
   async function updateSubscription(id: string, input: SubscriptionInput) {
@@ -443,7 +465,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
     subscriptions, expenses, settlements, groupRoles, ownershipTransfer, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
-    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
+    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
   }
 })
