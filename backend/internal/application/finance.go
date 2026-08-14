@@ -15,18 +15,87 @@ type BillingDatePage struct {
 	NextCursor string      `json:"nextCursor,omitempty"`
 }
 
+// SubscriptionPeriod is one billing period of a subscription with the price
+// that governs it already resolved, so the UI can show what each period cost
+// without re-implementing revision resolution client-side. Status mirrors the
+// occurrence record: "posted" once it has become an expense, "failed" when
+// posting could not produce one, and "pending" for periods not yet billed.
+type SubscriptionPeriod struct {
+	BillingAt       time.Time             `json:"billingAt"`
+	AmountMinor     int64                 `json:"amountMinor"`
+	Currency        domain.Currency       `json:"currency"`
+	BaseAmountMinor int64                 `json:"baseAmountMinor"`
+	BaseCurrency    domain.Currency       `json:"baseCurrency"`
+	PaidBy          string                `json:"paidBy"`
+	Splits          []domain.ExpenseSplit `json:"splits,omitempty"`
+	Status          string                `json:"status"`
+	ExpenseID       string                `json:"expenseId,omitempty"`
+	Error           string                `json:"error,omitempty"`
+}
+
+type SubscriptionPeriodPage struct {
+	Periods    []SubscriptionPeriod `json:"periods"`
+	NextCursor string               `json:"nextCursor,omitempty"`
+}
+
+// maxBillingDatesPerWindow bounds how many billing dates one query may
+// materialise. It applies to the requested window rather than to the whole
+// schedule, so an old subscription stays as cheap to query as a new one.
+const maxBillingDatesPerWindow = 12000
+
+// billingIndexAt returns the first schedule index whose billing date is not
+// before `from`. Billing dates increase monotonically with the index, so this
+// binary-searches for the window instead of walking every period since
+// StartsOn: an hourly subscription older than about a year and a half used to
+// exhaust the iteration cap before it ever reached the requested month and
+// then reported no billing dates at all, silently dropping the subscription
+// from the dashboard.
+func billingIndexAt(start time.Time, cycle domain.BillingCycle, interval int, from time.Time) (int, error) {
+	if !start.Before(from) {
+		return 0, nil
+	}
+	low, high := 0, 1
+	for {
+		value, err := domain.BillingDateWithInterval(start, cycle, interval, high)
+		if err != nil {
+			return 0, err
+		}
+		if !value.Before(from) {
+			break
+		}
+		if high > 1<<40 {
+			return 0, domain.ErrInvalid
+		}
+		low, high = high, high*2
+	}
+	for low < high {
+		mid := low + (high-low)/2
+		value, err := domain.BillingDateWithInterval(start, cycle, interval, mid)
+		if err != nil {
+			return 0, err
+		}
+		if value.Before(from) {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	return low, nil
+}
+
 func billingDatesBetween(start time.Time, cycle domain.BillingCycle, interval int, from, to time.Time) ([]time.Time, error) {
 	if !from.Before(to) {
 		return nil, nil
 	}
+	first, err := billingIndexAt(start, cycle, interval, from)
+	if err != nil {
+		return nil, err
+	}
 	dates := make([]time.Time, 0)
-	for index := 0; index < 12000; index++ {
-		value, err := domain.BillingDateWithInterval(start, cycle, interval, index)
+	for count := 0; count < maxBillingDatesPerWindow; count++ {
+		value, err := domain.BillingDateWithInterval(start, cycle, interval, first+count)
 		if err != nil {
 			return nil, err
-		}
-		if value.Before(from) {
-			continue
 		}
 		if !value.Before(to) {
 			break
@@ -36,13 +105,18 @@ func billingDatesBetween(start time.Time, cycle domain.BillingCycle, interval in
 	return dates, nil
 }
 
-func subscriptionHasPostedOccurrence(subscription domain.Subscription, billingAt time.Time) bool {
+func subscriptionOccurrenceAt(subscription domain.Subscription, billingAt time.Time) (domain.SubscriptionOccurrence, bool) {
 	for _, occurrence := range subscription.Occurrences {
-		if occurrence.BillingAt.Equal(billingAt) && occurrence.ExpenseID != "" {
-			return true
+		if occurrence.BillingAt.Equal(billingAt) {
+			return occurrence, true
 		}
 	}
-	return false
+	return domain.SubscriptionOccurrence{}, false
+}
+
+func subscriptionHasPostedOccurrence(subscription domain.Subscription, billingAt time.Time) bool {
+	occurrence, ok := subscriptionOccurrenceAt(subscription, billingAt)
+	return ok && occurrence.ExpenseID != ""
 }
 
 func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt time.Time) domain.Expense {
@@ -96,15 +170,32 @@ func subscriptionExpensesBetween(subscription domain.Subscription, from, to time
 	return values, nil
 }
 
-// subscriptionUserShare returns the portion of a subscription's displayAmount that
-// belongs to userID's split, so the dashboard can show the viewer's own monthly
-// subscription commitment alongside the group's total. Personal subscriptions (no
-// GroupID) belong entirely to their owner.
-func subscriptionUserShare(subscription domain.Subscription, userID, scope string, displayAmount int64) int64 {
-	if subscription.GroupID == "" {
+// subscriptionRateFor resolves the price actually in effect during the month
+// being viewed: the first billing date inside that month when there is one,
+// otherwise the rate standing at the month's end (for cadences that don't bill
+// every month, such as yearly). It deliberately goes through
+// subscriptionExpenseOccurrence, the same resolver the month's cash-flow
+// figures use, so the "monthly average" cards can never disagree with the
+// cash-flow cards sitting beside them.
+func subscriptionRateFor(subscription domain.Subscription, monthDates []time.Time, monthEnd time.Time) domain.Expense {
+	reference := monthEnd.Add(-time.Nanosecond)
+	if len(monthDates) > 0 {
+		reference = monthDates[0]
+	}
+	return subscriptionExpenseOccurrence(subscription, reference)
+}
+
+// subscriptionUserShare returns the portion of a subscription's displayAmount
+// that belongs to userID's split, so the dashboard can show the viewer's own
+// monthly subscription commitment alongside the group's total. Splits are
+// passed in rather than read off the subscription so callers can supply the
+// splits of the revision governing the period in question. Personal
+// subscriptions (no groupID) belong entirely to their owner.
+func subscriptionUserShare(splits []domain.ExpenseSplit, groupID, userID, scope string, displayAmount int64) int64 {
+	if groupID == "" {
 		return displayAmount
 	}
-	for _, split := range subscription.Splits {
+	for _, split := range splits {
 		if split.UserID == userID {
 			if scope == "group" {
 				return split.BaseAmountMinor
@@ -167,12 +258,16 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	var expenses []domain.Expense
 	var subscriptions []domain.Subscription
 	groupTimezone := map[string]string{}
+	// Every load below walks all pages: a single 100-row page silently
+	// truncated the inputs to the month's totals and, worse, to
+	// domain.MemberBalances, so any group past 100 expenses reported wrong
+	// amounts owed.
 	loadGroup := func(groupID string) error {
-		expensePage, loadErr := s.ListExpenses(ctx, userID, groupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-incurred_on"})
+		groupExpenses, loadErr := listAllExpenses(ctx, s, userID, groupID)
 		if loadErr != nil {
 			return loadErr
 		}
-		subscriptionPage, loadErr := s.ListSubscriptions(ctx, userID, groupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "next_billing"})
+		groupSubscriptions, loadErr := listAllSubscriptions(ctx, s, userID, groupID)
 		if loadErr != nil {
 			return loadErr
 		}
@@ -181,22 +276,20 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			return loadErr
 		}
 		groupTimezone[groupID] = group.Timezone
-		expenses = append(expenses, expensePage.Items...)
-		subscriptions = append(subscriptions, subscriptionPage.Items...)
+		expenses = append(expenses, groupExpenses...)
+		subscriptions = append(subscriptions, groupSubscriptions...)
 		return nil
 	}
 	switch query.Scope {
 	case "personal":
-		expensePage, loadErr := s.ListPersonalExpenses(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-incurred_on"})
-		if loadErr != nil {
-			return result, loadErr
+		expenses, err = listAllPersonalExpenses(ctx, s, userID)
+		if err != nil {
+			return result, err
 		}
-		subscriptionPage, loadErr := s.ListPersonalSubscriptions(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "next_billing"})
-		if loadErr != nil {
-			return result, loadErr
+		subscriptions, err = listAllPersonalSubscriptions(ctx, s, userID)
+		if err != nil {
+			return result, err
 		}
-		expenses = expensePage.Items
-		subscriptions = subscriptionPage.Items
 	case "group":
 		if query.GroupID == "" {
 			return result, domain.ErrInvalid
@@ -205,11 +298,11 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			return result, err
 		}
 	case "all":
-		groups, loadErr := s.ListGroups(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100})
+		groups, loadErr := listAllGroups(ctx, s, userID)
 		if loadErr != nil {
 			return result, loadErr
 		}
-		for _, group := range groups.Items {
+		for _, group := range groups {
 			if err = loadGroup(group.ID); err != nil {
 				return result, err
 			}
@@ -288,13 +381,21 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if lifecycle != "active" && lifecycle != "ending" {
 			continue
 		}
-		displayCurrency, displayAmount := subscription.Currency, subscription.AmountMinor
+		recordStart, recordEnd := recordRange(subscription.GroupID)
+		location := s.accountingLocation(ctx, userID, subscription.GroupID)
+		dates, _ := billingDatesBetween(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, recordStart, recordEnd)
+		// Price the monthly figures off the revision governing the month being
+		// viewed, not off the subscription's current (NextBilling) settings —
+		// otherwise looking at an earlier month reports today's price next to
+		// that month's real cash flow.
+		rate := subscriptionRateFor(subscription, dates, recordEnd)
+		displayCurrency, displayAmount := rate.Currency, rate.AmountMinor
 		if query.Scope == "group" {
-			displayCurrency, displayAmount = subscription.BaseCurrency, subscription.BaseAmountMinor
+			displayCurrency, displayAmount = rate.BaseCurrency, rate.BaseAmountMinor
 		}
 		item := bucket(displayCurrency)
 		monthly, _ := domain.MonthlyEquivalentWithInterval(displayAmount, subscription.BillingCycle, subscription.BillingInterval)
-		subscriptionShare := subscriptionUserShare(subscription, userID, query.Scope, displayAmount)
+		subscriptionShare := subscriptionUserShare(rate.Splits, subscription.GroupID, userID, query.Scope, displayAmount)
 		personalMonthly, _ := domain.MonthlyEquivalentWithInterval(subscriptionShare, subscription.BillingCycle, subscription.BillingInterval)
 		item.MonthlySubscriptionMinor += monthly
 		item.PersonalMonthlySubscriptionMinor += personalMonthly
@@ -302,9 +403,6 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		result.MonthlySubscriptionMinor += monthly
 		result.PersonalMonthlySubscriptionMinor += personalMonthly
 		result.ActiveSubscriptions++
-		recordStart, recordEnd := recordRange(subscription.GroupID)
-		location := s.accountingLocation(ctx, userID, subscription.GroupID)
-		dates, _ := billingDatesBetween(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, recordStart, recordEnd)
 		addedUpcoming := false
 		for _, date := range dates {
 			if subscription.EndsOn == nil || !date.After(*subscription.EndsOn) {
@@ -331,6 +429,11 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	for _, expense := range monthSubscriptionExpenses {
 		consumeExpense(expense)
 	}
+	// Ordered here rather than relying on the load order, so the soonest
+	// charge stays first no matter how the paginated list happened to sort.
+	sort.SliceStable(result.Upcoming, func(i, j int) bool {
+		return result.Upcoming[i].NextBilling.Before(result.Upcoming[j].NextBilling)
+	})
 	keys := make([]string, 0, len(buckets))
 	for currency := range buckets {
 		keys = append(keys, string(currency))
@@ -343,25 +446,23 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if group, groupErr := s.Stores.Groups.Get(ctx, query.GroupID); groupErr == nil {
 			result.ReportingCurrency = group.Currency
 		}
-		allExpenses, loadErr := s.ListExpenses(ctx, userID, query.GroupID, ports.PageRequest{Page: 1, PerPage: 100})
+		allExpenses, loadErr := listAllExpenses(ctx, s, userID, query.GroupID)
 		if loadErr != nil {
 			return result, loadErr
 		}
-		filteredExpenses := make([]domain.Expense, 0, len(allExpenses.Items)+len(historicalSubscriptionExpenses))
-		filteredExpenses = append(filteredExpenses, allExpenses.Items...)
-		filteredExpenses = append(filteredExpenses, historicalSubscriptionExpenses...)
-		filteredExpenses = filteredExpenses[:0]
-		for _, expense := range append(allExpenses.Items, historicalSubscriptionExpenses...) {
+		balanceExpenses := append(allExpenses, historicalSubscriptionExpenses...)
+		filteredExpenses := make([]domain.Expense, 0, len(balanceExpenses))
+		for _, expense := range balanceExpenses {
 			if expense.IncurredOn.Before(end) {
 				filteredExpenses = append(filteredExpenses, expense)
 			}
 		}
-		settlements, loadErr := s.Stores.Settlements.List(ctx, query.GroupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-settled_on"})
+		allSettlements, loadErr := listAllSettlements(ctx, s, userID, query.GroupID)
 		if loadErr != nil {
 			return result, loadErr
 		}
-		filteredSettlements := settlements.Items[:0]
-		for _, settlement := range settlements.Items {
+		filteredSettlements := make([]domain.Settlement, 0, len(allSettlements))
+		for _, settlement := range allSettlements {
 			if settlement.SettledOn.Before(end) {
 				filteredSettlements = append(filteredSettlements, settlement)
 			}
@@ -459,6 +560,79 @@ func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, l
 	return result, nil
 }
 
+// SubscriptionPeriods walks a subscription's schedule from the start and
+// reports what each period costs, which revision-scoped price changes make
+// impossible to read off the subscription's current fields alone. It also
+// surfaces occurrences that failed to post, which nothing else exposes to the
+// user. Resolution reuses subscriptionExpenseOccurrence so these figures match
+// the dashboard's, and a posted period reports its real expense so a directly
+// edited charge isn't misreported as the revision's price.
+func (s *Service) SubscriptionPeriods(ctx context.Context, userID, id, cursor string, limit int) (SubscriptionPeriodPage, error) {
+	subscription, err := s.Stores.Subscriptions.Get(ctx, id)
+	if err != nil {
+		return SubscriptionPeriodPage{}, err
+	}
+	if subscription.GroupID == "" {
+		if subscription.OwnerID != userID {
+			return SubscriptionPeriodPage{}, domain.ErrForbidden
+		}
+	} else if err = s.role(ctx, subscription.GroupID, userID, false); err != nil {
+		return SubscriptionPeriodPage{}, err
+	}
+	if limit < 1 || limit > 100 {
+		limit = 24
+	}
+	s.hydrateSubscription(ctx, subscription)
+
+	location := s.accountingLocation(ctx, userID, subscription.GroupID)
+	from := subscription.StartsOn.In(location)
+	if cursor != "" {
+		// Nanosecond precision rather than a date, so hourly cadences that
+		// bill many times a day don't skip the rest of the day's periods.
+		value, parseErr := time.Parse(time.RFC3339Nano, cursor)
+		if parseErr != nil {
+			return SubscriptionPeriodPage{}, domain.ErrInvalid
+		}
+		from = value.In(location).Add(time.Nanosecond)
+	}
+	dates, err := domain.BillingDatesWithInterval(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, from, limit)
+	if err != nil {
+		return SubscriptionPeriodPage{}, err
+	}
+
+	periods := make([]SubscriptionPeriod, 0, len(dates))
+	for _, date := range dates {
+		if subscription.EndsOn != nil && date.After(*subscription.EndsOn) {
+			break
+		}
+		resolved := subscriptionExpenseOccurrence(*subscription, date)
+		period := SubscriptionPeriod{
+			BillingAt: date, Status: "pending",
+			AmountMinor: resolved.AmountMinor, Currency: resolved.Currency,
+			BaseAmountMinor: resolved.BaseAmountMinor, BaseCurrency: resolved.BaseCurrency,
+			PaidBy: resolved.PaidBy, Splits: resolved.Splits,
+		}
+		if occurrence, ok := subscriptionOccurrenceAt(*subscription, date); ok {
+			period.Status, period.ExpenseID, period.Error = occurrence.Status, occurrence.ExpenseID, occurrence.Error
+			if occurrence.ExpenseID != "" {
+				// Splits live in their own collection, so the expense has to be
+				// hydrated before its breakdown is readable.
+				if expense, expenseErr := s.Stores.Expenses.Get(ctx, occurrence.ExpenseID); expenseErr == nil && s.hydrateExpense(ctx, expense) == nil {
+					period.AmountMinor, period.Currency = expense.AmountMinor, expense.Currency
+					period.BaseAmountMinor, period.BaseCurrency = expense.BaseAmountMinor, expense.BaseCurrency
+					period.PaidBy, period.Splits = expense.PaidBy, expense.Splits
+				}
+			}
+		}
+		periods = append(periods, period)
+	}
+	result := SubscriptionPeriodPage{Periods: periods}
+	if len(periods) == limit {
+		result.NextCursor = periods[len(periods)-1].BillingAt.Format(time.RFC3339Nano)
+	}
+	return result, nil
+}
+
 func (s *Service) ListSettlements(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Settlement], error) {
 	if err := s.role(ctx, groupID, userID, false); err != nil {
 		return ports.Page[domain.Settlement]{}, err
@@ -482,8 +656,15 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	if err != nil {
 		return nil, err
 	}
-	if userID != value.FromUserID && userID != group.OwnerID {
-		return nil, domain.ErrForbidden
+	// Recording your own repayment (self -> anyone) is a basic action every
+	// member can do; recording on someone else's behalf (any from/to pair)
+	// requires the dedicated permission so it isn't silently open to whoever
+	// happens to hold the default member role.
+	if userID != value.FromUserID {
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
+			s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
+			return nil, domain.ErrForbidden
+		}
 	}
 	value.CreatedBy = userID
 	value.Currency, value.BaseCurrency = group.Currency, group.Currency
@@ -499,12 +680,14 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 	if err != nil {
 		return err
 	}
-	group, err := s.Stores.Groups.Get(ctx, value.GroupID)
-	if err != nil {
+	if _, err = s.Stores.Groups.Get(ctx, value.GroupID); err != nil {
 		return err
 	}
-	if value.CreatedBy != userID && group.OwnerID != userID {
-		return domain.ErrForbidden
+	if value.CreatedBy != userID {
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
+			s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
+			return domain.ErrForbidden
+		}
 	}
 	err = s.Stores.Settlements.Delete(ctx, id)
 	if err == nil {

@@ -72,8 +72,10 @@ func historicalSubscriptionChangeSummary(before, after *domain.Subscription, eff
 	var changes changeSet
 	changes.addString("name", before.Name, after.Name)
 	changes.addInt64("amount_minor", before.AmountMinor, after.AmountMinor)
+	changes.addString("currency", string(before.Currency), string(after.Currency))
 	changes.addString("paid_by", before.PaidBy, after.PaidBy)
 	changes.addString("split_mode", string(before.SplitMode), string(after.SplitMode))
+	changes.addAny("splits", before.Splits, after.Splits)
 	changes.addString("category_id", before.CategoryID, after.CategoryID)
 	return encodeAuditSummary(historicalSubscriptionDetails(after, effective), changes)
 }
@@ -370,7 +372,7 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 		if v.GroupID == "" {
 			return nil
 		}
-		revision := subscriptionRevision(v, "future", v.NextBilling)
+		revision := subscriptionRevision(v, "future", v.NextBilling, nil)
 		return s.Stores.Subscriptions.CreateRevision(tx, &revision)
 	}); err != nil {
 		return nil, err
@@ -603,6 +605,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		scope = "future"
 	}
 	effective := v.EffectiveBillingAt
+	var endBilling *time.Time
 	historical := false
 	if v.GroupID != "" {
 		if effective.IsZero() {
@@ -614,23 +617,41 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 				s.audit(ctx, userID, current.GroupID, "subscription.updated", "subscription", current.ID, "failure", encodeAuditSummary(historicalSubscriptionDetails(current, effective), nil))
 				return nil, err
 			}
-			// Reopening a closed period must not rewrite what the subscription
-			// bills from now on, so a historical edit only ever revises that one
-			// occurrence.
-			scope = "one_off"
+			// A historical edit may target just that one period (one_off),
+			// or "this period onward" / "this period through some later
+			// period" (future, optionally bounded by EndBillingAt below) —
+			// both are honored as the caller requested, no longer forced
+			// down to one_off. Either way it can retroactively rewrite
+			// already-posted periods; see regeneratePostedOccurrences below.
 		}
 		if !subscriptionBillingDateAllowed(*current, effective, location, historical) {
 			return nil, domain.ErrInvalid
+		}
+		if scope == "future" && v.EndBillingAt != nil {
+			end := v.EndBillingAt.In(location)
+			if end.Before(effective) || !subscriptionBillingDateAllowed(*current, end, location, true) {
+				s.audit(ctx, userID, current.GroupID, "subscription.updated", "subscription", current.ID, "failure", encodeAuditSummary(map[string]any{"effective_billing_at": effective.Format("2006-01-02"), "end_billing_at": end.Format("2006-01-02")}, nil))
+				return nil, domain.ErrInvalid
+			}
+			endBilling = &end
 		}
 		if scope == "one_off" && (v.BillingCycle != current.BillingCycle || v.BillingInterval != current.BillingInterval || !v.StartsOn.Equal(current.StartsOn) || v.Status != current.Status) {
 			return nil, domain.ErrInvalid
 		}
 	}
+	// The subscription's own top-level fields represent "current" settings
+	// (what NextBilling will bill), so only overwrite them when this edit's
+	// range actually governs NextBilling — the same containment test the
+	// revision resolver applies. A range entirely in the past (fixing what
+	// period 3 billed) and a range entirely in the future (a temporary price
+	// for periods 8-10) must both leave the live row alone; only the latter
+	// is visible through hydration, so an un-hydrated read would otherwise
+	// show, and bill, a price that isn't in effect yet.
+	updatesLiveDefaults := v.GroupID == "" || (scope == "future" &&
+		!effective.After(current.NextBilling) &&
+		(endBilling == nil || !endBilling.Before(current.NextBilling)))
 	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
-		// A one-off revision intentionally leaves the subscription's current and
-		// future defaults untouched. The revision resolver applies it only to its
-		// exact, not-yet-posted billing occurrence.
-		if v.GroupID == "" || scope == "future" {
+		if updatesLiveDefaults {
 			if updateErr := s.Stores.Subscriptions.Update(tx, &v); updateErr != nil {
 				return updateErr
 			}
@@ -638,11 +659,14 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		if v.GroupID == "" {
 			return nil
 		}
-		if occurrence, occurrenceErr := s.Stores.Subscriptions.GetOccurrence(tx, v.ID, effective); occurrenceErr == nil && occurrence.ExpenseID != "" {
-			return domain.ErrConflict
+		revision := subscriptionRevision(v, scope, effective, endBilling)
+		if createErr := s.Stores.Subscriptions.CreateRevision(tx, &revision); createErr != nil {
+			return createErr
 		}
-		revision := subscriptionRevision(v, scope, effective)
-		return s.Stores.Subscriptions.CreateRevision(tx, &revision)
+		if historical {
+			return s.regeneratePostedOccurrences(tx, &v, userID)
+		}
+		return nil
 	}); err != nil {
 		return nil, err
 	}
@@ -652,8 +676,8 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	}
 	return &v, nil
 }
-func subscriptionRevision(v domain.Subscription, scope string, effective time.Time) domain.SubscriptionRevision {
-	return domain.SubscriptionRevision{SubscriptionID: v.ID, Scope: scope, EffectiveBillingAt: effective, Name: v.Name, Category: v.Category, CategoryID: v.CategoryID, AmountMinor: v.AmountMinor, Currency: v.Currency, BaseCurrency: v.BaseCurrency, BaseAmountMinor: v.BaseAmountMinor, ExchangeRate: v.ExchangeRate, RateScaled: v.RateScaled, ExchangeRateDate: v.ExchangeRateDate, RateMode: v.RateMode, PaidBy: v.PaidBy, SplitMode: v.SplitMode, Splits: append([]domain.ExpenseSplit(nil), v.Splits...), Notes: v.Notes}
+func subscriptionRevision(v domain.Subscription, scope string, effective time.Time, endBilling *time.Time) domain.SubscriptionRevision {
+	return domain.SubscriptionRevision{SubscriptionID: v.ID, Scope: scope, EffectiveBillingAt: effective, EndBillingAt: endBilling, Name: v.Name, Category: v.Category, CategoryID: v.CategoryID, AmountMinor: v.AmountMinor, Currency: v.Currency, BaseCurrency: v.BaseCurrency, BaseAmountMinor: v.BaseAmountMinor, ExchangeRate: v.ExchangeRate, RateScaled: v.RateScaled, ExchangeRateDate: v.ExchangeRateDate, RateMode: v.RateMode, PaidBy: v.PaidBy, SplitMode: v.SplitMode, Splits: append([]domain.ExpenseSplit(nil), v.Splits...), Notes: v.Notes}
 }
 func (s *Service) hydrateSubscription(ctx context.Context, v *domain.Subscription) {
 	if v.GroupID == "" {

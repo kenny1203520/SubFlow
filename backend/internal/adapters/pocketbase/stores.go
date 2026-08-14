@@ -12,6 +12,7 @@ import (
 
 type MembershipRepo struct{ *Repository }
 type InvitationRepo struct{ *Repository }
+type OwnershipTransferRepo struct{ *Repository }
 type NotificationRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
@@ -24,25 +25,26 @@ type UserRepo struct{ *Repository }
 type SystemSettingsRepo struct{ *Repository }
 
 type Stores struct {
-	Groups        *Repository
-	Memberships   *MembershipRepo
-	Invitations   *InvitationRepo
-	Notifications *NotificationRepo
-	Subscriptions *SubscriptionRepo
-	Expenses      *ExpenseRepo
-	Settlements   *SettlementRepo
-	Categories    *CategoryRepo
-	ExchangeRates *ExchangeRateRepo
-	Roles         *RoleRepo
-	Audits        *AuditRepo
-	Users         *UserRepo
-	Settings      *SystemSettingsRepo
-	Transactions  *Repository
+	Groups             *Repository
+	Memberships        *MembershipRepo
+	Invitations        *InvitationRepo
+	OwnershipTransfers *OwnershipTransferRepo
+	Notifications      *NotificationRepo
+	Subscriptions      *SubscriptionRepo
+	Expenses           *ExpenseRepo
+	Settlements        *SettlementRepo
+	Categories         *CategoryRepo
+	ExchangeRates      *ExchangeRateRepo
+	Roles              *RoleRepo
+	Audits             *AuditRepo
+	Users              *UserRepo
+	Settings           *SystemSettingsRepo
+	Transactions       *Repository
 }
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -72,6 +74,18 @@ func (r *InvitationRepo) Update(ctx context.Context, v *domain.Invitation) error
 }
 func (r *InvitationRepo) ListForEmail(ctx context.Context, email string, req ports.PageRequest) (ports.Page[domain.Invitation], error) {
 	return r.ListInvitationsForEmail(ctx, email, req)
+}
+func (r *OwnershipTransferRepo) Create(ctx context.Context, v *domain.OwnershipTransfer) error {
+	return r.CreateOwnershipTransfer(ctx, v)
+}
+func (r *OwnershipTransferRepo) Get(ctx context.Context, id string) (*domain.OwnershipTransfer, error) {
+	return r.GetOwnershipTransfer(ctx, id)
+}
+func (r *OwnershipTransferRepo) FindPending(ctx context.Context, groupID string) (*domain.OwnershipTransfer, error) {
+	return r.FindPendingOwnershipTransfer(ctx, groupID)
+}
+func (r *OwnershipTransferRepo) Update(ctx context.Context, v *domain.OwnershipTransfer) error {
+	return r.UpdateOwnershipTransfer(ctx, v)
 }
 func (r *NotificationRepo) Create(ctx context.Context, v *domain.Notification) error {
 	return r.CreateNotification(ctx, v)

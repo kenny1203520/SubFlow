@@ -17,6 +17,7 @@ const (
 	CollectionGroups                  = "groups"
 	CollectionMembers                 = "group_members"
 	CollectionInvitations             = "group_invitations"
+	CollectionOwnershipTransfers      = "group_ownership_transfers"
 	CollectionNotifications           = "notifications"
 	CollectionSubscriptions           = "subscriptions"
 	CollectionSubscriptionRevisions   = "subscription_revisions"
@@ -203,6 +204,13 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	_, err = ensureCollection(app, CollectionOwnershipTransfers, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "accepted", "declined", "cancelled"}, MaxSelect: 1})
+		c.AddIndex("idx_ownership_transfers_group_status", false, "`group`, status", "")
+	})
+	if err != nil {
+		return "", err
+	}
 	_, err = ensureCollection(app, CollectionNotifications, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "type", Required: true, Max: 80}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "resource_id", Max: 32}, &core.DateField{Name: "read_at"})
 		c.AddIndex("idx_notifications_user_created", false, "user, created", "")
@@ -232,7 +240,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	revisions, err := ensureCollection(app, CollectionSubscriptionRevisions, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "subscription", Required: true, CollectionId: mustCollectionID(app, CollectionSubscriptions), MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "scope", Required: true, Values: []string{"future", "one_off"}, MaxSelect: 1}, &core.DateField{Name: "effective_at", Required: true}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "split_mode", Required: true, Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.JSONField{Name: "splits", MaxSize: 1024 * 128}, &core.TextField{Name: "notes", Max: 4000})
+		c.Fields.Add(&core.RelationField{Name: "subscription", Required: true, CollectionId: mustCollectionID(app, CollectionSubscriptions), MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "scope", Required: true, Values: []string{"future", "one_off"}, MaxSelect: 1}, &core.DateField{Name: "effective_at", Required: true}, &core.DateField{Name: "end_billing_at"}, &core.TextField{Name: "name", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "split_mode", Required: true, Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.JSONField{Name: "splits", MaxSize: 1024 * 128}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_subscription_revisions_effective", false, "subscription, effective_at", "")
 	})
 	if err != nil {
@@ -604,7 +612,7 @@ func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
 	for _, seed := range []struct {
 		key, name   string
 		permissions []string
-	}{{"owner", "Owner", all}, {"member", "Member", []string{"group.view", "ledger.expenses.read", "ledger.expenses.write", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.settlements.read", "ledger.settlements.write", "categories.manage"}}} {
+	}{{"owner", "Owner", all}, {"member", "Member", []string{"group.view", "ledger.expenses.read", "ledger.expenses.write", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.settlements.read", "categories.manage"}}} {
 		record, err := app.FindFirstRecordByFilter(CollectionGroupRoles, "group={:group} && key={:key}", map[string]any{"group": group.Id, "key": seed.key})
 		if err != nil {
 			record, err = newSchemaRecord(app, CollectionGroupRoles)
