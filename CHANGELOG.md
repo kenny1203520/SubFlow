@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-08-14
+
+### Added
+- Added viewer share and period-history details to finance views.
+- Added subscription range editing, ownership transfer, and per-period price timelines.
+
+### Changed
+- Improved currency-aware calculations, exchange-rate cache coverage, and dashboard pagination.
+- Expanded expense export details and tightened owner-role and settlement permissions.
+
+### Fixed
+- Fixed billing-window lookup, even-period rounding, subscription aggregation, and owner-role assignment rules.
+
 ## [0.1.6] - 2026-08-12
 
 ### Fixed
