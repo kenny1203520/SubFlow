@@ -127,12 +127,28 @@ func (r *Repository) CreateMembership(ctx context.Context, m *domain.Membership)
 	m.CreatedAt = record.GetDateTime("created").Time()
 	return nil
 }
+
+// UpdateMembershipRole writes both the RBAC role_ref relation and the legacy
+// role enum column. Keeping the enum in sync matters because some gates
+// (domain.CanManageGroup, via Service.role with ownerOnly=true) still check
+// the enum rather than resolved permissions; without this, a membership
+// reassigned to the protected "owner" group_roles record would pass
+// permission-based checks but still be refused by enum-based ones.
 func (r *Repository) UpdateMembershipRole(ctx context.Context, groupID, userID, roleID string) error {
 	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionMembers, "group={:group} && user={:user}", dbx.Params{"group": groupID, "user": userID})
 	if err != nil {
 		return mapError(err)
 	}
+	role, err := r.app(ctx).FindRecordById(CollectionGroupRoles, roleID)
+	if err != nil {
+		return mapError(err)
+	}
+	enumRole := domain.RoleMember
+	if role.GetString("key") == "owner" {
+		enumRole = domain.RoleOwner
+	}
 	record.Set("role_ref", roleID)
+	record.Set("role", enumRole)
 	return r.app(ctx).Save(record)
 }
 func (r *Repository) GetRole(ctx context.Context, groupID, userID string) (domain.MemberRole, error) {
@@ -245,6 +261,46 @@ func (r *Repository) UpdateInvitation(ctx context.Context, v *domain.Invitation)
 		return mapError(err)
 	}
 	writeInvitation(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) CreateOwnershipTransfer(ctx context.Context, v *domain.OwnershipTransfer) error {
+	rec, err := newRecord(r.app(ctx), CollectionOwnershipTransfers)
+	if err != nil {
+		return err
+	}
+	writeOwnershipTransfer(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetOwnershipTransfer(ctx context.Context, id string) (*domain.OwnershipTransfer, error) {
+	rec, err := r.app(ctx).FindRecordById(CollectionOwnershipTransfers, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return ownershipTransferFrom(rec), nil
+}
+func (r *Repository) FindPendingOwnershipTransfer(ctx context.Context, groupID string) (*domain.OwnershipTransfer, error) {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionOwnershipTransfers, "group={:group} && status='pending'", dbx.Params{"group": groupID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return ownershipTransferFrom(rec), nil
+}
+func (r *Repository) UpdateOwnershipTransfer(ctx context.Context, v *domain.OwnershipTransfer) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionOwnershipTransfers, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeOwnershipTransfer(rec, v)
 	if err = r.app(ctx).Save(rec); err != nil {
 		return err
 	}
@@ -860,7 +916,19 @@ func (r *Repository) LatestExchangeRate(ctx context.Context, from, to domain.Cur
 	if from == to {
 		return &domain.ExchangeRate{BaseCurrency: from, QuoteCurrency: to, RateScaled: domain.ExchangeRateScale, Rate: "1", EffectiveDate: date, Provider: "identity", FetchedAt: time.Now()}, nil
 	}
-	records, err := r.app(ctx).FindRecordsByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date<={:date}", "-effective_date", 1, 0, dbx.Params{"base": from, "quote": to, "date": date})
+	// Exchange rates are conceptually day-granular ("the rate as of this
+	// calendar day"), but a stored row's effective_date carries whatever
+	// exact timestamp the provider reported (e.g. 00:00:01, or PocketBase's
+	// own millisecond-precision datetime formatting). Comparing with an
+	// inclusive "<=" against the exact instant of `date` is fragile: a row
+	// for the very same calendar day can sit a few milliseconds later in
+	// wall-clock time and spuriously fail that comparison, making an
+	// otherwise-fresh same-day cache entry invisible. Use an exclusive
+	// next-day boundary instead so any row dated anywhere within the
+	// requested calendar day (in UTC) is found.
+	day := date.UTC()
+	upperBound := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, 1)
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date<{:date}", "-effective_date", 1, 0, dbx.Params{"base": from, "quote": to, "date": upperBound})
 	if err != nil || len(records) == 0 {
 		return nil, domain.ErrRateUnavailable
 	}
@@ -1209,6 +1277,17 @@ func invitationFrom(r *core.Record) *domain.Invitation {
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
+func writeOwnershipTransfer(r *core.Record, v *domain.OwnershipTransfer) {
+	r.Set("group", v.GroupID)
+	r.Set("from_user", v.FromUserID)
+	r.Set("to_user", v.ToUserID)
+	r.Set("status", v.Status)
+}
+func ownershipTransferFrom(r *core.Record) *domain.OwnershipTransfer {
+	v := &domain.OwnershipTransfer{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), Status: domain.OwnershipTransferStatus(r.GetString("status"))}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
 func writeNotification(r *core.Record, value *domain.Notification) {
 	r.Set("user", value.UserID)
 	r.Set("type", value.Type)
@@ -1272,6 +1351,11 @@ func writeSubscriptionRevision(r *core.Record, v *domain.SubscriptionRevision) {
 	r.Set("subscription", v.SubscriptionID)
 	r.Set("scope", v.Scope)
 	r.Set("effective_at", v.EffectiveBillingAt)
+	if v.EndBillingAt != nil {
+		r.Set("end_billing_at", *v.EndBillingAt)
+	} else {
+		r.Set("end_billing_at", nil)
+	}
 	r.Set("name", v.Name)
 	r.Set("category", v.Category)
 	r.Set("category_ref", v.CategoryID)
@@ -1289,6 +1373,9 @@ func writeSubscriptionRevision(r *core.Record, v *domain.SubscriptionRevision) {
 }
 func subscriptionRevisionFrom(r *core.Record) *domain.SubscriptionRevision {
 	v := &domain.SubscriptionRevision{ID: r.Id, SubscriptionID: r.GetString("subscription"), Scope: r.GetString("scope"), EffectiveBillingAt: r.GetDateTime("effective_at").Time(), Name: r.GetString("name"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), PaidBy: r.GetString("paid_by"), SplitMode: domain.SplitMode(r.GetString("split_mode")), Notes: r.GetString("notes")}
+	if end := r.GetDateTime("end_billing_at").Time(); !end.IsZero() {
+		v.EndBillingAt = &end
+	}
 	_ = json.Unmarshal([]byte(r.GetString("splits")), &v.Splits)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	hydrateTimes(r, &v.CreatedAt, new(time.Time))

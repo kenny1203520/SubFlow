@@ -18,3 +18,13 @@ export function minorToInput(value: number, currency: Currency | string = 'TWD')
   return minorToMajor(value, currency).toFixed(currencyDigits(currency))
 }
 
+// The smallest positive amount an <input type=number> should step by/allow
+// for a given currency: "1" for zero-decimal currencies (JPY, KRW…), "0.001"
+// for three-decimal ones (BHD, KWD…), "0.01" otherwise. A hardcoded 0.01
+// offers meaningless sub-unit precision for the former and silently rejects
+// valid values for the latter.
+export function amountStep(currency: Currency | string = 'TWD') {
+  const digits = currencyDigits(currency)
+  return digits === 0 ? '1' : (10 ** -digits).toFixed(digits)
+}
+

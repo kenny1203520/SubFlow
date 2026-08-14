@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
+	"strings"
 	"time"
 
 	"subflow/internal/domain"
@@ -40,7 +41,7 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID string) ([]b
 	var buf bytes.Buffer
 	buf.WriteString("\xEF\xBB\xBF") // UTF-8 BOM so Excel opens CJK text correctly.
 	w := csv.NewWriter(&buf)
-	_ = w.Write([]string{"類型", "日期", "名稱", "金額", "幣別", "分類", "付款人/對象", "狀態", "備註"})
+	_ = w.Write([]string{"類型", "日期", "名稱", "金額", "幣別", "分類", "付款人/對象", "狀態", "分帳明細", "備註"})
 
 	if groupID == "" {
 		expenses, err := listAllPersonalExpenses(ctx, s, userID)
@@ -177,6 +178,20 @@ func listAllSubscriptions(ctx context.Context, s *Service, userID, groupID strin
 	}
 }
 
+func listAllGroups(ctx context.Context, s *Service, userID string) ([]domain.Group, error) {
+	var all []domain.Group
+	for page := 1; ; page++ {
+		result, err := s.ListGroups(ctx, userID, ports.PageRequest{Page: page, PerPage: exportPageSize})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, result.Items...)
+		if page >= result.TotalPages || len(result.Items) == 0 {
+			return all, nil
+		}
+	}
+}
+
 func listAllSettlements(ctx context.Context, s *Service, userID, groupID string) ([]domain.Settlement, error) {
 	var all []domain.Settlement
 	for page := 1; ; page++ {
@@ -200,7 +215,20 @@ func formatDate(t time.Time, loc *time.Location) string {
 }
 
 func expenseRow(v domain.Expense, loc *time.Location, lookupName func(string) string) []string {
-	return []string{"支出", formatDate(v.IncurredOn, loc), v.Title, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), "", v.Notes}
+	return []string{"支出", formatDate(v.IncurredOn, loc), v.Title, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), "", splitDetail(v.Splits, lookupName), v.Notes}
+}
+
+// splitDetail renders every participant's share as "姓名:金額" pairs so the
+// export fully reflects how an expense was divided, not just its total.
+func splitDetail(splits []domain.ExpenseSplit, lookupName func(string) string) string {
+	if len(splits) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(splits))
+	for _, split := range splits {
+		parts = append(parts, fmt.Sprintf("%s:%s", lookupName(split.UserID), formatAmount(split.AmountMinor)))
+	}
+	return strings.Join(parts, "; ")
 }
 
 // subscriptionRows returns one row per billing period that isn't already
@@ -225,15 +253,15 @@ func subscriptionRows(v domain.Subscription, loc *time.Location, lookupName func
 		if revision, ok := revisionByID[occurrence.RevisionID]; ok {
 			name, category, amount, currency, paidBy = revision.Name, revision.Category, revision.AmountMinor, revision.Currency, revision.PaidBy
 		}
-		rows = append(rows, []string{"訂閱", formatDate(occurrence.BillingAt, loc), name, formatAmount(amount), string(currency), category, lookupName(paidBy), occurrence.Status, v.Notes})
+		rows = append(rows, []string{"訂閱", formatDate(occurrence.BillingAt, loc), name, formatAmount(amount), string(currency), category, lookupName(paidBy), occurrence.Status, "", v.Notes})
 	}
 	if len(rows) == 0 {
-		rows = append(rows, []string{"訂閱", formatDate(v.StartsOn, loc), v.Name, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), string(v.Status), v.Notes})
+		rows = append(rows, []string{"訂閱", formatDate(v.StartsOn, loc), v.Name, formatAmount(v.AmountMinor), string(v.Currency), v.Category, lookupName(v.PaidBy), string(v.Status), "", v.Notes})
 	}
 	return rows
 }
 
 func settlementRow(v domain.Settlement, loc *time.Location, lookupName func(string) string) []string {
 	party := fmt.Sprintf("%s → %s", lookupName(v.FromUserID), lookupName(v.ToUserID))
-	return []string{"還款", formatDate(v.SettledOn, loc), "", formatAmount(v.AmountMinor), string(v.Currency), "", party, "", v.Notes}
+	return []string{"還款", formatDate(v.SettledOn, loc), "", formatAmount(v.AmountMinor), string(v.Currency), "", party, "", "", v.Notes}
 }
