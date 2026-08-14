@@ -6,6 +6,9 @@ import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyCh
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import { useI18n } from '../i18n'
+import * as outbox from '../offline/outbox'
+import type { OutboxEntry, OutboxKind, OutboxScope } from '../offline/outbox'
+import * as snapshotStore from '../offline/snapshot'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'>
 // startsOn is optional so an update can omit it when the user did not touch
@@ -56,6 +59,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentGroup = computed(() => groups.value.find(value => value.id === currentGroupId.value))
   const currentMembership = computed(() => members.value.find(value => value.userId === auth.record?.id))
   const isOwner = computed(() => currentMembership.value?.role === 'owner')
+  // Drives the topbar sync button's danger styling — a record stuck with a
+  // failed sync needs the same visibility across any scope the user happens
+  // to be viewing, not just the one it lives in.
+  const hasSyncErrors = computed(() => [expenses, subscriptions, settlements, personalExpenses, personalSubscriptions].some(list => list.value.some(item => item.syncError)))
   let sse: SSEClient | undefined
   let sseStarted = false
   let loadedGroupId = ''
@@ -63,6 +70,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   let hydratingGroupId = ''
   let groupHydration: Promise<void> | undefined
   let lastRetry: (() => Promise<void>) | undefined
+  // navigator.onLine is a best-effort signal (it can say "online" on a dead
+  // network), but it's what lets a mutation skip straight to the offline
+  // path instead of waiting out a fetch timeout first.
+  const online = ref(typeof navigator === 'undefined' || navigator.onLine)
+  const outboxPending = ref(0)
+  let syncing = false
+  async function refreshOutboxPending() { outboxPending.value = auth.record ? (await outbox.listForUser(auth.record.id)).length : 0 }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('online', () => { online.value = true; void syncOutbox() })
+    window.addEventListener('offline', () => { online.value = false })
+  }
 
   function resourceError(reason: unknown) {
     const code = reason instanceof ApiError ? reason.code : 'internal_error'
@@ -99,14 +117,74 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function retryLast() { if (lastRetry) await run(lastRetry, 'retry') }
 
+  // Tries the real mutation first; only falls back to the local/outbox path
+  // when the browser is known offline or the request specifically failed to
+  // reach the server at all (ApiError code network_error) — any other
+  // failure (validation, permission, conflict) is a real error and must
+  // still surface normally through run()'s catch, not be treated as "queue
+  // it for later".
+  async function withOfflineFallback(attempt: () => Promise<void>, applyOffline: () => Promise<void>): Promise<void> {
+    if (online.value) {
+      try { await attempt(); return } catch (reason) { if (!(reason instanceof ApiError) || reason.code !== 'network_error') throw reason }
+    }
+    await applyOffline()
+    await refreshOutboxPending()
+  }
+
+  // Server-computed fields (base currency conversion, resolved splits, …)
+  // aren't knowable client-side, so the optimistic record just mirrors the
+  // input verbatim for those — pendingSync is what tells the UI this is a
+  // provisional value, not the final one syncOutbox() will replace it with.
+  function localExpense(id: string, input: ExpenseInput, groupId?: string): Expense {
+    const now = new Date().toISOString()
+    return { id, groupId, ownerId: groupId ? undefined : auth.record?.id, title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.currency, baseAmountMinor: input.amountMinor, exchangeRate: '1', exchangeRateDate: now, rateMode: 'automatic', paidBy: input.paidBy, incurredOn: input.incurredOn || now, notes: input.notes, splitMode: input.splitMode, splits: input.splits, createdAt: now, updatedAt: now, pendingSync: true }
+  }
+  function localSubscription(id: string, input: SubscriptionInput, groupId?: string): Subscription {
+    const now = new Date().toISOString()
+    const startsOn = input.startsOn || now
+    return { id, groupId, ownerId: groupId ? undefined : auth.record?.id, paidBy: input.paidBy || auth.record?.id || '', name: input.name, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.currency, baseAmountMinor: input.amountMinor, exchangeRate: '1', exchangeRateDate: now, rateMode: 'automatic', billingCycle: input.billingCycle, billingInterval: input.billingInterval, startsOn, nextBilling: input.nextBilling || startsOn, status: input.status, notes: input.notes, splitMode: input.splitMode, splits: input.splits, createdAt: now, updatedAt: now, pendingSync: true }
+  }
+  function localSettlement(id: string, input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>, groupId: string): Settlement {
+    const now = new Date().toISOString()
+    const currency = (currentGroup.value?.currency || 'TWD') as Currency
+    return { id, groupId, fromUserId: input.fromUserId, toUserId: input.toUserId, createdBy: auth.record?.id || '', amountMinor: input.amountMinor, currency, baseCurrency: currency, baseAmountMinor: input.amountMinor, exchangeRate: '1', exchangeRateDate: now, settledOn: input.settledOn || now, notes: input.notes, createdAt: now, updatedAt: now, pendingSync: true }
+  }
+
+  // Deleting a record that was itself never synced (still a local- id) has
+  // nothing to tell the server — cancel whatever create/update chain is
+  // still queued for it instead of queuing a delete for a record the
+  // backend has never heard of.
+  async function localDelete(kind: OutboxKind, scope: OutboxScope, groupId: string, id: string): Promise<void> {
+    const userId = auth.record?.id
+    if (!userId) return
+    if (outbox.isLocalId(id)) {
+      const entries = await outbox.listForUser(userId)
+      await Promise.all(entries.filter(entry => entry.targetId === id).map(entry => outbox.remove(entry.id)))
+    } else {
+      await outbox.enqueue({ userId, kind, op: 'delete', scope, groupId, targetId: id })
+    }
+  }
+
   async function loadGroups() {
+    const userId = auth.record?.id
     await run(async () => {
-      const [groupResult,currencyResult]=await Promise.all([api.get<Group[]>('/groups?perPage=100'),api.get<CurrencyInfo[]>('/currencies')])
-      groups.value = groupResult.data
-      currencies.value = currencyResult.data
-		  try { await loadInvitationInbox() } catch { pendingInvitations.value=[]; notifications.value=[] }
+      try {
+        if (!online.value) throw new ApiError(0, 'network_error', 'offline')
+        const [groupResult,currencyResult]=await Promise.all([api.get<Group[]>('/groups?perPage=100'),api.get<CurrencyInfo[]>('/currencies')])
+        groups.value = groupResult.data
+        currencies.value = currencyResult.data
+        if (userId) { await snapshotStore.saveGroups(userId, groups.value); await snapshotStore.saveCurrencies(userId, currencies.value) }
+        try { await loadInvitationInbox() } catch { pendingInvitations.value=[]; notifications.value=[] }
+      } catch (reason) {
+        if (!(reason instanceof ApiError) || reason.code !== 'network_error') throw reason
+        const cachedGroups = userId ? await snapshotStore.loadGroups(userId) : undefined
+        if (!cachedGroups) throw reason
+        groups.value = cachedGroups
+        currencies.value = (userId ? await snapshotStore.loadCurrencies(userId) : undefined) || currencies.value
+      }
       if (currentGroupId.value && !groups.value.some(group => group.id === currentGroupId.value)) currentGroupId.value = ''
-      if (!sseStarted) { sse = new SSEClient(() => auth.token, onEvent, auth.logout); sseStarted = true; void sse.start() }
+      if (!sseStarted) { sse = new SSEClient(() => auth.token, onEvent, auth.logout, () => { online.value = true; void syncOutbox() }); sseStarted = true; void sse.start() }
+      if (userId) { await refreshOutboxPending(); if (online.value) void syncOutbox() }
     }, 'groups', false)
   }
 
@@ -155,28 +233,40 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function refreshGroup(expectedRequest = ++groupRequest) {
     if (!currentGroupId.value) return
     const id = currentGroupId.value
-    const load = async <T>(key: keyof typeof groupErrors, request: () => Promise<T>, apply: (value: T) => void) => {
+    const userId = auth.record?.id
+    // Read once up front rather than per-resource: it's the same bundle
+    // either way, and reading it once keeps a burst of concurrent tab
+    // switches from hammering IndexedDB for no reason.
+    const cached = userId ? await snapshotStore.loadSnapshot(userId, 'group', id) : undefined
+    const load = async <T>(key: keyof typeof groupErrors, request: () => Promise<T>, apply: (value: T) => void, cachedValue?: T) => {
       groupBusy[key]++
       try {
+        if (!online.value) throw new ApiError(0, 'network_error', 'offline')
         const value = await request()
         if (expectedRequest === groupRequest && id === currentGroupId.value) { apply(value); groupErrors[key] = '' }
       } catch (reason) {
-        if (expectedRequest === groupRequest && id === currentGroupId.value) groupErrors[key] = resourceError(reason)
+        const isNetwork = reason instanceof ApiError && reason.code === 'network_error'
+        if (expectedRequest === groupRequest && id === currentGroupId.value) {
+          if (isNetwork && cachedValue !== undefined) { apply(cachedValue); groupErrors[key] = '' }
+          else if (isNetwork && !online.value) groupErrors[key] = '' // known offline with nothing cached for this resource — stay stale, don't alarm
+          else groupErrors[key] = resourceError(reason)
+        }
       } finally { groupBusy[key] = Math.max(0, groupBusy[key] - 1) }
     }
     await Promise.all([
-      load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }),
-      load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=100`).then(value => value.data), value => { subscriptions.value = value }),
-      load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=100`).then(value => value.data), value => { expenses.value = value }),
-      load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=100`).then(value => value.data), value => { settlements.value = value }),
+      load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }, cached?.members),
+      load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=100`).then(value => value.data), value => { subscriptions.value = value }, cached?.subscriptions),
+      load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=100`).then(value => value.data), value => { expenses.value = value }, cached?.expenses),
+      load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=100`).then(value => value.data), value => { settlements.value = value }, cached?.settlements),
       load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }),
 			load('access', () => api.get<GroupAccess>(`/groups/${id}/access`).then(value => value.data), value => { groupPermissions.value = value.permissions }),
     ])
     if (expectedRequest === groupRequest && id === currentGroupId.value) {
-      if (groupPermissions.value.includes('group.members.manage')) {
+      if (groupPermissions.value.includes('group.members.manage') && online.value) {
         try { await loadInvitations() } catch { invitations.value = [] }
-      } else invitations.value = []
+      } else if (online.value) invitations.value = []
       loadedGroupId = id
+      if (userId && online.value) await snapshotStore.saveSnapshot(userId, 'group', id, { expenses: expenses.value, subscriptions: subscriptions.value, settlements: settlements.value, members: members.value })
     }
   }
 
@@ -189,15 +279,26 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function refreshPersonal(scope: 'personal'|'all' = 'personal', month = '') {
+    const userId = auth.record?.id
     await run(async () => {
-      const [subscriptionPage, expensePage, dashboard] = await Promise.all([
-        api.get<Subscription[]>('/subscriptions?perPage=100'),
-        api.get<Expense[]>('/expenses?perPage=100'),
-        api.get<DashboardSummary>(`/dashboard?scope=${scope}${month ? `&month=${encodeURIComponent(month)}` : ''}`),
-      ])
-      personalSubscriptions.value = subscriptionPage.data
-      personalExpenses.value = expensePage.data
-      personalSummary.value = dashboard.data
+      try {
+        if (!online.value) throw new ApiError(0, 'network_error', 'offline')
+        const [subscriptionPage, expensePage, dashboard] = await Promise.all([
+          api.get<Subscription[]>('/subscriptions?perPage=100'),
+          api.get<Expense[]>('/expenses?perPage=100'),
+          api.get<DashboardSummary>(`/dashboard?scope=${scope}${month ? `&month=${encodeURIComponent(month)}` : ''}`),
+        ])
+        personalSubscriptions.value = subscriptionPage.data
+        personalExpenses.value = expensePage.data
+        personalSummary.value = dashboard.data
+        if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value })
+      } catch (reason) {
+        if (!(reason instanceof ApiError) || reason.code !== 'network_error') throw reason
+        const cached = userId ? await snapshotStore.loadSnapshot(userId, 'personal', '') : undefined
+        if (!cached) throw reason
+        personalSubscriptions.value = cached.subscriptions
+        personalExpenses.value = cached.expenses
+      }
     }, 'personal', false)
   }
 
@@ -214,6 +315,68 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (event.resource === 'groups' || event.resource === 'group_members') await loadGroups()
     await refreshPersonal()
     if (event.groupId && event.groupId === currentGroupId.value) await refreshGroup()
+  }
+
+  // Marks the corresponding local record with the failure so a badge can
+  // show it. Branches explicitly per kind rather than returning a shared
+  // ref, since Expense/Subscription/Settlement are different shapes and a
+  // ref typed as their union can't be assigned a mapped array back.
+  function markOfflineSyncError(entry: OutboxEntry, message: string) {
+    if (entry.kind === 'expense') { const list = entry.scope === 'group' ? expenses : personalExpenses; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) }
+    else if (entry.kind === 'subscription') { const list = entry.scope === 'group' ? subscriptions : personalSubscriptions; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) }
+    else settlements.value = settlements.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item)
+  }
+  function offlinePath(kind: OutboxKind, id: string) {
+    return kind === 'expense' ? `/expenses/${id}` : kind === 'subscription' ? `/subscriptions/${id}` : `/settlements/${id}`
+  }
+  function offlineCreatePath(entry: OutboxEntry) {
+    if (entry.kind === 'settlement') return `/groups/${entry.groupId}/settlements`
+    const base = entry.kind === 'expense' ? 'expenses' : 'subscriptions'
+    return entry.scope === 'group' ? `/groups/${entry.groupId}/${base}` : `/${base}`
+  }
+
+  // Replays queued mutations in the order they were made. Stops at the first
+  // network failure (we're still offline; the rest stay queued for next
+  // time) but keeps going past any other failure — one bad entry (say, a
+  // record deleted by someone else in the meantime) shouldn't block every
+  // later entry behind it in the queue. A failed entry is kept, marked, and
+  // left for the user to see rather than silently dropped.
+  async function syncOutbox() {
+    if (syncing || !online.value || !auth.record?.id) return
+    const userId = auth.record.id
+    syncing = true
+    try {
+      const entries = await outbox.listForUser(userId)
+      if (!entries.length) { outboxPending.value = 0; return }
+      let touchedGroupId = ''
+      let touchedPersonal = false
+      for (const entry of entries) {
+        try {
+          if (entry.op === 'create') {
+            const created = await api.post<{ id: string }>(offlineCreatePath(entry), entry.payload)
+            const realId = created.data.id
+            for (const later of entries) if (later.targetId === entry.targetId && later.id !== entry.id) { later.targetId = realId; await outbox.updateTargetId(later.id, realId) }
+          } else if (entry.op === 'update') {
+            await api.patch(offlinePath(entry.kind, entry.targetId), entry.payload)
+          } else {
+            await api.delete(offlinePath(entry.kind, entry.targetId))
+          }
+          await outbox.remove(entry.id)
+          if (entry.scope === 'group') touchedGroupId = entry.groupId
+          else touchedPersonal = true
+        } catch (reason) {
+          if (reason instanceof ApiError && reason.code === 'network_error') { online.value = false; break }
+          const message = reason instanceof ApiError ? reason.message : String(reason)
+          await outbox.markFailed(entry.id, message)
+          markOfflineSyncError(entry, message)
+        }
+      }
+      if (touchedPersonal) await refreshPersonal()
+      if (touchedGroupId && touchedGroupId === currentGroupId.value) await refreshGroup()
+      await refreshOutboxPending()
+    } finally {
+      syncing = false
+    }
   }
 
   async function createGroup(input: GroupInput) {
@@ -331,43 +494,114 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function declinePendingInvitation(id:string){await run(async()=>{await api.post(`/invitations/${id}/decline`);pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id);notifications.value=notifications.value.map(item=>item.resourceId===id?{...item,readAt:new Date().toISOString()}:item)})}
   async function markNotificationRead(id:string){await api.post(`/notifications/${id}/read`);notifications.value=notifications.value.map(item=>item.id===id?{...item,readAt:new Date().toISOString()}:item)}
 
-  async function addSubscription(input: SubscriptionInput) {
+  async function addSubscription(input: SubscriptionInput, backfill = false) {
     if (!currentGroupId.value) return false
-    return run(async () => {
-      await api.post<Subscription>(`/groups/${currentGroupId.value}/subscriptions`, input)
-      await refreshGroup()
+    let createdId = ''
+    const ok = await run(async () => {
+      await withOfflineFallback(
+        async () => { const response = await api.post<Subscription>(`/groups/${currentGroupId.value}/subscriptions`, input); createdId = response.data.id; await refreshGroup() },
+        async () => {
+          const id = outbox.localId()
+          subscriptions.value = [localSubscription(id, input, currentGroupId.value), ...subscriptions.value]
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'subscription', op: 'create', scope: 'group', groupId: currentGroupId.value, targetId: id, payload: input })
+        },
+      )
     })
+    // Offline creates never populate createdId, so a checked backfill option
+    // is silently skipped rather than backfilling a record that doesn't
+    // exist on the server yet — it can be run manually after syncing.
+    if (ok && backfill && createdId) await backfillSubscription(createdId)
+    return ok
+  }
+
+  // Posts real Expense/occurrence records for the historical periods between
+  // a group subscription's StartsOn and today, closing the gap left by
+  // CreateSubscription always starting NextBilling from "now" (see the
+  // backend's Service.BackfillSubscriptionPeriods). Reports its own success
+  // toast with the actual count instead of the generic one from run(), since
+  // "backfilled 0 periods" vs "backfilled 23 periods" is the whole point of
+  // calling this.
+  async function backfillSubscription(id: string) {
+    let created = 0
+    const ok = await run(async () => {
+      const response = await api.post<{ created: number }>(`/subscriptions/${id}/backfill`)
+      created = response.data.created
+      if (currentGroupId.value) await refreshGroup()
+    }, 'general', false)
+    toast.push(ok ? 'success' : 'error', ok ? tr('subscriptionBackfillDone', { count: created }) : tr('actionFailed', { reason: localizedError.value }))
+    return ok ? created : -1
   }
 
   async function updateSubscription(id: string, input: SubscriptionInput) {
     return run(async () => {
-      await api.patch<Subscription>(`/subscriptions/${id}`, input)
-      if (currentGroupId.value) await refreshGroup()
-      await refreshPersonal()
+      await withOfflineFallback(
+        async () => { await api.patch<Subscription>(`/subscriptions/${id}`, input); if (currentGroupId.value) await refreshGroup(); await refreshPersonal() },
+        async () => {
+          const inGroup = subscriptions.value.some(item => item.id === id)
+          const list = inGroup ? subscriptions : personalSubscriptions
+          list.value = list.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item)
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'subscription', op: 'update', scope: inGroup ? 'group' : 'personal', groupId: inGroup ? currentGroupId.value : '', targetId: id, payload: input })
+        },
+      )
     })
   }
 
   async function deleteSubscription(id: string) {
     await run(async () => {
-      await api.delete(`/subscriptions/${id}`)
-      if (currentGroupId.value) await refreshGroup()
-      await refreshPersonal()
+      await withOfflineFallback(
+        async () => { await api.delete(`/subscriptions/${id}`); if (currentGroupId.value) await refreshGroup(); await refreshPersonal() },
+        async () => {
+          const inGroup = subscriptions.value.some(item => item.id === id)
+          await localDelete('subscription', inGroup ? 'group' : 'personal', inGroup ? currentGroupId.value : '', id)
+          if (inGroup) subscriptions.value = subscriptions.value.filter(item => item.id !== id)
+          else personalSubscriptions.value = personalSubscriptions.value.filter(item => item.id !== id)
+        },
+      )
     })
   }
 
   async function addExpense(input: ExpenseInput) {
     if (!currentGroupId.value) return false
     return run(async () => {
-      await api.post<Expense>(`/groups/${currentGroupId.value}/expenses`, input)
-      await refreshGroup()
+      await withOfflineFallback(
+        async () => { await api.post<Expense>(`/groups/${currentGroupId.value}/expenses`, input); await refreshGroup() },
+        async () => {
+          const id = outbox.localId()
+          expenses.value = [localExpense(id, input, currentGroupId.value), ...expenses.value]
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'expense', op: 'create', scope: 'group', groupId: currentGroupId.value, targetId: id, payload: input })
+        },
+      )
     })
   }
 
   async function addPersonalExpense(input: ExpenseInput) {
-    return run(async () => { await api.post<Expense>('/expenses', input); await refreshPersonal() })
+    return run(async () => {
+      await withOfflineFallback(
+        async () => { await api.post<Expense>('/expenses', input); await refreshPersonal() },
+        async () => {
+          const id = outbox.localId()
+          personalExpenses.value = [localExpense(id, input), ...personalExpenses.value]
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'expense', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input })
+        },
+      )
+    })
   }
   async function addPersonalSubscription(input: SubscriptionInput) {
-    return run(async () => { await api.post<Subscription>('/subscriptions', input); await refreshPersonal() })
+    return run(async () => {
+      await withOfflineFallback(
+        async () => { await api.post<Subscription>('/subscriptions', input); await refreshPersonal() },
+        async () => {
+          const id = outbox.localId()
+          personalSubscriptions.value = [localSubscription(id, input), ...personalSubscriptions.value]
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'subscription', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input })
+        },
+      )
+    })
   }
   async function stopSubscription(id: string, endsOn: string) {
     await run(async () => { await api.post<Subscription>(`/subscriptions/${id}/stop`, { endsOn }); await refreshPersonal(); if (currentGroupId.value) await refreshGroup() })
@@ -378,23 +612,53 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function addSettlement(input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>) {
     if (!currentGroupId.value) return false
-    return run(async () => { await api.post<Settlement>(`/groups/${currentGroupId.value}/settlements`, input); await refreshGroup() }, 'settlements')
+    return run(async () => {
+      await withOfflineFallback(
+        async () => { await api.post<Settlement>(`/groups/${currentGroupId.value}/settlements`, input); await refreshGroup() },
+        async () => {
+          const id = outbox.localId()
+          settlements.value = [localSettlement(id, input, currentGroupId.value), ...settlements.value]
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'settlement', op: 'create', scope: 'group', groupId: currentGroupId.value, targetId: id, payload: input })
+        },
+      )
+    }, 'settlements')
   }
-  async function deleteSettlement(id: string) { await run(async () => { await api.delete(`/settlements/${id}`); await refreshGroup() }, 'settlements') }
+  async function deleteSettlement(id: string) {
+    await run(async () => {
+      await withOfflineFallback(
+        async () => { await api.delete(`/settlements/${id}`); await refreshGroup() },
+        async () => { await localDelete('settlement', 'group', currentGroupId.value, id); settlements.value = settlements.value.filter(item => item.id !== id) },
+      )
+    }, 'settlements')
+  }
 
   async function updateExpense(id: string, input: ExpenseInput) {
     return run(async () => {
-      await api.patch<Expense>(`/expenses/${id}`, input)
-      if (currentGroupId.value) await refreshGroup()
-      await refreshPersonal()
+      await withOfflineFallback(
+        async () => { await api.patch<Expense>(`/expenses/${id}`, input); if (currentGroupId.value) await refreshGroup(); await refreshPersonal() },
+        async () => {
+          const inGroup = expenses.value.some(item => item.id === id)
+          const list = inGroup ? expenses : personalExpenses
+          list.value = list.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item)
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'expense', op: 'update', scope: inGroup ? 'group' : 'personal', groupId: inGroup ? currentGroupId.value : '', targetId: id, payload: input })
+        },
+      )
     })
   }
 
   async function deleteExpense(id: string) {
     await run(async () => {
-      await api.delete(`/expenses/${id}`)
-      if (currentGroupId.value) await refreshGroup()
-      await refreshPersonal()
+      await withOfflineFallback(
+        async () => { await api.delete(`/expenses/${id}`); if (currentGroupId.value) await refreshGroup(); await refreshPersonal() },
+        async () => {
+          const inGroup = expenses.value.some(item => item.id === id)
+          await localDelete('expense', inGroup ? 'group' : 'personal', inGroup ? currentGroupId.value : '', id)
+          if (inGroup) expenses.value = expenses.value.filter(item => item.id !== id)
+          else personalExpenses.value = personalExpenses.value.filter(item => item.id !== id)
+        },
+      )
     })
   }
 
@@ -433,6 +697,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     error.value = ''
     errorCode.value = ''
     permissionDenied.value = false
+    outboxPending.value = 0
   }
 
   function isForbidden(value: unknown) {
@@ -443,7 +708,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
     subscriptions, expenses, settlements, groupRoles, ownershipTransfer, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
-    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
+    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
+    online, outboxPending, syncOutbox, hasSyncErrors,
   }
 })
