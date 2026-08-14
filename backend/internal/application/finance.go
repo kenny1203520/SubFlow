@@ -15,6 +15,29 @@ type BillingDatePage struct {
 	NextCursor string      `json:"nextCursor,omitempty"`
 }
 
+// SubscriptionPeriod is one billing period of a subscription with the price
+// that governs it already resolved, so the UI can show what each period cost
+// without re-implementing revision resolution client-side. Status mirrors the
+// occurrence record: "posted" once it has become an expense, "failed" when
+// posting could not produce one, and "pending" for periods not yet billed.
+type SubscriptionPeriod struct {
+	BillingAt       time.Time             `json:"billingAt"`
+	AmountMinor     int64                 `json:"amountMinor"`
+	Currency        domain.Currency       `json:"currency"`
+	BaseAmountMinor int64                 `json:"baseAmountMinor"`
+	BaseCurrency    domain.Currency       `json:"baseCurrency"`
+	PaidBy          string                `json:"paidBy"`
+	Splits          []domain.ExpenseSplit `json:"splits,omitempty"`
+	Status          string                `json:"status"`
+	ExpenseID       string                `json:"expenseId,omitempty"`
+	Error           string                `json:"error,omitempty"`
+}
+
+type SubscriptionPeriodPage struct {
+	Periods    []SubscriptionPeriod `json:"periods"`
+	NextCursor string               `json:"nextCursor,omitempty"`
+}
+
 // maxBillingDatesPerWindow bounds how many billing dates one query may
 // materialise. It applies to the requested window rather than to the whole
 // schedule, so an old subscription stays as cheap to query as a new one.
@@ -82,13 +105,18 @@ func billingDatesBetween(start time.Time, cycle domain.BillingCycle, interval in
 	return dates, nil
 }
 
-func subscriptionHasPostedOccurrence(subscription domain.Subscription, billingAt time.Time) bool {
+func subscriptionOccurrenceAt(subscription domain.Subscription, billingAt time.Time) (domain.SubscriptionOccurrence, bool) {
 	for _, occurrence := range subscription.Occurrences {
-		if occurrence.BillingAt.Equal(billingAt) && occurrence.ExpenseID != "" {
-			return true
+		if occurrence.BillingAt.Equal(billingAt) {
+			return occurrence, true
 		}
 	}
-	return false
+	return domain.SubscriptionOccurrence{}, false
+}
+
+func subscriptionHasPostedOccurrence(subscription domain.Subscription, billingAt time.Time) bool {
+	occurrence, ok := subscriptionOccurrenceAt(subscription, billingAt)
+	return ok && occurrence.ExpenseID != ""
 }
 
 func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt time.Time) domain.Expense {
@@ -528,6 +556,79 @@ func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, l
 	result := BillingDatePage{Dates: dates}
 	if len(dates) == limit {
 		result.NextCursor = dates[len(dates)-1].Format("2006-01-02")
+	}
+	return result, nil
+}
+
+// SubscriptionPeriods walks a subscription's schedule from the start and
+// reports what each period costs, which revision-scoped price changes make
+// impossible to read off the subscription's current fields alone. It also
+// surfaces occurrences that failed to post, which nothing else exposes to the
+// user. Resolution reuses subscriptionExpenseOccurrence so these figures match
+// the dashboard's, and a posted period reports its real expense so a directly
+// edited charge isn't misreported as the revision's price.
+func (s *Service) SubscriptionPeriods(ctx context.Context, userID, id, cursor string, limit int) (SubscriptionPeriodPage, error) {
+	subscription, err := s.Stores.Subscriptions.Get(ctx, id)
+	if err != nil {
+		return SubscriptionPeriodPage{}, err
+	}
+	if subscription.GroupID == "" {
+		if subscription.OwnerID != userID {
+			return SubscriptionPeriodPage{}, domain.ErrForbidden
+		}
+	} else if err = s.role(ctx, subscription.GroupID, userID, false); err != nil {
+		return SubscriptionPeriodPage{}, err
+	}
+	if limit < 1 || limit > 100 {
+		limit = 24
+	}
+	s.hydrateSubscription(ctx, subscription)
+
+	location := s.accountingLocation(ctx, userID, subscription.GroupID)
+	from := subscription.StartsOn.In(location)
+	if cursor != "" {
+		// Nanosecond precision rather than a date, so hourly cadences that
+		// bill many times a day don't skip the rest of the day's periods.
+		value, parseErr := time.Parse(time.RFC3339Nano, cursor)
+		if parseErr != nil {
+			return SubscriptionPeriodPage{}, domain.ErrInvalid
+		}
+		from = value.In(location).Add(time.Nanosecond)
+	}
+	dates, err := domain.BillingDatesWithInterval(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, from, limit)
+	if err != nil {
+		return SubscriptionPeriodPage{}, err
+	}
+
+	periods := make([]SubscriptionPeriod, 0, len(dates))
+	for _, date := range dates {
+		if subscription.EndsOn != nil && date.After(*subscription.EndsOn) {
+			break
+		}
+		resolved := subscriptionExpenseOccurrence(*subscription, date)
+		period := SubscriptionPeriod{
+			BillingAt: date, Status: "pending",
+			AmountMinor: resolved.AmountMinor, Currency: resolved.Currency,
+			BaseAmountMinor: resolved.BaseAmountMinor, BaseCurrency: resolved.BaseCurrency,
+			PaidBy: resolved.PaidBy, Splits: resolved.Splits,
+		}
+		if occurrence, ok := subscriptionOccurrenceAt(*subscription, date); ok {
+			period.Status, period.ExpenseID, period.Error = occurrence.Status, occurrence.ExpenseID, occurrence.Error
+			if occurrence.ExpenseID != "" {
+				// Splits live in their own collection, so the expense has to be
+				// hydrated before its breakdown is readable.
+				if expense, expenseErr := s.Stores.Expenses.Get(ctx, occurrence.ExpenseID); expenseErr == nil && s.hydrateExpense(ctx, expense) == nil {
+					period.AmountMinor, period.Currency = expense.AmountMinor, expense.Currency
+					period.BaseAmountMinor, period.BaseCurrency = expense.BaseAmountMinor, expense.BaseCurrency
+					period.PaidBy, period.Splits = expense.PaidBy, expense.Splits
+				}
+			}
+		}
+		periods = append(periods, period)
+	}
+	result := SubscriptionPeriodPage{Periods: periods}
+	if len(periods) == limit {
+		result.NextCursor = periods[len(periods)-1].BillingAt.Format(time.RFC3339Nano)
 	}
 	return result, nil
 }
