@@ -45,6 +45,27 @@ func TestMonthlyEquivalent(t *testing.T) {
 	}
 }
 
+// Quarterly and yearly used to truncate their division while every other
+// cadence rounded, so the monthly equivalent came out a unit light on amounts
+// that don't divide evenly.
+func TestMonthlyEquivalentRoundsQuarterlyAndYearly(t *testing.T) {
+	tests := []struct {
+		cycle  BillingCycle
+		amount int64
+		want   int64
+	}{
+		{BillingYearly, 11000, 917},   // 916.67 rounds up, used to truncate to 916
+		{BillingQuarterly, 1000, 333}, // 333.33 rounds down
+		{BillingQuarterly, 1100, 367}, // 366.67 rounds up, used to truncate to 366
+	}
+	for _, tt := range tests {
+		got, err := MonthlyEquivalent(tt.amount, tt.cycle)
+		if err != nil || got != tt.want {
+			t.Fatalf("cycle %s amount %d: got %d, want %d (err %v)", tt.cycle, tt.amount, got, tt.want, err)
+		}
+	}
+}
+
 func TestFlexibleSubscriptionCycles(t *testing.T) {
 	start := time.Date(2026, time.August, 10, 9, 30, 0, 0, time.UTC)
 	cases := []struct {
