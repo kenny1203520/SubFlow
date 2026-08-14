@@ -633,6 +633,98 @@ func (s *Service) SubscriptionPeriods(ctx context.Context, userID, id, cursor st
 	return result, nil
 }
 
+// maxBackfillPeriods bounds one BackfillSubscriptionPeriods call: an hourly
+// subscription backdated a couple of years would otherwise generate tens of
+// thousands of real expense rows in one request.
+const maxBackfillPeriods = 600
+
+// BackfillSubscriptionPeriods posts real Expense + occurrence records for
+// every period between a group subscription's StartsOn and its current
+// NextBilling that never posted — which is every one of them, since
+// CreateSubscription always initializes NextBilling to the first date on or
+// after "now" (see Service.CreateSubscription), so a backdated StartsOn used
+// to migrate an existing subscription into SubFlow otherwise never gets real
+// records for its past periods: they only ever appear as on-the-fly
+// synthesized data in the dashboard and SubscriptionPeriods, invisible to the
+// expense list and the ledger export. Reuses postOccurrenceAt so a
+// backfilled period is priced and split exactly like a regularly-posted one,
+// and is idempotent against periods a previous backfill (or the cron) has
+// already posted. Returns the number of periods newly created.
+func (s *Service) BackfillSubscriptionPeriods(ctx context.Context, userID, id string) (int, error) {
+	subscription, err := s.Stores.Subscriptions.Get(ctx, id)
+	if err != nil {
+		return 0, err
+	}
+	if subscription.GroupID == "" {
+		// Personal subscriptions never post real occurrences at all (see
+		// postSubscriptionOccurrence); there is nothing to backfill.
+		return 0, domain.ErrInvalid
+	}
+	if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write"); err != nil {
+		s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure")
+		return 0, err
+	}
+	location := s.accountingLocation(ctx, userID, subscription.GroupID)
+	startsOn := subscription.StartsOn.In(location)
+	dates, err := billingDatesBetween(startsOn, subscription.BillingCycle, subscription.BillingInterval, startsOn, subscription.NextBilling)
+	if err != nil {
+		return 0, err
+	}
+	if len(dates) > maxBackfillPeriods {
+		s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure", encodeAuditSummary(map[string]any{"periods": len(dates), "limit": maxBackfillPeriods}, nil))
+		return 0, domain.ErrInvalid
+	}
+	if len(dates) == 0 {
+		return 0, nil
+	}
+	if err = s.ensureBaseRevisionCovers(ctx, subscription, startsOn); err != nil {
+		return 0, err
+	}
+	created := 0
+	for _, date := range dates {
+		if subscription.EndsOn != nil && date.After(*subscription.EndsOn) {
+			break
+		}
+		ok, postErr := s.postOccurrenceAt(ctx, subscription, date, userID)
+		if postErr != nil {
+			return created, postErr
+		}
+		if ok {
+			created++
+		}
+	}
+	s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"created": created, "starts_on": startsOn.Format("2006-01-02"), "through": subscription.NextBilling.Format("2006-01-02")}, nil))
+	return created, nil
+}
+
+// ensureBaseRevisionCovers makes sure some revision resolves for "at" before
+// a backfill starts posting historical periods. A freshly created
+// subscription's only revision is effective from NextBilling onward (see
+// Service.CreateSubscription), so a backdated StartsOn otherwise has no
+// revision covering any of the periods a backfill needs to price —
+// postOccurrenceAt would then hard-fail every one of them, since unlike the
+// display-only fallback in subscriptionExpenseOccurrence, a real posted
+// occurrence cannot leave its revision relation empty (the schema requires
+// it). Rather than inventing an ephemeral revision with no row to point at,
+// this persists one real "future"-scoped revision snapshotting the
+// subscription's current settings effective at "at" — exactly what the
+// display fallback already implies to the user before backfilling, so
+// subsequent reads resolve consistently instead of relying on a per-call
+// synthetic. A no-op once any revision already covers "at" (including a
+// re-run, or a subscription that already had a historical edit reaching back
+// that far).
+func (s *Service) ensureBaseRevisionCovers(ctx context.Context, subscription *domain.Subscription, at time.Time) error {
+	revisions, err := s.Stores.Subscriptions.ListRevisions(ctx, subscription.ID)
+	if err != nil {
+		return err
+	}
+	if _, ok := subscriptionRevisionAt(revisions, at); ok {
+		return nil
+	}
+	base := subscriptionRevision(*subscription, "future", at, nil)
+	return s.Stores.Subscriptions.CreateRevision(ctx, &base)
+}
+
 func (s *Service) ListSettlements(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Settlement], error) {
 	if err := s.role(ctx, groupID, userID, false); err != nil {
 		return ports.Page[domain.Settlement]{}, err
