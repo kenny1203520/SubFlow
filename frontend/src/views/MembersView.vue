@@ -119,7 +119,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                 <p class="field-help">{{tr('addTempMemberDesc')}}</p>
                 <form class="form-card" @submit.prevent="addTempMember">
                     <label>{{tr('displayName')}}<input v-model="tempMemberName" required :placeholder="tr('addTempMember')"></label>
-                    <button class="primary" :disabled="workspace.loading">{{tr('addTempMember')}}</button>
+                    <button class="primary" :disabled="workspace.loading||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')">{{tr('addTempMember')}}</button>
                 </form>
             </div>
             <div v-if="canManageMembers">
@@ -127,7 +127,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                     <h2>{{tr('inviteMember')}}</h2>
                     <div v-if="bindTarget" class="notice inline">{{tr('bindingInviteNotice',{name:bindTarget.label})}} <button type="button" @click="bindTarget=undefined">{{tr('cancel')}}</button></div>
                     <label>Email<input v-model="email" type="email" required placeholder="friend@example.com"></label>
-                    <button class="primary" :disabled="workspace.loading">{{tr('sendInvitation')}}</button>
+                    <button class="primary" :disabled="workspace.loading||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')">{{tr('sendInvitation')}}</button>
                 </form>
                 <div class="card invitations">
                     <div class="audit-list-heading">

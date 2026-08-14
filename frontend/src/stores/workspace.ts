@@ -59,6 +59,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const currentGroup = computed(() => groups.value.find(value => value.id === currentGroupId.value))
   const currentMembership = computed(() => members.value.find(value => value.userId === auth.record?.id))
   const isOwner = computed(() => currentMembership.value?.role === 'owner')
+  // Drives the topbar sync button's danger styling — a record stuck with a
+  // failed sync needs the same visibility across any scope the user happens
+  // to be viewing, not just the one it lives in.
+  const hasSyncErrors = computed(() => [expenses, subscriptions, settlements, personalExpenses, personalSubscriptions].some(list => list.value.some(item => item.syncError)))
   let sse: SSEClient | undefined
   let sseStarted = false
   let loadedGroupId = ''
@@ -706,6 +710,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
-    online, outboxPending, syncOutbox,
+    online, outboxPending, syncOutbox, hasSyncErrors,
   }
 })

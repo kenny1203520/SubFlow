@@ -108,7 +108,12 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
     <main class="main">
       <header class="topbar">
         <div><small class="topbar-label">SubFlow</small><strong>{{ tr('personalGroupFinance') }}</strong></div>
-        <div class="topbar-actions"><span v-if="workspace.loading" class="sync"><i></i>{{ tr('syncing') }}</span><NotificationBell /><ThemeSwitcher /><LanguageSwitcher /></div>
+        <div class="topbar-actions">
+          <span v-if="workspace.loading" class="sync"><i></i>{{ tr('syncing') }}</span>
+          <span v-if="!workspace.online" class="offline-indicator" :title="tr('offlineIndicatorHelp')">⚠ {{ tr('offlineMode') }}</span>
+          <button v-else-if="workspace.outboxPending>0" type="button" class="sync-pending" :class="{'has-error':workspace.hasSyncErrors}" :title="tr('pendingSyncHelp')" @click="workspace.syncOutbox()">↻ {{ tr('pendingSyncCount',{count:workspace.outboxPending}) }}</button>
+          <NotificationBell /><ThemeSwitcher /><LanguageSwitcher />
+        </div>
       </header>
       <div v-if="workspace.permissionDenied" class="notice danger">{{ tr('forbidden') }}</div>
       <div v-else-if="workspace.error" class="notice">{{ workspace.localizedError }} <button @click="workspace.retryLast">{{ tr('retry') }}</button></div>
