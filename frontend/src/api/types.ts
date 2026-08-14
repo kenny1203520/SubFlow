@@ -30,6 +30,8 @@ export interface CurrencyDashboard { currency:Currency;cashOutflowMinor:number;p
 export interface MemberBalance { userId:string;amountMinor:number }
 export interface DashboardSummary { month?:string;monthlySubscriptionMinor:number;monthExpenseMinor:number;activeSubscriptions:number;upcoming:Subscription[];currencies?:CurrencyDashboard[];balances?:MemberBalance[];reportingCurrency?:Currency;originalCurrencies?:CurrencyDashboard[] }
 export interface BillingDates { dates:string[];nextCursor?:string }
+export interface SubscriptionPeriod { billingAt:string;amountMinor:number;currency:Currency;baseAmountMinor:number;baseCurrency:Currency;paidBy:string;splits?:ExpenseSplit[];status:'pending'|'posted'|'failed';expenseId?:string;error?:string }
+export interface SubscriptionPeriods { periods:SubscriptionPeriod[];nextCursor?:string }
 export interface SubFlowEvent { type:string;groupId:string;resource:string;resourceId:string;occurredAt:string }
 export interface Meta { page:number;perPage:number;totalItems:number;totalPages:number }
 export interface Envelope<T> { data:T;meta?:Meta }

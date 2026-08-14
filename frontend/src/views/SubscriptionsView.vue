@@ -14,8 +14,8 @@ import PayerSelect from '../components/PayerSelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
-import type { BillingCycle, ExpenseSplit, SplitMode, Subscription, SubscriptionStatus } from '../api/types'
-import { majorToMinor, minorToInput } from '../api/money'
+import type { BillingCycle, ExpenseSplit, SplitMode, Subscription, SubscriptionPeriod, SubscriptionStatus } from '../api/types'
+import { amountStep, majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
 import { timezoneLabel } from '../timezone'
 import { categoryGlyph, categoryLabel } from '../category'
@@ -31,6 +31,7 @@ const selectableMembers = computed(() => workspace.members.filter(member => !(me
 const personal = computed(() => route.name === 'personal-subscriptions')
 const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
 const drawer = ref(false), editingId = ref(''), pendingDelete = ref<Subscription>(), sourceItem = ref<Subscription>(), stopping = ref<Subscription>()
+const periodsFor = ref<Subscription>(), periods = ref<SubscriptionPeriod[]>([]), periodsCursor = ref(''), periodsLoading = ref(false), periodsError = ref('')
 const dates = ref<string[]>([]), cursor = ref(''), chosenDate = ref(''), datesLoading = ref(false), formError = ref(''), rateValid = ref(true)
 const revisionDates = ref<string[]>([]), revisionCursor = ref(''), revisionDatesLoading = ref(false)
 const form = reactive({ name:'', category:'', categoryId:'', amount:'', currency:'TWD', rateMode:'automatic' as 'automatic'|'manual', exchangeRate:'', paidBy:'', splitMode:'equal' as SplitMode, participants:{} as Record<string,boolean>, values:{} as Record<string,string>, revisionScope:'future' as 'future'|'one_off', effectiveBillingAt:'', endBillingAt:'', billingCycle:'monthly' as BillingCycle, billingInterval:1, startsOn:todayInput(viewerTimezone()), status:'active' as SubscriptionStatus, notes:'' })
@@ -113,6 +114,24 @@ function recordCategory(item: Subscription) { return `${categoryGlyph(item.categ
 function itemGroup(item: Subscription) { return workspace.groups.find(group => group.id === item.groupId) }
 function viewerDate(value: string) { return formatDate(value,{dateStyle:'medium',timeZone:viewerTimezone()}) }
 function originalTime(item: Subscription,value=item.nextBilling) { const group=itemGroup(item); return group?tr('originalTimezone',{date:formatDate(value,{dateStyle:'medium',timeZone:group.timezone}),timezone:timezoneLabel(group.timezone,value)}):'' }
+// In a shared group the headline figure is the whole charge, which isn't what
+// the viewer actually pays; surface their split alongside it.
+function viewerShare(splits: ExpenseSplit[] | undefined) { return splits?.find(split => split.userId === auth.record?.id)?.amountMinor }
+function subscriptionShare(item: Subscription) { return item.groupId ? viewerShare(item.splits) : undefined }
+function hasFailedPeriod(item: Subscription) { return item.occurrences?.some(occurrence => occurrence.status === 'failed') ?? false }
+async function loadPeriods(more = false) {
+  if (!periodsFor.value) return
+  periodsLoading.value = true
+  periodsError.value = ''
+  try {
+    const result = await workspace.subscriptionPeriods(periodsFor.value.id, more ? periodsCursor.value : '')
+    periods.value = more ? [...periods.value, ...result.periods] : result.periods
+    periodsCursor.value = result.nextCursor || ''
+  } catch { periodsError.value = workspace.localizedError || tr('requestFailed') } finally { periodsLoading.value = false }
+}
+async function openPeriods(item: Subscription) { periodsFor.value = item; periods.value = []; periodsCursor.value = ''; await loadPeriods() }
+function periodStatusLabel(status: SubscriptionPeriod['status']) { return tr(status === 'posted' ? 'periodPosted' : status === 'failed' ? 'periodFailed' : 'periodPending') }
+function memberName(userId: string) { const member = workspace.members.find(value => value.userId === userId); return member?.user?.name || member?.user?.email || userId }
 watch(()=>form.billingCycle, cycle=>{ if(cycle==='every_n_hours'&&form.startsOn.length===10) form.startsOn=`${form.startsOn}T00:00`; if(cycle!=='every_n_hours'&&form.startsOn.length>10) form.startsOn=form.startsOn.slice(0,10); if(!['every_n_days','every_n_weeks','every_n_hours'].includes(cycle)) form.billingInterval=1 })
 onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
 </script>
@@ -129,9 +148,9 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
         <article v-for="item in list" :key="item.id" class="data-table-row">
           <div class="item-cell"><span class="service-icon">{{item.name.slice(0,1)}}</span><span><strong>{{item.name}}</strong><small>{{recordCategory(item)}}</small></span></div>
           <span><button class="source-badge" :class="{shared:item.groupId}" @click="sourceItem=item">{{itemGroup(item)?.name||tr('privateRecord')}}</button></span>
-          <span class="timezone-date"><strong>{{viewerDate(item.nextBilling)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small></span><span>{{cycleLabel(item)}}</span><span class="pill">{{tr(statusKey(item))}}</span>
-          <span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span>
-          <span class="row-actions"><button v-if="item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span>
+          <span class="timezone-date"><strong>{{viewerDate(item.nextBilling)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small><small v-if="hasFailedPeriod(item)" class="danger-text">⚠ {{tr('periodHasFailures')}}</small></span><span>{{cycleLabel(item)}}</span><span class="pill">{{tr(statusKey(item))}}</span>
+          <span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><small>{{tr('currentPeriodPrice')}}</small><small v-if="subscriptionShare(item)!==undefined">{{tr('personalShare')}}: <MoneyValue :amount="subscriptionShare(item)!" :currency="item.currency"/></small><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span>
+          <span class="row-actions"><button v-if="item.groupId" class="ghost" @click="openPeriods(item)">{{tr('periodHistory')}}</button><button v-if="item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span>
         </article>
       </div>
       <EmptyState v-else :title="tr('noSubscriptions')" :description="tr('noSubscriptionsDesc')"/>
@@ -139,12 +158,33 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
     <AppDrawer :open="drawer" :title="tr(editingId?'editSubscription':'createSubscription')" @close="drawer=false"><form class="form-card ledger-form" @submit.prevent="submit">
       <div v-if="formError" class="notice danger inline">{{formError}}</div><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div><div v-if="sourceGroup||(!personal&&workspace.currentGroup)" class="timezone-notice">{{tr('yourTimezone',{timezone:timezoneLabel(viewerTimezone())})}}<br>{{tr('groupTimezoneValue',{timezone:timezoneLabel((sourceGroup||workspace.currentGroup)?.timezone||'UTC')})}}</div>
       <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('name')}}</strong></div><div class="ledger-form-grid"><label class="ledger-wide">{{tr('name')}}<input v-model="form.name" required :placeholder="tr('namePlaceholder')"></label><label class="ledger-wide">{{tr('category')}}<CategorySelect v-model="form.categoryId" :categories="workspace.categories" @create="addCategory"/></label></div></section>
-      <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('amount')}} · {{tr('currency')}}</strong></div><div class="ledger-form-grid"><label>{{tr('amount')}}<input v-model="form.amount" type="number" min="0" step="0.01" required></label><label>{{tr('currency')}}<CurrencySelect v-model="form.currency" :currencies="workspace.currencies"/></label><label v-if="!personal">{{tr('payer')}}<PayerSelect v-model="form.paidBy" :members="selectableMembers" :self-id="auth.record?.id"/></label></div></section>
+      <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('amount')}} · {{tr('currency')}}</strong></div><div class="ledger-form-grid"><label>{{tr('amount')}}<input v-model="form.amount" type="number" min="0" :step="amountStep(form.currency)" required></label><label>{{tr('currency')}}<CurrencySelect v-model="form.currency" :currencies="workspace.currencies"/></label><label v-if="!personal">{{tr('payer')}}<PayerSelect v-model="form.paidBy" :members="selectableMembers" :self-id="auth.record?.id"/></label></div></section>
       <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('exchangeRate')}}</strong></div><div class="ledger-form-grid"><label>{{tr('exchangeRate')}}<select v-model="form.rateMode" :disabled="form.currency===reportingCurrency"><option value="automatic">{{tr('automaticRate')}}</option><option value="manual">{{tr('manualRate')}}</option></select></label><label v-if="form.rateMode==='manual'&&form.currency!==reportingCurrency">{{tr('manualRate')}}<input v-model="form.exchangeRate" inputmode="decimal" required></label><div v-else class="ledger-rate-placeholder"></div><ConversionPreview class="ledger-wide" :from="form.currency" :to="reportingCurrency" :amount="form.amount" :date="form.startsOn.slice(0,10)" :mode="form.rateMode" :manual-rate="form.exchangeRate" @validity="rateValid=$event"/></div></section>
-      <section v-if="!personal||editing?.groupId" class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('splitMode')}}</strong></div><label>{{tr('splitMode')}}<select v-model="form.splitMode"><option value="equal">{{tr('splitEqual')}}</option><option value="amount">{{tr('splitAmount')}}</option><option value="percentage">{{tr('splitPercentage')}}</option></select></label><fieldset class="split-editor"><legend>{{tr('participants')}}</legend><label v-for="member in selectableMembers" :key="member.userId" class="split-member"><input v-model="form.participants[member.userId]" type="checkbox"><span>{{member.user?.name||member.user?.email}}</span><input v-if="form.participants[member.userId]&&form.splitMode!=='equal'" v-model="form.values[member.userId]" type="number" min="0" step="0.01" :aria-label="member.user?.name"></label><p :class="splitValid?'success':'form-error'">{{splitValid?tr('splitValid'):tr(form.splitMode==='percentage'?'splitInvalidPercentage':'splitInvalidAmount')}}</p></fieldset></section>
+      <section v-if="!personal||editing?.groupId" class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('splitMode')}}</strong></div><label>{{tr('splitMode')}}<select v-model="form.splitMode"><option value="equal">{{tr('splitEqual')}}</option><option value="amount">{{tr('splitAmount')}}</option><option value="percentage">{{tr('splitPercentage')}}</option></select></label><fieldset class="split-editor"><legend>{{tr('participants')}}</legend><label v-for="member in selectableMembers" :key="member.userId" class="split-member"><input v-model="form.participants[member.userId]" type="checkbox"><span>{{member.user?.name||member.user?.email}}</span><input v-if="form.participants[member.userId]&&form.splitMode!=='equal'" v-model="form.values[member.userId]" type="number" min="0" :step="form.splitMode==='percentage'?'0.01':amountStep(form.currency)" :aria-label="member.user?.name"></label><p :class="splitValid?'success':'form-error'">{{splitValid?tr('splitValid'):tr(form.splitMode==='percentage'?'splitInvalidPercentage':'splitInvalidAmount')}}</p></fieldset></section>
       <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('cycle')}}</strong></div><div class="ledger-form-grid"><BaseCombobox v-model="form.billingCycle" :options="cycleOptions" :label="tr('cycle')" :allow-create="false"/><label v-if="needsInterval">{{tr('billingInterval')}}<input v-model.number="form.billingInterval" type="number" min="1" max="8760" required></label><label>{{tr('firstBilling')}}<input v-model="form.startsOn" :type="hourlyCycle?'datetime-local':'date'" required @change="startsOnTouched=true"></label><label>{{tr('status')}}<select v-model="form.status"><option value="active">{{tr('active')}}</option><option value="paused">{{tr('paused')}}</option><option value="cancelled">{{tr('cancelled')}}</option></select></label></div></section><section v-if="editing?.groupId" class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('subscriptionChangeScope')}}</strong></div><div class="ledger-form-grid"><BaseCombobox v-model="scopeChoice" :options="scopeOptions" :label="tr('subscriptionChangeScope')" :allow-create="false" :help="scopeHelp"/><BaseCombobox v-model="form.effectiveBillingAt" :options="revisionDateOptions" :label="tr('effectiveBillingDate')" :allow-create="false" :disabled="revisionDatesLoading"/><BaseCombobox v-if="scopeChoice==='bounded'" v-model="form.endBillingAt" :options="endBillingDateOptions" :label="tr('endBillingDate')" :allow-create="false" :disabled="revisionDatesLoading"/></div><button v-if="revisionCursor" type="button" class="ghost" :disabled="revisionDatesLoading" @click="editing&&loadRevisionDates(editing,true)">{{tr('loadMore')}}</button></section><section class="ledger-form-section"><label>{{tr('notes')}}<textarea v-model="form.notes" rows="3"></textarea></label></section><div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="drawer=false">{{tr('cancel')}}</button><button class="primary" :disabled="workspace.loading||!rateValid||!splitValid||(!!editing?.groupId&&!form.effectiveBillingAt)||(scopeChoice==='bounded'&&!form.endBillingAt)">{{tr(editingId?'saveChanges':'createSubscription')}}</button></div>
     </form></AppDrawer>
+    <AppDrawer :open="!!periodsFor" :title="tr('periodHistory')" @close="periodsFor=undefined">
+      <p class="field-help">{{tr('periodHistoryDesc')}}</p>
+      <div v-if="periodsError" class="notice danger inline">{{periodsError}}</div>
+      <div v-if="periods.length" class="data-list">
+        <article v-for="period in periods" :key="period.billingAt" class="data-row" :class="{'period-failed':period.status==='failed'}">
+          <div class="grow">
+            <strong>{{viewerDate(period.billingAt)}}</strong>
+            <small>{{periodStatusLabel(period.status)}}<template v-if="period.status==='failed'&&period.error"> · {{period.error}}</template></small>
+            <small v-if="period.splits?.length" class="period-splits"><span v-for="split in period.splits" :key="split.userId">{{memberName(split.userId)}} <MoneyValue :amount="split.amountMinor" :currency="period.currency"/></span></small>
+          </div>
+          <MoneyValue :amount="period.amountMinor" :currency="period.currency"/>
+        </article>
+      </div>
+      <EmptyState v-else-if="!periodsLoading" :title="tr('noPeriods')" :description="tr('periodHistoryDesc')"/>
+      <button v-if="periodsCursor" type="button" class="ghost wide" :disabled="periodsLoading" @click="loadPeriods(true)">{{tr('loadMorePeriods')}}</button>
+    </AppDrawer>
     <Teleport to="body"><div v-if="stopping" class="modal-backdrop" @click.self="stopping=undefined"><section class="billing-dialog" role="dialog" aria-modal="true" :aria-label="tr('stopSubscription')"><header><div><h2>{{tr('stopSubscription')}}</h2><p>{{stopping.name}} · {{tr('chooseFinalBilling')}}</p></div><button class="icon-button" :aria-label="tr('close')" @click="stopping=undefined">×</button></header><div v-if="dates.length" class="billing-dates"><label v-for="date in dates" :key="date" :class="{selected:chosenDate===date}"><input v-model="chosenDate" type="radio" :value="date"><span><strong>{{viewerDate(date)}}</strong><small>{{tr('finalBilling')}}</small><small v-if="stopping.groupId">{{originalTime(stopping,date)}}</small></span></label></div><EmptyState v-else :title="tr('noBillingDates')" :description="tr('subscriptionDesc')"/><button v-if="cursor" class="ghost wide" :disabled="datesLoading" @click="loadDates(true)">{{tr('loadMore')}}</button><div class="form-actions"><button class="ghost" @click="stopping=undefined">{{tr('cancel')}}</button><button class="primary" :disabled="!chosenDate" @click="confirmStop">{{tr('confirm')}}</button></div></section></div></Teleport>
     <SourceDialog :open="!!sourceItem" kind="subscriptions" :group="sourceItem?itemGroup(sourceItem):undefined" :currency="sourceItem?.currency||'TWD'" @close="sourceItem=undefined"/><ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('deleteSubscriptionConfirm',{name:pendingDelete.name}):''" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
   </section>
 </template>
+<style scoped>
+.period-failed{background:color-mix(in srgb,var(--danger) 6%,transparent)}
+.period-splits{display:flex;flex-wrap:wrap;gap:4px 10px}
+.period-splits>span{white-space:nowrap}
+</style>
