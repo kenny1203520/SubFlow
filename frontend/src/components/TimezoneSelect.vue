@@ -18,7 +18,7 @@ function select(value: string, close: () => void) { emit('update:modelValue', va
 function focusSearch() { nextTick(() => searchInput.value?.focus()) }
 </script>
 <template>
-    <BaseDropdown v-model="open" class="timezone-select" :panel-label="t.timezone" @opened="focusSearch"><template
+    <BaseDropdown v-model="open" class="timezone-select" :panel-label="t.timezone" mobile-sheet @opened="focusSearch"><template
             #trigger="{ open: isOpen, toggle }"><button class="timezone-trigger" type="button" :aria-expanded="isOpen"
                 @click="toggle"><span>{{ label }}</span><svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m7 10 5 5 5-5" />
