@@ -96,6 +96,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/subscriptions/{id}/stop", a.stopSubscription).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}/stop", a.resumeSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/subscriptions/{id}/billing-dates", a.billingDates).Bind(bind)
+	e.Router.GET("/api/subflow/v1/subscriptions/{id}/periods", a.subscriptionPeriods).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}", a.deleteSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/expenses", a.listExpenses).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/expenses", a.createExpense).Bind(bind)
@@ -351,6 +352,14 @@ func (a *API) billingDates(e *core.RequestEvent) error {
 	}
 	includePast := e.Request.URL.Query().Get("includePast") == "true"
 	value, err := a.Service.BillingDates(e.Request.Context(), authID(e), e.Request.PathValue("id"), e.Request.URL.Query().Get("cursor"), limit, includePast)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) subscriptionPeriods(e *core.RequestEvent) error {
+	limit, _ := strconv.Atoi(e.Request.URL.Query().Get("limit"))
+	value, err := a.Service.SubscriptionPeriods(e.Request.Context(), authID(e), e.Request.PathValue("id"), e.Request.URL.Query().Get("cursor"), limit)
 	if err != nil {
 		return fail(e, err)
 	}
