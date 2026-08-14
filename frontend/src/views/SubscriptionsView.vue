@@ -14,6 +14,7 @@ import PayerSelect from '../components/PayerSelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
+import SyncBadge from '../components/SyncBadge.vue'
 import type { BillingCycle, ExpenseSplit, SplitMode, Subscription, SubscriptionPeriod, SubscriptionStatus } from '../api/types'
 import { amountStep, majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
@@ -30,6 +31,7 @@ function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat(
 const selectableMembers = computed(() => workspace.members.filter(member => !(member.user?.placeholder && member.user?.linkedUserId)))
 const personal = computed(() => route.name === 'personal-subscriptions')
 const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
+const hasUnsynced = computed(() => list.value.some(item => item.pendingSync || item.syncError))
 const drawer = ref(false), editingId = ref(''), pendingDelete = ref<Subscription>(), sourceItem = ref<Subscription>(), stopping = ref<Subscription>()
 const periodsFor = ref<Subscription>(), periods = ref<SubscriptionPeriod[]>([]), periodsCursor = ref(''), periodsLoading = ref(false), periodsError = ref('')
 const dates = ref<string[]>([]), cursor = ref(''), chosenDate = ref(''), datesLoading = ref(false), formError = ref(''), rateValid = ref(true)
@@ -164,7 +166,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
       <div v-else-if="list.length" class="data-table subscription-table">
         <div class="data-table-head"><span>{{tr('name')}}</span><span>{{tr('source')}}</span><span>{{tr('nextBilling')}}</span><span>{{tr('cycle')}}</span><span>{{tr('status')}}</span><span>{{tr('amount')}}</span><span></span></div>
         <article v-for="item in list" :key="item.id" class="data-table-row">
-          <div class="item-cell"><span class="service-icon">{{item.name.slice(0,1)}}</span><span><strong>{{item.name}}</strong><small>{{recordCategory(item)}}</small></span></div>
+          <div class="item-cell"><span class="service-icon">{{item.name.slice(0,1)}}</span><span><strong>{{item.name}}</strong><small>{{recordCategory(item)}}</small><SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError"/></span></div>
           <span><button class="source-badge" :class="{shared:item.groupId}" @click="sourceItem=item">{{itemGroup(item)?.name||tr('privateRecord')}}</button></span>
           <span class="timezone-date"><strong>{{viewerDate(item.nextBilling)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small><small v-if="hasFailedPeriod(item)" class="danger-text">⚠ {{tr('periodHasFailures')}}</small></span><span>{{cycleLabel(item)}}</span><span class="pill">{{tr(statusKey(item))}}</span>
           <span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><small>{{tr('currentPeriodPrice')}}</small><small v-if="subscriptionShare(item)!==undefined">{{tr('personalShare')}}: <MoneyValue :amount="subscriptionShare(item)!" :currency="item.currency"/></small><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span>
@@ -172,6 +174,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
         </article>
       </div>
       <EmptyState v-else :title="tr('noSubscriptions')" :description="tr('noSubscriptionsDesc')"/>
+      <p v-if="hasUnsynced" class="field-help sync-legend"><strong>{{tr('syncLegendTitle')}}</strong> · ☁︎/ {{tr('syncLegendPending')}} · ⚠ {{tr('syncLegendError')}}</p>
     </section>
     <AppDrawer :open="drawer" :title="tr(editingId?'editSubscription':'createSubscription')" @close="drawer=false"><form class="form-card ledger-form" @submit.prevent="submit">
       <div v-if="formError" class="notice danger inline">{{formError}}</div><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div><div v-if="sourceGroup||(!personal&&workspace.currentGroup)" class="timezone-notice">{{tr('yourTimezone',{timezone:timezoneLabel(viewerTimezone())})}}<br>{{tr('groupTimezoneValue',{timezone:timezoneLabel((sourceGroup||workspace.currentGroup)?.timezone||'UTC')})}}</div>
