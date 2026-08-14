@@ -14,6 +14,7 @@ import (
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
+	"github.com/pocketbase/pocketbase/tools/types"
 
 	"subflow/internal/domain"
 	"subflow/internal/ports"
@@ -481,7 +482,18 @@ func (r *Repository) CreateSubscriptionOccurrence(ctx context.Context, v *domain
 }
 
 func (r *Repository) GetSubscriptionOccurrence(ctx context.Context, subscriptionID string, billingAt time.Time) (*domain.SubscriptionOccurrence, error) {
-	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionSubscriptionOccurrences, "subscription={:subscription} && billing_at={:billingAt}", dbx.Params{"subscription": subscriptionID, "billingAt": billingAt})
+	// A raw time.Time bound through dbx serializes via the SQL driver's own
+	// default (RFC3339-ish), while every stored billing_at value was written
+	// through PocketBase's own DateField normalization (space-separated,
+	// millisecond-padded, see types.DefaultDateLayout) — the two textual
+	// forms never match, so an exact-equality filter would silently return
+	// no rows for a period that was in fact already posted. Wrapping in
+	// types.DateTime binds the same textual form used at write time.
+	value, err := types.ParseDateTime(billingAt)
+	if err != nil {
+		return nil, err
+	}
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionSubscriptionOccurrences, "subscription={:subscription} && billing_at={:billingAt}", dbx.Params{"subscription": subscriptionID, "billingAt": value})
 	if err != nil {
 		return nil, mapError(err)
 	}

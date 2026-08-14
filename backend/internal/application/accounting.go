@@ -148,24 +148,56 @@ func (s *Service) postSubscriptionOccurrence(ctx context.Context, subscription *
 	if subscription.GroupID == "" || domain.SubscriptionLifecycle(*subscription, s.Now()) == "ended" {
 		return nil
 	}
-	revisions, err := s.Stores.Subscriptions.ListRevisions(ctx, subscription.ID)
+	billingAt := subscription.NextBilling
+	created, err := s.postOccurrenceAt(ctx, subscription, billingAt, "")
 	if err != nil {
 		return err
 	}
-	revision, ok := subscriptionRevisionAt(revisions, subscription.NextBilling)
+	if !created {
+		// An occurrence for this date already existed, or its failure was
+		// just recorded — either way, the schedule must not advance past a
+		// period that isn't cleanly resolved (a failed one is retried by the
+		// next cron tick instead of being silently skipped).
+		return nil
+	}
+	next, nextErr := domain.NextBillingWithInterval(subscription.StartsOn, subscription.BillingCycle, subscription.BillingInterval, billingAt.Add(time.Nanosecond))
+	if nextErr != nil {
+		return nextErr
+	}
+	subscription.NextBilling = next
+	return s.Stores.Subscriptions.Update(ctx, subscription)
+}
+
+// postOccurrenceAt creates the expense + occurrence for one billing date
+// under whichever revision governs it, inside a transaction. It's shared by
+// the regular due-date posting above (which only ever targets the
+// subscription's current NextBilling) and Service.BackfillSubscriptionPeriods
+// (which targets historical dates before it), so both price and split a
+// period identically regardless of which path posts it. actorID is
+// attributed on the audit entry; the background cron passes "" since nothing
+// triggered it. Returns whether a *new* occurrence was created, so a caller
+// can safely re-run this for a date that already has one — idempotent by the
+// same (subscription, billing_at) uniqueness the due-date path already
+// relied on.
+func (s *Service) postOccurrenceAt(ctx context.Context, subscription *domain.Subscription, billingAt time.Time, actorID string) (bool, error) {
+	revisions, err := s.Stores.Subscriptions.ListRevisions(ctx, subscription.ID)
+	if err != nil {
+		return false, err
+	}
+	revision, ok := subscriptionRevisionAt(revisions, billingAt)
 	if !ok {
-		return s.recordSubscriptionOccurrenceFailure(ctx, subscription, "subscription_version_missing")
+		return false, s.recordOccurrenceFailure(ctx, subscription, billingAt, "subscription_version_missing")
 	}
 	members, err := s.memberIDs(ctx, subscription.GroupID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	splits, err := revisionSplits(revision, members)
 	if err != nil {
-		return s.recordSubscriptionOccurrenceFailure(ctx, subscription, "subscription_split_invalid")
+		return false, s.recordOccurrenceFailure(ctx, subscription, billingAt, "subscription_split_invalid")
 	}
-	billingAt := subscription.NextBilling
-	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+	created := false
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, billingAt); findErr == nil {
 			return nil
 		} else if !errors.Is(findErr, domain.ErrNotFound) {
@@ -191,17 +223,11 @@ func (s *Service) postSubscriptionOccurrence(ctx context.Context, subscription *
 		if createErr := s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence); createErr != nil {
 			return createErr
 		}
-		next, nextErr := domain.NextBillingWithInterval(subscription.StartsOn, subscription.BillingCycle, subscription.BillingInterval, billingAt.Add(time.Nanosecond))
-		if nextErr != nil {
-			return nextErr
-		}
-		subscription.NextBilling = next
-		if updateErr := s.Stores.Subscriptions.Update(tx, subscription); updateErr != nil {
-			return updateErr
-		}
-		s.audit(tx, "", subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "amount_minor": expense.AmountMinor, "expense_id": expense.ID}, nil))
+		s.audit(tx, actorID, subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "amount_minor": expense.AmountMinor, "expense_id": expense.ID}, nil))
+		created = true
 		return nil
 	})
+	return created, err
 }
 
 func subscriptionRevisionAt(values []domain.SubscriptionRevision, billingAt time.Time) (domain.SubscriptionRevision, bool) {
@@ -297,10 +323,14 @@ func occurrenceRegenerationSummary(before, after *domain.Expense, billingAt time
 	return encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "expense_id": after.ID}, changes)
 }
 
-func (s *Service) recordSubscriptionOccurrenceFailure(ctx context.Context, subscription *domain.Subscription, reason string) error {
-	occurrence := domain.SubscriptionOccurrence{SubscriptionID: subscription.ID, BillingAt: subscription.NextBilling, Status: "failed", Error: reason}
+// recordOccurrenceFailure persists a "failed" occurrence for one billing date
+// so it stays visible in the subscription's period history instead of
+// vanishing silently, whether that date is the current NextBilling (the
+// regular due-date path) or a historical date being backfilled.
+func (s *Service) recordOccurrenceFailure(ctx context.Context, subscription *domain.Subscription, billingAt time.Time, reason string) error {
+	occurrence := domain.SubscriptionOccurrence{SubscriptionID: subscription.ID, BillingAt: billingAt, Status: "failed", Error: reason}
 	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
-		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, subscription.NextBilling); findErr == nil {
+		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, billingAt); findErr == nil {
 			return nil
 		} else if !errors.Is(findErr, domain.ErrNotFound) {
 			return findErr
@@ -311,7 +341,7 @@ func (s *Service) recordSubscriptionOccurrenceFailure(ctx context.Context, subsc
 		if listErr != nil {
 			return listErr
 		}
-		if revision, ok := subscriptionRevisionAt(revisions, subscription.NextBilling); ok {
+		if revision, ok := subscriptionRevisionAt(revisions, billingAt); ok {
 			occurrence.RevisionID = revision.ID
 		}
 		if occurrence.RevisionID == "" {
@@ -321,7 +351,7 @@ func (s *Service) recordSubscriptionOccurrenceFailure(ctx context.Context, subsc
 	}); err != nil {
 		return err
 	}
-	s.audit(ctx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure", encodeAuditSummary(map[string]any{"billing_at": subscription.NextBilling.Format("2006-01-02"), "reason": reason}, nil))
+	s.audit(ctx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "reason": reason}, nil))
 	return nil
 }
 
