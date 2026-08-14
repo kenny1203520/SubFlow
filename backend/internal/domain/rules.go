@@ -199,9 +199,11 @@ func MonthlyEquivalentWithInterval(amount int64, cycle BillingCycle, interval in
 	case BillingMonthly:
 		return amount, nil
 	case BillingQuarterly:
-		return amount / 3, nil
+		// Rounded like every other cadence below rather than truncated, so a
+		// quarterly and a monthly plan of the same yearly cost don't drift.
+		return monthlyRatio(amount, 1, 3)
 	case BillingYearly:
-		return amount / 12, nil
+		return monthlyRatio(amount, 1, 12)
 	default:
 		return 0, ErrInvalid
 	}
