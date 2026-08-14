@@ -14,6 +14,7 @@ import PayerSelect from '../components/PayerSelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
+import SyncBadge from '../components/SyncBadge.vue'
 import type { BillingCycle, ExpenseSplit, SplitMode, Subscription, SubscriptionPeriod, SubscriptionStatus } from '../api/types'
 import { amountStep, majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
@@ -30,11 +31,12 @@ function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat(
 const selectableMembers = computed(() => workspace.members.filter(member => !(member.user?.placeholder && member.user?.linkedUserId)))
 const personal = computed(() => route.name === 'personal-subscriptions')
 const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
+const hasUnsynced = computed(() => list.value.some(item => item.pendingSync || item.syncError))
 const drawer = ref(false), editingId = ref(''), pendingDelete = ref<Subscription>(), sourceItem = ref<Subscription>(), stopping = ref<Subscription>()
 const periodsFor = ref<Subscription>(), periods = ref<SubscriptionPeriod[]>([]), periodsCursor = ref(''), periodsLoading = ref(false), periodsError = ref('')
 const dates = ref<string[]>([]), cursor = ref(''), chosenDate = ref(''), datesLoading = ref(false), formError = ref(''), rateValid = ref(true)
 const revisionDates = ref<string[]>([]), revisionCursor = ref(''), revisionDatesLoading = ref(false)
-const form = reactive({ name:'', category:'', categoryId:'', amount:'', currency:'TWD', rateMode:'automatic' as 'automatic'|'manual', exchangeRate:'', paidBy:'', splitMode:'equal' as SplitMode, participants:{} as Record<string,boolean>, values:{} as Record<string,string>, revisionScope:'future' as 'future'|'one_off', effectiveBillingAt:'', endBillingAt:'', billingCycle:'monthly' as BillingCycle, billingInterval:1, startsOn:todayInput(viewerTimezone()), status:'active' as SubscriptionStatus, notes:'' })
+const form = reactive({ name:'', category:'', categoryId:'', amount:'', currency:'TWD', rateMode:'automatic' as 'automatic'|'manual', exchangeRate:'', paidBy:'', splitMode:'equal' as SplitMode, participants:{} as Record<string,boolean>, values:{} as Record<string,string>, revisionScope:'future' as 'future'|'one_off', effectiveBillingAt:'', endBillingAt:'', billingCycle:'monthly' as BillingCycle, billingInterval:1, startsOn:todayInput(viewerTimezone()), status:'active' as SubscriptionStatus, notes:'', backfillOnCreate:false })
 // Set only when the user actually edits the date input, so an untouched
 // startsOn is omitted from the update payload and the backend keeps the
 // exact original instant instead of a same-day-but-shifted reconstruction.
@@ -47,6 +49,14 @@ const cycleOptions = computed(() => ([
 ]))
 const needsInterval = computed(() => ['every_n_days','every_n_weeks','every_n_hours'].includes(form.billingCycle))
 const hourlyCycle = computed(() => form.billingCycle === 'every_n_hours')
+// Only meaningful when creating a new group subscription with a startsOn
+// already in the past — that's the "migrating an existing ledger in" case
+// the backfill checkbox exists for. Compares calendar dates rather than
+// exact instants: "today" must never count as past just because the
+// current wall-clock time is later than midnight, or the checkbox would
+// show for every fresh subscription.
+const startsOnPast = computed(() => !!form.startsOn && form.startsOn.slice(0,10) < todayInput(viewerTimezone()))
+const showBackfillOption = computed(() => !personal.value && !editingId.value && startsOnPast.value)
 const editing = computed(() => list.value.find(item => item.id === editingId.value))
 const sourceGroup = computed(() => workspace.groups.find(group => group.id === editing.value?.groupId))
 const reportingCurrency = computed(() => sourceGroup.value?.currency || (!personal.value ? workspace.currentGroup?.currency : form.currency) || form.currency)
@@ -57,7 +67,7 @@ const subscriptionMinor = computed(() => majorToMinor(form.amount || '0', curren
 const splitValid = computed(() => personal.value && !editing.value?.groupId || form.splitMode === 'equal' ? participants.value.length > 0 : form.splitMode === 'amount' ? splitTotalMinor.value === subscriptionMinor.value : splitTotalMinor.value === 10000)
 watch(() => [form.currency, reportingCurrency.value], ([from, to]) => { if (from === to) { form.rateMode = 'automatic'; form.exchangeRate = '' } })
 
-function reset() { editingId.value=''; formError.value=''; rateValid.value=true; revisionDates.value=[]; revisionCursor.value=''; startsOnTouched.value=false; Object.assign(form,{name:'',category:'',categoryId:'',amount:'',currency:workspace.currentGroup?.currency||auth.record?.defaultCurrency||'TWD',rateMode:'automatic',exchangeRate:'',paidBy:auth.record?.id||'',splitMode:'equal',participants:{},values:{},revisionScope:'future',effectiveBillingAt:'',endBillingAt:'',billingCycle:'monthly',billingInterval:1,startsOn:todayInput(viewerTimezone()),status:'active',notes:''}) }
+function reset() { editingId.value=''; formError.value=''; rateValid.value=true; revisionDates.value=[]; revisionCursor.value=''; startsOnTouched.value=false; Object.assign(form,{name:'',category:'',categoryId:'',amount:'',currency:workspace.currentGroup?.currency||auth.record?.defaultCurrency||'TWD',rateMode:'automatic',exchangeRate:'',paidBy:auth.record?.id||'',splitMode:'equal',participants:{},values:{},revisionScope:'future',effectiveBillingAt:'',endBillingAt:'',billingCycle:'monthly',billingInterval:1,startsOn:todayInput(viewerTimezone()),status:'active',notes:'',backfillOnCreate:false}) }
 async function loadFormCategories() { try { await workspace.loadCategories(personal.value && !editing.value?.groupId ? 'personal' : 'group', editing.value?.groupId || workspace.currentGroupId) } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
 async function create() { reset(); if(!personal.value) selectableMembers.value.forEach(member=>{form.participants[member.userId]=true}); drawer.value = true; await loadFormCategories() }
 function startInput(item: Subscription) { const value=item.startsOn||item.nextBilling; return item.billingCycle==='every_n_hours' ? toDateTimeInput(value,viewerTimezone()) : toDateInput(value,viewerTimezone()) }
@@ -96,7 +106,7 @@ async function submit() {
   const effectiveBillingAt = form.effectiveBillingAt || undefined
   const endBillingAt = scopeChoice.value === 'bounded' && form.endBillingAt ? form.endBillingAt : undefined
   const input = { name:form.name, category:form.category||'', categoryId:form.categoryId, amountMinor:subscriptionMinor.value, currency:currency.value as Subscription['currency'], rateMode:form.rateMode, exchangeRate:form.exchangeRate, paidBy:form.paidBy||auth.record?.id||'', splitMode:form.splitMode, splits:personal.value&&!editing.value?.groupId?undefined:canonicalSplits(), revisionScope:form.revisionScope, effectiveBillingAt, endBillingAt, billingCycle:form.billingCycle, billingInterval:needsInterval.value ? Number(form.billingInterval) : 1, ...(!editingId.value||startsOnTouched.value?{startsOn}:{}), status:form.status, notes:form.notes }
-  const ok = editingId.value ? await workspace.updateSubscription(editingId.value,input) : personal.value ? await workspace.addPersonalSubscription(input) : await workspace.addSubscription(input)
+  const ok = editingId.value ? await workspace.updateSubscription(editingId.value,input) : personal.value ? await workspace.addPersonalSubscription(input) : await workspace.addSubscription(input, showBackfillOption.value && form.backfillOnCreate)
   if (!ok) { formError.value = workspace.localizedError || tr('requestFailed'); return }
   await workspace.refreshPersonal()
   drawer.value = false
@@ -131,6 +141,16 @@ async function loadPeriods(more = false) {
 }
 async function openPeriods(item: Subscription) { periodsFor.value = item; periods.value = []; periodsCursor.value = ''; await loadPeriods() }
 function periodStatusLabel(status: SubscriptionPeriod['status']) { return tr(status === 'posted' ? 'periodPosted' : status === 'failed' ? 'periodFailed' : 'periodPending') }
+// Only counts periods already loaded into the drawer, not the full history —
+// matches what the button label promises: pages beyond the current one are
+// picked up incrementally as the user loads more and re-triggers a backfill.
+const backfillablePeriods = computed(() => periods.value.filter(period => period.status === 'pending' && new Date(period.billingAt) < new Date()).length)
+const backfilling = ref(false)
+async function runBackfill() {
+  if (!periodsFor.value) return
+  backfilling.value = true
+  try { await workspace.backfillSubscription(periodsFor.value.id); periodsCursor.value = ''; await loadPeriods() } finally { backfilling.value = false }
+}
 function memberName(userId: string) { const member = workspace.members.find(value => value.userId === userId); return member?.user?.name || member?.user?.email || userId }
 watch(()=>form.billingCycle, cycle=>{ if(cycle==='every_n_hours'&&form.startsOn.length===10) form.startsOn=`${form.startsOn}T00:00`; if(cycle!=='every_n_hours'&&form.startsOn.length>10) form.startsOn=form.startsOn.slice(0,10); if(!['every_n_days','every_n_weeks','every_n_hours'].includes(cycle)) form.billingInterval=1 })
 onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
@@ -146,7 +166,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
       <div v-else-if="list.length" class="data-table subscription-table">
         <div class="data-table-head"><span>{{tr('name')}}</span><span>{{tr('source')}}</span><span>{{tr('nextBilling')}}</span><span>{{tr('cycle')}}</span><span>{{tr('status')}}</span><span>{{tr('amount')}}</span><span></span></div>
         <article v-for="item in list" :key="item.id" class="data-table-row">
-          <div class="item-cell"><span class="service-icon">{{item.name.slice(0,1)}}</span><span><strong>{{item.name}}</strong><small>{{recordCategory(item)}}</small></span></div>
+          <div class="item-cell"><span class="service-icon">{{item.name.slice(0,1)}}</span><span><strong>{{item.name}}</strong><small>{{recordCategory(item)}}</small><SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError"/></span></div>
           <span><button class="source-badge" :class="{shared:item.groupId}" @click="sourceItem=item">{{itemGroup(item)?.name||tr('privateRecord')}}</button></span>
           <span class="timezone-date"><strong>{{viewerDate(item.nextBilling)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small><small v-if="hasFailedPeriod(item)" class="danger-text">⚠ {{tr('periodHasFailures')}}</small></span><span>{{cycleLabel(item)}}</span><span class="pill">{{tr(statusKey(item))}}</span>
           <span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><small>{{tr('currentPeriodPrice')}}</small><small v-if="subscriptionShare(item)!==undefined">{{tr('personalShare')}}: <MoneyValue :amount="subscriptionShare(item)!" :currency="item.currency"/></small><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span>
@@ -154,6 +174,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
         </article>
       </div>
       <EmptyState v-else :title="tr('noSubscriptions')" :description="tr('noSubscriptionsDesc')"/>
+      <p v-if="hasUnsynced" class="field-help sync-legend"><strong>{{tr('syncLegendTitle')}}</strong> · ☁︎/ {{tr('syncLegendPending')}} · ⚠ {{tr('syncLegendError')}}</p>
     </section>
     <AppDrawer :open="drawer" :title="tr(editingId?'editSubscription':'createSubscription')" @close="drawer=false"><form class="form-card ledger-form" @submit.prevent="submit">
       <div v-if="formError" class="notice danger inline">{{formError}}</div><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div><div v-if="sourceGroup||(!personal&&workspace.currentGroup)" class="timezone-notice">{{tr('yourTimezone',{timezone:timezoneLabel(viewerTimezone())})}}<br>{{tr('groupTimezoneValue',{timezone:timezoneLabel((sourceGroup||workspace.currentGroup)?.timezone||'UTC')})}}</div>
@@ -161,11 +182,12 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
       <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('amount')}} · {{tr('currency')}}</strong></div><div class="ledger-form-grid"><label>{{tr('amount')}}<input v-model="form.amount" type="number" min="0" :step="amountStep(form.currency)" required></label><label>{{tr('currency')}}<CurrencySelect v-model="form.currency" :currencies="workspace.currencies"/></label><label v-if="!personal">{{tr('payer')}}<PayerSelect v-model="form.paidBy" :members="selectableMembers" :self-id="auth.record?.id"/></label></div></section>
       <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('exchangeRate')}}</strong></div><div class="ledger-form-grid"><label>{{tr('exchangeRate')}}<select v-model="form.rateMode" :disabled="form.currency===reportingCurrency"><option value="automatic">{{tr('automaticRate')}}</option><option value="manual">{{tr('manualRate')}}</option></select></label><label v-if="form.rateMode==='manual'&&form.currency!==reportingCurrency">{{tr('manualRate')}}<input v-model="form.exchangeRate" inputmode="decimal" required></label><div v-else class="ledger-rate-placeholder"></div><ConversionPreview class="ledger-wide" :from="form.currency" :to="reportingCurrency" :amount="form.amount" :date="form.startsOn.slice(0,10)" :mode="form.rateMode" :manual-rate="form.exchangeRate" @validity="rateValid=$event"/></div></section>
       <section v-if="!personal||editing?.groupId" class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('splitMode')}}</strong></div><label>{{tr('splitMode')}}<select v-model="form.splitMode"><option value="equal">{{tr('splitEqual')}}</option><option value="amount">{{tr('splitAmount')}}</option><option value="percentage">{{tr('splitPercentage')}}</option></select></label><fieldset class="split-editor"><legend>{{tr('participants')}}</legend><label v-for="member in selectableMembers" :key="member.userId" class="split-member"><input v-model="form.participants[member.userId]" type="checkbox"><span>{{member.user?.name||member.user?.email}}</span><input v-if="form.participants[member.userId]&&form.splitMode!=='equal'" v-model="form.values[member.userId]" type="number" min="0" :step="form.splitMode==='percentage'?'0.01':amountStep(form.currency)" :aria-label="member.user?.name"></label><p :class="splitValid?'success':'form-error'">{{splitValid?tr('splitValid'):tr(form.splitMode==='percentage'?'splitInvalidPercentage':'splitInvalidAmount')}}</p></fieldset></section>
-      <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('cycle')}}</strong></div><div class="ledger-form-grid"><BaseCombobox v-model="form.billingCycle" :options="cycleOptions" :label="tr('cycle')" :allow-create="false"/><label v-if="needsInterval">{{tr('billingInterval')}}<input v-model.number="form.billingInterval" type="number" min="1" max="8760" required></label><label>{{tr('firstBilling')}}<input v-model="form.startsOn" :type="hourlyCycle?'datetime-local':'date'" required @change="startsOnTouched=true"></label><label>{{tr('status')}}<select v-model="form.status"><option value="active">{{tr('active')}}</option><option value="paused">{{tr('paused')}}</option><option value="cancelled">{{tr('cancelled')}}</option></select></label></div></section><section v-if="editing?.groupId" class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('subscriptionChangeScope')}}</strong></div><div class="ledger-form-grid"><BaseCombobox v-model="scopeChoice" :options="scopeOptions" :label="tr('subscriptionChangeScope')" :allow-create="false" :help="scopeHelp"/><BaseCombobox v-model="form.effectiveBillingAt" :options="revisionDateOptions" :label="tr('effectiveBillingDate')" :allow-create="false" :disabled="revisionDatesLoading"/><BaseCombobox v-if="scopeChoice==='bounded'" v-model="form.endBillingAt" :options="endBillingDateOptions" :label="tr('endBillingDate')" :allow-create="false" :disabled="revisionDatesLoading"/></div><button v-if="revisionCursor" type="button" class="ghost" :disabled="revisionDatesLoading" @click="editing&&loadRevisionDates(editing,true)">{{tr('loadMore')}}</button></section><section class="ledger-form-section"><label>{{tr('notes')}}<textarea v-model="form.notes" rows="3"></textarea></label></section><div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="drawer=false">{{tr('cancel')}}</button><button class="primary" :disabled="workspace.loading||!rateValid||!splitValid||(!!editing?.groupId&&!form.effectiveBillingAt)||(scopeChoice==='bounded'&&!form.endBillingAt)">{{tr(editingId?'saveChanges':'createSubscription')}}</button></div>
+      <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('cycle')}}</strong></div><div class="ledger-form-grid"><BaseCombobox v-model="form.billingCycle" :options="cycleOptions" :label="tr('cycle')" :allow-create="false"/><label v-if="needsInterval">{{tr('billingInterval')}}<input v-model.number="form.billingInterval" type="number" min="1" max="8760" required></label><label>{{tr('firstBilling')}}<input v-model="form.startsOn" :type="hourlyCycle?'datetime-local':'date'" required @change="startsOnTouched=true"></label><label>{{tr('status')}}<select v-model="form.status"><option value="active">{{tr('active')}}</option><option value="paused">{{tr('paused')}}</option><option value="cancelled">{{tr('cancelled')}}</option></select></label></div><template v-if="showBackfillOption"><label class="backfill-check"><input v-model="form.backfillOnCreate" type="checkbox"><span>{{tr('subscriptionBackfillCheckbox')}}</span></label><p class="field-help">{{tr('subscriptionBackfillCheckboxHelp')}}</p></template></section><section v-if="editing?.groupId" class="ledger-form-section"><div class="ledger-section-heading"><strong>{{tr('subscriptionChangeScope')}}</strong></div><div class="ledger-form-grid"><BaseCombobox v-model="scopeChoice" :options="scopeOptions" :label="tr('subscriptionChangeScope')" :allow-create="false" :help="scopeHelp"/><BaseCombobox v-model="form.effectiveBillingAt" :options="revisionDateOptions" :label="tr('effectiveBillingDate')" :allow-create="false" :disabled="revisionDatesLoading"/><BaseCombobox v-if="scopeChoice==='bounded'" v-model="form.endBillingAt" :options="endBillingDateOptions" :label="tr('endBillingDate')" :allow-create="false" :disabled="revisionDatesLoading"/></div><button v-if="revisionCursor" type="button" class="ghost" :disabled="revisionDatesLoading" @click="editing&&loadRevisionDates(editing,true)">{{tr('loadMore')}}</button></section><section class="ledger-form-section"><label>{{tr('notes')}}<textarea v-model="form.notes" rows="3"></textarea></label></section><div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="drawer=false">{{tr('cancel')}}</button><button class="primary" :disabled="workspace.loading||!rateValid||!splitValid||(!!editing?.groupId&&!form.effectiveBillingAt)||(scopeChoice==='bounded'&&!form.endBillingAt)">{{tr(editingId?'saveChanges':'createSubscription')}}</button></div>
     </form></AppDrawer>
     <AppDrawer :open="!!periodsFor" :title="tr('periodHistory')" @close="periodsFor=undefined">
       <p class="field-help">{{tr('periodHistoryDesc')}}</p>
       <div v-if="periodsError" class="notice danger inline">{{periodsError}}</div>
+      <button v-if="backfillablePeriods>0" type="button" class="ghost wide" :disabled="backfilling" @click="runBackfill">{{tr('subscriptionBackfillButton',{count:backfillablePeriods})}}</button>
       <div v-if="periods.length" class="data-list">
         <article v-for="period in periods" :key="period.billingAt" class="data-row" :class="{'period-failed':period.status==='failed'}">
           <div class="grow">
@@ -187,4 +209,6 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
 .period-failed{background:color-mix(in srgb,var(--danger) 6%,transparent)}
 .period-splits{display:flex;flex-wrap:wrap;gap:4px 10px}
 .period-splits>span{white-space:nowrap}
+.backfill-check{display:flex;align-items:center;gap:8px;margin-top:12px}
+.backfill-check input{width:16px;height:16px;margin:0;accent-color:var(--brand)}
 </style>

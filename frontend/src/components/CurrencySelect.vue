@@ -16,7 +16,7 @@ function select(value:Currency,close:()=>void){emit('update:modelValue',value);q
 function focusSearch(){nextTick(()=>searchInput.value?.focus())}
 </script>
 <template>
-  <BaseDropdown v-model="open" class="currency-select" :panel-label="tr('currency')" @opened="focusSearch">
+  <BaseDropdown v-model="open" class="currency-select" :panel-label="tr('currency')" mobile-sheet @opened="focusSearch">
     <template #trigger="{ open: isOpen, toggle }"><button class="currency-trigger" type="button" :aria-expanded="isOpen" @click="toggle"><span>{{selected?.label||modelValue}}</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg></button></template>
     <template #default="{ close }"><div class="currency-dropdown"><div class="currency-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg><input ref="searchInput" v-model="query" :placeholder="tr('search')"/></div><p v-if="!matches.length" class="currency-empty">{{tr('notFound')}}</p><button v-for="item in matches" :key="item.code" type="button" class="currency-option" :class="{selected:item.code===modelValue}" role="option" :aria-selected="item.code===modelValue" @click="select(item.code,close)"><span><strong>{{item.label}}</strong><em>{{item.code}}</em></span><svg v-if="item.code===modelValue" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.2 4.2L19 6.8"/></svg></button></div></template>
   </BaseDropdown>
