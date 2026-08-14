@@ -96,15 +96,32 @@ func subscriptionExpensesBetween(subscription domain.Subscription, from, to time
 	return values, nil
 }
 
-// subscriptionUserShare returns the portion of a subscription's displayAmount that
-// belongs to userID's split, so the dashboard can show the viewer's own monthly
-// subscription commitment alongside the group's total. Personal subscriptions (no
-// GroupID) belong entirely to their owner.
-func subscriptionUserShare(subscription domain.Subscription, userID, scope string, displayAmount int64) int64 {
-	if subscription.GroupID == "" {
+// subscriptionRateFor resolves the price actually in effect during the month
+// being viewed: the first billing date inside that month when there is one,
+// otherwise the rate standing at the month's end (for cadences that don't bill
+// every month, such as yearly). It deliberately goes through
+// subscriptionExpenseOccurrence, the same resolver the month's cash-flow
+// figures use, so the "monthly average" cards can never disagree with the
+// cash-flow cards sitting beside them.
+func subscriptionRateFor(subscription domain.Subscription, monthDates []time.Time, monthEnd time.Time) domain.Expense {
+	reference := monthEnd.Add(-time.Nanosecond)
+	if len(monthDates) > 0 {
+		reference = monthDates[0]
+	}
+	return subscriptionExpenseOccurrence(subscription, reference)
+}
+
+// subscriptionUserShare returns the portion of a subscription's displayAmount
+// that belongs to userID's split, so the dashboard can show the viewer's own
+// monthly subscription commitment alongside the group's total. Splits are
+// passed in rather than read off the subscription so callers can supply the
+// splits of the revision governing the period in question. Personal
+// subscriptions (no groupID) belong entirely to their owner.
+func subscriptionUserShare(splits []domain.ExpenseSplit, groupID, userID, scope string, displayAmount int64) int64 {
+	if groupID == "" {
 		return displayAmount
 	}
-	for _, split := range subscription.Splits {
+	for _, split := range splits {
 		if split.UserID == userID {
 			if scope == "group" {
 				return split.BaseAmountMinor
@@ -288,13 +305,21 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if lifecycle != "active" && lifecycle != "ending" {
 			continue
 		}
-		displayCurrency, displayAmount := subscription.Currency, subscription.AmountMinor
+		recordStart, recordEnd := recordRange(subscription.GroupID)
+		location := s.accountingLocation(ctx, userID, subscription.GroupID)
+		dates, _ := billingDatesBetween(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, recordStart, recordEnd)
+		// Price the monthly figures off the revision governing the month being
+		// viewed, not off the subscription's current (NextBilling) settings —
+		// otherwise looking at an earlier month reports today's price next to
+		// that month's real cash flow.
+		rate := subscriptionRateFor(subscription, dates, recordEnd)
+		displayCurrency, displayAmount := rate.Currency, rate.AmountMinor
 		if query.Scope == "group" {
-			displayCurrency, displayAmount = subscription.BaseCurrency, subscription.BaseAmountMinor
+			displayCurrency, displayAmount = rate.BaseCurrency, rate.BaseAmountMinor
 		}
 		item := bucket(displayCurrency)
 		monthly, _ := domain.MonthlyEquivalentWithInterval(displayAmount, subscription.BillingCycle, subscription.BillingInterval)
-		subscriptionShare := subscriptionUserShare(subscription, userID, query.Scope, displayAmount)
+		subscriptionShare := subscriptionUserShare(rate.Splits, subscription.GroupID, userID, query.Scope, displayAmount)
 		personalMonthly, _ := domain.MonthlyEquivalentWithInterval(subscriptionShare, subscription.BillingCycle, subscription.BillingInterval)
 		item.MonthlySubscriptionMinor += monthly
 		item.PersonalMonthlySubscriptionMinor += personalMonthly
@@ -302,9 +327,6 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		result.MonthlySubscriptionMinor += monthly
 		result.PersonalMonthlySubscriptionMinor += personalMonthly
 		result.ActiveSubscriptions++
-		recordStart, recordEnd := recordRange(subscription.GroupID)
-		location := s.accountingLocation(ctx, userID, subscription.GroupID)
-		dates, _ := billingDatesBetween(subscription.StartsOn.In(location), subscription.BillingCycle, subscription.BillingInterval, recordStart, recordEnd)
 		addedUpcoming := false
 		for _, date := range dates {
 			if subscription.EndsOn == nil || !date.After(*subscription.EndsOn) {
