@@ -76,6 +76,10 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/roles/{id}", a.deleteGroupRole).Bind(bind)
 	e.Router.PUT("/api/subflow/v1/groups/{groupId}/members/{userId}/role", a.assignGroupRole).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/audit-logs", a.listGroupAudit).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/ownership-transfer", a.getPendingOwnershipTransfer).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/ownership-transfer", a.createOwnershipTransfer).Bind(bind)
+	e.Router.POST("/api/subflow/v1/ownership-transfers/{id}/respond", a.respondOwnershipTransfer).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/ownership-transfers/{id}", a.cancelOwnershipTransfer).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/roles", a.listSystemRoles).Bind(bind)
 	e.Router.POST("/api/subflow/v1/system/roles", a.createSystemRole).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/system/roles/{id}", a.updateSystemRole).Bind(bind)
@@ -92,6 +96,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/subscriptions/{id}/stop", a.stopSubscription).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}/stop", a.resumeSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/subscriptions/{id}/billing-dates", a.billingDates).Bind(bind)
+	e.Router.GET("/api/subflow/v1/subscriptions/{id}/periods", a.subscriptionPeriods).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}", a.deleteSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/expenses", a.listExpenses).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/expenses", a.createExpense).Bind(bind)
@@ -141,7 +146,7 @@ func fail(e *core.RequestEvent, err error) error {
 	case errors.Is(err, domain.ErrRateUnavailable):
 		status = http.StatusUnprocessableEntity
 		code = "rate_unavailable"
-		message = "exchange rate unavailable"
+		message = "目前無法取得匯率"
 	case errors.Is(err, domain.ErrSetupDisabled):
 		status = http.StatusGone
 		code = "setup_disabled"
@@ -352,6 +357,14 @@ func (a *API) billingDates(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusOK, value, nil)
 }
+func (a *API) subscriptionPeriods(e *core.RequestEvent) error {
+	limit, _ := strconv.Atoi(e.Request.URL.Query().Get("limit"))
+	value, err := a.Service.SubscriptionPeriods(e.Request.Context(), authID(e), e.Request.PathValue("id"), e.Request.URL.Query().Get("cursor"), limit)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
 func (a *API) listMembers(e *core.RequestEvent) error {
 	p, err := pageRequest(e, "members")
 	if err != nil {
@@ -504,6 +517,45 @@ func (a *API) listGroupAudit(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *API) getPendingOwnershipTransfer(e *core.RequestEvent) error {
+	transfer, err := a.Service.PendingOwnershipTransfer(e.Request.Context(), authID(e), groupID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, transfer, nil)
+}
+func (a *API) createOwnershipTransfer(e *core.RequestEvent) error {
+	var body struct {
+		ToUserID string `json:"toUserId"`
+	}
+	if e.BindBody(&body) != nil || body.ToUserID == "" {
+		return fail(e, domain.ErrInvalid)
+	}
+	transfer, err := a.Service.CreateOwnershipTransfer(e.Request.Context(), authID(e), groupID(e), body.ToUserID)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, transfer, nil)
+}
+func (a *API) respondOwnershipTransfer(e *core.RequestEvent) error {
+	var body struct {
+		Accept bool `json:"accept"`
+	}
+	if e.BindBody(&body) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	transfer, err := a.Service.RespondOwnershipTransfer(e.Request.Context(), authID(e), e.Request.PathValue("id"), body.Accept)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, transfer, nil)
+}
+func (a *API) cancelOwnershipTransfer(e *core.RequestEvent) error {
+	if err := a.Service.CancelOwnershipTransfer(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
 }
 func (a *API) listSubscriptions(e *core.RequestEvent) error {
 	p, err := pageRequest(e, "subscriptions")

@@ -359,6 +359,17 @@ func (s *Service) AssignGroupRole(ctx context.Context, userID, groupID, memberID
 	if role.GroupID != groupID {
 		return domain.ErrInvalid
 	}
+	// The protected "owner" group_roles record can only ever be held by
+	// exactly one member, and only via the ownership-transfer flow
+	// (Service.RespondOwnershipTransfer), which updates the membership
+	// directly. Granting or moving it through this general-purpose
+	// role-assignment endpoint would let a second member end up with full
+	// owner permissions while Group.OwnerID (and CanManageGroup's enum
+	// check) still points at someone else.
+	if role.Key == "owner" {
+		s.audit(ctx, userID, groupID, "role.assigned", "membership", memberID, "failure", encodeAuditSummary(map[string]any{"role": role.Name}, nil))
+		return domain.ErrForbidden
+	}
 	target, err := s.Stores.Memberships.GetRole(ctx, groupID, memberID)
 	if err != nil {
 		return err

@@ -215,6 +215,30 @@ type Membership struct {
 	CreatedAt time.Time  `json:"createdAt"`
 }
 
+type OwnershipTransferStatus string
+
+const (
+	OwnershipTransferPending   OwnershipTransferStatus = "pending"
+	OwnershipTransferAccepted  OwnershipTransferStatus = "accepted"
+	OwnershipTransferDeclined  OwnershipTransferStatus = "declined"
+	OwnershipTransferCancelled OwnershipTransferStatus = "cancelled"
+)
+
+// OwnershipTransfer is an invite-and-accept handoff of a group's single
+// owner slot: the current owner proposes a target member, and only that
+// member accepting actually moves Group.OwnerID (see
+// CollaborationService-style flow in application.Service). A group can have
+// at most one pending transfer at a time.
+type OwnershipTransfer struct {
+	ID         string                  `json:"id"`
+	GroupID    string                  `json:"groupId"`
+	FromUserID string                  `json:"fromUserId"`
+	ToUserID   string                  `json:"toUserId"`
+	Status     OwnershipTransferStatus `json:"status"`
+	CreatedAt  time.Time               `json:"createdAt"`
+	UpdatedAt  time.Time               `json:"updatedAt"`
+}
+
 type Invitation struct {
 	ID         string           `json:"id"`
 	GroupID    string           `json:"groupId"`
@@ -251,48 +275,56 @@ type Notification struct {
 }
 
 type Subscription struct {
-	ID                 string                   `json:"id"`
-	GroupID            string                   `json:"groupId,omitempty"`
-	OwnerID            string                   `json:"ownerId,omitempty"`
-	PaidBy             string                   `json:"paidBy"`
-	Name               string                   `json:"name"`
-	Category           string                   `json:"category"`
-	CategoryID         string                   `json:"categoryId,omitempty"`
-	CategoryInfo       *Category                `json:"categoryInfo,omitempty"`
-	AmountMinor        int64                    `json:"amountMinor"`
-	Currency           Currency                 `json:"currency"`
-	BaseCurrency       Currency                 `json:"baseCurrency"`
-	BaseAmountMinor    int64                    `json:"baseAmountMinor"`
-	ExchangeRate       string                   `json:"exchangeRate"`
-	RateScaled         int64                    `json:"-"`
-	ExchangeRateDate   time.Time                `json:"exchangeRateDate"`
-	RateMode           RateMode                 `json:"rateMode"`
-	BillingCycle       BillingCycle             `json:"billingCycle"`
-	BillingInterval    int                      `json:"billingInterval"`
-	StartsOn           time.Time                `json:"startsOn"`
-	EndsOn             *time.Time               `json:"endsOn,omitempty"`
-	NextBilling        time.Time                `json:"nextBilling"`
-	Status             SubscriptionStatus       `json:"status"`
-	LifecycleStatus    string                   `json:"lifecycleStatus,omitempty"`
-	Notes              string                   `json:"notes"`
-	SplitMode          SplitMode                `json:"splitMode,omitempty"`
-	Splits             []ExpenseSplit           `json:"splits,omitempty"`
-	RevisionScope      string                   `json:"revisionScope,omitempty"`
-	EffectiveBillingAt time.Time                `json:"effectiveBillingAt,omitempty"`
-	Revisions          []SubscriptionRevision   `json:"revisions,omitempty"`
-	Occurrences        []SubscriptionOccurrence `json:"occurrences,omitempty"`
-	CreatedAt          time.Time                `json:"createdAt"`
-	UpdatedAt          time.Time                `json:"updatedAt"`
+	ID                 string             `json:"id"`
+	GroupID            string             `json:"groupId,omitempty"`
+	OwnerID            string             `json:"ownerId,omitempty"`
+	PaidBy             string             `json:"paidBy"`
+	Name               string             `json:"name"`
+	Category           string             `json:"category"`
+	CategoryID         string             `json:"categoryId,omitempty"`
+	CategoryInfo       *Category          `json:"categoryInfo,omitempty"`
+	AmountMinor        int64              `json:"amountMinor"`
+	Currency           Currency           `json:"currency"`
+	BaseCurrency       Currency           `json:"baseCurrency"`
+	BaseAmountMinor    int64              `json:"baseAmountMinor"`
+	ExchangeRate       string             `json:"exchangeRate"`
+	RateScaled         int64              `json:"-"`
+	ExchangeRateDate   time.Time          `json:"exchangeRateDate"`
+	RateMode           RateMode           `json:"rateMode"`
+	BillingCycle       BillingCycle       `json:"billingCycle"`
+	BillingInterval    int                `json:"billingInterval"`
+	StartsOn           time.Time          `json:"startsOn"`
+	EndsOn             *time.Time         `json:"endsOn,omitempty"`
+	NextBilling        time.Time          `json:"nextBilling"`
+	Status             SubscriptionStatus `json:"status"`
+	LifecycleStatus    string             `json:"lifecycleStatus,omitempty"`
+	Notes              string             `json:"notes"`
+	SplitMode          SplitMode          `json:"splitMode,omitempty"`
+	Splits             []ExpenseSplit     `json:"splits,omitempty"`
+	RevisionScope      string             `json:"revisionScope,omitempty"`
+	EffectiveBillingAt time.Time          `json:"effectiveBillingAt,omitempty"`
+	// EndBillingAt, when set alongside RevisionScope "future", bounds the
+	// edit to a closed range (EffectiveBillingAt through EndBillingAt
+	// inclusive) instead of applying from EffectiveBillingAt onward
+	// indefinitely. See Service.UpdateSubscription.
+	EndBillingAt *time.Time               `json:"endBillingAt,omitempty"`
+	Revisions    []SubscriptionRevision   `json:"revisions,omitempty"`
+	Occurrences  []SubscriptionOccurrence `json:"occurrences,omitempty"`
+	CreatedAt    time.Time                `json:"createdAt"`
+	UpdatedAt    time.Time                `json:"updatedAt"`
 }
 
 // SubscriptionRevision is an immutable accounting snapshot.  A future
 // revision applies from EffectiveBillingAt onward, while an one_off revision
-// only applies to that exact legal billing date.
+// only applies to that exact legal billing date. When EndBillingAt is set, a
+// future-scoped revision only applies through that billing date (a closed
+// A-through-B range) instead of indefinitely.
 type SubscriptionRevision struct {
 	ID                 string         `json:"id"`
 	SubscriptionID     string         `json:"subscriptionId"`
 	Scope              string         `json:"scope"`
 	EffectiveBillingAt time.Time      `json:"effectiveBillingAt"`
+	EndBillingAt       *time.Time     `json:"endBillingAt,omitempty"`
 	Name               string         `json:"name"`
 	Category           string         `json:"category"`
 	CategoryID         string         `json:"categoryId,omitempty"`

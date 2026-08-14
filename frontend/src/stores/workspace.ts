@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Meta, Notification, Settlement, Subscription, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Meta, Notification, OwnershipTransfer, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import { useI18n } from '../i18n'
@@ -12,7 +12,7 @@ type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' |
 // the date input: the backend then keeps the exact stored instant instead of
 // a same-day reconstruction from the viewer's timezone, which would shift it
 // by up to 24h relative to the original (see dateInput.ts).
-type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'|'billingInterval'|'startsOn'>>
+type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'|'billingInterval'|'startsOn'|'splitMode'|'splits'|'revisionScope'|'effectiveBillingAt'|'endBillingAt'>>
 // incurredOn is optional for the same reason startsOn is on SubscriptionInput.
 type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'|'incurredOn'>>
 
@@ -34,6 +34,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const expenses = ref<Expense[]>([])
   const settlements = ref<Settlement[]>([])
   const groupRoles = ref<AccessRole[]>([])
+  const ownershipTransfer = ref<OwnershipTransfer>()
   const groupAuditLogs = ref<AuditLog[]>([])
   const groupAuditMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
   const groupPermissions = ref<string[]>([])
@@ -260,6 +261,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function updateGroupRole(id:string,input:Pick<AccessRole,'name'|'category'|'permissions'>) { if (!currentGroupId.value) return; const role=(await api.patch<AccessRole>(`/groups/${currentGroupId.value}/roles/${id}`,input)).data;groupRoles.value=groupRoles.value.map(value=>value.id===id?role:value);return role }
   async function deleteGroupRole(id:string) { if (!currentGroupId.value) return; await api.delete(`/groups/${currentGroupId.value}/roles/${id}`); groupRoles.value=groupRoles.value.filter(value=>value.id!==id) }
   async function assignGroupRole(userId:string,roleId:string) { if (!currentGroupId.value) return;await api.request(`/groups/${currentGroupId.value}/members/${userId}/role`,{method:'PUT',body:JSON.stringify({roleId})});await refreshGroup() }
+  // A group has at most one pending transfer at a time; 404 just means none
+  // exists right now, which is the normal case and not worth surfacing as an
+  // error toast.
+  async function loadOwnershipTransfer() {
+    if (!currentGroupId.value) return
+    try { ownershipTransfer.value = (await api.get<OwnershipTransfer>(`/groups/${currentGroupId.value}/ownership-transfer`)).data }
+    catch (reason) { ownershipTransfer.value = undefined; if (!(reason instanceof ApiError) || reason.code !== 'not_found') throw reason }
+  }
+  async function createOwnershipTransfer(toUserId: string) {
+    if (!currentGroupId.value) return
+    return run(async () => { ownershipTransfer.value = (await api.post<OwnershipTransfer>(`/groups/${currentGroupId.value}/ownership-transfer`, { toUserId })).data })
+  }
+  async function respondOwnershipTransfer(id: string, accept: boolean) {
+    return run(async () => { await api.post<OwnershipTransfer>(`/ownership-transfers/${id}/respond`, { accept }); ownershipTransfer.value = undefined; await refreshGroup() })
+  }
+  async function cancelOwnershipTransfer(id: string) {
+    return run(async () => { await api.delete(`/ownership-transfers/${id}`); ownershipTransfer.value = undefined })
+  }
   async function loadGroupAuditLogs(query = ''): Promise<Envelope<AuditLog[]> | undefined> {
     if (!currentGroupId.value) return
     const params = new URLSearchParams(query)
@@ -355,6 +374,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
   async function cancelSubscriptionStop(id: string) { await run(async () => { await api.delete<Subscription>(`/subscriptions/${id}/stop`); await refreshPersonal(); if (currentGroupId.value) await refreshGroup() }) }
   async function billingDates(id: string, cursor = '', includePast = false) { return (await api.get<BillingDates>(`/subscriptions/${id}/billing-dates?limit=12${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${includePast ? '&includePast=true' : ''}`)).data }
+  async function subscriptionPeriods(id: string, cursor = '', limit = 24) { return (await api.get<SubscriptionPeriods>(`/subscriptions/${id}/periods?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)).data }
 
   async function addSettlement(input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>) {
     if (!currentGroupId.value) return false
@@ -421,9 +441,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
-    subscriptions, expenses, settlements, groupRoles, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, groupRoles, ownershipTransfer, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
-    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
+    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, updateSubscription, deleteSubscription,
+    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
   }
 })
