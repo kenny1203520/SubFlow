@@ -640,13 +640,16 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		}
 	}
 	// The subscription's own top-level fields represent "current" settings
-	// (what NextBilling will bill). Only overwrite them when this edit's
-	// range actually covers the current/future schedule: personal
-	// subscriptions always, and group ones when the range is unbounded or
-	// extends through-or-past NextBilling. A bounded range entirely in the
-	// past (e.g. fixing what period 3 billed) must not change what the
-	// subscription currently shows or bills next.
-	updatesLiveDefaults := v.GroupID == "" || (scope == "future" && (endBilling == nil || !endBilling.Before(current.NextBilling)))
+	// (what NextBilling will bill), so only overwrite them when this edit's
+	// range actually governs NextBilling — the same containment test the
+	// revision resolver applies. A range entirely in the past (fixing what
+	// period 3 billed) and a range entirely in the future (a temporary price
+	// for periods 8-10) must both leave the live row alone; only the latter
+	// is visible through hydration, so an un-hydrated read would otherwise
+	// show, and bill, a price that isn't in effect yet.
+	updatesLiveDefaults := v.GroupID == "" || (scope == "future" &&
+		!effective.After(current.NextBilling) &&
+		(endBilling == nil || !endBilling.Before(current.NextBilling)))
 	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if updatesLiveDefaults {
 			if updateErr := s.Stores.Subscriptions.Update(tx, &v); updateErr != nil {

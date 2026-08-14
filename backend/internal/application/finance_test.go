@@ -149,7 +149,7 @@ func TestSubscriptionUserShare(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
-			got := subscriptionUserShare(testCase.sub, testCase.userID, testCase.scope, testCase.amount)
+			got := subscriptionUserShare(testCase.sub.Splits, testCase.sub.GroupID, testCase.userID, testCase.scope, testCase.amount)
 			if got != testCase.expected {
 				t.Fatalf("expected %d, got %d", testCase.expected, got)
 			}
