@@ -178,6 +178,20 @@ func listAllSubscriptions(ctx context.Context, s *Service, userID, groupID strin
 	}
 }
 
+func listAllGroups(ctx context.Context, s *Service, userID string) ([]domain.Group, error) {
+	var all []domain.Group
+	for page := 1; ; page++ {
+		result, err := s.ListGroups(ctx, userID, ports.PageRequest{Page: page, PerPage: exportPageSize})
+		if err != nil {
+			return nil, err
+		}
+		all = append(all, result.Items...)
+		if page >= result.TotalPages || len(result.Items) == 0 {
+			return all, nil
+		}
+	}
+}
+
 func listAllSettlements(ctx context.Context, s *Service, userID, groupID string) ([]domain.Settlement, error) {
 	var all []domain.Settlement
 	for page := 1; ; page++ {

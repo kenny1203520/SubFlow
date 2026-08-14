@@ -184,12 +184,16 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	var expenses []domain.Expense
 	var subscriptions []domain.Subscription
 	groupTimezone := map[string]string{}
+	// Every load below walks all pages: a single 100-row page silently
+	// truncated the inputs to the month's totals and, worse, to
+	// domain.MemberBalances, so any group past 100 expenses reported wrong
+	// amounts owed.
 	loadGroup := func(groupID string) error {
-		expensePage, loadErr := s.ListExpenses(ctx, userID, groupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-incurred_on"})
+		groupExpenses, loadErr := listAllExpenses(ctx, s, userID, groupID)
 		if loadErr != nil {
 			return loadErr
 		}
-		subscriptionPage, loadErr := s.ListSubscriptions(ctx, userID, groupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "next_billing"})
+		groupSubscriptions, loadErr := listAllSubscriptions(ctx, s, userID, groupID)
 		if loadErr != nil {
 			return loadErr
 		}
@@ -198,22 +202,20 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			return loadErr
 		}
 		groupTimezone[groupID] = group.Timezone
-		expenses = append(expenses, expensePage.Items...)
-		subscriptions = append(subscriptions, subscriptionPage.Items...)
+		expenses = append(expenses, groupExpenses...)
+		subscriptions = append(subscriptions, groupSubscriptions...)
 		return nil
 	}
 	switch query.Scope {
 	case "personal":
-		expensePage, loadErr := s.ListPersonalExpenses(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-incurred_on"})
-		if loadErr != nil {
-			return result, loadErr
+		expenses, err = listAllPersonalExpenses(ctx, s, userID)
+		if err != nil {
+			return result, err
 		}
-		subscriptionPage, loadErr := s.ListPersonalSubscriptions(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "next_billing"})
-		if loadErr != nil {
-			return result, loadErr
+		subscriptions, err = listAllPersonalSubscriptions(ctx, s, userID)
+		if err != nil {
+			return result, err
 		}
-		expenses = expensePage.Items
-		subscriptions = subscriptionPage.Items
 	case "group":
 		if query.GroupID == "" {
 			return result, domain.ErrInvalid
@@ -222,11 +224,11 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			return result, err
 		}
 	case "all":
-		groups, loadErr := s.ListGroups(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100})
+		groups, loadErr := listAllGroups(ctx, s, userID)
 		if loadErr != nil {
 			return result, loadErr
 		}
-		for _, group := range groups.Items {
+		for _, group := range groups {
 			if err = loadGroup(group.ID); err != nil {
 				return result, err
 			}
@@ -353,6 +355,11 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	for _, expense := range monthSubscriptionExpenses {
 		consumeExpense(expense)
 	}
+	// Ordered here rather than relying on the load order, so the soonest
+	// charge stays first no matter how the paginated list happened to sort.
+	sort.SliceStable(result.Upcoming, func(i, j int) bool {
+		return result.Upcoming[i].NextBilling.Before(result.Upcoming[j].NextBilling)
+	})
 	keys := make([]string, 0, len(buckets))
 	for currency := range buckets {
 		keys = append(keys, string(currency))
@@ -365,25 +372,23 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if group, groupErr := s.Stores.Groups.Get(ctx, query.GroupID); groupErr == nil {
 			result.ReportingCurrency = group.Currency
 		}
-		allExpenses, loadErr := s.ListExpenses(ctx, userID, query.GroupID, ports.PageRequest{Page: 1, PerPage: 100})
+		allExpenses, loadErr := listAllExpenses(ctx, s, userID, query.GroupID)
 		if loadErr != nil {
 			return result, loadErr
 		}
-		filteredExpenses := make([]domain.Expense, 0, len(allExpenses.Items)+len(historicalSubscriptionExpenses))
-		filteredExpenses = append(filteredExpenses, allExpenses.Items...)
-		filteredExpenses = append(filteredExpenses, historicalSubscriptionExpenses...)
-		filteredExpenses = filteredExpenses[:0]
-		for _, expense := range append(allExpenses.Items, historicalSubscriptionExpenses...) {
+		balanceExpenses := append(allExpenses, historicalSubscriptionExpenses...)
+		filteredExpenses := make([]domain.Expense, 0, len(balanceExpenses))
+		for _, expense := range balanceExpenses {
 			if expense.IncurredOn.Before(end) {
 				filteredExpenses = append(filteredExpenses, expense)
 			}
 		}
-		settlements, loadErr := s.Stores.Settlements.List(ctx, query.GroupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "-settled_on"})
+		allSettlements, loadErr := listAllSettlements(ctx, s, userID, query.GroupID)
 		if loadErr != nil {
 			return result, loadErr
 		}
-		filteredSettlements := settlements.Items[:0]
-		for _, settlement := range settlements.Items {
+		filteredSettlements := make([]domain.Settlement, 0, len(allSettlements))
+		for _, settlement := range allSettlements {
 			if settlement.SettledOn.Before(end) {
 				filteredSettlements = append(filteredSettlements, settlement)
 			}
