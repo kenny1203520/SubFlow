@@ -97,6 +97,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}/stop", a.resumeSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/subscriptions/{id}/billing-dates", a.billingDates).Bind(bind)
 	e.Router.GET("/api/subflow/v1/subscriptions/{id}/periods", a.subscriptionPeriods).Bind(bind)
+	e.Router.POST("/api/subflow/v1/subscriptions/{id}/backfill", a.backfillSubscriptionPeriods).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/subscriptions/{id}", a.deleteSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/expenses", a.listExpenses).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/expenses", a.createExpense).Bind(bind)
@@ -364,6 +365,13 @@ func (a *API) subscriptionPeriods(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) backfillSubscriptionPeriods(e *core.RequestEvent) error {
+	created, err := a.Service.BackfillSubscriptionPeriods(e.Request.Context(), authID(e), e.Request.PathValue("id"))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]int{"created": created}, nil)
 }
 func (a *API) listMembers(e *core.RequestEvent) error {
 	p, err := pageRequest(e, "members")

@@ -19,7 +19,7 @@ function commit(close:()=>void){const value=search.value.trim();if(props.allowCr
 <template>
   <div class="base-combobox">
     <label class="combobox-label" :for="inputId">{{label}}<span v-if="required" aria-hidden="true"> *</span></label>
-    <BaseDropdown v-model="open" :panel-label="label" @opened="nextTick(()=>input?.focus())">
+    <BaseDropdown v-model="open" :panel-label="label" mobile-sheet @opened="nextTick(()=>input?.focus())">
       <template #trigger="{toggle}"><button :id="inputId" type="button" class="combobox-trigger" :aria-expanded="open" :aria-invalid="!!error" :aria-describedby="describedBy" @click="toggle"><span>{{selected?.label||placeholder||label}}</span><span aria-hidden="true">⌄</span></button></template>
       <template #default="{close}"><div class="combobox-menu"><input ref="input" v-model="search" :placeholder="tr('search')" @keydown.enter.prevent="commit(close)"><button v-for="option in filtered" :key="option.value" type="button" class="combobox-option" :class="{selected:option.value===modelValue}" @click="choose(option.value,close)">{{option.label}}</button><button v-if="allowCreate&&search.trim()&&!normalized.some(option=>option.value===search.trim())" type="button" class="combobox-option create" @click="commit(close)">+ {{search.trim()}}</button><p v-if="!filtered.length&&!allowCreate" class="empty-inline">{{tr('notFound')}}</p></div></template>
     </BaseDropdown>
