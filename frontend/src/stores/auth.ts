@@ -35,7 +35,13 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function initialize() {
     if (pb.authStore.isValid) {
-      try { await pb.collection('users').authRefresh() } catch { pb.authStore.clear() }
+      // A network failure (status 0 — the request never reached the server)
+      // must not be treated the same as the server rejecting the token:
+      // opening the app offline would otherwise clear a perfectly valid
+      // session on every launch, defeating offline support before the app
+      // shell even renders. Only a genuine server response (expired/revoked
+      // token) clears it.
+      try { await pb.collection('users').authRefresh() } catch (reason) { if ((reason as { status?: number }).status !== 0) pb.authStore.clear() }
     }
     authToken.value = pb.authStore.token
     authValid.value = pb.authStore.isValid
