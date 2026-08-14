@@ -15,18 +15,64 @@ type BillingDatePage struct {
 	NextCursor string      `json:"nextCursor,omitempty"`
 }
 
+// maxBillingDatesPerWindow bounds how many billing dates one query may
+// materialise. It applies to the requested window rather than to the whole
+// schedule, so an old subscription stays as cheap to query as a new one.
+const maxBillingDatesPerWindow = 12000
+
+// billingIndexAt returns the first schedule index whose billing date is not
+// before `from`. Billing dates increase monotonically with the index, so this
+// binary-searches for the window instead of walking every period since
+// StartsOn: an hourly subscription older than about a year and a half used to
+// exhaust the iteration cap before it ever reached the requested month and
+// then reported no billing dates at all, silently dropping the subscription
+// from the dashboard.
+func billingIndexAt(start time.Time, cycle domain.BillingCycle, interval int, from time.Time) (int, error) {
+	if !start.Before(from) {
+		return 0, nil
+	}
+	low, high := 0, 1
+	for {
+		value, err := domain.BillingDateWithInterval(start, cycle, interval, high)
+		if err != nil {
+			return 0, err
+		}
+		if !value.Before(from) {
+			break
+		}
+		if high > 1<<40 {
+			return 0, domain.ErrInvalid
+		}
+		low, high = high, high*2
+	}
+	for low < high {
+		mid := low + (high-low)/2
+		value, err := domain.BillingDateWithInterval(start, cycle, interval, mid)
+		if err != nil {
+			return 0, err
+		}
+		if value.Before(from) {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	return low, nil
+}
+
 func billingDatesBetween(start time.Time, cycle domain.BillingCycle, interval int, from, to time.Time) ([]time.Time, error) {
 	if !from.Before(to) {
 		return nil, nil
 	}
+	first, err := billingIndexAt(start, cycle, interval, from)
+	if err != nil {
+		return nil, err
+	}
 	dates := make([]time.Time, 0)
-	for index := 0; index < 12000; index++ {
-		value, err := domain.BillingDateWithInterval(start, cycle, interval, index)
+	for count := 0; count < maxBillingDatesPerWindow; count++ {
+		value, err := domain.BillingDateWithInterval(start, cycle, interval, first+count)
 		if err != nil {
 			return nil, err
-		}
-		if value.Before(from) {
-			continue
 		}
 		if !value.Before(to) {
 			break

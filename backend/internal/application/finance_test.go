@@ -7,6 +7,46 @@ import (
 	"subflow/internal/domain"
 )
 
+// Billing dates used to be walked from index 0 under a fixed iteration cap,
+// so an hourly subscription older than roughly 500 days exhausted the cap
+// before reaching the requested window and reported no billing dates at all —
+// the subscription simply vanished from the dashboard. The window is now
+// located by index first, making the cost independent of the subscription's
+// age.
+func TestBillingDatesBetweenReachesWindowForLongLivedHourlySubscription(t *testing.T) {
+	start := time.Date(2024, time.January, 1, 0, 0, 0, 0, time.UTC)
+	from := time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC) // 22632 hours in
+	to := from.AddDate(0, 0, 1)
+
+	dates, err := billingDatesBetween(start, domain.BillingEveryNHours, 1, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dates) != 24 {
+		t.Fatalf("expected 24 hourly billing dates across the day, got %d", len(dates))
+	}
+	if !dates[0].Equal(from) {
+		t.Fatalf("expected the first date to be the window start %s, got %s", from, dates[0])
+	}
+	if !dates[23].Equal(to.Add(-time.Hour)) {
+		t.Fatalf("expected the last date to be the final hour before %s, got %s", to, dates[23])
+	}
+}
+
+func TestBillingDatesBetweenStartsAtStartsOnWhenWindowPrecedesIt(t *testing.T) {
+	start := time.Date(2026, time.August, 10, 0, 0, 0, 0, time.UTC)
+	from := time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(2026, time.September, 1, 0, 0, 0, 0, time.UTC)
+
+	dates, err := billingDatesBetween(start, domain.BillingMonthly, 1, from, to)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(dates) != 1 || !dates[0].Equal(start) {
+		t.Fatalf("expected the single billing date to be StartsOn, got %#v", dates)
+	}
+}
+
 func TestSubscriptionExpensesBetweenUsesRevisionAndBillingDate(t *testing.T) {
 	location := time.UTC
 	billingAt := time.Date(2026, time.August, 10, 0, 0, 0, 0, location)
