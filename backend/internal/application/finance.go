@@ -803,7 +803,7 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	// happens to hold the default member role.
 	if userID != value.FromUserID {
 		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
-			s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
+			s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(group.Currency)}, nil))
 			return nil, domain.ErrForbidden
 		}
 	}
@@ -813,7 +813,7 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	if err = s.Stores.Settlements.Create(ctx, &value); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
+	s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency), "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
 	return &value, nil
 }
 func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error {
@@ -826,13 +826,13 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 	}
 	if value.CreatedBy != userID {
 		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
-			s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
+			s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency)}, nil))
 			return domain.ErrForbidden
 		}
 	}
 	err = s.Stores.Settlements.Delete(ctx, id)
 	if err == nil {
-		s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor}, nil))
+		s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency)}, nil))
 	}
 	return err
 }
