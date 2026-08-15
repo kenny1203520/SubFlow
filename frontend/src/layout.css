@@ -20,8 +20,9 @@
 .profile-categories { grid-area:categories; }
 .profile-appearance .theme-options { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
 
-.audit-filter-bar { display:grid; grid-template-columns:minmax(220px, 1.5fr) repeat(3, minmax(160px, 1fr)) minmax(145px, .75fr) minmax(145px, .75fr) auto; align-items:end; gap:14px; padding:20px; border:1px solid var(--line); border-radius:14px; background:var(--surface); }
+.audit-filter-bar { display:grid; grid-template-columns:minmax(220px, 1.5fr) repeat(3, minmax(160px, 1fr)) minmax(145px, .75fr) minmax(145px, .75fr) minmax(200px, auto); align-items:end; gap:14px; padding:20px; border:1px solid var(--line); border-radius:14px; background:var(--surface); }
 .audit-filter-actions { display:flex; flex-wrap:wrap; gap:10px; align-items:center; min-height:44px; }
+.audit-filter-actions button { white-space:nowrap; }
 .audit-list { display:grid; gap:16px; padding:clamp(18px, 2vw, 28px); }
 .audit-list-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
 .audit-list-heading h2 { margin:0; }
