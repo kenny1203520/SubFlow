@@ -44,8 +44,10 @@ jobs:
       # 1.26.0`, and golangci-lint refuses to run when it was built with an
       # older Go toolchain than the target module declares (v1.61.0 was
       # built with go1.23.1 and fails with "the Go language version ...
-      # is lower than the targeted Go version").
-      - uses: golangci/golangci-lint-action@v6
+      # is lower than the targeted Go version"). The action itself must be
+      # v7+ too -- v6 doesn't know how to install a v2 golangci-lint at all
+      # ("golangci-lint v2 is not supported by golangci-lint-action v6").
+      - uses: golangci/golangci-lint-action@v7
         with:
           version: v2.12.2
           working-directory: backend
