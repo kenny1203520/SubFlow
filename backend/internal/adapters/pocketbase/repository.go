@@ -456,7 +456,7 @@ func (r *Repository) CreateSubscriptionRevision(ctx context.Context, v *domain.S
 }
 
 func (r *Repository) ListSubscriptionRevisions(ctx context.Context, subscriptionID string) ([]domain.SubscriptionRevision, error) {
-	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptionRevisions, "subscription={:subscription}", "effective_at", 0, 0, dbx.Params{"subscription": subscriptionID})
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptionRevisions, "subscription={:subscription}", "effective_at,created", 0, 0, dbx.Params{"subscription": subscriptionID})
 	if err != nil {
 		return nil, mapError(err)
 	}

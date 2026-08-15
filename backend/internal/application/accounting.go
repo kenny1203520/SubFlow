@@ -247,11 +247,37 @@ func subscriptionRevisionAt(values []domain.SubscriptionRevision, billingAt time
 		if value.EndBillingAt != nil && value.EndBillingAt.Before(billingAt) {
 			continue
 		}
-		if !found || value.EffectiveBillingAt.After(selected.EffectiveBillingAt) || (value.EffectiveBillingAt.Equal(selected.EffectiveBillingAt) && value.Scope == "one_off") {
+		if !found || subscriptionRevisionOutranks(value, selected) {
 			selected, found = value, true
 		}
 	}
 	return selected, found
+}
+
+// subscriptionRevisionOutranks decides which of two revisions that both
+// cover the same billing date governs it. Each revision records what the
+// editor believed should apply as of the moment it was saved, so the most
+// recently created one wins whenever two qualifying revisions overlap on a
+// date — a "last write wins" rule, same as any other edit. This
+// deliberately does not prefer a later EffectiveBillingAt: a historical
+// edit's entire point is to say "this period onward, indefinitely" and
+// override whatever already governed those dates, including a revision
+// whose own EffectiveBillingAt happens to be later (e.g. the subscription's
+// current live settings) — a backdated "此期往後" edit must supersede it,
+// not lose to it. Without this, two same-dated revisions used to resolve by
+// whichever the store happened to return first (undefined order on a tie),
+// which silently dropped a live edit that started exactly on the
+// subscription's own current billing date, and could also lose a bounded
+// historical range's own end date to an unrelated revision that happened to
+// start there.
+func subscriptionRevisionOutranks(candidate, current domain.SubscriptionRevision) bool {
+	if candidate.CreatedAt.After(current.CreatedAt) {
+		return true
+	}
+	if candidate.CreatedAt.Before(current.CreatedAt) {
+		return false
+	}
+	return candidate.EffectiveBillingAt.After(current.EffectiveBillingAt)
 }
 
 // regeneratePostedOccurrences re-resolves which revision now governs each

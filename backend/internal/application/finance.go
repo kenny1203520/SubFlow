@@ -121,7 +121,20 @@ func subscriptionHasPostedOccurrence(subscription domain.Subscription, billingAt
 
 func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt time.Time) domain.Expense {
 	result := domain.Expense{GroupID: subscription.GroupID, OwnerID: subscription.OwnerID, SubscriptionID: subscription.ID, Title: subscription.Name, Category: subscription.Category, CategoryID: subscription.CategoryID, AmountMinor: subscription.AmountMinor, Currency: subscription.Currency, BaseCurrency: subscription.BaseCurrency, BaseAmountMinor: subscription.BaseAmountMinor, ExchangeRate: subscription.ExchangeRate, RateScaled: subscription.RateScaled, ExchangeRateDate: subscription.ExchangeRateDate, RateMode: subscription.RateMode, PaidBy: subscription.PaidBy, IncurredOn: billingAt, Notes: subscription.Notes, SplitMode: subscription.SplitMode, Splits: append([]domain.ExpenseSplit(nil), subscription.Splits...)}
-	if revision, ok := subscriptionRevisionAt(subscription.Revisions, billingAt); ok {
+	revision, ok := subscriptionRevisionAt(subscription.Revisions, billingAt)
+	if !ok {
+		// No revision has ever claimed this date — it predates every
+		// revision's own range, including the subscription's own
+		// creation-time one (e.g. a period between a backdated StartsOn and
+		// the first NextBilling). subscription.* above represents "what
+		// NextBilling currently costs", which a later historical edit can
+		// legitimately have changed to something quite different from this
+		// date's true original price; the earliest revision ever recorded
+		// — the original, unedited settings — is the honest fallback, not
+		// today's live price.
+		revision, ok = earliestCreatedRevision(subscription.Revisions)
+	}
+	if ok {
 		result.Title = revision.Name
 		result.Category = revision.Category
 		result.CategoryID = revision.CategoryID
@@ -147,6 +160,23 @@ func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt t
 		result.Splits = []domain.ExpenseSplit{{UserID: result.PaidBy, AmountMinor: result.AmountMinor, BaseAmountMinor: result.BaseAmountMinor}}
 	}
 	return result
+}
+
+// earliestCreatedRevision returns whichever revision was saved first,
+// regardless of which billing date it's effective from. That's always the
+// revision created alongside the subscription itself (see
+// Service.CreateSubscription), so it's the closest thing to "the original,
+// unedited settings" available once later edits have moved the live
+// top-level fields on.
+func earliestCreatedRevision(values []domain.SubscriptionRevision) (domain.SubscriptionRevision, bool) {
+	var earliest domain.SubscriptionRevision
+	found := false
+	for _, value := range values {
+		if !found || value.CreatedAt.Before(earliest.CreatedAt) {
+			earliest, found = value, true
+		}
+	}
+	return earliest, found
 }
 
 func subscriptionExpensesBetween(subscription domain.Subscription, from, to time.Time, location *time.Location) ([]domain.Expense, error) {
@@ -677,7 +707,7 @@ func (s *Service) BackfillSubscriptionPeriods(ctx context.Context, userID, id st
 	if len(dates) == 0 {
 		return 0, nil
 	}
-	if err = s.ensureBaseRevisionCovers(ctx, subscription, startsOn); err != nil {
+	if err = s.ensureBaseRevisionCovers(ctx, subscription, dates); err != nil {
 		return 0, err
 	}
 	created := 0
@@ -697,31 +727,47 @@ func (s *Service) BackfillSubscriptionPeriods(ctx context.Context, userID, id st
 	return created, nil
 }
 
-// ensureBaseRevisionCovers makes sure some revision resolves for "at" before
-// a backfill starts posting historical periods. A freshly created
-// subscription's only revision is effective from NextBilling onward (see
-// Service.CreateSubscription), so a backdated StartsOn otherwise has no
-// revision covering any of the periods a backfill needs to price —
-// postOccurrenceAt would then hard-fail every one of them, since unlike the
-// display-only fallback in subscriptionExpenseOccurrence, a real posted
-// occurrence cannot leave its revision relation empty (the schema requires
-// it). Rather than inventing an ephemeral revision with no row to point at,
-// this persists one real "future"-scoped revision snapshotting the
-// subscription's current settings effective at "at" — exactly what the
-// display fallback already implies to the user before backfilling, so
-// subsequent reads resolve consistently instead of relying on a per-call
-// synthetic. A no-op once any revision already covers "at" (including a
-// re-run, or a subscription that already had a historical edit reaching back
-// that far).
-func (s *Service) ensureBaseRevisionCovers(ctx context.Context, subscription *domain.Subscription, at time.Time) error {
+// ensureBaseRevisionCovers makes sure every one of dates resolves to some
+// revision before a backfill starts posting historical periods. A freshly
+// created subscription's only revision is effective from NextBilling onward
+// (see Service.CreateSubscription), so a backdated StartsOn otherwise has no
+// revision covering the earlier periods a backfill needs to price —
+// postOccurrenceAt would then hard-fail on them, since unlike the
+// display-only fallback in subscriptionExpenseOccurrence, a real posted (or
+// even a recorded-failed) occurrence cannot leave its revision relation
+// empty (the schema requires it).
+//
+// Checking only dates[0] (StartsOn) is not enough: a narrow one_off revision
+// that happens to sit exactly on StartsOn (e.g. a past correction to just
+// that first period) satisfies coverage there while leaving every later
+// backfill date just as uncovered as before, since a one_off only ever
+// matches its own exact date. So every date is checked, and the gap-filling
+// revision — one real "future"-scoped revision snapshotting the
+// subscription's current settings, effective from the first date, exactly
+// what the display fallback already implies to the user before backfilling
+// — is only created when an actual gap is found. That avoids creating an
+// unnecessary, potentially overriding revision when the existing history
+// already covers the whole range gaplessly through some other combination
+// of revisions.
+func (s *Service) ensureBaseRevisionCovers(ctx context.Context, subscription *domain.Subscription, dates []time.Time) error {
+	if len(dates) == 0 {
+		return nil
+	}
 	revisions, err := s.Stores.Subscriptions.ListRevisions(ctx, subscription.ID)
 	if err != nil {
 		return err
 	}
-	if _, ok := subscriptionRevisionAt(revisions, at); ok {
+	gap := false
+	for _, date := range dates {
+		if _, ok := subscriptionRevisionAt(revisions, date); !ok {
+			gap = true
+			break
+		}
+	}
+	if !gap {
 		return nil
 	}
-	base := subscriptionRevision(*subscription, "future", at, nil)
+	base := subscriptionRevision(*subscription, "future", dates[0], nil)
 	return s.Stores.Subscriptions.CreateRevision(ctx, &base)
 }
 
