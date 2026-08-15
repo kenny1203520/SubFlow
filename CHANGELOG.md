@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-08-15
+
 ### Changed
 - 匯出功能改稱「匯出帳目明細」；檔案名稱格式改為 `[站台名稱]-ledger-[group|personal]-[群組ID或使用者ID]-[匯出時間+時區]`（時間採匯出者本人的時區），並支援依目前介面語言（繁中／英文）翻譯匯出內容的欄位標題、類型、狀態與分類名稱；內文開頭新增一列註明日期時間所採用的時區（群組匯出為群組記帳時區，個人匯出為個人時區）。
 
@@ -128,7 +130,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/kenny1203520/SubFlow/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/kenny1203520/SubFlow/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/kenny1203520/SubFlow/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/kenny1203520/SubFlow/compare/v0.1.5...v0.1.6
