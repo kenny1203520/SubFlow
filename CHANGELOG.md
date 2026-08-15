@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-08-16
+
+### Fixed
+- 修正稽核日誌內容不完整的問題：金額紀錄未附上幣別、付款方／收款方顯示為原始使用者 ID、部分操作類型（重新產生訂閱入帳紀錄、新增暫時成員）未翻譯、以及稽核日誌篩選列在特定捲動位置會與群組頁籤重疊顯示。
+- 修正個人訂閱「期數紀錄」中「補記歷史」按鈕在個人（非群組）訂閱上一定會失敗的問題：後端本來就不支援為個人訂閱補記歷史紀錄，現在按鈕只會在群組訂閱上顯示。
+- 修正個人財務總覽在「個人」範圍時，看不到「本人訂閱份額」的問題：當個人範圍內含有使用者代為支付的群組訂閱時，畫面只會顯示未依分帳比例計算的總額，容易誤以為金額被重複計算。
+
 ## [0.1.11] - 2026-08-15
 
 ### Added
@@ -150,7 +157,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.11...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.12...HEAD
+[0.1.12]: https://github.com/kenny1203520/SubFlow/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/kenny1203520/SubFlow/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/kenny1203520/SubFlow/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/kenny1203520/SubFlow/compare/v0.1.8...v0.1.9
