@@ -526,7 +526,19 @@ func (r *Repository) UpdateSubscriptionOccurrence(ctx context.Context, v *domain
 }
 
 func (r *Repository) ListDueSubscriptions(ctx context.Context, before time.Time) ([]domain.Subscription, error) {
-	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "group!='' && status='active' && next_billing<={:before}", "next_billing", 0, 0, dbx.Params{"before": before})
+	// Same class of bug already fixed in GetSubscriptionOccurrence: a raw
+	// time.Time bound as a query param doesn't reliably compare against
+	// PocketBase's own stored/normalized DateField format, including for a
+	// range comparison like this one — a subscription whose next_billing
+	// exactly equals "before" (the common case: the scheduler runs and asks
+	// "what's due right now") could silently fail to match. Wrapping it
+	// through types.ParseDateTime normalizes it to the same representation
+	// PocketBase itself uses.
+	normalizedBefore, parseErr := types.ParseDateTime(before)
+	if parseErr != nil {
+		return nil, parseErr
+	}
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "group!='' && status='active' && next_billing<={:before}", "next_billing", 0, 0, dbx.Params{"before": normalizedBefore})
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -910,7 +922,17 @@ func (r *Repository) ListAudits(ctx context.Context, groupID string, query ports
 	return page(values, query.PageRequest, count), nil
 }
 func (r *Repository) UpsertExchangeRate(ctx context.Context, v *domain.ExchangeRate) error {
-	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date={:date}", dbx.Params{"base": v.BaseCurrency, "quote": v.QuoteCurrency, "date": v.EffectiveDate})
+	// Same day-granular reasoning as LatestExchangeRate below: an exact
+	// equality match on effective_date is fragile, since a row for the same
+	// calendar day can carry a slightly different sub-day timestamp than
+	// v.EffectiveDate (provider jitter, or PocketBase's own datetime
+	// formatting). An exact match would then miss the existing row and
+	// insert a duplicate instead of updating it. Match any row within the
+	// same UTC calendar day instead.
+	day := v.EffectiveDate.UTC()
+	lowerBound := time.Date(day.Year(), day.Month(), day.Day(), 0, 0, 0, 0, time.UTC)
+	upperBound := lowerBound.AddDate(0, 0, 1)
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionExchangeRates, "base_currency={:base} && quote_currency={:quote} && effective_date>={:lower} && effective_date<{:upper}", dbx.Params{"base": v.BaseCurrency, "quote": v.QuoteCurrency, "lower": lowerBound, "upper": upperBound})
 	if err != nil {
 		record, err = newRecord(r.app(ctx), CollectionExchangeRates)
 		if err != nil {

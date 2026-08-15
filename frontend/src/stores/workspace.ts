@@ -322,10 +322,33 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await refreshPersonal(scope, month)
   }
 
-  async function onEvent(event: SubFlowEvent) {
-    if (event.resource === 'groups' || event.resource === 'group_members') await loadGroups()
+  // SSE events arrive individually, but a single mutation on the server can
+  // fan out into several of them in quick succession (e.g. a settlement
+  // touching both the settlement and the group summary). Refreshing on every
+  // one of them fired a burst of redundant, back-to-back requests instead of
+  // one. Coalesce a burst into a single refresh pass after a short quiet
+  // window, tracking (across the whole burst, not just the last event)
+  // whether groups and/or the current group need refreshing so nothing an
+  // earlier event in the burst asked for gets dropped by a later one.
+  const sseRefreshDebounceMs = 300
+  let sseFlushTimer: ReturnType<typeof setTimeout> | undefined
+  let pendingLoadGroups = false
+  let pendingGroupRefresh = false
+  async function flushSseRefresh() {
+    sseFlushTimer = undefined
+    const shouldLoadGroups = pendingLoadGroups
+    const shouldRefreshGroup = pendingGroupRefresh
+    pendingLoadGroups = false
+    pendingGroupRefresh = false
+    if (shouldLoadGroups) await loadGroups()
     await refreshPersonal()
-    if (event.groupId && event.groupId === currentGroupId.value) await refreshGroup()
+    if (shouldRefreshGroup) await refreshGroup()
+  }
+  function onEvent(event: SubFlowEvent) {
+    if (event.resource === 'groups' || event.resource === 'group_members') pendingLoadGroups = true
+    if (event.groupId && event.groupId === currentGroupId.value) pendingGroupRefresh = true
+    if (sseFlushTimer) clearTimeout(sseFlushTimer)
+    sseFlushTimer = setTimeout(() => { void flushSseRefresh() }, sseRefreshDebounceMs)
   }
 
   // Marks the corresponding local record with the failure so a badge can
@@ -727,5 +750,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,
+    onEvent,
   }
 })
