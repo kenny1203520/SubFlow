@@ -56,7 +56,7 @@ const hourlyCycle = computed(() => form.billingCycle === 'every_n_hours')
 // current wall-clock time is later than midnight, or the checkbox would
 // show for every fresh subscription.
 const startsOnPast = computed(() => !!form.startsOn && form.startsOn.slice(0,10) < todayInput(viewerTimezone()))
-const showBackfillOption = computed(() => !personal.value && !editingId.value && startsOnPast.value)
+const showBackfillOption = computed(() => !editingId.value && startsOnPast.value)
 const editing = computed(() => list.value.find(item => item.id === editingId.value))
 const sourceGroup = computed(() => workspace.groups.find(group => group.id === editing.value?.groupId))
 const reportingCurrency = computed(() => sourceGroup.value?.currency || (!personal.value ? workspace.currentGroup?.currency : form.currency) || form.currency)
@@ -111,7 +111,7 @@ async function submit() {
   const effectiveBillingAt = form.effectiveBillingAt || undefined
   const endBillingAt = scopeChoice.value === 'bounded' && form.endBillingAt ? form.endBillingAt : undefined
   const input = { name:form.name, category:form.category||'', categoryId:form.categoryId, amountMinor:subscriptionMinor.value, currency:currency.value as Subscription['currency'], rateMode:form.rateMode, exchangeRate:form.exchangeRate, paidBy:form.paidBy||auth.record?.id||'', splitMode:form.splitMode, splits:personal.value&&!editing.value?.groupId?undefined:canonicalSplits(), revisionScope:form.revisionScope, effectiveBillingAt, endBillingAt, billingCycle:form.billingCycle, billingInterval:needsInterval.value ? Number(form.billingInterval) : 1, ...(!editingId.value||startsOnTouched.value?{startsOn}:{}), status:form.status, notes:form.notes }
-  const ok = editingId.value ? await workspace.updateSubscription(editingId.value,input) : personal.value ? await workspace.addPersonalSubscription(input) : await workspace.addSubscription(input, showBackfillOption.value && form.backfillOnCreate)
+  const ok = editingId.value ? await workspace.updateSubscription(editingId.value,input) : personal.value ? await workspace.addPersonalSubscription(input, showBackfillOption.value && form.backfillOnCreate) : await workspace.addSubscription(input, showBackfillOption.value && form.backfillOnCreate)
   if (!ok) { formError.value = workspace.localizedError || tr('requestFailed'); return }
   await workspace.refreshPersonal()
   drawer.value = false
@@ -164,11 +164,10 @@ function periodStatusLabel(status: SubscriptionPeriod['status']) { return tr(sta
 // Only counts periods already loaded into the drawer, not the full history —
 // matches what the button label promises: pages beyond the current one are
 // picked up incrementally as the user loads more and re-triggers a backfill.
-// Personal (groupless) subscriptions never post real occurrences at all (see
-// Service.postSubscriptionOccurrence on the backend), so the backend
-// rejects a backfill on one outright -- the button must not offer it, the
-// same way showBackfillOption already excludes personal subs on create.
-const backfillablePeriods = computed(() => periodsFor.value?.groupId ? periods.value.filter(period => period.status === 'pending' && new Date(period.billingAt) < new Date()).length : 0)
+// Personal (groupless) subscriptions now post real occurrences too (see
+// Service.postSubscriptionOccurrence on the backend), so this applies the
+// same way it does for group subscriptions.
+const backfillablePeriods = computed(() => periods.value.filter(period => period.status === 'pending' && new Date(period.billingAt) < new Date()).length)
 const backfilling = ref(false)
 async function runBackfill() {
   if (!periodsFor.value) return
