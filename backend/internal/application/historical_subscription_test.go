@@ -433,3 +433,118 @@ func TestBillingDatesIncludePastRequiresPermission(t *testing.T) {
 		t.Fatalf("member must not receive past billing dates, got %s", limited.Dates[0].Format("2006-01-02"))
 	}
 }
+
+// scope=future targeting the subscription's own live NextBilling date (the
+// ordinary "edit my subscription starting now" case — not a backdated edit)
+// must apply onward indefinitely too, the same as the historical case above.
+// This used to silently do nothing at all, not even to the immediate next
+// period: the new revision's EffectiveBillingAt exactly ties the existing
+// live revision's own EffectiveBillingAt (both are "now"), and the resolver
+// used to keep whichever of two same-dated, same-scope revisions it found
+// first while walking storage — the old one — instead of the one just
+// saved. See subscriptionRevisionOutranks in accounting.go.
+func TestUpdateSubscriptionFutureScopeLiveEditAppliesOnwardIndefinitely(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+
+	edit := *f.subscription
+	edit.RevisionScope = "future"
+	edit.EffectiveBillingAt = f.subscription.NextBilling
+	edit.SplitMode = domain.SplitAmount
+	edit.Splits = []domain.ExpenseSplit{
+		{UserID: f.owner, AmountMinor: 30000},
+		{UserID: f.member, AmountMinor: 0},
+	}
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
+		t.Fatalf("owner should be allowed to revise onward from the live period: %v", err)
+	}
+
+	for i, month := range []string{"2026-08", "2026-09", "2026-10"} {
+		dashboard, err := f.service.WorkspaceDashboard(ctx, f.member, application.DashboardQuery{Scope: "group", GroupID: f.group.ID, Month: month})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(dashboard.Currencies) != 1 || dashboard.Currencies[0].PersonalShareMinor != 0 {
+			t.Fatalf("month %d (%s): expected the live-onward edit to apply (share 0), got %#v", i, month, dashboard.Currencies)
+		}
+	}
+}
+
+// A bounded (A-through-B) range whose start exactly ties the live
+// revision's own EffectiveBillingAt — i.e. a "current/future to
+// current/future" range edit, the same collision as the unbounded case
+// above — must still apply within the range and revert after it.
+func TestUpdateSubscriptionBoundedRangeLiveToLiveAppliesWithinRange(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	start := f.subscription.NextBilling                // 2026-08-11, ties the original revision's own start
+	end := f.subscription.NextBilling.AddDate(0, 1, 0) // 2026-09-11
+
+	edit := *f.subscription
+	edit.RevisionScope = "future"
+	edit.EffectiveBillingAt = start
+	edit.EndBillingAt = &end
+	edit.SplitMode = domain.SplitAmount
+	edit.Splits = []domain.ExpenseSplit{
+		{UserID: f.owner, AmountMinor: 30000},
+		{UserID: f.member, AmountMinor: 0},
+	}
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
+		t.Fatalf("owner should be allowed to revise a live-to-live bounded range: %v", err)
+	}
+
+	cases := map[string]int64{
+		"2026-08": 0,     // range start: the exact collision this test targets
+		"2026-09": 0,     // range end (inclusive)
+		"2026-10": 15000, // after the range: reverts to the original split
+	}
+	for month, want := range cases {
+		dashboard, err := f.service.WorkspaceDashboard(ctx, f.member, application.DashboardQuery{Scope: "group", GroupID: f.group.ID, Month: month})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(dashboard.Currencies) != 1 || dashboard.Currencies[0].PersonalShareMinor != want {
+			t.Fatalf("%s: want share %d, got %#v", month, want, dashboard.Currencies)
+		}
+	}
+}
+
+// A bounded range that starts in the past and ends exactly on the live
+// revision's own EffectiveBillingAt (a "historical to current/future"
+// range) exercises the same boundary collision at its END instead of its
+// start.
+func TestUpdateSubscriptionBoundedRangeHistoricalToLiveAppliesWithinRange(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	start := f.pastBilling.AddDate(0, 1, 0) // 2024-10-11
+	end := f.subscription.NextBilling       // 2026-08-11, ties the original revision's own start
+
+	edit := *f.subscription
+	edit.RevisionScope = "future"
+	edit.EffectiveBillingAt = start
+	edit.EndBillingAt = &end
+	edit.SplitMode = domain.SplitAmount
+	edit.Splits = []domain.ExpenseSplit{
+		{UserID: f.owner, AmountMinor: 30000},
+		{UserID: f.member, AmountMinor: 0},
+	}
+	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
+		t.Fatalf("owner should be allowed to revise a historical-to-live bounded range: %v", err)
+	}
+
+	cases := map[string]int64{
+		"2024-09": 15000, // before the range: untouched
+		"2025-01": 0,     // well within the range
+		"2026-08": 0,     // range end: the exact collision this test targets
+		"2026-09": 15000, // after the range: reverts to the original split
+	}
+	for month, want := range cases {
+		dashboard, err := f.service.WorkspaceDashboard(ctx, f.member, application.DashboardQuery{Scope: "group", GroupID: f.group.ID, Month: month})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(dashboard.Currencies) != 1 || dashboard.Currencies[0].PersonalShareMinor != want {
+			t.Fatalf("%s: want share %d, got %#v", month, want, dashboard.Currencies)
+		}
+	}
+}
