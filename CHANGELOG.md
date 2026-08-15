@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+## [0.1.10] - 2026-08-15
+
+### Fixed
+- 修正個人（非群組）支出與訂閱完全無法新增或編輯的問題：表單的分帳驗證邏輯要求至少選擇一位參與者才能送出，但參與者選擇區塊只在群組紀錄才會顯示，導致純個人紀錄的「新增」／「儲存變更」按鈕永遠停用。
+- 修正離線時新增或編輯個人支出／訂閱後，項目會從畫面上消失的問題：儲存後緊接著的重新整理，在離線狀態下會直接讀取尚未更新的本機快取，蓋掉剛剛完成的離線異動；現在離線異動會立即寫回本機快取，恢復連線後再正常同步。
+
 ## [0.1.9] - 2026-08-15
 
 ### Changed
@@ -130,7 +136,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.9...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.10...HEAD
+[0.1.10]: https://github.com/kenny1203520/SubFlow/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/kenny1203520/SubFlow/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/kenny1203520/SubFlow/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/kenny1203520/SubFlow/compare/v0.1.6...v0.1.7

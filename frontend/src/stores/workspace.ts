@@ -144,6 +144,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const startsOn = input.startsOn || now
     return { id, groupId, ownerId: groupId ? undefined : auth.record?.id, paidBy: input.paidBy || auth.record?.id || '', name: input.name, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.currency, baseAmountMinor: input.amountMinor, exchangeRate: '1', exchangeRateDate: now, rateMode: 'automatic', billingCycle: input.billingCycle, billingInterval: input.billingInterval, startsOn, nextBilling: input.nextBilling || startsOn, status: input.status, notes: input.notes, splitMode: input.splitMode, splits: input.splits, createdAt: now, updatedAt: now, pendingSync: true }
   }
+  // Every offline mutation to personalExpenses/personalSubscriptions must
+  // persist the result to the snapshot cache immediately, not just update
+  // the in-memory ref: submit() handlers unconditionally call
+  // refreshPersonal() right after a successful create/update/delete, and
+  // while offline that reloads straight from the cached snapshot (see
+  // refreshPersonal's catch branch) — a stale cache would silently revert
+  // the optimistic change the user just made one line earlier.
+  async function savePersonalSnapshot() {
+    const userId = auth.record?.id
+    if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value })
+  }
   function localSettlement(id: string, input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>, groupId: string): Settlement {
     const now = new Date().toISOString()
     const currency = (currentGroup.value?.currency || 'TWD') as Currency
@@ -543,6 +554,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           list.value = list.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item)
           const userId = auth.record?.id
           if (userId) await outbox.enqueue({ userId, kind: 'subscription', op: 'update', scope: inGroup ? 'group' : 'personal', groupId: inGroup ? currentGroupId.value : '', targetId: id, payload: input })
+          if (!inGroup) await savePersonalSnapshot()
         },
       )
     })
@@ -556,7 +568,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           const inGroup = subscriptions.value.some(item => item.id === id)
           await localDelete('subscription', inGroup ? 'group' : 'personal', inGroup ? currentGroupId.value : '', id)
           if (inGroup) subscriptions.value = subscriptions.value.filter(item => item.id !== id)
-          else personalSubscriptions.value = personalSubscriptions.value.filter(item => item.id !== id)
+          else { personalSubscriptions.value = personalSubscriptions.value.filter(item => item.id !== id); await savePersonalSnapshot() }
         },
       )
     })
@@ -586,6 +598,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           personalExpenses.value = [localExpense(id, input), ...personalExpenses.value]
           const userId = auth.record?.id
           if (userId) await outbox.enqueue({ userId, kind: 'expense', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input })
+          await savePersonalSnapshot()
         },
       )
     })
@@ -599,6 +612,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           personalSubscriptions.value = [localSubscription(id, input), ...personalSubscriptions.value]
           const userId = auth.record?.id
           if (userId) await outbox.enqueue({ userId, kind: 'subscription', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input })
+          await savePersonalSnapshot()
         },
       )
     })
@@ -643,6 +657,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           list.value = list.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item)
           const userId = auth.record?.id
           if (userId) await outbox.enqueue({ userId, kind: 'expense', op: 'update', scope: inGroup ? 'group' : 'personal', groupId: inGroup ? currentGroupId.value : '', targetId: id, payload: input })
+          if (!inGroup) await savePersonalSnapshot()
         },
       )
     })
@@ -656,7 +671,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           const inGroup = expenses.value.some(item => item.id === id)
           await localDelete('expense', inGroup ? 'group' : 'personal', inGroup ? currentGroupId.value : '', id)
           if (inGroup) expenses.value = expenses.value.filter(item => item.id !== id)
-          else personalExpenses.value = personalExpenses.value.filter(item => item.id !== id)
+          else { personalExpenses.value = personalExpenses.value.filter(item => item.id !== id); await savePersonalSnapshot() }
         },
       )
     })
