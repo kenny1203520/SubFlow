@@ -51,7 +51,7 @@ func (s *Service) expenseIsHistorical(ctx context.Context, userID string, value 
 }
 
 func historicalExpenseDetails(value *domain.Expense) map[string]any {
-	return map[string]any{"title": value.Title, "incurred_on": value.IncurredOn.Format("2006-01-02"), "amount_minor": value.AmountMinor}
+	return map[string]any{"title": value.Title, "incurred_on": value.IncurredOn.Format("2006-01-02"), "amount_minor": value.AmountMinor, "currency": string(value.Currency)}
 }
 
 func historicalExpenseChangeSummary(before, after *domain.Expense) string {
@@ -59,13 +59,14 @@ func historicalExpenseChangeSummary(before, after *domain.Expense) string {
 	changes.addString("title", before.Title, after.Title)
 	changes.addString("incurred_on", before.IncurredOn.Format("2006-01-02"), after.IncurredOn.Format("2006-01-02"))
 	changes.addInt64("amount_minor", before.AmountMinor, after.AmountMinor)
+	changes.addString("currency", string(before.Currency), string(after.Currency))
 	changes.addString("paid_by", before.PaidBy, after.PaidBy)
 	changes.addString("category_id", before.CategoryID, after.CategoryID)
 	return encodeAuditSummary(historicalExpenseDetails(after), changes)
 }
 
 func historicalSubscriptionDetails(value *domain.Subscription, effective time.Time) map[string]any {
-	return map[string]any{"name": value.Name, "billing_at": effective.Format("2006-01-02"), "amount_minor": value.AmountMinor}
+	return map[string]any{"name": value.Name, "billing_at": effective.Format("2006-01-02"), "amount_minor": value.AmountMinor, "currency": string(value.Currency)}
 }
 
 func historicalSubscriptionChangeSummary(before, after *domain.Subscription, effective time.Time) string {
@@ -377,9 +378,9 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 	}); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "subscription.created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor, "billing_cycle": v.BillingCycle, "split_mode": v.SplitMode}, nil))
+	s.audit(ctx, userID, v.GroupID, "subscription.created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "billing_cycle": v.BillingCycle, "split_mode": v.SplitMode}, nil))
 	if v.GroupID != "" {
-		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"scope": "future", "effective_billing_at": v.NextBilling.Format("2006-01-02")}, nil))
+		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"scope": "future", "effective_billing_at": v.NextBilling.Format("2006-01-02"), "name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "paid_by": v.PaidBy}, nil))
 	}
 	return &v, nil
 }
@@ -689,7 +690,11 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	}
 	s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success", historicalSubscriptionChangeSummary(current, &v, effective))
 	if v.GroupID != "" {
-		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"scope": scope, "effective_billing_at": effective.Format("2006-01-02")}, nil))
+		versionDetails := map[string]any{"scope": scope, "effective_billing_at": effective.Format("2006-01-02"), "name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "paid_by": v.PaidBy}
+		if endBilling != nil {
+			versionDetails["end_billing_at"] = endBilling.Format("2006-01-02")
+		}
+		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(versionDetails, nil))
 	}
 	return &v, nil
 }
@@ -770,7 +775,7 @@ func (s *Service) DeleteSubscription(ctx context.Context, userID, id string) err
 	}
 	err = s.Stores.Subscriptions.Delete(ctx, id)
 	if err == nil {
-		s.audit(ctx, userID, v.GroupID, "subscription.deleted", "subscription", id, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor}, nil))
+		s.audit(ctx, userID, v.GroupID, "subscription.deleted", "subscription", id, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency)}, nil))
 	}
 	return err
 }
@@ -869,7 +874,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 	for i := range v.Splits {
 		v.Splits[i].ExpenseID = v.ID
 	}
-	s.audit(ctx, userID, v.GroupID, "expense.created", "expense", v.ID, "success", encodeAuditSummary(map[string]any{"title": v.Title, "amount_minor": v.AmountMinor, "incurred_on": v.IncurredOn.Format("2006-01-02"), "split_mode": v.SplitMode}, nil))
+	s.audit(ctx, userID, v.GroupID, "expense.created", "expense", v.ID, "success", encodeAuditSummary(map[string]any{"title": v.Title, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "incurred_on": v.IncurredOn.Format("2006-01-02"), "split_mode": v.SplitMode}, nil))
 	return &v, nil
 }
 func (s *Service) ListPersonalExpenses(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Expense], error) {

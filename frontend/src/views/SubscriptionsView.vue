@@ -164,7 +164,11 @@ function periodStatusLabel(status: SubscriptionPeriod['status']) { return tr(sta
 // Only counts periods already loaded into the drawer, not the full history —
 // matches what the button label promises: pages beyond the current one are
 // picked up incrementally as the user loads more and re-triggers a backfill.
-const backfillablePeriods = computed(() => periods.value.filter(period => period.status === 'pending' && new Date(period.billingAt) < new Date()).length)
+// Personal (groupless) subscriptions never post real occurrences at all (see
+// Service.postSubscriptionOccurrence on the backend), so the backend
+// rejects a backfill on one outright -- the button must not offer it, the
+// same way showBackfillOption already excludes personal subs on create.
+const backfillablePeriods = computed(() => periodsFor.value?.groupId ? periods.value.filter(period => period.status === 'pending' && new Date(period.billingAt) < new Date()).length : 0)
 const backfilling = ref(false)
 async function runBackfill() {
   if (!periodsFor.value) return
