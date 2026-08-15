@@ -263,24 +263,42 @@ func pageMeta[T any](p ports.Page[T]) map[string]int {
 
 func (a *API) auditQuery(e *core.RequestEvent) (ports.AuditQuery, error) {
 	page, err := pageRequest(e, "audits")
-	if err != nil { return ports.AuditQuery{}, err }
+	if err != nil {
+		return ports.AuditQuery{}, err
+	}
 	query := e.Request.URL.Query()
 	result := ports.AuditQuery{PageRequest: page, Query: query.Get("q"), Action: query.Get("action"), Resource: query.Get("resource"), Outcome: query.Get("outcome")}
-	if result.Outcome != "" && result.Outcome != "success" && result.Outcome != "failure" { return ports.AuditQuery{}, domain.ErrInvalid }
+	if result.Outcome != "" && result.Outcome != "success" && result.Outcome != "failure" {
+		return ports.AuditQuery{}, domain.ErrInvalid
+	}
 	location := time.UTC
 	if user, findErr := a.Service.Stores.Users.Get(e.Request.Context(), authID(e)); findErr == nil && user.Timezone != "" {
-		if value, loadErr := time.LoadLocation(user.Timezone); loadErr == nil { location = value }
+		if value, loadErr := time.LoadLocation(user.Timezone); loadErr == nil {
+			location = value
+		}
 	}
 	parseDate := func(value string, end bool) (time.Time, error) {
-		if value == "" { return time.Time{}, nil }
+		if value == "" {
+			return time.Time{}, nil
+		}
 		date, parseErr := time.ParseInLocation("2006-01-02", value, location)
-		if parseErr != nil { return time.Time{}, domain.ErrInvalid }
-		if end { date = date.AddDate(0, 0, 1).Add(-time.Nanosecond) }
+		if parseErr != nil {
+			return time.Time{}, domain.ErrInvalid
+		}
+		if end {
+			date = date.AddDate(0, 0, 1).Add(-time.Nanosecond)
+		}
 		return date.UTC(), nil
 	}
-	if result.From, err = parseDate(query.Get("from"), false); err != nil { return ports.AuditQuery{}, err }
-	if result.To, err = parseDate(query.Get("to"), true); err != nil { return ports.AuditQuery{}, err }
-	if !result.From.IsZero() && !result.To.IsZero() && result.From.After(result.To) { return ports.AuditQuery{}, domain.ErrInvalid }
+	if result.From, err = parseDate(query.Get("from"), false); err != nil {
+		return ports.AuditQuery{}, err
+	}
+	if result.To, err = parseDate(query.Get("to"), true); err != nil {
+		return ports.AuditQuery{}, err
+	}
+	if !result.From.IsZero() && !result.To.IsZero() && result.From.After(result.To) {
+		return ports.AuditQuery{}, domain.ErrInvalid
+	}
 	return result, nil
 }
 
@@ -411,7 +429,9 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 
 func (a *API) captchaChallenge(e *core.RequestEvent) error {
 	challenge, err := a.Service.CommunityCaptchaChallenge(e.Request.Context(), e.Request.URL.Query().Get("flow"))
-	if err != nil { return fail(e, err) }
+	if err != nil {
+		return fail(e, err)
+	}
 	return e.JSON(http.StatusOK, challenge)
 }
 func (a *API) listExternalAuths(e *core.RequestEvent) error {
@@ -747,7 +767,7 @@ func (a *API) deleteSettlement(e *core.RequestEvent) error {
 	return noContent(e)
 }
 func (a *API) exportPersonalLedger(e *core.RequestEvent) error {
-	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), "")
+	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), "", e.Request.URL.Query().Get("locale"))
 	if err != nil {
 		return fail(e, err)
 	}
@@ -755,7 +775,7 @@ func (a *API) exportPersonalLedger(e *core.RequestEvent) error {
 	return e.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
 }
 func (a *API) exportGroupLedger(e *core.RequestEvent) error {
-	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), groupID(e))
+	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), groupID(e), e.Request.URL.Query().Get("locale"))
 	if err != nil {
 		return fail(e, err)
 	}
