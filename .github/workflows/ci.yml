@@ -1,0 +1,92 @@
+name: CI
+
+# The only workflow that runs on every PR and every push to the two
+# long-lived branches — release.yml only ever runs at tag-push time, so
+# without this, code could reach develop/master with zero automated checks.
+on:
+  pull_request:
+    branches: [develop, master]
+  push:
+    branches: [develop, master]
+
+jobs:
+  verify:
+    name: Verify
+    uses: ./.github/workflows/verify.yml
+
+  lint-go:
+    name: Lint (Go, changed lines only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve diff base
+        id: base
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.before }}" ] && git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
+            echo "sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      # --new-from-rev scopes findings to lines changed since the diff base,
+      # so this can be added without a full-repo cleanup pass first.
+      # golangci-lint v2 is required here: backend/go.mod declares `go
+      # 1.26.0`, and golangci-lint refuses to run when it was built with an
+      # older Go toolchain than the target module declares (v1.61.0 was
+      # built with go1.23.1 and fails with "the Go language version ...
+      # is lower than the targeted Go version").
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: v2.12.2
+          working-directory: backend
+          args: --new-from-rev=${{ steps.base.outputs.sha }}
+
+  lint-frontend:
+    name: Lint (frontend, changed files only)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install
+        working-directory: frontend
+        run: npm ci
+
+      - name: Resolve diff base
+        id: base
+        run: |
+          if [ -n "${{ github.event.pull_request.base.sha }}" ]; then
+            echo "sha=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.before }}" ] && git cat-file -e "${{ github.event.before }}" 2>/dev/null; then
+            echo "sha=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=HEAD~1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Lint changed files
+        working-directory: frontend
+        run: |
+          mapfile -t files < <(git diff --name-only --relative --diff-filter=ACMR "${{ steps.base.outputs.sha }}" -- ':(glob)src/**/*.ts' ':(glob)src/**/*.vue')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed frontend source files to lint."
+            exit 0
+          fi
+          printf '%s\n' "${files[@]}"
+          npx eslint "${files[@]}"

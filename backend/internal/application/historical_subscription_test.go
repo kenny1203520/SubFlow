@@ -548,3 +548,29 @@ func TestUpdateSubscriptionBoundedRangeHistoricalToLiveAppliesWithinRange(t *tes
 		}
 	}
 }
+
+// A personal subscription has no group permission system, so its owner can
+// always browse past billing dates (used to schedule a historical stop
+// date) -- unlike a group subscription, which requires
+// ledger.records.historical_write.
+func TestBillingDatesIncludePastAllowedForPersonalOwner(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+
+	personal, err := f.service.CreateSubscription(ctx, f.owner, domain.Subscription{
+		Name: "Personal Netflix", AmountMinor: 1000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
+		BillingCycle: domain.BillingMonthly, StartsOn: time.Date(2024, time.September, 11, 0, 0, 0, 0, time.UTC),
+		Status: domain.SubscriptionActive, PaidBy: f.owner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := f.service.BillingDates(ctx, f.owner, personal.ID, "", 12, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Dates) == 0 || !page.Dates[0].Equal(time.Date(2024, time.September, 11, 0, 0, 0, 0, time.UTC)) {
+		t.Fatalf("expected the owner to see past dates starting at StartsOn, got %#v", page.Dates)
+	}
+}

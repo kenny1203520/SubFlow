@@ -1,5 +1,6 @@
 ﻿import { readFileSync } from 'node:fs'
-import { defineConfig, loadEnv } from 'vite'
+import { loadEnv } from 'vite'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 
@@ -40,6 +41,12 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': { target: backend, changeOrigin: true, ws: true },
+      },
+    },
+    test: {
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'lcov'],
       },
     },
   }

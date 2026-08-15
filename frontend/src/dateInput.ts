@@ -29,7 +29,7 @@ export function toDateTimeInput(iso: string, timeZone: string): string {
 
 /** "YYYY-MM-DD" in timeZone -> ISO instant at local midnight. */
 export function fromDateInput(value: string, timeZone: string): string {
-  return fromDateTimeInput(`${value}T00:00`, timeZone)
+  return value ? fromDateTimeInput(`${value}T00:00`, timeZone) : ''
 }
 
 /** "YYYY-MM-DDTHH:mm" in timeZone -> ISO instant. */
