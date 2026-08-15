@@ -6,6 +6,20 @@
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-08-15
+
+### Added
+- 訂閱期別歷史紀錄（drawer）現在也支援純個人（無群組）訂閱，不再侷限於群組訂閱才能查看。
+- 停止訂閱時可回溯選擇過去的停用日期，適用於補登實際上已經結束的訂閱；群組訂閱需具備歷史紀錄編輯權限。
+- 新增後端與前端的完整自動化測試涵蓋（權限管理、邀請流程、稽核紀錄、分類與匯率變更、訂閱自動入帳排程、HTTP API 層），以及 CI 流程（測試涵蓋率報告、程式碼風格檢查、相依套件漏洞掃描），強化專案穩定性與安全性。
+
+### Fixed
+- 修正期別歷史紀錄從個人頁面開啟群組訂閱時，付款人顯示為原始使用者／暫時成員 ID 而非姓名的問題。
+- 修正排程自動入帳可能在訂閱剛好於排程執行當下到期時漏抓該筆訂閱，導致未能如期自動入帳的問題。
+- 修正手動或自動更新匯率快取時，同一天但時間戳稍有差異可能建立重複紀錄而非更新既有紀錄的問題。
+- 修正即時通知（SSE）短時間內密集觸發時會逐一觸發重新整理造成不必要負載的問題，現在會合併為單次重新整理。
+- 修正清空日期欄位後儲存可能導致頁面發生錯誤的問題。
+
 ## [0.1.10] - 2026-08-15
 
 ### Fixed
@@ -136,7 +150,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.10...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.11...HEAD
+[0.1.11]: https://github.com/kenny1203520/SubFlow/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/kenny1203520/SubFlow/compare/v0.1.9...v0.1.10
 [0.1.9]: https://github.com/kenny1203520/SubFlow/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/kenny1203520/SubFlow/compare/v0.1.7...v0.1.8
