@@ -463,7 +463,24 @@ func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn strin
 			return nil, domain.ErrInvalid
 		}
 	}
-	dates, dateErr := domain.BillingDatesWithInterval(v.StartsOn.In(location), v.BillingCycle, v.BillingInterval, v.NextBilling.In(location), 1200)
+	// A stop date before the live NextBilling is a historical correction
+	// (e.g. migrating in a subscription that actually already ended), the
+	// same class of edit UpdateSubscription gates behind
+	// ledger.records.historical_write for a group subscription. A personal
+	// subscription has no group permission system to gate against — the
+	// owner check above already covers it.
+	historical := value.Before(v.NextBilling)
+	if historical && v.GroupID != "" {
+		if permErr := s.groupPermission(ctx, userID, v.GroupID, "ledger.records.historical_write"); permErr != nil {
+			s.audit(ctx, userID, v.GroupID, "subscription.stop_scheduled", "subscription", v.ID, "failure", encodeAuditSummary(map[string]any{"ends_on": value.Format("2006-01-02")}, nil))
+			return nil, permErr
+		}
+	}
+	from := v.NextBilling.In(location)
+	if historical {
+		from = v.StartsOn.In(location)
+	}
+	dates, dateErr := domain.BillingDatesWithInterval(v.StartsOn.In(location), v.BillingCycle, v.BillingInterval, from, 1200)
 	if dateErr != nil {
 		return nil, dateErr
 	}
@@ -477,14 +494,14 @@ func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn strin
 			break
 		}
 	}
-	if !matched || value.Before(v.NextBilling) {
+	if !matched {
 		return nil, domain.ErrInvalid
 	}
 	v.EndsOn = &value
 	if err = s.Stores.Subscriptions.Update(ctx, v); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "subscription.stop_scheduled", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"ends_on": value.Format("2006-01-02")}, nil))
+	s.audit(ctx, userID, v.GroupID, "subscription.stop_scheduled", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"ends_on": value.Format("2006-01-02"), "historical": historical}, nil))
 	v.LifecycleStatus = domain.SubscriptionLifecycle(*v, s.Now())
 	return v, nil
 }

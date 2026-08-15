@@ -558,10 +558,13 @@ func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, l
 		return BillingDatePage{}, err
 	}
 	if subscription.GroupID == "" {
+		// A personal subscription has no group permission system to gate
+		// against, so its owner can always browse past dates (used by the
+		// stop-subscription picker to schedule a historical stop). The
+		// group branch below still requires ledger.records.historical_write.
 		if subscription.OwnerID != userID {
 			return BillingDatePage{}, domain.ErrForbidden
 		}
-		includePast = false
 	} else if err = s.role(ctx, subscription.GroupID, userID, false); err != nil {
 		return BillingDatePage{}, err
 	} else if includePast && s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write") != nil {
