@@ -40,9 +40,14 @@ jobs:
 
       # --new-from-rev scopes findings to lines changed since the diff base,
       # so this can be added without a full-repo cleanup pass first.
+      # golangci-lint v2 is required here: backend/go.mod declares `go
+      # 1.26.0`, and golangci-lint refuses to run when it was built with an
+      # older Go toolchain than the target module declares (v1.61.0 was
+      # built with go1.23.1 and fails with "the Go language version ...
+      # is lower than the targeted Go version").
       - uses: golangci/golangci-lint-action@v6
         with:
-          version: v1.61.0
+          version: v2.12.2
           working-directory: backend
           args: --new-from-rev=${{ steps.base.outputs.sha }}
 
