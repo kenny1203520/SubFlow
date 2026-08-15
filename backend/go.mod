@@ -7,7 +7,7 @@ require (
 	github.com/altcha-org/altcha-lib-go/v2 v2.0.0-20260725115309-2c4fc27a7b2d
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.39.10
-	golang.org/x/text v0.40.0
+	golang.org/x/text v0.41.0
 )
 
 require (
