@@ -117,8 +117,18 @@ async function submit() {
   drawer.value = false
   reset()
 }
-async function loadDates(more=false) { if(!stopping.value) return; datesLoading.value=true; try { const result=await workspace.billingDates(stopping.value.id,more?cursor.value:''); dates.value=more?[...dates.value,...result.dates]:result.dates; cursor.value=result.nextCursor||''; if(!chosenDate.value) chosenDate.value=dates.value[0]||'' } finally { datesLoading.value=false } }
-async function openStop(item: Subscription) { stopping.value=item; dates.value=[]; cursor.value=''; chosenDate.value=''; await loadDates() }
+// A holder of ledger.records.historical_write can also schedule a stop
+// date in the past (e.g. migrating in a subscription that actually already
+// ended); a personal subscription's owner always can, since there is no
+// group permission system to gate against. The default selection must come
+// from the returned dates array itself (not stopping.value.nextBilling's
+// own string form, which billingDates renders in a different timezone
+// offset format and would never string-match any radio's value) — the
+// first non-past entry, so the picker still defaults to the upcoming stop
+// point once past dates are mixed in, rather than the earliest one.
+async function loadDates(more=false) { if(!stopping.value) return; datesLoading.value=true; try { const includePast=!stopping.value.groupId||canEditHistory.value; const result=await workspace.billingDates(stopping.value.id,more?cursor.value:'',includePast); dates.value=more?[...dates.value,...result.dates]:result.dates; cursor.value=result.nextCursor||''; if(!chosenDate.value) chosenDate.value=dates.value.find(date=>!pastStopDate(date))||dates.value[0]||'' } finally { datesLoading.value=false } }
+function pastStopDate(value:string) { return !!stopping.value?.nextBilling && new Date(value)<new Date(stopping.value.nextBilling) }
+async function openStop(item: Subscription) { stopping.value=item; dates.value=[]; cursor.value=''; chosenDate.value=''; if(item.groupId&&workspace.currentGroupId!==item.groupId) await workspace.selectGroup(item.groupId); await loadDates() }
 async function confirmStop() { if(!stopping.value||!chosenDate.value) return; await workspace.stopSubscription(stopping.value.id,chosenDate.value); stopping.value=undefined }
 async function cancelStop(item: Subscription) { await workspace.cancelSubscriptionStop(item.id) }
 async function remove() { if(!pendingDelete.value) return; await workspace.deleteSubscription(pendingDelete.value.id); await workspace.refreshPersonal(); pendingDelete.value=undefined }
@@ -144,7 +154,12 @@ async function loadPeriods(more = false) {
     periodsCursor.value = result.nextCursor || ''
   } catch { periodsError.value = workspace.localizedError || tr('requestFailed') } finally { periodsLoading.value = false }
 }
-async function openPeriods(item: Subscription) { periodsFor.value = item; periods.value = []; periodsCursor.value = ''; await loadPeriods() }
+// The period-history drawer resolves split payer names through
+// workspace.members, which only reflects whichever group is currently
+// selected — opening it for a subscription paid for from the personal page
+// (or from a different group) must load that subscription's own group
+// first, or names silently fall back to raw user/placeholder IDs.
+async function openPeriods(item: Subscription) { periodsFor.value = item; periods.value = []; periodsCursor.value = ''; if (item.groupId && workspace.currentGroupId !== item.groupId) await workspace.selectGroup(item.groupId); await loadPeriods() }
 function periodStatusLabel(status: SubscriptionPeriod['status']) { return tr(status === 'posted' ? 'periodPosted' : status === 'failed' ? 'periodFailed' : 'periodPending') }
 // Only counts periods already loaded into the drawer, not the full history —
 // matches what the button label promises: pages beyond the current one are
@@ -175,7 +190,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
           <span><button class="source-badge" :class="{shared:item.groupId}" @click="sourceItem=item">{{itemGroup(item)?.name||tr('privateRecord')}}</button></span>
           <span class="timezone-date"><strong>{{viewerDate(item.nextBilling)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small><small v-if="hasFailedPeriod(item)" class="danger-text">⚠ {{tr('periodHasFailures')}}</small></span><span>{{cycleLabel(item)}}</span><span class="pill">{{tr(statusKey(item))}}</span>
           <span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><small>{{tr('currentPeriodPrice')}}</small><small v-if="subscriptionShare(item)!==undefined">{{tr('personalShare')}}: <MoneyValue :amount="subscriptionShare(item)!" :currency="item.currency"/></small><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span>
-          <span class="row-actions"><button v-if="item.groupId" class="ghost" @click="openPeriods(item)">{{tr('periodHistory')}}</button><button v-if="item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span>
+          <span class="row-actions"><button class="ghost" @click="openPeriods(item)">{{tr('periodHistory')}}</button><button v-if="item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span>
         </article>
       </div>
       <EmptyState v-else :title="tr('noSubscriptions')" :description="tr('noSubscriptionsDesc')"/>
@@ -206,7 +221,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
       <EmptyState v-else-if="!periodsLoading" :title="tr('noPeriods')" :description="tr('periodHistoryDesc')"/>
       <button v-if="periodsCursor" type="button" class="ghost wide" :disabled="periodsLoading" @click="loadPeriods(true)">{{tr('loadMorePeriods')}}</button>
     </AppDrawer>
-    <Teleport to="body"><div v-if="stopping" class="modal-backdrop" @click.self="stopping=undefined"><section class="billing-dialog" role="dialog" aria-modal="true" :aria-label="tr('stopSubscription')"><header><div><h2>{{tr('stopSubscription')}}</h2><p>{{stopping.name}} · {{tr('chooseFinalBilling')}}</p></div><button class="icon-button" :aria-label="tr('close')" @click="stopping=undefined">×</button></header><div v-if="dates.length" class="billing-dates"><label v-for="date in dates" :key="date" :class="{selected:chosenDate===date}"><input v-model="chosenDate" type="radio" :value="date"><span><strong>{{viewerDate(date)}}</strong><small>{{tr('finalBilling')}}</small><small v-if="stopping.groupId">{{originalTime(stopping,date)}}</small></span></label></div><EmptyState v-else :title="tr('noBillingDates')" :description="tr('subscriptionDesc')"/><button v-if="cursor" class="ghost wide" :disabled="datesLoading" @click="loadDates(true)">{{tr('loadMore')}}</button><div class="form-actions"><button class="ghost" @click="stopping=undefined">{{tr('cancel')}}</button><button class="primary" :disabled="!chosenDate" @click="confirmStop">{{tr('confirm')}}</button></div></section></div></Teleport>
+    <Teleport to="body"><div v-if="stopping" class="modal-backdrop" @click.self="stopping=undefined"><section class="billing-dialog" role="dialog" aria-modal="true" :aria-label="tr('stopSubscription')"><header><div><h2>{{tr('stopSubscription')}}</h2><p>{{stopping.name}} · {{tr('chooseFinalBilling')}}</p></div><button class="icon-button" :aria-label="tr('close')" @click="stopping=undefined">×</button></header><div v-if="dates.length" class="billing-dates"><label v-for="date in dates" :key="date" :class="{selected:chosenDate===date}"><input v-model="chosenDate" type="radio" :value="date"><span><strong>{{viewerDate(date)}}</strong><small>{{pastStopDate(date)?tr('subscriptionPastPeriod'):tr('finalBilling')}}</small><small v-if="stopping.groupId">{{originalTime(stopping,date)}}</small></span></label></div><EmptyState v-else :title="tr('noBillingDates')" :description="tr('subscriptionDesc')"/><button v-if="cursor" class="ghost wide" :disabled="datesLoading" @click="loadDates(true)">{{tr('loadMore')}}</button><div class="form-actions"><button class="ghost" @click="stopping=undefined">{{tr('cancel')}}</button><button class="primary" :disabled="!chosenDate" @click="confirmStop">{{tr('confirm')}}</button></div></section></div></Teleport>
     <SourceDialog :open="!!sourceItem" kind="subscriptions" :group="sourceItem?itemGroup(sourceItem):undefined" :currency="sourceItem?.currency||'TWD'" @close="sourceItem=undefined"/><ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('deleteSubscriptionConfirm',{name:pendingDelete.name}):''" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
   </section>
 </template>
