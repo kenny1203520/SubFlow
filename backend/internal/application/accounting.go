@@ -223,7 +223,7 @@ func (s *Service) postOccurrenceAt(ctx context.Context, subscription *domain.Sub
 		if createErr := s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence); createErr != nil {
 			return createErr
 		}
-		s.audit(tx, actorID, subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "amount_minor": expense.AmountMinor, "expense_id": expense.ID}, nil))
+		s.audit(tx, actorID, subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "amount_minor": expense.AmountMinor, "currency": string(expense.Currency), "expense_id": expense.ID}, nil))
 		created = true
 		return nil
 	})
@@ -346,7 +346,10 @@ func occurrenceRegenerationSummary(before, after *domain.Expense, billingAt time
 	changes.addString("paid_by", before.PaidBy, after.PaidBy)
 	changes.addString("split_mode", string(before.SplitMode), string(after.SplitMode))
 	changes.addAny("splits", before.Splits, after.Splits)
-	return encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "expense_id": after.ID}, changes)
+	// currency also goes in the stable details (not just the changeSet) so the
+	// frontend can always pair it with amount_minor even when the currency
+	// itself didn't change and addString above skipped it.
+	return encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "expense_id": after.ID, "currency": string(after.Currency)}, changes)
 }
 
 // recordOccurrenceFailure persists a "failed" occurrence for one billing date

@@ -18,6 +18,15 @@ export function minorToInput(value: number, currency: Currency | string = 'TWD')
   return minorToMajor(value, currency).toFixed(currencyDigits(currency))
 }
 
+// Shared with MoneyValue.vue so any other place that needs a plain-text
+// formatted amount (e.g. the audit log, which renders inside a <li> rather
+// than a component) doesn't have to duplicate the Intl.NumberFormat/fallback
+// dance.
+export function formatMoney(amountMinor: number, currency: Currency | string = 'TWD', locale = 'zh-TW') {
+  try { return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(minorToMajor(amountMinor, currency)) }
+  catch { return `${minorToMajor(amountMinor, currency)} ${currency}` }
+}
+
 // The smallest positive amount an <input type=number> should step by/allow
 // for a given currency: "1" for zero-decimal currencies (JPY, KRW…), "0.001"
 // for three-decimal ones (BHD, KWD…), "0.01" otherwise. A hardcoded 0.01
