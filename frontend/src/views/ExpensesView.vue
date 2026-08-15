@@ -44,7 +44,12 @@ const reportingCurrency=computed(()=>sourceGroup.value?.currency||(!personal.val
 const participants=computed(()=>workspace.members.filter(member=>form.participants[member.userId]))
 const splitTotalMinor=computed(()=>participants.value.reduce((sum,member)=>sum+(form.splitMode==='amount'?majorToMinor(form.values[member.userId]||'0',currency.value):form.splitMode==='percentage'?Math.round(Number(form.values[member.userId]||0)*100):0),0))
 const expenseMinor=computed(()=>majorToMinor(form.amount||'0',currency.value))
-const splitValid=computed(()=>personal.value&&!editing.value?.groupId||form.splitMode==='equal'?participants.value.length>0:form.splitMode==='amount'?splitTotalMinor.value===expenseMinor.value:splitTotalMinor.value===10000)
+// A true personal (groupless) expense has no split editor at all (see the
+// v-if below), so form.participants is never populated for one — it must
+// always be considered valid rather than falling into the "needs at least
+// one participant" branch below, or the create/save button stays disabled
+// forever.
+const splitValid=computed(()=>personal.value&&!editing.value?.groupId?true:form.splitMode==='equal'?participants.value.length>0:form.splitMode==='amount'?splitTotalMinor.value===expenseMinor.value:splitTotalMinor.value===10000)
 watch([currency,reportingCurrency],([from,to])=>{if(from===to){form.rateMode='automatic';form.exchangeRate=''}})
 
 function reset(){editingId.value='';formError.value='';rateValid.value=true;incurredOnTouched.value=false;Object.assign(form,{title:'',category:'',categoryId:'',amount:'',currency:workspace.currentGroup?.currency||auth.record?.defaultCurrency||'TWD',rateMode:'automatic',exchangeRate:'',paidBy:auth.record?.id||'',incurredOn:todayInput(viewerTimezone()),notes:'',splitMode:'equal',participants:{},values:{}})}
