@@ -22,7 +22,7 @@ type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'p
 export const useWorkspaceStore = defineStore('workspace', () => {
   const auth = useAuthStore()
   const toast = useToastStore()
-  const { tr } = useI18n()
+  const { tr, locale } = useI18n()
   const api = new ApiClient(() => auth.token, auth.logout)
   const groups = ref<Group[]>([])
   const currencies = ref<CurrencyInfo[]>([])
@@ -663,7 +663,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function exportLedger(groupId?: string) {
-    const { blob, filename } = await api.getBlob(groupId ? `/groups/${groupId}/export` : '/export/personal')
+    const path = groupId ? `/groups/${groupId}/export` : '/export/personal'
+    const { blob, filename } = await api.getBlob(`${path}?locale=${encodeURIComponent(locale.value)}`)
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url

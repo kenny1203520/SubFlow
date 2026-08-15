@@ -72,6 +72,52 @@ func TestBackfillSubscriptionPeriodsCreatesHistoricalExpenses(t *testing.T) {
 	}
 }
 
+// A narrow one_off revision sitting exactly on StartsOn (e.g. a past
+// correction to just that first period's split) used to fool
+// ensureBaseRevisionCovers into thinking the whole backfill range was
+// covered, since it only ever checked StartsOn itself: a one_off matches
+// only its own exact date, so every later period was still uncovered, and
+// postOccurrenceAt hard-failed on the second date with ErrInvalid instead
+// of the backfill completing. Every date must be checked, not just the
+// first.
+func TestBackfillSubscriptionPeriodsCoversGapAfterLeadingOneOffRevision(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+
+	oneOff := domain.SubscriptionRevision{
+		SubscriptionID: f.subscription.ID, Scope: "one_off", EffectiveBillingAt: f.pastBilling,
+		Name: f.subscription.Name, AmountMinor: f.subscription.AmountMinor, Currency: f.subscription.Currency,
+		BaseCurrency: f.subscription.BaseCurrency, BaseAmountMinor: f.subscription.AmountMinor, RateMode: domain.RateAutomatic,
+		PaidBy: f.owner, SplitMode: domain.SplitAmount,
+		Splits: []domain.ExpenseSplit{{UserID: f.owner, AmountMinor: 30000}, {UserID: f.member, AmountMinor: 0}},
+	}
+	if err := f.stores.Subscriptions.CreateRevision(ctx, &oneOff); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := f.service.BackfillSubscriptionPeriods(ctx, f.owner, f.subscription.ID)
+	if err != nil {
+		t.Fatalf("expected the backfill to succeed despite the leading one_off revision, got %v", err)
+	}
+	if created != 23 {
+		t.Fatalf("expected all 23 periods to backfill, got %d", created)
+	}
+
+	occurrences, err := f.stores.Subscriptions.ListOccurrences(ctx, f.subscription.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failed := 0
+	for _, occurrence := range occurrences {
+		if occurrence.Status == "failed" {
+			failed++
+		}
+	}
+	if failed != 0 {
+		t.Fatalf("expected no failed occurrences, got %d (of %d total)", failed, len(occurrences))
+	}
+}
+
 func TestBackfillSubscriptionPeriodsRequiresHistoricalWritePermission(t *testing.T) {
 	f := newHistoricalFixture(t)
 	ctx := context.Background()
