@@ -689,11 +689,13 @@ func (s *Service) BackfillSubscriptionPeriods(ctx context.Context, userID, id st
 		return 0, err
 	}
 	if subscription.GroupID == "" {
-		// Personal subscriptions never post real occurrences at all (see
-		// postSubscriptionOccurrence); there is nothing to backfill.
-		return 0, domain.ErrInvalid
-	}
-	if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write"); err != nil {
+		// A personal subscription has no group permission system to gate
+		// against; the owner check is the full authorization, same as
+		// StopSubscription/SubscriptionPeriods for personal subscriptions.
+		if subscription.OwnerID != userID {
+			return 0, domain.ErrForbidden
+		}
+	} else if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write"); err != nil {
 		s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure")
 		return 0, err
 	}

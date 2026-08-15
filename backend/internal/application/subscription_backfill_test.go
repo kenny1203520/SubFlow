@@ -2,6 +2,7 @@ package application_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -133,7 +134,13 @@ func TestBackfillSubscriptionPeriodsRequiresHistoricalWritePermission(t *testing
 	}
 }
 
-func TestBackfillSubscriptionPeriodsRejectsPersonalSubscription(t *testing.T) {
+// Personal subscriptions post real occurrences the same way group ones do
+// (see Service.postSubscriptionOccurrence), so a migrated personal
+// subscription with a backdated StartsOn must be able to backfill its gap
+// too -- otherwise it can never accumulate more than the single synthetic
+// placeholder row the export/expense list would otherwise show for it
+// forever, no matter how long it's actually been running.
+func TestBackfillSubscriptionPeriodsWorksForPersonalSubscription(t *testing.T) {
 	f := newHistoricalFixture(t)
 	ctx := context.Background()
 	personal, err := f.service.CreateSubscription(ctx, f.owner, domain.Subscription{
@@ -144,8 +151,46 @@ func TestBackfillSubscriptionPeriodsRejectsPersonalSubscription(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = f.service.BackfillSubscriptionPeriods(ctx, f.owner, personal.ID); err != domain.ErrInvalid {
-		t.Fatalf("expected a personal subscription to be rejected, got %v", err)
+
+	created, err := f.service.BackfillSubscriptionPeriods(ctx, f.owner, personal.ID)
+	if err != nil {
+		t.Fatalf("expected the personal subscription's backfill to succeed, got %v", err)
+	}
+	if created != 23 {
+		t.Fatalf("expected 23 backfilled periods, got %d", created)
+	}
+
+	expenses, err := f.service.ListPersonalExpenses(ctx, f.owner, ports.PageRequest{Page: 1, PerPage: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	posted := 0
+	for _, expense := range expenses.Items {
+		if expense.SubscriptionID == personal.ID {
+			posted++
+			if expense.OwnerID != f.owner {
+				t.Fatalf("expected the posted expense to be owned by %s, got %q", f.owner, expense.OwnerID)
+			}
+		}
+	}
+	if posted != 23 {
+		t.Fatalf("expected 23 real personal expenses from the backfill, got %d", posted)
+	}
+}
+
+func TestBackfillSubscriptionPeriodsRejectsNonOwnerForPersonalSubscription(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	personal, err := f.service.CreateSubscription(ctx, f.owner, domain.Subscription{
+		Name: "Personal Netflix", AmountMinor: 1000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
+		BillingCycle: domain.BillingMonthly, StartsOn: time.Date(2024, time.September, 11, 0, 0, 0, 0, time.UTC),
+		Status: domain.SubscriptionActive, PaidBy: f.owner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.BackfillSubscriptionPeriods(ctx, f.member, personal.ID); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected a non-owner to be forbidden from backfilling someone else's personal subscription, got %v", err)
 	}
 }
 
