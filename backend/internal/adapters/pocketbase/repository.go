@@ -1411,11 +1411,43 @@ func settingsFrom(record *core.Record) domain.SystemSettings {
 	if !password && !oidc && legacy {
 		password, oidc = true, true
 	}
-	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: record.GetString("captcha_provider"), CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+	provider := record.GetString("captcha_provider")
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+}
+
+// captchaFlowsFrom reads the per-flow captcha configuration, falling back to
+// legacy-equivalent defaults (mirroring the allow_registration split above)
+// when the record predates this field: register/passwordReset/otpRequest
+// gated exactly when a provider is configured (matching what
+// Service.VerifyCaptcha always did before per-flow gating existed), login
+// never gated (no hook existed for it before), both at today's only trigger
+// ("load") and the widget's previous unconfigurable look ("interactive").
+// Once an administrator saves settings once, the real stored value takes
+// over and this fallback no longer applies.
+func captchaFlowsFrom(record *core.Record, provider string) domain.CaptchaFlowSettings {
+	raw := record.GetString("captcha_flows")
+	// An unset JSONField reads back as the literal string "null", not "" --
+	// both mean "never saved," so both fall through to the legacy defaults
+	// below rather than unmarshalling into an all-zero-value (i.e.
+	// all-disabled) CaptchaFlowSettings.
+	if raw != "" && raw != "null" {
+		var flows domain.CaptchaFlowSettings
+		if err := json.Unmarshal([]byte(raw), &flows); err == nil {
+			return flows
+		}
+	}
+	legacyGated := domain.CaptchaFlowConfig{Enabled: provider != "", Trigger: "load", Mode: "interactive"}
+	return domain.CaptchaFlowSettings{
+		Register:      legacyGated,
+		PasswordReset: legacyGated,
+		OTPRequest:    legacyGated,
+		Login:         domain.CaptchaFlowConfig{Enabled: false, Trigger: "load", Mode: "interactive"},
+	}
 }
 
 func defaultSystemSettings() domain.SystemSettings {
-	return domain.SystemSettings{SiteName: "SubFlow", DefaultTimezone: "UTC", DefaultCurrency: domain.CurrencyTWD, AllowPasswordRegistration: true, AllowOIDCRegistration: true, AllowRegistration: true}
+	unconfigured := domain.CaptchaFlowConfig{Enabled: false, Trigger: "load", Mode: "interactive"}
+	return domain.SystemSettings{SiteName: "SubFlow", DefaultTimezone: "UTC", DefaultCurrency: domain.CurrencyTWD, AllowPasswordRegistration: true, AllowOIDCRegistration: true, AllowRegistration: true, CaptchaFlows: domain.CaptchaFlowSettings{Register: unconfigured, PasswordReset: unconfigured, OTPRequest: unconfigured, Login: unconfigured}}
 }
 
 func (r *Repository) GetSystemSettings(ctx context.Context) (domain.SystemSettings, error) {
@@ -1462,6 +1494,7 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	record.Set("captcha_site_key", value.CaptchaSiteKey)
 	record.Set("captcha_challenge_url", value.CaptchaChallengeURL)
 	record.Set("captcha_verify_url", value.CaptchaVerifyURL)
+	record.Set("captcha_flows", value.CaptchaFlows)
 	if value.CaptchaSecretCiphertext != "" {
 		record.Set("captcha_secret", value.CaptchaSecretCiphertext)
 	}
