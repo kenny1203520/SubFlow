@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [0.1.14] - 2026-08-16
+
+### Fixed
+- 修正個人訂閱「期數紀錄」在補記歷史或每期自動入帳後，畫面仍持續顯示「尚未入帳」的問題：後端在讀取個人訂閱的期數與清單資料時，一直略過載入其實際的版本與入帳紀錄，導致畫面看不到真正已經入帳的期數。
+
 ## [0.1.13] - 2026-08-16
 
 ### Added
@@ -162,7 +167,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.13...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.14...HEAD
+[0.1.14]: https://github.com/kenny1203520/SubFlow/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/kenny1203520/SubFlow/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/kenny1203520/SubFlow/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/kenny1203520/SubFlow/compare/v0.1.10...v0.1.11
