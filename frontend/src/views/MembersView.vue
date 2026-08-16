@@ -35,6 +35,19 @@ async function startTransfer() { if(!transferTarget.value) return; if(await work
 async function cancelTransfer() { if(workspace.ownershipTransfer) await workspace.cancelOwnershipTransfer(workspace.ownershipTransfer.id) }
 async function respondTransfer(accept:boolean) { if(workspace.ownershipTransfer) await workspace.respondOwnershipTransfer(workspace.ownershipTransfer.id, accept) }
 
+// A member transfer's source can be any real (non-placeholder), non-owner
+// member; the backend rejects the owner as a source (use ownership transfer
+// for that instead).
+const memberTransferCandidates = computed(()=>workspace.members.filter(member=>!member.user?.placeholder&&member.role!=='owner'))
+const memberTransferFrom = ref('')
+const memberTransferTo = ref('')
+async function startMemberTransfer() {
+    if (!memberTransferFrom.value || !memberTransferTo.value) return
+    if (await workspace.createMemberTransfer(memberTransferFrom.value, memberTransferTo.value)) { memberTransferFrom.value=''; memberTransferTo.value='' }
+}
+async function respondMemberTransfer(id:string, accept:boolean) { await workspace.respondMemberTransfer(id, accept) }
+async function cancelMemberTransfer(id:string) { await workspace.cancelMemberTransfer(id) }
+
 async function invite() {
     await workspace.invite(email.value, bindTarget.value?.userId)
     email.value = ''
@@ -58,7 +71,7 @@ function memberRoleLabel(roleId?:string, fallback?:string, legacyRole?:string) {
     const role = workspace.groupRoles.find(value => value.id === roleId)
     return roleLabel(role, tr) || (legacyRole === 'owner' ? tr('owner') : legacyRole === 'member' ? tr('member') : fallback || tr('member'))
 }
-onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void workspace.loadOwnershipTransfer()})
+onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void workspace.loadOwnershipTransfer();void workspace.loadMemberTransfers()})
 </script>
 
 <template>
@@ -112,6 +125,40 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                         </select>
                     </label>
                     <button class="primary" :disabled="workspace.loading || !transferTarget">{{tr('startTransfer')}}</button>
+                </form>
+            </div>
+            <div v-if="canManageMembers || workspace.memberTransfers.length" class="card">
+                <h2>{{tr('memberTransfer')}}</h2>
+                <p class="field-help">{{tr('memberTransferDesc')}}</p>
+                <template v-if="workspace.memberTransfers.length">
+                    <h3>{{tr('pendingMemberTransfers')}}</h3>
+                    <div v-for="item in workspace.memberTransfers" :key="item.id" class="notice inline">
+                        <template v-if="item.toUserId === auth.record?.id">
+                            <p>{{tr('memberTransferOfferedBy',{by:memberLabel(item.fromUserId),from:memberLabel(item.fromUserId)})}}</p>
+                            <button class="primary" :disabled="workspace.loading" @click="respondMemberTransfer(item.id,true)">{{tr('acceptTransfer')}}</button>
+                            <button class="ghost" :disabled="workspace.loading" @click="respondMemberTransfer(item.id,false)">{{tr('declineTransfer')}}</button>
+                        </template>
+                        <template v-else>
+                            <p>{{tr('memberTransferPendingFor',{from:memberLabel(item.fromUserId),to:memberLabel(item.toUserId)})}}</p>
+                            <button v-if="canManageMembers" class="ghost danger-text" :disabled="workspace.loading" @click="cancelMemberTransfer(item.id)">{{tr('cancelTransfer')}}</button>
+                        </template>
+                    </div>
+                </template>
+                <p v-else class="empty-inline">{{tr('noMemberTransfers')}}</p>
+                <form v-if="canManageMembers" class="form-card" @submit.prevent="startMemberTransfer">
+                    <label>{{tr('transferMemberFrom')}}
+                        <select v-model="memberTransferFrom" required>
+                            <option value="" disabled>{{tr('chooseMember')}}</option>
+                            <option v-for="member in memberTransferCandidates" :key="member.userId" :value="member.userId">{{member.user?.name || member.user?.email}}</option>
+                        </select>
+                    </label>
+                    <label>{{tr('transferMemberTo')}}
+                        <select v-model="memberTransferTo" required>
+                            <option value="" disabled>{{tr('chooseMember')}}</option>
+                            <option v-for="member in memberTransferCandidates.filter(m=>m.userId!==memberTransferFrom)" :key="member.userId" :value="member.userId">{{member.user?.name || member.user?.email}}</option>
+                        </select>
+                    </label>
+                    <button class="primary" :disabled="workspace.loading || !memberTransferFrom || !memberTransferTo">{{tr('startMemberTransfer')}}</button>
                 </form>
             </div>
             <div v-if="canManageMembers" class="card">

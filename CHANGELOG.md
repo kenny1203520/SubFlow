@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+## [0.1.15] - 2026-08-16
+
+### Fixed
+- 修正手機版排版問題：群組成員列表的 Email 文字會與角色下拉選單重疊、支出／訂閱的分帳編輯在多數手機尺寸下仍過於擁擠；並修正平板尺寸（768–1024px）過去會直接套用手機單欄卡片版面、無法顯示較完整表格的問題，新增專屬平板版面。
+- 修正臨時成員綁定正式帳號後，歷史支出、訂閱、還款紀錄仍停留在舊臨時成員、無法正確顯示的問題：綁定時現在會將所有歷史紀錄一併轉移到正式帳號，並移除臨時成員。
+
+### Added
+- 新增「轉移成員身份」功能：具備成員管理權限者可將某位正式成員在群組內的支出、訂閱、還款紀錄整批轉移給另一位成員，對方需接受邀請後才會正式生效，原成員將移出群組。
+
 ## [0.1.14] - 2026-08-16
 
 ### Fixed
@@ -167,7 +176,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.14...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.15...HEAD
+[0.1.15]: https://github.com/kenny1203520/SubFlow/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/kenny1203520/SubFlow/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/kenny1203520/SubFlow/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/kenny1203520/SubFlow/compare/v0.1.11...v0.1.12

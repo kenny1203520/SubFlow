@@ -309,6 +309,57 @@ func (r *Repository) UpdateOwnershipTransfer(ctx context.Context, v *domain.Owne
 	return nil
 }
 
+func (r *Repository) CreateMemberTransfer(ctx context.Context, v *domain.MemberTransfer) error {
+	rec, err := newRecord(r.app(ctx), CollectionMemberTransfers)
+	if err != nil {
+		return err
+	}
+	writeMemberTransfer(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetMemberTransfer(ctx context.Context, id string) (*domain.MemberTransfer, error) {
+	rec, err := r.app(ctx).FindRecordById(CollectionMemberTransfers, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return memberTransferFrom(rec), nil
+}
+func (r *Repository) FindPendingMemberTransferByFromUser(ctx context.Context, groupID, fromUserID string) (*domain.MemberTransfer, error) {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionMemberTransfers, "group={:group} && from_user={:from} && status='pending'", dbx.Params{"group": groupID, "from": fromUserID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return memberTransferFrom(rec), nil
+}
+func (r *Repository) ListPendingMemberTransfers(ctx context.Context, groupID string) ([]domain.MemberTransfer, error) {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionMemberTransfers, "group={:group} && status='pending'", "-created", 0, 0, dbx.Params{"group": groupID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	values := make([]domain.MemberTransfer, len(recs))
+	for i, rec := range recs {
+		values[i] = *memberTransferFrom(rec)
+	}
+	return values, nil
+}
+func (r *Repository) UpdateMemberTransfer(ctx context.Context, v *domain.MemberTransfer) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionMemberTransfers, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeMemberTransfer(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
 func (r *Repository) CreateNotification(ctx context.Context, value *domain.Notification) error {
 	rec, err := newRecord(r.app(ctx), CollectionNotifications)
 	if err != nil {
@@ -360,6 +411,23 @@ func (r *Repository) MarkNotificationsReadForResource(ctx context.Context, userI
 			if err := r.app(ctx).Save(rec); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// ReassignNotificationUser rewrites notifications.user from fromUserID to
+// toUserID within groupID (see Service.repointUserReferences).
+func (r *Repository) ReassignNotificationUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	app := r.app(ctx)
+	recs, err := app.FindRecordsByFilter(CollectionNotifications, "group={:group} && user={:from}", "", 0, 0, dbx.Params{"group": groupID, "from": fromUserID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range recs {
+		rec.Set("user", toUserID)
+		if err = app.Save(rec); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -469,6 +537,19 @@ func (r *Repository) ListSubscriptionRevisions(ctx context.Context, subscription
 	return values, nil
 }
 
+func (r *Repository) UpdateSubscriptionRevision(ctx context.Context, v *domain.SubscriptionRevision) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionSubscriptionRevisions, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeSubscriptionRevision(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	hydrateTimes(rec, &v.CreatedAt, new(time.Time))
+	return nil
+}
+
 func (r *Repository) CreateSubscriptionOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
 	rec, err := newRecord(r.app(ctx), CollectionSubscriptionOccurrences)
 	if err != nil {
@@ -551,6 +632,68 @@ func (r *Repository) ListDueSubscriptions(ctx context.Context, before time.Time)
 		values[i] = *subscriptionFrom(rec)
 	}
 	return values, nil
+}
+
+// ReassignSubscriptionUser walks every subscription in the group -- not just
+// ones matched by paid_by, since fromUserID may appear only inside splits --
+// rewriting paid_by/splits, and does the same for every one of that
+// subscription's revisions independently, since each revision carries its
+// own paid_by/splits snapshot (see Service.repointUserReferences).
+func (r *Repository) ReassignSubscriptionUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	app := r.app(ctx)
+	subRecs, err := app.FindRecordsByFilter(CollectionSubscriptions, "group={:group}", "", 0, 0, dbx.Params{"group": groupID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range subRecs {
+		changed := false
+		if rec.GetString("paid_by") == fromUserID {
+			rec.Set("paid_by", toUserID)
+			changed = true
+		}
+		var splits []domain.ExpenseSplit
+		if err = json.Unmarshal([]byte(rec.GetString("splits")), &splits); err == nil {
+			splitsChanged := false
+			for i := range splits {
+				if splits[i].UserID == fromUserID {
+					splits[i].UserID = toUserID
+					splitsChanged = true
+				}
+			}
+			if splitsChanged {
+				rec.Set("splits", splits)
+				changed = true
+			}
+		}
+		if changed {
+			if err = app.Save(rec); err != nil {
+				return err
+			}
+		}
+		revisions, revErr := r.ListSubscriptionRevisions(ctx, rec.Id)
+		if revErr != nil {
+			return revErr
+		}
+		for i := range revisions {
+			revChanged := false
+			if revisions[i].PaidBy == fromUserID {
+				revisions[i].PaidBy = toUserID
+				revChanged = true
+			}
+			for j := range revisions[i].Splits {
+				if revisions[i].Splits[j].UserID == fromUserID {
+					revisions[i].Splits[j].UserID = toUserID
+					revChanged = true
+				}
+			}
+			if revChanged {
+				if err = r.UpdateSubscriptionRevision(ctx, &revisions[i]); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (r *Repository) CreateExpense(ctx context.Context, v *domain.Expense) error {
@@ -658,6 +801,54 @@ func (r *Repository) ListExpenseSplits(ctx context.Context, expenseID string) ([
 	return result, nil
 }
 
+// ReassignExpenseUser rewrites expense.paid_by and expense_splits.user from
+// fromUserID to toUserID within groupID. A split row is merged into an
+// existing (expense, toUserID) row -- summing amounts, dropping the
+// fromUserID row -- when one already exists, since expense_splits has a
+// unique (expense, user) index that a blind UPDATE could violate (see
+// Service.repointUserReferences).
+func (r *Repository) ReassignExpenseUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	app := r.app(ctx)
+	expenseRecs, err := app.FindRecordsByFilter(CollectionExpenses, "group={:group} && paid_by={:from}", "", 0, 0, dbx.Params{"group": groupID, "from": fromUserID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range expenseRecs {
+		rec.Set("paid_by", toUserID)
+		if err = app.Save(rec); err != nil {
+			return err
+		}
+	}
+	splitRecs, err := app.FindRecordsByFilter(CollectionExpenseSplits, "expense.group={:group} && user={:from}", "", 0, 0, dbx.Params{"group": groupID, "from": fromUserID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range splitRecs {
+		expenseID := rec.GetString("expense")
+		existing, findErr := app.FindFirstRecordByFilter(CollectionExpenseSplits, "expense={:expense} && user={:to}", dbx.Params{"expense": expenseID, "to": toUserID})
+		if findErr == nil {
+			existing.Set("amount_minor", existing.GetFloat("amount_minor")+rec.GetFloat("amount_minor"))
+			existing.Set("base_amount_minor", existing.GetFloat("base_amount_minor")+rec.GetFloat("base_amount_minor"))
+			existing.Set("percentage_bp", existing.GetFloat("percentage_bp")+rec.GetFloat("percentage_bp"))
+			if err = app.Save(existing); err != nil {
+				return err
+			}
+			if err = app.Delete(rec); err != nil {
+				return err
+			}
+			continue
+		}
+		if !errors.Is(findErr, sql.ErrNoRows) {
+			return mapError(findErr)
+		}
+		rec.Set("user", toUserID)
+		if err = app.Save(rec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *Repository) CreateSettlement(ctx context.Context, v *domain.Settlement) error {
 	record, err := newRecord(r.app(ctx), CollectionSettlements)
 	if err != nil {
@@ -708,6 +899,43 @@ func (r *Repository) UpdateSettlement(ctx context.Context, v *domain.Settlement)
 		return err
 	}
 	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+// ReassignSettlementUser rewrites from_user/to_user/created_by from
+// fromUserID to toUserID within groupID, deleting any row that would end up
+// self-referential (from_user==to_user) -- i.e. a settlement that existed
+// directly between the two -- instead of leaving it in that invalid state
+// (see Service.repointUserReferences).
+func (r *Repository) ReassignSettlementUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	app := r.app(ctx)
+	recs, err := app.FindRecordsByFilter(CollectionSettlements, "group={:group} && (from_user={:from} || to_user={:from} || created_by={:from})", "", 0, 0, dbx.Params{"group": groupID, "from": fromUserID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range recs {
+		from, to := rec.GetString("from_user"), rec.GetString("to_user")
+		if from == fromUserID {
+			from = toUserID
+		}
+		if to == fromUserID {
+			to = toUserID
+		}
+		if from == to {
+			if err = app.Delete(rec); err != nil {
+				return err
+			}
+			continue
+		}
+		rec.Set("from_user", from)
+		rec.Set("to_user", to)
+		if rec.GetString("created_by") == fromUserID {
+			rec.Set("created_by", toUserID)
+		}
+		if err = app.Save(rec); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -767,6 +995,25 @@ func (r *Repository) UpdateCategory(ctx context.Context, v *domain.Category) err
 		return err
 	}
 	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+// ReassignCategoryUser rewrites group-scope categories.created_by from
+// fromUserID to toUserID within groupID. Personal-scope categories.owner is
+// intentionally left untouched -- outside the group-scoped boundary this
+// repointing operates within (see Service.repointUserReferences).
+func (r *Repository) ReassignCategoryUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	app := r.app(ctx)
+	recs, err := app.FindRecordsByFilter(CollectionCategories, "scope='group' && group={:group} && created_by={:from}", "", 0, 0, dbx.Params{"group": groupID, "from": fromUserID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range recs {
+		rec.Set("created_by", toUserID)
+		if err = app.Save(rec); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -1323,6 +1570,17 @@ func writeOwnershipTransfer(r *core.Record, v *domain.OwnershipTransfer) {
 }
 func ownershipTransferFrom(r *core.Record) *domain.OwnershipTransfer {
 	v := &domain.OwnershipTransfer{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), Status: domain.OwnershipTransferStatus(r.GetString("status"))}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+func writeMemberTransfer(r *core.Record, v *domain.MemberTransfer) {
+	r.Set("group", v.GroupID)
+	r.Set("from_user", v.FromUserID)
+	r.Set("to_user", v.ToUserID)
+	r.Set("status", v.Status)
+}
+func memberTransferFrom(r *core.Record) *domain.MemberTransfer {
+	v := &domain.MemberTransfer{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), Status: domain.MemberTransferStatus(r.GetString("status"))}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }
