@@ -3,8 +3,10 @@ package application_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"subflow/internal/domain"
+	"subflow/internal/ports"
 )
 
 // Nothing in the UI could previously answer "which period is this price for",
@@ -117,6 +119,61 @@ func TestSubscriptionPeriodsSurfacePostedAndFailedOccurrences(t *testing.T) {
 	failed := page.Periods[1]
 	if failed.Status != "failed" || failed.Error != "subscription_split_invalid" {
 		t.Fatalf("expected the second period to surface the failure, got %#v", failed)
+	}
+}
+
+// hydrateSubscription used to return immediately for personal (groupless)
+// subscriptions -- a leftover from when they could never have real revisions
+// or occurrences at all. Now that they do (see CreateSubscription and
+// postOccurrenceAt), that early return silently dropped every occurrence a
+// personal subscription had actually posted: SubscriptionPeriods reported
+// every period as "pending" forever, even immediately after a successful
+// backfill created real, posted expenses for them.
+func TestSubscriptionPeriodsReflectsPostedOccurrencesForPersonalSubscription(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	personal, err := f.service.CreateSubscription(ctx, f.owner, domain.Subscription{
+		Name: "Personal Netflix", AmountMinor: 1000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
+		BillingCycle: domain.BillingMonthly, StartsOn: time.Date(2024, time.September, 11, 0, 0, 0, 0, time.UTC),
+		Status: domain.SubscriptionActive, PaidBy: f.owner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created, err := f.service.BackfillSubscriptionPeriods(ctx, f.owner, personal.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created != 23 {
+		t.Fatalf("expected 23 backfilled periods, got %d", created)
+	}
+
+	page, err := f.service.SubscriptionPeriods(ctx, f.owner, personal.ID, "", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, period := range page.Periods {
+		if period.Status != "posted" || period.ExpenseID == "" {
+			t.Fatalf("expected every backfilled period to report posted with an expense id, got %#v", period)
+		}
+	}
+
+	list, err := f.service.ListPersonalSubscriptions(ctx, f.owner, ports.PageRequest{Page: 1, PerPage: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range list.Items {
+		if item.ID != personal.ID {
+			continue
+		}
+		found = true
+		if len(item.Occurrences) != 23 {
+			t.Fatalf("expected the listed subscription to carry its 23 hydrated occurrences, got %d", len(item.Occurrences))
+		}
+	}
+	if !found {
+		t.Fatal("expected the personal subscription to be listed")
 	}
 }
 
