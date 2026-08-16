@@ -110,10 +110,12 @@ type User struct {
 	// group member who hasn't joined yet (see Service.CreateTempMember).
 	Placeholder bool `json:"placeholder,omitempty"`
 	// LinkedUserID is set once a placeholder has been bound to a real
-	// account (see CollaborationService.accept). Historical expense_splits,
-	// settlements and subscriptions keep referencing the placeholder's own
-	// ID rather than being rewritten, so callers that need "who does this
-	// balance really belong to" resolve through this field.
+	// account (see CollaborationService.accept), which eagerly repoints every
+	// historical expense_split/subscription/settlement reference to the real
+	// account and deletes the placeholder row (see Service.repointUserReferences).
+	// A placeholder found with this set is legacy data from before that
+	// rewrite existed; Service.resolvePlaceholderAliases exists only to keep
+	// such pre-existing rows readable, not as steady-state behavior.
 	LinkedUserID string `json:"linkedUserId,omitempty"`
 }
 
@@ -237,6 +239,34 @@ type OwnershipTransfer struct {
 	Status     OwnershipTransferStatus `json:"status"`
 	CreatedAt  time.Time               `json:"createdAt"`
 	UpdatedAt  time.Time               `json:"updatedAt"`
+}
+
+type MemberTransferStatus string
+
+const (
+	MemberTransferPending   MemberTransferStatus = "pending"
+	MemberTransferAccepted  MemberTransferStatus = "accepted"
+	MemberTransferDeclined  MemberTransferStatus = "declined"
+	MemberTransferCancelled MemberTransferStatus = "cancelled"
+)
+
+// MemberTransfer is an invite-and-accept handoff of one real member's entire
+// group-scoped history (expenses, subscriptions incl. every revision,
+// settlements, group-scope categories) to another real member, followed by
+// removing FromUserID from the group -- a full identity handover, conceptually
+// the same repointing a temp-member bind does (see
+// Service.repointUserReferences), just between two already-real accounts and
+// requiring ToUserID's consent. Unlike OwnershipTransfer, a group may have
+// several of these pending at once for different member pairs, so pending
+// conflicts are scoped per FromUserID rather than per group.
+type MemberTransfer struct {
+	ID         string               `json:"id"`
+	GroupID    string               `json:"groupId"`
+	FromUserID string               `json:"fromUserId"`
+	ToUserID   string               `json:"toUserId"`
+	Status     MemberTransferStatus `json:"status"`
+	CreatedAt  time.Time            `json:"createdAt"`
+	UpdatedAt  time.Time            `json:"updatedAt"`
 }
 
 type Invitation struct {
@@ -430,12 +460,12 @@ type DashboardSummary struct {
 	MonthlySubscriptionMinor         int64               `json:"monthlySubscriptionMinor"`
 	PersonalMonthlySubscriptionMinor int64               `json:"personalMonthlySubscriptionMinor"`
 	MonthExpenseMinor                int64               `json:"monthExpenseMinor"`
-	ActiveSubscriptions      int                 `json:"activeSubscriptions"`
-	Upcoming                 []Subscription      `json:"upcoming"`
-	Currencies               []CurrencyDashboard `json:"currencies,omitempty"`
-	Balances                 []MemberBalance     `json:"balances,omitempty"`
-	ReportingCurrency        Currency            `json:"reportingCurrency,omitempty"`
-	OriginalCurrencies       []CurrencyDashboard `json:"originalCurrencies,omitempty"`
+	ActiveSubscriptions              int                 `json:"activeSubscriptions"`
+	Upcoming                         []Subscription      `json:"upcoming"`
+	Currencies                       []CurrencyDashboard `json:"currencies,omitempty"`
+	Balances                         []MemberBalance     `json:"balances,omitempty"`
+	ReportingCurrency                Currency            `json:"reportingCurrency,omitempty"`
+	OriginalCurrencies               []CurrencyDashboard `json:"originalCurrencies,omitempty"`
 }
 
 type CurrencyChangeMissing struct {

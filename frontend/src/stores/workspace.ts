@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, Meta, Notification, OwnershipTransfer, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import { useI18n } from '../i18n'
@@ -38,6 +38,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const settlements = ref<Settlement[]>([])
   const groupRoles = ref<AccessRole[]>([])
   const ownershipTransfer = ref<OwnershipTransfer>()
+  const memberTransfers = ref<MemberTransfer[]>([])
   const groupAuditLogs = ref<AuditLog[]>([])
   const groupAuditMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
   const groupPermissions = ref<string[]>([])
@@ -476,6 +477,23 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function cancelOwnershipTransfer(id: string) {
     return run(async () => { await api.delete(`/ownership-transfers/${id}`); ownershipTransfer.value = undefined })
   }
+  // Unlike ownership transfer, a group can have several member transfers
+  // pending at once (for different source members), so this is always a
+  // plain list rather than a single-or-404 lookup.
+  async function loadMemberTransfers() {
+    if (!currentGroupId.value) return
+    memberTransfers.value = (await api.get<MemberTransfer[]>(`/groups/${currentGroupId.value}/member-transfers`)).data
+  }
+  async function createMemberTransfer(fromUserId: string, toUserId: string) {
+    if (!currentGroupId.value) return
+    return run(async () => { await api.post<MemberTransfer>(`/groups/${currentGroupId.value}/member-transfers`, { fromUserId, toUserId }); await loadMemberTransfers() })
+  }
+  async function respondMemberTransfer(id: string, accept: boolean) {
+    return run(async () => { await api.post<MemberTransfer>(`/member-transfers/${id}/respond`, { accept }); await loadMemberTransfers(); await refreshGroup() })
+  }
+  async function cancelMemberTransfer(id: string) {
+    return run(async () => { await api.delete(`/member-transfers/${id}`); await loadMemberTransfers() })
+  }
   async function loadGroupAuditLogs(query = ''): Promise<Envelope<AuditLog[]> | undefined> {
     if (!currentGroupId.value) return
     const params = new URLSearchParams(query)
@@ -751,9 +769,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
-    subscriptions, expenses, settlements, groupRoles, ownershipTransfer, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
-    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
+    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,

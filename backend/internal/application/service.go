@@ -241,10 +241,13 @@ func (s *Service) RemoveMember(ctx context.Context, userID, groupID, memberID st
 	if role == domain.RoleOwner {
 		return domain.ErrForbidden
 	}
-	// A bound placeholder is a permanent alias target for historical
-	// expense_splits/settlements/subscriptions (see WorkspaceDashboard's
-	// alias resolution) — removing it would make old records display an
-	// unresolvable name, so refuse rather than silently corrupting history.
+	// A placeholder bound under the pre-repointUserReferences design (see
+	// User.LinkedUserID) is a legacy alias target for historical
+	// expense_splits/settlements/subscriptions that were never rewritten —
+	// removing it would make those old records display an unresolvable
+	// name, so refuse rather than silently corrupting history. A binding
+	// done today never leaves the placeholder around to reach this branch
+	// at all (see CollaborationService.accept).
 	member, memberErr := s.Stores.Users.Get(ctx, memberID)
 	if memberErr == nil && member.Placeholder && member.LinkedUserID != "" {
 		return domain.ErrConflict
