@@ -15,6 +15,7 @@ import (
 	pbadapter "subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/config"
+	"subflow/internal/domain"
 	"subflow/internal/exchange"
 	"subflow/internal/mailer"
 	"subflow/internal/realtime"
@@ -74,13 +75,24 @@ func main() {
 		base := application.New(stores)
 		base.Rates = exchange.NewOpenERAPIProvider()
 		app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(event *core.RecordRequestPasswordResetRequestEvent) error {
-			if err := base.VerifyCaptcha(event.Request.Context(), event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+			if err := base.VerifyCaptcha(event.Request.Context(), domain.CaptchaFlowPasswordReset, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
 				return event.BadRequestError("captcha_verification_failed", nil)
 			}
 			return event.Next()
 		})
 		app.OnRecordRequestOTPRequest("users").BindFunc(func(event *core.RecordCreateOTPRequestEvent) error {
-			if err := base.VerifyCaptcha(event.Request.Context(), event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+			if err := base.VerifyCaptcha(event.Request.Context(), domain.CaptchaFlowOTPRequest, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+				return event.BadRequestError("captcha_verification_failed", nil)
+			}
+			return event.Next()
+		})
+		// Password login has no built-in hook of its own -- fires after
+		// identity lookup but before the password is even checked, so a
+		// rejected captcha short-circuits before that check runs. Disabled by
+		// default (see captchaFlowsFrom's migration defaults), so existing
+		// installs see no behavior change until an admin opts in.
+		app.OnRecordAuthWithPasswordRequest("users").BindFunc(func(event *core.RecordAuthWithPasswordRequestEvent) error {
+			if err := base.VerifyCaptcha(event.Request.Context(), domain.CaptchaFlowLogin, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
 				return event.BadRequestError("captcha_verification_failed", nil)
 			}
 			return event.Next()

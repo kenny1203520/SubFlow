@@ -227,10 +227,18 @@ func (s *Service) captchaSecretValue(ciphertext string) (string, error) {
 	return "", err
 }
 
-func (s *Service) VerifyCaptcha(ctx context.Context, token, remoteIP string) error {
+// VerifyCaptcha checks a submitted captcha token for one gate-able flow (one
+// of the domain.CaptchaFlow* constants). A flow left disabled in
+// CaptchaFlowSettings is skipped entirely -- even if a provider is globally
+// configured -- which is the per-flow granularity layered on top of the
+// pre-existing global on/off (settings.CaptchaProvider == "").
+func (s *Service) VerifyCaptcha(ctx context.Context, flow, token, remoteIP string) error {
 	settings, err := s.Stores.Settings.Get(ctx)
 	if err != nil || settings.CaptchaProvider == "" {
 		return err
+	}
+	if !settings.CaptchaFlows.For(flow).Enabled {
+		return nil
 	}
 	secret, err := s.captchaSecretValue(settings.CaptchaSecretCiphertext)
 	if err != nil {
