@@ -80,6 +80,10 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/ownership-transfer", a.createOwnershipTransfer).Bind(bind)
 	e.Router.POST("/api/subflow/v1/ownership-transfers/{id}/respond", a.respondOwnershipTransfer).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/ownership-transfers/{id}", a.cancelOwnershipTransfer).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/member-transfers", a.listPendingMemberTransfers).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/member-transfers", a.createMemberTransfer).Bind(bind)
+	e.Router.POST("/api/subflow/v1/member-transfers/{id}/respond", a.respondMemberTransfer).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/member-transfers/{id}", a.cancelMemberTransfer).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/roles", a.listSystemRoles).Bind(bind)
 	e.Router.POST("/api/subflow/v1/system/roles", a.createSystemRole).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/system/roles/{id}", a.updateSystemRole).Bind(bind)
@@ -581,6 +585,46 @@ func (a *API) respondOwnershipTransfer(e *core.RequestEvent) error {
 }
 func (a *API) cancelOwnershipTransfer(e *core.RequestEvent) error {
 	if err := a.Service.CancelOwnershipTransfer(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
+}
+func (a *API) listPendingMemberTransfers(e *core.RequestEvent) error {
+	transfers, err := a.Service.PendingMemberTransfers(e.Request.Context(), authID(e), groupID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, transfers, nil)
+}
+func (a *API) createMemberTransfer(e *core.RequestEvent) error {
+	var body struct {
+		FromUserID string `json:"fromUserId"`
+		ToUserID   string `json:"toUserId"`
+	}
+	if e.BindBody(&body) != nil || body.FromUserID == "" || body.ToUserID == "" {
+		return fail(e, domain.ErrInvalid)
+	}
+	transfer, err := a.Service.CreateMemberTransfer(e.Request.Context(), authID(e), groupID(e), body.FromUserID, body.ToUserID)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, transfer, nil)
+}
+func (a *API) respondMemberTransfer(e *core.RequestEvent) error {
+	var body struct {
+		Accept bool `json:"accept"`
+	}
+	if e.BindBody(&body) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	transfer, err := a.Service.RespondMemberTransfer(e.Request.Context(), authID(e), e.Request.PathValue("id"), body.Accept)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, transfer, nil)
+}
+func (a *API) cancelMemberTransfer(e *core.RequestEvent) error {
+	if err := a.Service.CancelMemberTransfer(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
 		return fail(e, err)
 	}
 	return noContent(e)

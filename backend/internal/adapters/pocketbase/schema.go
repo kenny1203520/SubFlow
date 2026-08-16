@@ -18,6 +18,7 @@ const (
 	CollectionMembers                 = "group_members"
 	CollectionInvitations             = "group_invitations"
 	CollectionOwnershipTransfers      = "group_ownership_transfers"
+	CollectionMemberTransfers         = "group_member_transfers"
 	CollectionNotifications           = "notifications"
 	CollectionSubscriptions           = "subscriptions"
 	CollectionSubscriptionRevisions   = "subscription_revisions"
@@ -207,6 +208,16 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	_, err = ensureCollection(app, CollectionOwnershipTransfers, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "accepted", "declined", "cancelled"}, MaxSelect: 1})
 		c.AddIndex("idx_ownership_transfers_group_status", false, "`group`, status", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	// Unlike group_ownership_transfers, a group may have several member
+	// transfers pending at once for different member pairs, so the index is
+	// scoped per from_user/status rather than per group/status.
+	_, err = ensureCollection(app, CollectionMemberTransfers, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "accepted", "declined", "cancelled"}, MaxSelect: 1})
+		c.AddIndex("idx_member_transfers_from_status", false, "from_user, status", "")
 	})
 	if err != nil {
 		return "", err

@@ -162,6 +162,7 @@ func (s *CollaborationService) accept(ctx context.Context, userID string, inv *d
 	if domain.NormalizeEmail(user.Email) != domain.NormalizeEmail(inv.Email) {
 		return nil, domain.ErrForbidden
 	}
+	boundPlaceholderID := inv.TargetPlaceholderID
 	err = s.Base.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if _, roleErr := s.Base.Stores.Memberships.GetRole(tx, inv.GroupID, userID); roleErr != nil {
 			if err := s.Base.Stores.Memberships.Create(tx, &domain.Membership{GroupID: inv.GroupID, UserID: userID, Role: domain.RoleMember}); err != nil {
@@ -169,13 +170,20 @@ func (s *CollaborationService) accept(ctx context.Context, userID string, inv *d
 			}
 		}
 		if inv.TargetPlaceholderID != "" {
-			// Historical expense_splits/settlements/subscriptions keep
-			// pointing at the placeholder's own ID rather than being
-			// rewritten — see WorkspaceDashboard's alias resolution, which
-			// folds a bound placeholder's balance into this linked account.
-			if err := s.Base.Stores.Users.LinkPlaceholder(tx, inv.TargetPlaceholderID, userID); err != nil {
+			// Eagerly repoint every historical expense_split/subscription/
+			// settlement reference from the placeholder to this real
+			// account, then delete the now-orphaned placeholder row --
+			// unlike a member-to-member transfer, a bind never leaves a
+			// membership behind to remove (the placeholder's own membership
+			// dies along with it), so this repoints without going through
+			// the membership-delete step.
+			if err := s.Base.repointUserReferences(tx, inv.GroupID, inv.TargetPlaceholderID, userID, false); err != nil {
 				return err
 			}
+			if err := s.Base.Stores.Users.Delete(tx, inv.TargetPlaceholderID); err != nil {
+				return err
+			}
+			inv.TargetPlaceholderID = ""
 		}
 		inv.Status = domain.InvitationAccepted
 		inv.AcceptedBy = userID
@@ -185,7 +193,12 @@ func (s *CollaborationService) accept(ctx context.Context, userID string, inv *d
 	if err != nil {
 		return nil, err
 	}
-	s.Base.audit(ctx, userID, inv.GroupID, "invitation.accepted", "invitation", inv.ID, "success", encodeAuditSummary(map[string]any{"email": inv.Email}, nil))
+	auditDetails := map[string]any{"email": inv.Email}
+	if boundPlaceholderID != "" {
+		auditDetails["bound_placeholder_id"] = boundPlaceholderID
+		auditDetails["bound_to_user_id"] = userID
+	}
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.accepted", "invitation", inv.ID, "success", encodeAuditSummary(auditDetails, nil))
 	s.publish(ctx, "accepted", *inv)
 	return inv, nil
 }

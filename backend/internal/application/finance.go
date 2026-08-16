@@ -503,13 +503,14 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	return result, nil
 }
 
-// resolvePlaceholderAliases folds a bound placeholder "temp member" (see
-// Service.CreateTempMember / CollaborationService.accept) into the real
-// account it's linked to, so a balance accrued while someone was still a
-// placeholder correctly counts toward their real account's total once they
-// join, without rewriting any stored expense_splits/settlements rows. Stored
-// history keeps pointing at the placeholder's own ID; only this read-time
-// aggregation resolves through the link.
+// resolvePlaceholderAliases is a legacy-data safety net, not steady-state
+// behavior: CollaborationService.accept now eagerly repoints every
+// expense_split/settlement reference when a placeholder "temp member" (see
+// Service.CreateTempMember) is bound, so a freshly-bound placeholder never
+// reaches this function at all. It exists only so a placeholder that was
+// bound under the old lazy-alias design -- LinkedUserID set, but its
+// historical rows never rewritten -- still folds into its linked account's
+// balance instead of silently vanishing from it.
 func (s *Service) resolvePlaceholderAliases(ctx context.Context, expenses []domain.Expense, settlements []domain.Settlement) ([]domain.Expense, []domain.Settlement) {
 	aliases := map[string]string{}
 	resolve := func(id string) string {
