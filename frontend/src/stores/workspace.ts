@@ -626,10 +626,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       )
     })
   }
-  async function addPersonalSubscription(input: SubscriptionInput) {
-    return run(async () => {
+  async function addPersonalSubscription(input: SubscriptionInput, backfill = false) {
+    let createdId = ''
+    const ok = await run(async () => {
       await withOfflineFallback(
-        async () => { await api.post<Subscription>('/subscriptions', input); await refreshPersonal() },
+        async () => { const response = await api.post<Subscription>('/subscriptions', input); createdId = response.data.id; await refreshPersonal() },
         async () => {
           const id = outbox.localId()
           personalSubscriptions.value = [localSubscription(id, input), ...personalSubscriptions.value]
@@ -639,6 +640,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         },
       )
     })
+    // Offline creates never populate createdId, so a checked backfill option
+    // is silently skipped rather than backfilling a record that doesn't
+    // exist on the server yet — it can be run manually after syncing.
+    if (ok && backfill && createdId) await backfillSubscription(createdId)
+    return ok
   }
   async function stopSubscription(id: string, endsOn: string) {
     await run(async () => { await api.post<Subscription>(`/subscriptions/${id}/stop`, { endsOn }); await refreshPersonal(); if (currentGroupId.value) await refreshGroup() })

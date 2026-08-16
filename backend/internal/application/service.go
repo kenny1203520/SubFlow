@@ -365,23 +365,27 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 			}
 		}
 		v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
+	} else {
+		// A personal subscription has exactly one "member" -- its owner, who
+		// pays the whole thing -- so it skips the group's multi-person
+		// canonicalization machinery entirely.
+		v.SplitMode = domain.SplitAmount
+		v.Splits = []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor, BaseAmountMinor: v.BaseAmountMinor}}
 	}
 	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if createErr := s.Stores.Subscriptions.Create(tx, &v); createErr != nil {
 			return createErr
 		}
-		if v.GroupID == "" {
-			return nil
-		}
+		// Every subscription (personal or group) needs an initial revision:
+		// postOccurrenceAt requires one to price and split any occurrence it
+		// posts, whether that's the regular cron or a backfill.
 		revision := subscriptionRevision(v, "future", v.NextBilling, nil)
 		return s.Stores.Subscriptions.CreateRevision(tx, &revision)
 	}); err != nil {
 		return nil, err
 	}
 	s.audit(ctx, userID, v.GroupID, "subscription.created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "billing_cycle": v.BillingCycle, "split_mode": v.SplitMode}, nil))
-	if v.GroupID != "" {
-		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"scope": "future", "effective_billing_at": v.NextBilling.Format("2006-01-02"), "name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "paid_by": v.PaidBy}, nil))
-	}
+	s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(map[string]any{"scope": "future", "effective_billing_at": v.NextBilling.Format("2006-01-02"), "name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "paid_by": v.PaidBy}, nil))
 	return &v, nil
 }
 func (s *Service) ListPersonalSubscriptions(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Subscription], error) {
@@ -617,6 +621,9 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 			}
 		}
 		v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
+	} else {
+		v.SplitMode = domain.SplitAmount
+		v.Splits = []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor, BaseAmountMinor: v.BaseAmountMinor}}
 	}
 	scope := v.RevisionScope
 	if scope != "one_off" {
@@ -675,7 +682,14 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 			}
 		}
 		if v.GroupID == "" {
-			return nil
+			// A personal subscription only ever edits "current settings
+			// going forward" -- there's no historical/scoped revision UI for
+			// it -- so record a plain "future" revision effective from
+			// NextBilling, the same way creation does. Without this, future
+			// postings and backfills would keep pricing off the stale
+			// revision from whenever the subscription was first created.
+			revision := subscriptionRevision(v, "future", v.NextBilling, nil)
+			return s.Stores.Subscriptions.CreateRevision(tx, &revision)
 		}
 		revision := subscriptionRevision(v, scope, effective, endBilling)
 		if createErr := s.Stores.Subscriptions.CreateRevision(tx, &revision); createErr != nil {
@@ -688,14 +702,16 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	}); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success", historicalSubscriptionChangeSummary(current, &v, effective))
-	if v.GroupID != "" {
-		versionDetails := map[string]any{"scope": scope, "effective_billing_at": effective.Format("2006-01-02"), "name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "paid_by": v.PaidBy}
-		if endBilling != nil {
-			versionDetails["end_billing_at"] = endBilling.Format("2006-01-02")
-		}
-		s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(versionDetails, nil))
+	versionEffective := effective
+	if v.GroupID == "" {
+		versionEffective = v.NextBilling // matches the "future" revision actually created above for a personal edit
 	}
+	s.audit(ctx, userID, v.GroupID, "subscription.updated", "subscription", v.ID, "success", historicalSubscriptionChangeSummary(current, &v, versionEffective))
+	versionDetails := map[string]any{"scope": scope, "effective_billing_at": versionEffective.Format("2006-01-02"), "name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "paid_by": v.PaidBy}
+	if endBilling != nil {
+		versionDetails["end_billing_at"] = endBilling.Format("2006-01-02")
+	}
+	s.audit(ctx, userID, v.GroupID, "subscription.version_created", "subscription", v.ID, "success", encodeAuditSummary(versionDetails, nil))
 	return &v, nil
 }
 func subscriptionRevision(v domain.Subscription, scope string, effective time.Time, endBilling *time.Time) domain.SubscriptionRevision {
