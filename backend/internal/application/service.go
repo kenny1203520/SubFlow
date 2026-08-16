@@ -718,9 +718,6 @@ func subscriptionRevision(v domain.Subscription, scope string, effective time.Ti
 	return domain.SubscriptionRevision{SubscriptionID: v.ID, Scope: scope, EffectiveBillingAt: effective, EndBillingAt: endBilling, Name: v.Name, Category: v.Category, CategoryID: v.CategoryID, AmountMinor: v.AmountMinor, Currency: v.Currency, BaseCurrency: v.BaseCurrency, BaseAmountMinor: v.BaseAmountMinor, ExchangeRate: v.ExchangeRate, RateScaled: v.RateScaled, ExchangeRateDate: v.ExchangeRateDate, RateMode: v.RateMode, PaidBy: v.PaidBy, SplitMode: v.SplitMode, Splits: append([]domain.ExpenseSplit(nil), v.Splits...), Notes: v.Notes}
 }
 func (s *Service) hydrateSubscription(ctx context.Context, v *domain.Subscription) {
-	if v.GroupID == "" {
-		return
-	}
 	values, err := s.Stores.Subscriptions.ListRevisions(ctx, v.ID)
 	if err != nil {
 		return
