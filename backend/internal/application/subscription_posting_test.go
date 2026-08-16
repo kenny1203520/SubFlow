@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"subflow/internal/domain"
 	"subflow/internal/ports"
 )
 
@@ -114,7 +115,103 @@ func TestPostDueSubscriptionsSkipsNotYetDue(t *testing.T) {
 	}
 }
 
-// RefreshAutomaticSubscriptions only ever touches group subscriptions on
+// A personal subscription's due date now posts a real Expense too, exactly
+// like a group subscription's -- see Service.postSubscriptionOccurrence.
+// Without this, a personal subscription could never accumulate more than a
+// single synthetic placeholder in the export/expense list, no matter how
+// long it had actually been running for.
+func TestPostDueSubscriptionsPostsForPersonalSubscription(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+
+	personal, err := f.service.CreateSubscription(ctx, f.owner, domain.Subscription{
+		Name: "Personal Netflix", AmountMinor: 1000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
+		BillingCycle: domain.BillingMonthly, StartsOn: time.Date(2024, time.September, 11, 0, 0, 0, 0, time.UTC),
+		Status: domain.SubscriptionActive, PaidBy: f.owner,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dueDate := personal.NextBilling // "now" (2026-08-11), same anchor day as f.subscription
+
+	if err = f.service.PostDueSubscriptions(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	occurrences, err := f.stores.Subscriptions.ListOccurrences(ctx, personal.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	posted := 0
+	for _, occurrence := range occurrences {
+		if occurrence.Status == "posted" && occurrence.BillingAt.Equal(dueDate) && occurrence.ExpenseID != "" {
+			posted++
+		}
+	}
+	if posted != 1 {
+		t.Fatalf("expected exactly 1 posted occurrence for the personal subscription, got %d (of %d total): %#v", posted, len(occurrences), occurrences)
+	}
+
+	expenses, err := f.service.ListPersonalExpenses(ctx, f.owner, ports.PageRequest{Page: 1, PerPage: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, expense := range expenses.Items {
+		if expense.SubscriptionID == personal.ID {
+			found = true
+			if expense.OwnerID != f.owner {
+				t.Fatalf("expected the posted expense to be owned by %s, got %q", f.owner, expense.OwnerID)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("expected the personal subscription's due period to produce a real, listable personal expense")
+	}
+}
+
+// A subscription created before every subscription got an initial revision
+// (see CreateSubscription) has none at all, which used to make
+// postOccurrenceAt hard-fail with "subscription_version_missing" on its
+// very first cron tick. postSubscriptionOccurrence now self-heals this via
+// ensureBaseRevisionCovers before attempting to post.
+func TestPostDueSubscriptionsSelfHealsSubscriptionWithNoRevisions(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	now := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
+
+	legacy := &domain.Subscription{
+		OwnerID: f.owner, PaidBy: f.owner, Name: "Legacy Personal Sub",
+		AmountMinor: 1000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
+		BaseAmountMinor: 1000, RateScaled: domain.ExchangeRateScale, ExchangeRate: "1", ExchangeRateDate: now,
+		RateMode: domain.RateAutomatic, BillingCycle: domain.BillingMonthly, BillingInterval: 1,
+		StartsOn: time.Date(2024, time.March, 3, 0, 0, 0, 0, time.UTC), NextBilling: now,
+		Status: domain.SubscriptionActive, SplitMode: domain.SplitAmount,
+		Splits: []domain.ExpenseSplit{{UserID: f.owner, AmountMinor: 1000, BaseAmountMinor: 1000}},
+	}
+	// Bypasses Service.CreateSubscription deliberately, to simulate a
+	// subscription that predates it always creating an initial revision.
+	if err := f.stores.Subscriptions.Create(ctx, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if revisions, err := f.stores.Subscriptions.ListRevisions(ctx, legacy.ID); err != nil || len(revisions) != 0 {
+		t.Fatalf("expected the legacy subscription to start with zero revisions, got %d (err=%v)", len(revisions), err)
+	}
+
+	if err := f.service.PostDueSubscriptions(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	occurrences, err := f.stores.Subscriptions.ListOccurrences(ctx, legacy.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(occurrences) != 1 || occurrences[0].Status != "posted" {
+		t.Fatalf("expected the self-healed subscription to post successfully, got %#v", occurrences)
+	}
+}
+
+// RefreshAutomaticSubscriptions now also touches personal subscriptions on
 // automatic rate mode (see the rate_mode='automatic' filter in
 // ListAutomaticSubscriptions) -- this checks it runs cleanly end to end and
 // keeps the base-currency conversion fields populated for the identity

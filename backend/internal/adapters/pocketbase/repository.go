@@ -411,7 +411,9 @@ func (r *Repository) ListPersonalSubscriptions(ctx context.Context, userID strin
 }
 
 func (r *Repository) ListAutomaticSubscriptions(ctx context.Context) ([]domain.Subscription, error) {
-	records, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "rate_mode='automatic' && group!=''", "next_billing", 0, 0, nil)
+	// Personal subscriptions can be multi-currency too (BaseCurrency !=
+	// Currency), so they need the same periodic rate refresh group ones get.
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "rate_mode='automatic'", "next_billing", 0, 0, nil)
 	if err != nil {
 		return nil, mapError(err)
 	}
@@ -538,7 +540,9 @@ func (r *Repository) ListDueSubscriptions(ctx context.Context, before time.Time)
 	if parseErr != nil {
 		return nil, parseErr
 	}
-	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "group!='' && status='active' && next_billing<={:before}", "next_billing", 0, 0, dbx.Params{"before": normalizedBefore})
+	// Personal subscriptions post real occurrences too now (see
+	// Service.postSubscriptionOccurrence), so this must not exclude them.
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionSubscriptions, "status='active' && next_billing<={:before}", "next_billing", 0, 0, dbx.Params{"before": normalizedBefore})
 	if err != nil {
 		return nil, mapError(err)
 	}

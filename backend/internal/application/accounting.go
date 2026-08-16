@@ -145,10 +145,17 @@ func revisionSplits(revision domain.SubscriptionRevision, members []string) ([]d
 }
 
 func (s *Service) postSubscriptionOccurrence(ctx context.Context, subscription *domain.Subscription) error {
-	if subscription.GroupID == "" || domain.SubscriptionLifecycle(*subscription, s.Now()) == "ended" {
+	if domain.SubscriptionLifecycle(*subscription, s.Now()) == "ended" {
 		return nil
 	}
 	billingAt := subscription.NextBilling
+	// Self-heals a subscription created before every subscription got an
+	// initial revision (or one that otherwise has a gap): without this, the
+	// very first cron tick for such a subscription would hard-fail with
+	// "subscription_version_missing" instead of posting.
+	if err := s.ensureBaseRevisionCovers(ctx, subscription, []time.Time{billingAt}); err != nil {
+		return err
+	}
 	created, err := s.postOccurrenceAt(ctx, subscription, billingAt, "")
 	if err != nil {
 		return err
@@ -188,9 +195,15 @@ func (s *Service) postOccurrenceAt(ctx context.Context, subscription *domain.Sub
 	if !ok {
 		return false, s.recordOccurrenceFailure(ctx, subscription, billingAt, "subscription_version_missing")
 	}
-	members, err := s.memberIDs(ctx, subscription.GroupID)
-	if err != nil {
-		return false, err
+	// A personal subscription has no memberships to look up -- it's just its
+	// own owner/payer, matching the single-split construction
+	// CreateSubscription/UpdateSubscription already build for it.
+	members := []string{revision.PaidBy}
+	if subscription.GroupID != "" {
+		members, err = s.memberIDs(ctx, subscription.GroupID)
+		if err != nil {
+			return false, err
+		}
 	}
 	splits, err := revisionSplits(revision, members)
 	if err != nil {
@@ -204,7 +217,7 @@ func (s *Service) postOccurrenceAt(ctx context.Context, subscription *domain.Sub
 			return findErr
 		}
 		expense := domain.Expense{
-			GroupID: subscription.GroupID, SubscriptionID: subscription.ID,
+			GroupID: subscription.GroupID, OwnerID: subscription.OwnerID, SubscriptionID: subscription.ID,
 			Title: revision.Name, Category: revision.Category, CategoryID: revision.CategoryID,
 			AmountMinor: revision.AmountMinor, Currency: revision.Currency,
 			BaseCurrency: revision.BaseCurrency, BaseAmountMinor: revision.BaseAmountMinor,

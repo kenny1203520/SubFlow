@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-08-16
+
+### Added
+- 個人（無群組）訂閱現在會自動產生真實的帳目紀錄，行為與群組訂閱一致：新增後每期扣款會自動入帳，也可補記過去尚未入帳的歷史期數，不再只是一個顯示用的假設性佔位紀錄。
+
 ## [0.1.12] - 2026-08-16
 
 ### Fixed
@@ -157,7 +162,8 @@
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.12...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.13...HEAD
+[0.1.13]: https://github.com/kenny1203520/SubFlow/compare/v0.1.12...v0.1.13
 [0.1.12]: https://github.com/kenny1203520/SubFlow/compare/v0.1.11...v0.1.12
 [0.1.11]: https://github.com/kenny1203520/SubFlow/compare/v0.1.10...v0.1.11
 [0.1.10]: https://github.com/kenny1203520/SubFlow/compare/v0.1.9...v0.1.10
