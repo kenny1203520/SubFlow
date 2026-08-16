@@ -86,12 +86,29 @@ type OwnershipTransferRepository interface {
 	Update(context.Context, *domain.OwnershipTransfer) error
 }
 
+type MemberTransferRepository interface {
+	Create(context.Context, *domain.MemberTransfer) error
+	Get(context.Context, string) (*domain.MemberTransfer, error)
+	// FindPendingByFromUser finds a still-pending transfer for that member
+	// within the group, so a second transfer can't be started for the same
+	// source member while one is outstanding.
+	FindPendingByFromUser(ctx context.Context, groupID, fromUserID string) (*domain.MemberTransfer, error)
+	// ListPending lists every pending transfer in the group (unlike
+	// OwnershipTransfer, several can be outstanding at once for different
+	// member pairs), for the members UI to show what's in flight.
+	ListPending(ctx context.Context, groupID string) ([]domain.MemberTransfer, error)
+	Update(context.Context, *domain.MemberTransfer) error
+}
+
 type NotificationRepository interface {
 	Create(context.Context, *domain.Notification) error
 	Get(context.Context, string) (*domain.Notification, error)
 	ListForUser(context.Context, string, PageRequest) (Page[domain.Notification], error)
 	MarkRead(context.Context, string, time.Time) error
 	MarkReadForResource(context.Context, string, string, time.Time) error
+	// ReassignUser moves every notification.user reference from fromUserID to
+	// toUserID within groupID (see Service.repointUserReferences).
+	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
 type SubscriptionRepository interface {
@@ -104,11 +121,19 @@ type SubscriptionRepository interface {
 	Delete(context.Context, string) error
 	CreateRevision(context.Context, *domain.SubscriptionRevision) error
 	ListRevisions(context.Context, string) ([]domain.SubscriptionRevision, error)
+	// UpdateRevision persists a revision's fields in place (used by
+	// Service.repointUserReferences to rewrite paid_by/splits on an existing
+	// revision snapshot; ordinary edits always create a new revision instead).
+	UpdateRevision(context.Context, *domain.SubscriptionRevision) error
 	CreateOccurrence(context.Context, *domain.SubscriptionOccurrence) error
 	GetOccurrence(context.Context, string, time.Time) (*domain.SubscriptionOccurrence, error)
 	ListOccurrences(context.Context, string) ([]domain.SubscriptionOccurrence, error)
 	UpdateOccurrence(context.Context, *domain.SubscriptionOccurrence) error
 	ListDue(context.Context, time.Time) ([]domain.Subscription, error)
+	// ReassignUser moves every subscription.paid_by/splits and every one of
+	// its revisions' paid_by/splits from fromUserID to toUserID within
+	// groupID (see Service.repointUserReferences).
+	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
 type ExpenseRepository interface {
@@ -120,6 +145,12 @@ type ExpenseRepository interface {
 	Delete(context.Context, string) error
 	ReplaceSplits(context.Context, string, []domain.ExpenseSplit) error
 	ListSplits(context.Context, string) ([]domain.ExpenseSplit, error)
+	// ReassignUser moves every expense.paid_by and expense_splits.user
+	// reference from fromUserID to toUserID within groupID, merging into an
+	// existing split row rather than violating the (expense, user) unique
+	// index when both already have one on the same expense (see
+	// Service.repointUserReferences).
+	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
 type SettlementRepository interface {
@@ -128,6 +159,11 @@ type SettlementRepository interface {
 	List(context.Context, string, PageRequest) (Page[domain.Settlement], error)
 	Update(context.Context, *domain.Settlement) error
 	Delete(context.Context, string) error
+	// ReassignUser moves every from_user/to_user/created_by reference from
+	// fromUserID to toUserID within groupID, deleting any settlement that
+	// would become self-referential (from_user==to_user) as a result (see
+	// Service.repointUserReferences).
+	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
 type CategoryRepository interface {
@@ -135,6 +171,11 @@ type CategoryRepository interface {
 	Get(context.Context, string) (*domain.Category, error)
 	List(context.Context, string, string, bool) ([]domain.Category, error)
 	Update(context.Context, *domain.Category) error
+	// ReassignUser moves group-scope categories.created_by from fromUserID to
+	// toUserID within groupID; personal-scope categories.owner is
+	// intentionally out of the group-scoped boundary (see
+	// Service.repointUserReferences).
+	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
 type ExchangeRateRepository interface {

@@ -13,6 +13,7 @@ import (
 type MembershipRepo struct{ *Repository }
 type InvitationRepo struct{ *Repository }
 type OwnershipTransferRepo struct{ *Repository }
+type MemberTransferRepo struct{ *Repository }
 type NotificationRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
@@ -29,6 +30,7 @@ type Stores struct {
 	Memberships        *MembershipRepo
 	Invitations        *InvitationRepo
 	OwnershipTransfers *OwnershipTransferRepo
+	MemberTransfers    *MemberTransferRepo
 	Notifications      *NotificationRepo
 	Subscriptions      *SubscriptionRepo
 	Expenses           *ExpenseRepo
@@ -44,7 +46,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &MemberTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -87,6 +89,21 @@ func (r *OwnershipTransferRepo) FindPending(ctx context.Context, groupID string)
 func (r *OwnershipTransferRepo) Update(ctx context.Context, v *domain.OwnershipTransfer) error {
 	return r.UpdateOwnershipTransfer(ctx, v)
 }
+func (r *MemberTransferRepo) Create(ctx context.Context, v *domain.MemberTransfer) error {
+	return r.CreateMemberTransfer(ctx, v)
+}
+func (r *MemberTransferRepo) Get(ctx context.Context, id string) (*domain.MemberTransfer, error) {
+	return r.GetMemberTransfer(ctx, id)
+}
+func (r *MemberTransferRepo) FindPendingByFromUser(ctx context.Context, groupID, fromUserID string) (*domain.MemberTransfer, error) {
+	return r.FindPendingMemberTransferByFromUser(ctx, groupID, fromUserID)
+}
+func (r *MemberTransferRepo) ListPending(ctx context.Context, groupID string) ([]domain.MemberTransfer, error) {
+	return r.ListPendingMemberTransfers(ctx, groupID)
+}
+func (r *MemberTransferRepo) Update(ctx context.Context, v *domain.MemberTransfer) error {
+	return r.UpdateMemberTransfer(ctx, v)
+}
 func (r *NotificationRepo) Create(ctx context.Context, v *domain.Notification) error {
 	return r.CreateNotification(ctx, v)
 }
@@ -101,6 +118,9 @@ func (r *NotificationRepo) MarkRead(ctx context.Context, id string, when time.Ti
 }
 func (r *NotificationRepo) MarkReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error {
 	return r.MarkNotificationsReadForResource(ctx, userID, resourceID, when)
+}
+func (r *NotificationRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	return r.ReassignNotificationUser(ctx, groupID, fromUserID, toUserID)
 }
 
 func (r *SubscriptionRepo) Create(ctx context.Context, v *domain.Subscription) error {
@@ -130,6 +150,9 @@ func (r *SubscriptionRepo) CreateRevision(ctx context.Context, v *domain.Subscri
 func (r *SubscriptionRepo) ListRevisions(ctx context.Context, subscriptionID string) ([]domain.SubscriptionRevision, error) {
 	return r.ListSubscriptionRevisions(ctx, subscriptionID)
 }
+func (r *SubscriptionRepo) UpdateRevision(ctx context.Context, v *domain.SubscriptionRevision) error {
+	return r.UpdateSubscriptionRevision(ctx, v)
+}
 func (r *SubscriptionRepo) CreateOccurrence(ctx context.Context, v *domain.SubscriptionOccurrence) error {
 	return r.CreateSubscriptionOccurrence(ctx, v)
 }
@@ -144,6 +167,9 @@ func (r *SubscriptionRepo) UpdateOccurrence(ctx context.Context, v *domain.Subsc
 }
 func (r *SubscriptionRepo) ListDue(ctx context.Context, before time.Time) ([]domain.Subscription, error) {
 	return r.ListDueSubscriptions(ctx, before)
+}
+func (r *SubscriptionRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	return r.ReassignSubscriptionUser(ctx, groupID, fromUserID, toUserID)
 }
 
 func (r *ExpenseRepo) Create(ctx context.Context, v *domain.Expense) error {
@@ -168,6 +194,9 @@ func (r *ExpenseRepo) ReplaceSplits(ctx context.Context, expenseID string, value
 func (r *ExpenseRepo) ListSplits(ctx context.Context, expenseID string) ([]domain.ExpenseSplit, error) {
 	return r.ListExpenseSplits(ctx, expenseID)
 }
+func (r *ExpenseRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	return r.ReassignExpenseUser(ctx, groupID, fromUserID, toUserID)
+}
 
 func (r *SettlementRepo) Create(ctx context.Context, v *domain.Settlement) error {
 	return r.CreateSettlement(ctx, v)
@@ -184,6 +213,9 @@ func (r *SettlementRepo) Update(ctx context.Context, v *domain.Settlement) error
 func (r *SettlementRepo) Delete(ctx context.Context, id string) error {
 	return r.DeleteSettlement(ctx, id)
 }
+func (r *SettlementRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	return r.ReassignSettlementUser(ctx, groupID, fromUserID, toUserID)
+}
 
 func (r *CategoryRepo) Create(ctx context.Context, v *domain.Category) error {
 	return r.CreateCategory(ctx, v)
@@ -196,6 +228,9 @@ func (r *CategoryRepo) List(ctx context.Context, ownerID, groupID string, archiv
 }
 func (r *CategoryRepo) Update(ctx context.Context, v *domain.Category) error {
 	return r.UpdateCategory(ctx, v)
+}
+func (r *CategoryRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	return r.ReassignCategoryUser(ctx, groupID, fromUserID, toUserID)
 }
 func (r *ExchangeRateRepo) Upsert(ctx context.Context, v *domain.ExchangeRate) error {
 	return r.UpsertExchangeRate(ctx, v)
