@@ -16,6 +16,18 @@ const mode=ref<AuthMode>('login'), email=ref(''), password=ref(''), name=ref('')
 const providers=ref<Array<{name:string;displayName?:string}>>([]), methods=ref<{otp?:{enabled?:boolean};mfa?:{enabled?:boolean};password?:{enabled?:boolean}}>({})
 const canPasswordRegistration=computed(()=>setup.allowRegistration)
 const isCodeMode=computed(()=>mode.value==='otp-verify'||mode.value==='mfa-verify')
+const captchaRef=ref<{ solve: () => Promise<string> } | null>(null)
+function captchaFlowKey(m:AuthMode) { return m==='register'?'register':m==='otp-request'?'otpRequest':m==='login'?'login':'' }
+const captchaConfig=computed(()=>{ const key=captchaFlowKey(mode.value); return key ? setup.status.captchaFlows?.[key as 'register'|'otpRequest'|'login'] : undefined })
+const captchaEnabled=computed(()=>!!captchaConfig.value?.enabled)
+// When the active flow's trigger is 'submit', the widget hasn't rendered/solved
+// yet -- ask it to solve now and use the resolved token directly rather than
+// relying on captchaToken, which the submit-mode widget never populates ahead of time.
+async function resolveCaptchaToken() {
+  if(!captchaEnabled.value) return ''
+  if(captchaConfig.value?.trigger==='submit') return (captchaToken.value=await (captchaRef.value?.solve()||Promise.resolve('')))
+  return captchaToken.value
+}
 
 function authError(reason: any) {
   const raw=[reason?.message, reason?.response?.message, reason?.data?.message, reason?.response?.data?.message].filter(Boolean).join(' ').toLowerCase()
@@ -33,7 +45,7 @@ function backToPasswordLogin(){ mode.value='login'; code.value=''; otpId.value='
 function startOtpRequest(){ mode.value='otp-request'; code.value=''; otpId.value=''; captchaToken.value=''; error.value='' }
 async function requestStandaloneOtp(){
   busy.value=true; error.value=''
-  try { const result=await auth.requestOTP(email.value,captchaToken.value); otpId.value=result.otpId; captchaToken.value=''; mode.value='otp-verify' }
+  try { const token=await resolveCaptchaToken(); const result=await auth.requestOTP(email.value,token); otpId.value=result.otpId; captchaToken.value=''; mode.value='otp-verify' }
   catch(reason){ error.value=authError(reason) } finally { busy.value=false }
 }
 async function requestMfaOtp(){
@@ -41,7 +53,7 @@ async function requestMfaOtp(){
   otpId.value=result.otpId; mode.value='mfa-verify'
 }
 async function passwordLogin(){
-  try { await auth.login(email.value,password.value); await finish() }
+  try { const token=await resolveCaptchaToken(); await auth.login(email.value,password.value,token); await finish() }
   catch(reason:any) {
     const id=reason?.response?.mfaId||reason?.data?.mfaId
     if(!id) throw reason
@@ -60,7 +72,7 @@ async function submit(){
   busy.value=true; error.value=''; registered.value=false
   try {
     if(mode.value==='login') await passwordLogin()
-    else { await auth.register({email:email.value,password:password.value,name:name.value,captchaToken:captchaToken.value} as any); registered.value=true; mode.value='login'; password.value='' }
+    else { const token=await resolveCaptchaToken(); await auth.register({email:email.value,password:password.value,name:name.value,captchaToken:token} as any); registered.value=true; mode.value='login'; password.value='' }
   } catch(reason) { error.value=authError(reason) } finally { busy.value=false }
 }
 async function resend(){ if(mode.value==='mfa-verify') { busy.value=true;error.value='';try{await requestMfaOtp()}catch(reason){error.value=authError(reason)}finally{busy.value=false} } else await requestStandaloneOtp() }
@@ -80,7 +92,7 @@ watch(()=>setup.allowRegistration,value=>{if(!value&&mode.value==='register')mod
         <BaseInput v-if="mode==='register'" v-model="name" :label="tr('displayName')" required autocomplete="name"/>
         <BaseInput v-if="mode==='login'||mode==='register'||mode==='otp-request'||isCodeMode" v-model="email" :label="tr('email')" type="email" required autocomplete="email" :disabled="isCodeMode"/>
         <PasswordField v-if="mode==='login'||mode==='register'" v-model="password" :label="tr('password')" :minlength="8" required :autocomplete="mode==='login'?'current-password':'new-password'"/>
-        <CaptchaChallenge v-if="mode==='register'||mode==='otp-request'" v-model="captchaToken"/>
+        <CaptchaChallenge v-if="captchaEnabled" ref="captchaRef" v-model="captchaToken" :trigger="captchaConfig?.trigger||'load'" :mode="captchaConfig?.mode||'interactive'"/>
         <BaseInput v-if="isCodeMode" v-model="code" :label="tr('verificationCode')" required autocomplete="one-time-code" inputmode="numeric"/>
         <p v-if="registered" class="notice success">{{tr('verificationSent')}}</p><p v-if="error" class="form-error">{{error}}</p>
         <button class="primary wide" :disabled="busy">{{busy?tr('processing'):mode==='login'?tr('login'):mode==='register'?tr('register'):mode==='otp-request'?tr('sendVerificationCode'):tr('verify')}}</button>
