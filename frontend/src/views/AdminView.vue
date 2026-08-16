@@ -3,7 +3,7 @@ import './admin.css'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiClient } from '../api/client'
-import type { AccessRole, AuditLog, Meta, User } from '../api/types'
+import type { AccessRole, AuditLog, CaptchaFlowConfig, Meta, User } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
@@ -36,7 +36,12 @@ const query = ref('')
 const auditFilters = reactive<AuditFilters>({ q:'', action:'', resource:'', outcome:'', from:'', to:'' })
 // Kept in the URL so changing it always changes the route and re-runs load().
 const auditPageSize = computed(() => Number(route.query.perPage) || defaultPageSize.value)
-const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false })
+const defaultCaptchaFlow = (): CaptchaFlowConfig => ({ enabled: false, trigger: 'load', mode: 'interactive' })
+const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false, captchaFlows: { register: defaultCaptchaFlow(), passwordReset: defaultCaptchaFlow(), otpRequest: defaultCaptchaFlow(), login: defaultCaptchaFlow() } })
+const captchaFlowKeys = ['register', 'passwordReset', 'otpRequest', 'login'] as const
+const captchaFlowLabel = (key: typeof captchaFlowKeys[number]) => tr(`captchaFlow${key.charAt(0).toUpperCase()}${key.slice(1)}`)
+const captchaTriggerOptions = computed(() => [{ value: 'load', label: tr('captchaTriggerLoad') }, { value: 'submit', label: tr('captchaTriggerSubmit') }])
+const captchaModeOptions = computed(() => [{ value: 'interactive', label: tr('captchaModeInteractive') }, { value: 'invisible', label: tr('captchaModeInvisible') }])
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
 const section = computed(() => String(route.params.section || 'overview'))
@@ -172,6 +177,19 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
         <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaVerifyUrl" label="Sentinel verification URL" help="Server-side /v1/verify/signature endpoint." />
         <PasswordField v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'" v-model="settings.captchaSecret" :label="tr('captchaSecret')" autocomplete="off" :help="settings.captchaConfigured ? tr('captchaConfigured') : tr('captchaNotConfigured')" />
         <p v-else-if="settings.captchaProvider==='altcha_community'" class="field-help">ALTCHA Community signing secret is generated and encrypted by SubFlow.</p>
+      </fieldset>
+      <fieldset v-if="settings.captchaProvider" class="settings-section"><legend>{{ tr('captchaFlows') }}</legend>
+        <p class="field-help">{{ tr('captchaFlowsHelp') }}</p>
+        <div class="captcha-flow-table">
+          <div class="captcha-flow-head"><span></span><span>{{ tr('captchaTrigger') }}</span><span>{{ tr('captchaMode') }}</span></div>
+          <div v-for="flowKey in captchaFlowKeys" :key="flowKey" class="captcha-flow-row" :class="{ disabled: !settings.captchaFlows[flowKey].enabled }">
+            <label class="check"><input v-model="settings.captchaFlows[flowKey].enabled" type="checkbox"><span>{{ captchaFlowLabel(flowKey) }}</span></label>
+            <BaseCombobox v-if="settings.captchaFlows[flowKey].enabled" v-model="settings.captchaFlows[flowKey].trigger" :label="tr('captchaTrigger')" :options="captchaTriggerOptions" :allow-create="false" hide-label />
+            <span v-else class="captcha-flow-placeholder">—</span>
+            <BaseCombobox v-if="settings.captchaFlows[flowKey].enabled" v-model="settings.captchaFlows[flowKey].mode" :label="tr('captchaMode')" :options="captchaModeOptions" :allow-create="false" hide-label />
+            <span v-else class="captcha-flow-placeholder">—</span>
+          </div>
+        </div>
       </fieldset>
       <div class="form-actions"><button class="primary">{{ tr('saveChanges') }}</button><span v-if="saved" class="success">{{ tr('saved') }}</span></div>
     </form>

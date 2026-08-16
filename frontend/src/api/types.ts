@@ -18,6 +18,10 @@ export interface AuditLog { id:string;actorId:string;actorName?:string;groupId?:
 export interface Invitation { id:string;groupId:string;email:string;status:'pending'|'delivery_failed'|'accepted'|'declined'|'revoked'|'expired';invitedBy:string;acceptedBy?:string;expiresAt:string;debugUrl?:string;groupInfo?:Group;createdAt:string;updatedAt:string }
 export interface OwnershipTransfer { id:string;groupId:string;fromUserId:string;toUserId:string;status:'pending'|'accepted'|'declined'|'cancelled';createdAt:string;updatedAt:string }
 export interface MemberTransfer { id:string;groupId:string;fromUserId:string;toUserId:string;status:'pending'|'accepted'|'declined'|'cancelled';createdAt:string;updatedAt:string }
+export type CaptchaTrigger = 'load'|'submit'
+export type CaptchaMode = 'invisible'|'interactive'
+export interface CaptchaFlowConfig { enabled:boolean; trigger:CaptchaTrigger; mode:CaptchaMode }
+export interface CaptchaFlowSettings { register:CaptchaFlowConfig; passwordReset:CaptchaFlowConfig; otpRequest:CaptchaFlowConfig; login:CaptchaFlowConfig }
 export interface Notification { id:string;userId:string;type:string;groupId?:string;resourceId?:string;readAt?:string;createdAt:string;updatedAt:string }
 export type SplitMode='equal'|'amount'|'percentage'
 export interface ExpenseSplit { id?:string;expenseId?:string;userId:string;amountMinor:number;baseAmountMinor?:number;percentageBasisPoints?:number }
