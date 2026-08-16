@@ -127,26 +127,78 @@ type LinkedProvider struct {
 	Created  time.Time `json:"created"`
 }
 
+// Flow identifiers for CaptchaFlowSettings/Service.VerifyCaptcha. OIDC login
+// is deliberately not one of these -- the OAuth provider already handles its
+// own bot defense, so SubFlow never gates it with a captcha of its own.
+const (
+	CaptchaFlowRegister      = "register"
+	CaptchaFlowPasswordReset = "passwordReset"
+	CaptchaFlowOTPRequest    = "otpRequest"
+	CaptchaFlowLogin         = "login"
+)
+
+// CaptchaFlowConfig controls one authentication flow's captcha gate
+// independently: whether it's gated at all, when the widget mounts and
+// starts solving (Trigger: "load" as soon as the form appears, or "submit"
+// only once the user clicks through), and whether it solves silently
+// (Mode: "invisible") or requires visible interaction ("interactive"),
+// wherever the configured CaptchaProvider supports both.
+type CaptchaFlowConfig struct {
+	Enabled bool   `json:"enabled"`
+	Trigger string `json:"trigger"` // "load" | "submit"
+	Mode    string `json:"mode"`    // "invisible" | "interactive"
+}
+
+// CaptchaFlowSettings holds one CaptchaFlowConfig per gate-able flow. All
+// flows share the single global CaptchaProvider/credentials on
+// SystemSettings -- only whether/when/how each flow applies that provider is
+// per-flow.
+type CaptchaFlowSettings struct {
+	Register      CaptchaFlowConfig `json:"register"`
+	PasswordReset CaptchaFlowConfig `json:"passwordReset"`
+	OTPRequest    CaptchaFlowConfig `json:"otpRequest"`
+	Login         CaptchaFlowConfig `json:"login"`
+}
+
+// For looks up the config for a flow identifier (one of the CaptchaFlow*
+// constants). An unrecognized flow returns a disabled config, so an unknown
+// or mistyped flow name fails safe (never gates) rather than failing open.
+func (s CaptchaFlowSettings) For(flow string) CaptchaFlowConfig {
+	switch flow {
+	case CaptchaFlowRegister:
+		return s.Register
+	case CaptchaFlowPasswordReset:
+		return s.PasswordReset
+	case CaptchaFlowOTPRequest:
+		return s.OTPRequest
+	case CaptchaFlowLogin:
+		return s.Login
+	default:
+		return CaptchaFlowConfig{}
+	}
+}
+
 // SystemSettings is the single installation-wide configuration record. It is
 // intentionally separate from a user profile so the initial setup can be
 // completed exactly once.
 type SystemSettings struct {
-	Initialized               bool     `json:"initialized"`
-	SiteName                  string   `json:"siteName"`
-	DefaultTimezone           string   `json:"defaultTimezone"`
-	DefaultCurrency           Currency `json:"defaultCurrency"`
-	AllowRegistration         bool     `json:"allowRegistration"` // legacy response compatibility
-	AllowPasswordRegistration bool     `json:"allowPasswordRegistration"`
-	AllowOIDCRegistration     bool     `json:"allowOidcRegistration"`
-	CaptchaProvider           string   `json:"captchaProvider,omitempty"`
-	CaptchaSiteKey            string   `json:"captchaSiteKey,omitempty"`
-	CaptchaChallengeURL       string   `json:"captchaChallengeUrl,omitempty"`
-	CaptchaVerifyURL          string   `json:"captchaVerifyUrl,omitempty"`
-	CaptchaSecret             string   `json:"captchaSecret,omitempty"`
-	CaptchaConfigured         bool     `json:"captchaConfigured"`
-	CaptchaSecretCiphertext   string   `json:"-"`
-	SetupTokenHash            string   `json:"-"`
-	SetupTokenIssued          bool     `json:"-"`
+	Initialized               bool                `json:"initialized"`
+	SiteName                  string              `json:"siteName"`
+	DefaultTimezone           string              `json:"defaultTimezone"`
+	DefaultCurrency           Currency            `json:"defaultCurrency"`
+	AllowRegistration         bool                `json:"allowRegistration"` // legacy response compatibility
+	AllowPasswordRegistration bool                `json:"allowPasswordRegistration"`
+	AllowOIDCRegistration     bool                `json:"allowOidcRegistration"`
+	CaptchaProvider           string              `json:"captchaProvider,omitempty"`
+	CaptchaSiteKey            string              `json:"captchaSiteKey,omitempty"`
+	CaptchaChallengeURL       string              `json:"captchaChallengeUrl,omitempty"`
+	CaptchaVerifyURL          string              `json:"captchaVerifyUrl,omitempty"`
+	CaptchaSecret             string              `json:"captchaSecret,omitempty"`
+	CaptchaConfigured         bool                `json:"captchaConfigured"`
+	CaptchaFlows              CaptchaFlowSettings `json:"captchaFlows"`
+	CaptchaSecretCiphertext   string              `json:"-"`
+	SetupTokenHash            string              `json:"-"`
+	SetupTokenIssued          bool                `json:"-"`
 }
 
 type SetupInput struct {

@@ -419,7 +419,7 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	if settings.Initialized {
-		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaProvider": settings.CaptchaProvider, "captchaSiteKey": settings.CaptchaSiteKey, "captchaChallengeUrl": settings.CaptchaChallengeURL}, nil)
+		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaProvider": settings.CaptchaProvider, "captchaSiteKey": settings.CaptchaSiteKey, "captchaChallengeUrl": settings.CaptchaChallengeURL, "captchaFlows": settings.CaptchaFlows}, nil)
 	}
 	_, valid, err := a.Service.ValidateSetupToken(e.Request.Context(), e.Request.URL.Query().Get("token"))
 	if err != nil {
@@ -481,7 +481,7 @@ func (a *API) register(e *core.RequestEvent) error {
 	if e.BindBody(&value) != nil {
 		return fail(e, domain.ErrInvalid)
 	}
-	if err := a.Service.VerifyCaptcha(e.Request.Context(), value.CaptchaToken, e.RealIP()); err != nil {
+	if err := a.Service.VerifyCaptcha(e.Request.Context(), domain.CaptchaFlowRegister, value.CaptchaToken, e.RealIP()); err != nil {
 		return fail(e, domain.ErrForbidden)
 	}
 	created, err := a.Service.Register(e.Request.Context(), value)
