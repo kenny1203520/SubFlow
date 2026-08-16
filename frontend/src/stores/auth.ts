@@ -50,8 +50,8 @@ export const useAuthStore = defineStore('auth', () => {
     ready.value = true
   }
 
-  async function login(email: string, password: string) {
-    await pb.collection('users').authWithPassword(email, password)
+  async function login(email: string, password: string, captchaToken = '') {
+    await pb.collection('users').authWithPassword(email, password, { headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {} })
     authToken.value = pb.authStore.token
     authValid.value = pb.authStore.isValid
     record.value = pb.authStore.record

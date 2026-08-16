@@ -1,9 +1,9 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient } from '../api/client'
-import type { CurrencyInfo } from '../api/types'
+import type { CurrencyInfo, CaptchaFlowSettings } from '../api/types'
 
-export interface SetupStatus { initialized:boolean; setupAvailable?:boolean; siteName?:string; defaultTimezone?:string; defaultCurrency?:string; allowRegistration?:boolean; allowPasswordRegistration?:boolean; allowOidcRegistration?:boolean; captchaProvider?:string; captchaSiteKey?:string; captchaChallengeUrl?:string; currencies?:CurrencyInfo[] }
+export interface SetupStatus { initialized:boolean; setupAvailable?:boolean; siteName?:string; defaultTimezone?:string; defaultCurrency?:string; allowRegistration?:boolean; allowPasswordRegistration?:boolean; allowOidcRegistration?:boolean; captchaProvider?:string; captchaSiteKey?:string; captchaChallengeUrl?:string; captchaFlows?:CaptchaFlowSettings; currencies?:CurrencyInfo[] }
 const publicApi = new ApiClient(() => '', () => {})
 
 export const useSetupStore = defineStore('setup', () => {
