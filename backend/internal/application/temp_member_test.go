@@ -322,7 +322,7 @@ func TestBindingPlaceholderRewritesSettlementsAndDropsDegenerateOnes(t *testing.
 		t.Fatal(err)
 	}
 
-	remaining, err := stores.Settlements.List(ctx, groupID, ports.PageRequest{Page: 1, PerPage: 100})
+	remaining, err := stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 100}})
 	if err != nil {
 		t.Fatal(err)
 	}

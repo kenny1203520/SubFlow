@@ -25,6 +25,16 @@ type AuditQuery struct {
 	To       time.Time
 }
 
+// SettlementQuery keeps settlement-specific filters separate from general
+// list requests, mirroring AuditQuery. Dates are already normalized to UTC
+// by the HTTP layer.
+type SettlementQuery struct {
+	PageRequest
+	MemberID string // matches either FromUserID or ToUserID
+	From     time.Time
+	To       time.Time
+}
+
 type Page[T any] struct {
 	Items      []T `json:"items"`
 	Page       int `json:"page"`
@@ -156,7 +166,7 @@ type ExpenseRepository interface {
 type SettlementRepository interface {
 	Create(context.Context, *domain.Settlement) error
 	Get(context.Context, string) (*domain.Settlement, error)
-	List(context.Context, string, PageRequest) (Page[domain.Settlement], error)
+	List(context.Context, string, SettlementQuery) (Page[domain.Settlement], error)
 	Update(context.Context, *domain.Settlement) error
 	Delete(context.Context, string) error
 	// ReassignUser moves every from_user/to_user/created_by reference from

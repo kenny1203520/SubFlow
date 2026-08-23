@@ -267,7 +267,7 @@ func listAllGroups(ctx context.Context, s *Service, userID string) ([]domain.Gro
 func listAllSettlements(ctx context.Context, s *Service, userID, groupID string) ([]domain.Settlement, error) {
 	var all []domain.Settlement
 	for page := 1; ; page++ {
-		result, err := s.ListSettlements(ctx, userID, groupID, ports.PageRequest{Page: page, PerPage: exportPageSize, Sort: "-settled_on"})
+		result, err := s.ListSettlements(ctx, userID, groupID, ports.SettlementQuery{PageRequest: ports.PageRequest{Page: page, PerPage: exportPageSize, Sort: "-settled_on"}})
 		if err != nil {
 			return nil, err
 		}

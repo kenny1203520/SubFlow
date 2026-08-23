@@ -9,6 +9,7 @@ import { useI18n } from '../i18n'
 import * as outbox from '../offline/outbox'
 import type { OutboxEntry, OutboxKind, OutboxScope } from '../offline/outbox'
 import * as snapshotStore from '../offline/snapshot'
+import { defaultPageSize } from '../pageSize'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'>
 // startsOn is optional so an update can omit it when the user did not touch
@@ -18,6 +19,7 @@ type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' |
 type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'|'billingInterval'|'startsOn'|'splitMode'|'splits'|'revisionScope'|'effectiveBillingAt'|'endBillingAt'>>
 // incurredOn is optional for the same reason startsOn is on SubscriptionInput.
 type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'|'incurredOn'>>
+type SettlementInput = Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const auth = useAuthStore()
@@ -36,6 +38,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const subscriptions = ref<Subscription[]>([])
   const expenses = ref<Expense[]>([])
   const settlements = ref<Settlement[]>([])
+  const subscriptionsMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
+  const expensesMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
+  const settlementsMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
+  const personalSubscriptionsMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
+  const personalExpensesMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
   const groupRoles = ref<AccessRole[]>([])
   const ownershipTransfer = ref<OwnershipTransfer>()
   const memberTransfers = ref<MemberTransfer[]>([])
@@ -220,6 +227,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       invitationsMeta.value = { page:1, perPage:25, totalItems:0, totalPages:0 }
       subscriptions.value = []
       expenses.value = []
+      settlements.value = []
+      subscriptionsMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
+      expensesMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
+      settlementsMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
       summary.value = null
       groupPermissions.value = []
       groupAuditLogs.value = []
@@ -232,6 +243,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     subscriptions.value = []
     expenses.value = []
     settlements.value = []
+    subscriptionsMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
+    expensesMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
+    settlementsMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
     summary.value = null
     groupPermissions.value = []
     groupAuditLogs.value = []
@@ -265,11 +279,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       } finally { groupBusy[key] = Math.max(0, groupBusy[key] - 1) }
     }
+    const perPage = defaultPageSize.value
     await Promise.all([
       load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }, cached?.members),
-      load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=100`).then(value => value.data), value => { subscriptions.value = value }, cached?.subscriptions),
-      load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=100`).then(value => value.data), value => { expenses.value = value }, cached?.expenses),
-      load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=100`).then(value => value.data), value => { settlements.value = value }, cached?.settlements),
+      load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=${perPage}`), value => { subscriptions.value = value.data; subscriptionsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.subscriptions ? { data: cached.subscriptions } : undefined),
+      load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=${perPage}`), value => { expenses.value = value.data; expensesMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.expenses ? { data: cached.expenses } : undefined),
+      load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=${perPage}`), value => { settlements.value = value.data; settlementsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.settlements ? { data: cached.settlements } : undefined),
       load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }),
 			load('access', () => api.get<GroupAccess>(`/groups/${id}/access`).then(value => value.data), value => { groupPermissions.value = value.permissions }),
     ])
@@ -295,13 +310,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await run(async () => {
       try {
         if (!online.value) throw new ApiError(0, 'network_error', 'offline')
+        const perPage = defaultPageSize.value
         const [subscriptionPage, expensePage, dashboard] = await Promise.all([
-          api.get<Subscription[]>('/subscriptions?perPage=100'),
-          api.get<Expense[]>('/expenses?perPage=100'),
+          api.get<Subscription[]>(`/subscriptions?perPage=${perPage}`),
+          api.get<Expense[]>(`/expenses?perPage=${perPage}`),
           api.get<DashboardSummary>(`/dashboard?scope=${scope}${month ? `&month=${encodeURIComponent(month)}` : ''}`),
         ])
         personalSubscriptions.value = subscriptionPage.data
+        personalSubscriptionsMeta.value = subscriptionPage.meta || { page:1, perPage, totalItems:subscriptionPage.data.length, totalPages:1 }
         personalExpenses.value = expensePage.data
+        personalExpensesMeta.value = expensePage.meta || { page:1, perPage, totalItems:expensePage.data.length, totalPages:1 }
         personalSummary.value = dashboard.data
         if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value })
       } catch (reason) {
@@ -504,6 +522,57 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return result
   }
 
+  // Narrow, single-resource page loaders used by the pagination UI --
+  // deliberately separate from refreshGroup()/refreshPersonal() (which stay
+  // untouched, still fetching page 1 of everything after any mutation) so
+  // paging through a list doesn't re-trigger the whole group/personal refresh
+  // cascade those functions are wired into everywhere else.
+  async function loadExpensesPage(page = 1, perPage = expensesMeta.value.perPage || defaultPageSize.value, sort = '') {
+    if (!currentGroupId.value) return
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    if (sort) params.set('sort', sort)
+    const result = await api.get<Expense[]>(`/groups/${currentGroupId.value}/expenses?${params.toString()}`)
+    expenses.value = result.data
+    expensesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
+  async function loadPersonalExpensesPage(page = 1, perPage = personalExpensesMeta.value.perPage || defaultPageSize.value, sort = '') {
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    if (sort) params.set('sort', sort)
+    const result = await api.get<Expense[]>(`/expenses?${params.toString()}`)
+    personalExpenses.value = result.data
+    personalExpensesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
+  async function loadSubscriptionsPage(page = 1, perPage = subscriptionsMeta.value.perPage || defaultPageSize.value, sort = '') {
+    if (!currentGroupId.value) return
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    if (sort) params.set('sort', sort)
+    const result = await api.get<Subscription[]>(`/groups/${currentGroupId.value}/subscriptions?${params.toString()}`)
+    subscriptions.value = result.data
+    subscriptionsMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
+  async function loadPersonalSubscriptionsPage(page = 1, perPage = personalSubscriptionsMeta.value.perPage || defaultPageSize.value, sort = '') {
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    if (sort) params.set('sort', sort)
+    const result = await api.get<Subscription[]>(`/subscriptions?${params.toString()}`)
+    personalSubscriptions.value = result.data
+    personalSubscriptionsMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
+  // Query-string based like loadGroupAuditLogs, since settlements need
+  // filter+sort together with paging, not just page/perPage.
+  async function loadSettlementsPage(query = ''): Promise<Envelope<Settlement[]> | undefined> {
+    if (!currentGroupId.value) return
+    const params = new URLSearchParams(query)
+    if (!params.has('perPage')) params.set('perPage', String(defaultPageSize.value))
+    const result = await api.get<Settlement[]>(`/groups/${currentGroupId.value}/settlements?${params.toString()}`)
+    settlements.value = result.data
+    settlementsMeta.value = result.meta || { page:1, perPage:defaultPageSize.value, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
+
   async function invite(email: string, targetPlaceholderId?: string) {
     if (!currentGroupId.value) return
     await run(async () => {
@@ -671,7 +740,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function billingDates(id: string, cursor = '', includePast = false) { return (await api.get<BillingDates>(`/subscriptions/${id}/billing-dates?limit=12${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}${includePast ? '&includePast=true' : ''}`)).data }
   async function subscriptionPeriods(id: string, cursor = '', limit = 24) { return (await api.get<SubscriptionPeriods>(`/subscriptions/${id}/periods?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`)).data }
 
-  async function addSettlement(input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>) {
+  async function addSettlement(input: SettlementInput) {
     if (!currentGroupId.value) return false
     return run(async () => {
       await withOfflineFallback(
@@ -681,6 +750,18 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           settlements.value = [localSettlement(id, input, currentGroupId.value), ...settlements.value]
           const userId = auth.record?.id
           if (userId) await outbox.enqueue({ userId, kind: 'settlement', op: 'create', scope: 'group', groupId: currentGroupId.value, targetId: id, payload: input })
+        },
+      )
+    }, 'settlements')
+  }
+  async function updateSettlement(id: string, input: SettlementInput) {
+    return run(async () => {
+      await withOfflineFallback(
+        async () => { await api.patch<Settlement>(`/settlements/${id}`, input); await refreshGroup() },
+        async () => {
+          settlements.value = settlements.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item)
+          const userId = auth.record?.id
+          if (userId) await outbox.enqueue({ userId, kind: 'settlement', op: 'update', scope: 'group', groupId: currentGroupId.value, targetId: id, payload: input })
         },
       )
     }, 'settlements')
@@ -769,10 +850,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
-    subscriptions, expenses, settlements, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
+    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, updateSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
+    loadExpensesPage, loadPersonalExpensesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,
   }

@@ -15,12 +15,15 @@ import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
 import SyncBadge from '../components/SyncBadge.vue'
+import Pagination from '../components/Pagination.vue'
+import PageSizeSelect from '../components/PageSizeSelect.vue'
 import type { BillingCycle, ExpenseSplit, SplitMode, Subscription, SubscriptionPeriod, SubscriptionStatus } from '../api/types'
 import { amountStep, majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
 import { timezoneLabel } from '../timezone'
 import { categoryGlyph, categoryLabel } from '../category'
 import { fromDateInput, fromDateTimeInput, toDateInput, toDateTimeInput, todayInput } from '../dateInput'
+import { defaultPageSize } from '../pageSize'
 
 const workspace = useWorkspaceStore(), auth = useAuthStore(), route = useRoute(), { tr, formatDate } = useI18n()
 function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }
@@ -32,6 +35,18 @@ const selectableMembers = computed(() => workspace.members.filter(member => !(me
 const personal = computed(() => route.name === 'personal-subscriptions')
 const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
 const hasUnsynced = computed(() => list.value.some(item => item.pendingSync || item.syncError))
+const listMeta = computed(() => personal.value ? workspace.personalSubscriptionsMeta : workspace.subscriptionsMeta)
+const perPage = ref(defaultPageSize.value)
+function goToPage(page: number) { void (personal.value ? workspace.loadPersonalSubscriptionsPage(page, perPage.value) : workspace.loadSubscriptionsPage(page, perPage.value)) }
+function changePageSize(value: number) { perPage.value = value; goToPage(1) }
+async function reloadCurrentPage(page: number) {
+  if (personal.value) await workspace.loadPersonalSubscriptionsPage(page, perPage.value)
+  else await workspace.loadSubscriptionsPage(page, perPage.value)
+  if (listMeta.value.totalPages && listMeta.value.page > listMeta.value.totalPages) {
+    if (personal.value) await workspace.loadPersonalSubscriptionsPage(listMeta.value.totalPages, perPage.value)
+    else await workspace.loadSubscriptionsPage(listMeta.value.totalPages, perPage.value)
+  }
+}
 const drawer = ref(false), editingId = ref(''), pendingDelete = ref<Subscription>(), sourceItem = ref<Subscription>(), stopping = ref<Subscription>()
 const periodsFor = ref<Subscription>(), periods = ref<SubscriptionPeriod[]>([]), periodsCursor = ref(''), periodsLoading = ref(false), periodsError = ref('')
 const dates = ref<string[]>([]), cursor = ref(''), chosenDate = ref(''), datesLoading = ref(false), formError = ref(''), rateValid = ref(true)
@@ -107,13 +122,14 @@ async function addCategory(name: string, icon = 'tag') { try { const value = awa
 function canonicalSplits():ExpenseSplit[]{return participants.value.map(member=>({userId:member.userId,amountMinor:form.splitMode==='amount'?majorToMinor(form.values[member.userId]||'0',currency.value):0,percentageBasisPoints:form.splitMode==='percentage'?Math.round(Number(form.values[member.userId]||0)*100):undefined}))}
 async function submit() {
   if (!rateValid.value || !splitValid.value) return
+  const page = listMeta.value.page
   const startsOn = hourlyCycle.value ? fromDateTimeInput(form.startsOn,viewerTimezone()) : fromDateInput(form.startsOn,viewerTimezone())
   const effectiveBillingAt = form.effectiveBillingAt || undefined
   const endBillingAt = scopeChoice.value === 'bounded' && form.endBillingAt ? form.endBillingAt : undefined
   const input = { name:form.name, category:form.category||'', categoryId:form.categoryId, amountMinor:subscriptionMinor.value, currency:currency.value as Subscription['currency'], rateMode:form.rateMode, exchangeRate:form.exchangeRate, paidBy:form.paidBy||auth.record?.id||'', splitMode:form.splitMode, splits:personal.value&&!editing.value?.groupId?undefined:canonicalSplits(), revisionScope:form.revisionScope, effectiveBillingAt, endBillingAt, billingCycle:form.billingCycle, billingInterval:needsInterval.value ? Number(form.billingInterval) : 1, ...(!editingId.value||startsOnTouched.value?{startsOn}:{}), status:form.status, notes:form.notes }
   const ok = editingId.value ? await workspace.updateSubscription(editingId.value,input) : personal.value ? await workspace.addPersonalSubscription(input, showBackfillOption.value && form.backfillOnCreate) : await workspace.addSubscription(input, showBackfillOption.value && form.backfillOnCreate)
   if (!ok) { formError.value = workspace.localizedError || tr('requestFailed'); return }
-  await workspace.refreshPersonal()
+  await reloadCurrentPage(page)
   drawer.value = false
   reset()
 }
@@ -131,7 +147,7 @@ function pastStopDate(value:string) { return !!stopping.value?.nextBilling && ne
 async function openStop(item: Subscription) { stopping.value=item; dates.value=[]; cursor.value=''; chosenDate.value=''; if(item.groupId&&workspace.currentGroupId!==item.groupId) await workspace.selectGroup(item.groupId); await loadDates() }
 async function confirmStop() { if(!stopping.value||!chosenDate.value) return; await workspace.stopSubscription(stopping.value.id,chosenDate.value); stopping.value=undefined }
 async function cancelStop(item: Subscription) { await workspace.cancelSubscriptionStop(item.id) }
-async function remove() { if(!pendingDelete.value) return; await workspace.deleteSubscription(pendingDelete.value.id); await workspace.refreshPersonal(); pendingDelete.value=undefined }
+async function remove() { if(!pendingDelete.value) return; const page = listMeta.value.page; await workspace.deleteSubscription(pendingDelete.value.id); await reloadCurrentPage(page); pendingDelete.value=undefined }
 function statusKey(item: Subscription) { return (item.lifecycleStatus||item.status) as 'active' }
 function cycleKey(item: Subscription): BillingCycle { return item.billingCycle }
 function cycleLabel(item: Subscription) { const key = cycleKey(item); return ['every_n_days','every_n_weeks','every_n_hours'].includes(key) ? tr(key === 'every_n_days' ? 'everyNDaysValue' : key === 'every_n_weeks' ? 'everyNWeeksValue' : 'everyNHoursValue',{count:item.billingInterval||1}) : tr(key) }
@@ -184,7 +200,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
     <PersonalLedgerNav v-if="personal" />
     <div class="page-heading"><div><p class="eyebrow">{{ tr('subscriptions') }}</p><h1>{{ tr(personal ? 'subscriptionPersonal' : 'subscriptionGroup') }}</h1><p>{{ tr('subscriptionDesc') }}</p></div><button class="primary" @click="create">{{ tr('createSubscription') }}</button></div>
     <section class="card data-card">
-      <div class="card-title"><h2>{{ tr('allSubscriptions') }}</h2><span>{{ tr('records',{count:list.length}) }}</span></div>
+      <div class="card-title"><h2>{{ tr('allSubscriptions') }}</h2><span>{{ tr('records',{count:listMeta.totalItems}) }}</span><PageSizeSelect :model-value="perPage" @update:model-value="changePageSize"/></div>
       <div v-if="!personal && workspace.groupErrors.subscriptions" class="resource-error"><p>{{ workspace.groupErrors.subscriptions }}</p><button class="ghost" @click="workspace.refreshGroup()">{{ tr('retry') }}</button></div>
       <div v-else-if="list.length" class="data-table subscription-table">
         <div class="data-table-head"><span>{{tr('name')}}</span><span>{{tr('source')}}</span><span>{{tr('nextBilling')}}</span><span>{{tr('cycle')}}</span><span>{{tr('status')}}</span><span>{{tr('amount')}}</span><span></span></div>
@@ -198,6 +214,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
       </div>
       <EmptyState v-else :title="tr('noSubscriptions')" :description="tr('noSubscriptionsDesc')"/>
       <p v-if="hasUnsynced" class="field-help sync-legend"><strong>{{tr('syncLegendTitle')}}</strong> · ☁︎/ {{tr('syncLegendPending')}} · ⚠ {{tr('syncLegendError')}}</p>
+      <Pagination :meta="listMeta" @page="goToPage"/>
     </section>
     <AppDrawer :open="drawer" :title="tr(editingId?'editSubscription':'createSubscription')" @close="drawer=false"><form class="form-card ledger-form" @submit.prevent="submit">
       <div v-if="formError" class="notice danger inline">{{formError}}</div><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div><div v-if="sourceGroup||(!personal&&workspace.currentGroup)" class="timezone-notice">{{tr('yourTimezone',{timezone:timezoneLabel(viewerTimezone())})}}<br>{{tr('groupTimezoneValue',{timezone:timezoneLabel((sourceGroup||workspace.currentGroup)?.timezone||'UTC')})}}</div>

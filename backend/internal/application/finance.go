@@ -777,11 +777,11 @@ func (s *Service) ensureBaseRevisionCovers(ctx context.Context, subscription *do
 	return s.Stores.Subscriptions.CreateRevision(ctx, &base)
 }
 
-func (s *Service) ListSettlements(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Settlement], error) {
+func (s *Service) ListSettlements(ctx context.Context, userID, groupID string, query ports.SettlementQuery) (ports.Page[domain.Settlement], error) {
 	if err := s.role(ctx, groupID, userID, false); err != nil {
 		return ports.Page[domain.Settlement]{}, err
 	}
-	return s.Stores.Settlements.List(ctx, groupID, page)
+	return s.Stores.Settlements.List(ctx, groupID, query)
 }
 func (s *Service) CreateSettlement(ctx context.Context, userID string, value domain.Settlement) (*domain.Settlement, error) {
 	if err := s.role(ctx, value.GroupID, userID, false); err != nil {
@@ -817,6 +817,73 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 		return nil, err
 	}
 	s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency), "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
+	return &value, nil
+}
+func (s *Service) UpdateSettlement(ctx context.Context, userID, id string, patch domain.Settlement) (*domain.Settlement, error) {
+	current, err := s.Stores.Settlements.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	group, err := s.Stores.Groups.Get(ctx, current.GroupID)
+	if err != nil {
+		return nil, err
+	}
+	// Editing your own recorded settlement is a basic action; editing anyone
+	// else's requires the dedicated permission -- the same gate DeleteSettlement
+	// uses (not CreateSettlement's from-user-based gate, since editing a record
+	// you made is a different action from recording a payment on someone's behalf).
+	if current.CreatedBy != userID {
+		if permErr := s.groupPermission(ctx, userID, current.GroupID, "ledger.settlements.write"); permErr != nil {
+			if auditErr := s.audit(ctx, userID, current.GroupID, "settlement.updated", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "forbidden", "from_user_id": current.FromUserID, "to_user_id": current.ToUserID, "amount_minor": current.AmountMinor}, nil)); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, domain.ErrForbidden
+		}
+	}
+	invalid := func(reason string) (*domain.Settlement, error) {
+		if auditErr := s.audit(ctx, userID, current.GroupID, "settlement.updated", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": reason, "from_user_id": patch.FromUserID, "to_user_id": patch.ToUserID, "amount_minor": patch.AmountMinor}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, domain.ErrInvalid
+	}
+	if patch.AmountMinor <= 0 {
+		return invalid("invalid_amount")
+	}
+	if patch.FromUserID == patch.ToUserID || patch.SettledOn.IsZero() {
+		return invalid("invalid_settlement")
+	}
+	if _, err = s.Stores.Memberships.GetRole(ctx, current.GroupID, patch.FromUserID); err != nil {
+		return invalid("from_user_not_member")
+	}
+	if _, err = s.Stores.Memberships.GetRole(ctx, current.GroupID, patch.ToUserID); err != nil {
+		return invalid("to_user_not_member")
+	}
+	value := *current
+	value.FromUserID, value.ToUserID = patch.FromUserID, patch.ToUserID
+	value.AmountMinor = patch.AmountMinor
+	value.SettledOn = patch.SettledOn
+	value.Notes = patch.Notes
+	// Settlements always post at rate 1 in the group's own currency (see
+	// CreateSettlement) -- an edit never touches currency/rate fields even if
+	// the caller sent some, so it can't drift from that invariant.
+	value.Currency, value.BaseCurrency = group.Currency, group.Currency
+	value.BaseAmountMinor, value.RateScaled, value.ExchangeRate, value.ExchangeRateDate = value.AmountMinor, domain.ExchangeRateScale, "1", value.SettledOn
+
+	var changes changeSet
+	changes.addString("from_user_id", current.FromUserID, value.FromUserID)
+	changes.addString("to_user_id", current.ToUserID, value.ToUserID)
+	changes.addInt64("amount_minor", current.AmountMinor, value.AmountMinor)
+	changes.addString("settled_on", current.SettledOn.Format("2006-01-02"), value.SettledOn.Format("2006-01-02"))
+	changes.addBool("notes_changed", false, current.Notes != value.Notes)
+
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if updateErr := s.Stores.Settlements.Update(tx, &value); updateErr != nil {
+			return updateErr
+		}
+		return s.audit(tx, userID, current.GroupID, "settlement.updated", "settlement", id, "success", encodeAuditSummary(nil, changes))
+	}); err != nil {
+		return nil, err
+	}
 	return &value, nil
 }
 func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error {

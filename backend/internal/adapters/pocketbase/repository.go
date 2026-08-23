@@ -869,8 +869,23 @@ func (r *Repository) GetSettlement(ctx context.Context, id string) (*domain.Sett
 	}
 	return settlementFrom(record), nil
 }
-func (r *Repository) ListSettlements(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Settlement], error) {
-	records, err := listRecords(r.app(ctx), CollectionSettlements, "group={:group}", req, dbx.Params{"group": groupID})
+func (r *Repository) ListSettlements(ctx context.Context, groupID string, query ports.SettlementQuery) (ports.Page[domain.Settlement], error) {
+	clauses := []string{"group={:group}"}
+	params := dbx.Params{"group": groupID}
+	if query.MemberID != "" {
+		clauses = append(clauses, "(from_user={:member} || to_user={:member})")
+		params["member"] = query.MemberID
+	}
+	if !query.From.IsZero() {
+		clauses = append(clauses, "settled_on>={:from}")
+		params["from"] = query.From
+	}
+	if !query.To.IsZero() {
+		clauses = append(clauses, "settled_on<={:to}")
+		params["to"] = query.To
+	}
+	filter := strings.Join(clauses, " && ")
+	records, err := listRecords(r.app(ctx), CollectionSettlements, filter, query.PageRequest, params)
 	if err != nil {
 		return ports.Page[domain.Settlement]{}, err
 	}
@@ -878,8 +893,11 @@ func (r *Repository) ListSettlements(ctx context.Context, groupID string, req po
 	for i, record := range records {
 		items[i] = *settlementFrom(record)
 	}
-	count, _ := countFiltered(r.app(ctx), CollectionSettlements, "group={:group}", dbx.Params{"group": groupID})
-	return page(items, req, count), nil
+	count, err := countFiltered(r.app(ctx), CollectionSettlements, filter, params)
+	if err != nil {
+		return ports.Page[domain.Settlement]{}, err
+	}
+	return page(items, query.PageRequest, count), nil
 }
 func (r *Repository) DeleteSettlement(ctx context.Context, id string) error {
 	record, err := r.app(ctx).FindRecordById(CollectionSettlements, id)
@@ -1412,7 +1430,7 @@ func settingsFrom(record *core.Record) domain.SystemSettings {
 		password, oidc = true, true
 	}
 	provider := record.GetString("captcha_provider")
-	return domain.SystemSettings{Initialized: record.GetBool("initialized"), SiteName: record.GetString("site_name"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
 }
 
 // captchaFlowsFrom reads the per-flow captcha configuration, falling back to
@@ -1450,18 +1468,29 @@ func defaultSystemSettings() domain.SystemSettings {
 	return domain.SystemSettings{SiteName: "SubFlow", DefaultTimezone: "UTC", DefaultCurrency: domain.CurrencyTWD, AllowPasswordRegistration: true, AllowOIDCRegistration: true, AllowRegistration: true, CaptchaFlows: domain.CaptchaFlowSettings{Register: unconfigured, PasswordReset: unconfigured, OTPRequest: unconfigured, Login: unconfigured}}
 }
 
+// applicationName is deliberately sourced from PocketBase's own settings.
+// system_settings used to duplicate this value in site_name, which allowed the
+// two administration screens to disagree about the application's identity.
+func applicationName(app core.App) string {
+	if name := strings.TrimSpace(app.Settings().Meta.AppName); name != "" {
+		return name
+	}
+	return "SubFlow"
+}
+
 func (r *Repository) GetSystemSettings(ctx context.Context) (domain.SystemSettings, error) {
-	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	app := r.app(ctx)
+	record, err := app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return defaultSystemSettings(), nil
+			value := defaultSystemSettings()
+			value.SiteName = applicationName(app)
+			return value, nil
 		}
 		return domain.SystemSettings{}, err
 	}
 	value := settingsFrom(record)
-	if value.SiteName == "" {
-		value.SiteName = "SubFlow"
-	}
+	value.SiteName = applicationName(app)
 	if value.DefaultTimezone == "" {
 		value.DefaultTimezone = "UTC"
 	}
@@ -1472,19 +1501,24 @@ func (r *Repository) GetSystemSettings(ctx context.Context) (domain.SystemSettin
 }
 
 func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.SystemSettings) error {
-	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	app := r.app(ctx)
+	appSettings := app.Settings()
+	appSettings.Meta.AppName = strings.TrimSpace(value.SiteName)
+	if err := app.Save(appSettings); err != nil {
+		return err
+	}
+	record, err := app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return err
 		}
-		record, err = newRecord(r.app(ctx), CollectionSystemSettings)
+		record, err = newRecord(app, CollectionSystemSettings)
 		if err != nil {
 			return err
 		}
 		record.Set("key", "primary")
 	}
 	record.Set("initialized", value.Initialized)
-	record.Set("site_name", value.SiteName)
 	record.Set("default_timezone", value.DefaultTimezone)
 	record.Set("default_currency", value.DefaultCurrency)
 	record.Set("allow_registration", value.AllowPasswordRegistration)
@@ -1501,7 +1535,7 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	if value.SetupTokenHash != "" {
 		record.Set("setup_secret_hash", value.SetupTokenHash)
 	}
-	return r.app(ctx).Save(record)
+	return app.Save(record)
 }
 
 func newRecord(app core.App, name string) (*core.Record, error) {

@@ -14,12 +14,15 @@ import CategorySelect from '../components/CategorySelect.vue'
 import PayerSelect from '../components/PayerSelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
+import Pagination from '../components/Pagination.vue'
+import PageSizeSelect from '../components/PageSizeSelect.vue'
 import type { Currency, Expense, ExpenseSplit, SplitMode } from '../api/types'
 import { amountStep, majorToMinor, minorToInput } from '../api/money'
 import { useI18n } from '../i18n'
 import { timezoneLabel } from '../timezone'
 import { categoryGlyph, categoryLabel } from '../category'
 import { fromDateInput, toDateInput, todayInput } from '../dateInput'
+import { defaultPageSize } from '../pageSize'
 
 const workspace=useWorkspaceStore(),auth=useAuthStore(),route=useRoute(),{tr,formatDate}=useI18n()
 // A bound temp member has already been superseded by the real account that
@@ -31,6 +34,18 @@ function viewerTimezone(){return auth.record?.timezone||Intl.DateTimeFormat().re
 const personal=computed(()=>route.name==='personal-expenses')
 const list=computed(()=>personal.value?workspace.personalExpenses:workspace.expenses)
 const hasUnsynced=computed(()=>list.value.some(item=>item.pendingSync||item.syncError))
+const listMeta=computed(()=>personal.value?workspace.personalExpensesMeta:workspace.expensesMeta)
+const perPage=ref(defaultPageSize.value)
+function goToPage(page:number){ void (personal.value?workspace.loadPersonalExpensesPage(page,perPage.value):workspace.loadExpensesPage(page,perPage.value)) }
+function changePageSize(value:number){ perPage.value=value; goToPage(1) }
+async function reloadCurrentPage(page:number){
+  if(personal.value) await workspace.loadPersonalExpensesPage(page,perPage.value)
+  else await workspace.loadExpensesPage(page,perPage.value)
+  if(listMeta.value.totalPages&&listMeta.value.page>listMeta.value.totalPages){
+    if(personal.value) await workspace.loadPersonalExpensesPage(listMeta.value.totalPages,perPage.value)
+    else await workspace.loadExpensesPage(listMeta.value.totalPages,perPage.value)
+  }
+}
 const open=ref(false),editingId=ref(''),pendingDelete=ref<Expense>(),sourceItem=ref<Expense>(),formError=ref(''),rateValid=ref(true),exportError=ref(''),exporting=ref(false)
 const form=reactive({title:'',category:'',categoryId:'',amount:'',currency:'TWD' as Currency,rateMode:'automatic' as 'automatic'|'manual',exchangeRate:'',paidBy:'',incurredOn:todayInput(viewerTimezone()),notes:'',splitMode:'equal' as SplitMode,participants:{} as Record<string,boolean>,values:{} as Record<string,string>})
 // See SubscriptionsView.vue: only send incurredOn back when the user actually
@@ -60,15 +75,16 @@ async function addCategory(name:string,icon='tag'){try{const value=await workspa
 function canonicalSplits():ExpenseSplit[]{return participants.value.map(member=>({userId:member.userId,amountMinor:form.splitMode==='amount'?majorToMinor(form.values[member.userId]||'0',currency.value):0,percentageBasisPoints:form.splitMode==='percentage'?Math.round(Number(form.values[member.userId]||0)*100):undefined}))}
 async function submit(){
   if(!splitValid.value||!rateValid.value)return
+  const page=listMeta.value.page
   const incurredOn=fromDateInput(form.incurredOn,viewerTimezone())
   const input={title:form.title,category:form.category||'',categoryId:form.categoryId,amountMinor:expenseMinor.value,currency:currency.value,rateMode:form.rateMode,exchangeRate:form.exchangeRate,paidBy:form.paidBy||auth.record?.id||'',...(!editingId.value||incurredOnTouched.value?{incurredOn}:{}),notes:form.notes,splitMode:form.splitMode,splits:personal.value&&!editing.value?.groupId?undefined:canonicalSplits()}
   const ok=editingId.value?await workspace.updateExpense(editingId.value,input):personal.value?await workspace.addPersonalExpense(input):await workspace.addExpense(input)
   if(!ok){formError.value=workspace.localizedError||tr('requestFailed');return}
-  await workspace.refreshPersonal()
+  await reloadCurrentPage(page)
   open.value=false
   reset()
 }
-async function remove(){if(!pendingDelete.value)return;await workspace.deleteExpense(pendingDelete.value.id);await workspace.refreshPersonal();pendingDelete.value=undefined}
+async function remove(){if(!pendingDelete.value)return;const page=listMeta.value.page;await workspace.deleteExpense(pendingDelete.value.id);await reloadCurrentPage(page);pendingDelete.value=undefined}
 async function exportLedger(){exportError.value='';exporting.value=true;try{await workspace.exportLedger(personal.value?undefined:workspace.currentGroupId)}catch{exportError.value=tr('exportFailed')}finally{exporting.value=false}}
 function recordCurrency(item:Expense){return item.currency||workspace.groups.find(group=>group.id===item.groupId)?.currency||'TWD'}
 function recordCategory(item:Expense){return `${categoryGlyph(item.categoryInfo)} ${categoryLabel(item.categoryInfo,item.category,tr)}`}
@@ -87,8 +103,9 @@ onBeforeUnmount(()=>document.removeEventListener('click',openSourceFromBadge))
 
 <template><section class="page ledger-page"><PersonalLedgerNav v-if="personal"/><div class="page-heading"><div><p class="eyebrow">{{tr(personal?'expensePersonal':'splitExpenses')}}</p><h1>{{tr(personal?'expensePersonal':'expenseGroup')}}</h1><p>{{tr('expenseDesc')}}</p></div><div class="page-heading-actions"><button class="ghost" :disabled="exporting||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')" @click="exportLedger">{{tr('exportLedger')}}</button><button class="primary" @click="create">{{tr('createExpense')}}</button></div></div>
   <div v-if="exportError" class="notice danger inline">{{exportError}}</div>
-  <section class="card data-card"><div class="card-title"><h2>{{tr('recentExpenses')}}</h2><span>{{tr('records',{count:list.length})}}</span></div><div v-if="!personal&&workspace.groupErrors.expenses" class="resource-error"><p>{{workspace.groupErrors.expenses}}</p><button class="ghost" @click="workspace.refreshGroup()">{{tr('retry')}}</button></div><div v-else-if="list.length" class="data-table expense-table"><div class="data-table-head"><span>{{tr('item')}}</span><span>{{tr('source')}}</span><span>{{tr('payer')}}</span><span>{{tr('date')}}</span><span>{{tr('amount')}}</span><span></span></div><article v-for="item in list" :key="item.id" class="data-table-row"><div class="item-cell"><span class="service-icon expense">{{item.title.slice(0,1)}}</span><span><strong>{{item.title}}</strong><small>{{recordCategory(item)}}</small><SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError"/></span></div><span><span class="source-badge" :class="{shared:item.groupId}">{{itemGroup(item)?.name||tr('privateRecord')}}</span></span><span>{{workspace.members.find(m=>m.userId===item.paidBy)?.user?.name|| (item.paidBy===auth.record?.id?tr('myself'):'—')}}</span><span class="timezone-date"><strong>{{viewerDate(item.incurredOn)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small></span><span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="recordCurrency(item)"/><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span><span class="row-actions"><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('remove')" @click="pendingDelete=item">×</button></span></article></div><EmptyState v-else :title="tr('noExpenses')" :description="tr('noExpensesDesc')"/>
+  <section class="card data-card"><div class="card-title"><h2>{{tr('recentExpenses')}}</h2><span>{{tr('records',{count:listMeta.totalItems})}}</span><PageSizeSelect :model-value="perPage" @update:model-value="changePageSize"/></div><div v-if="!personal&&workspace.groupErrors.expenses" class="resource-error"><p>{{workspace.groupErrors.expenses}}</p><button class="ghost" @click="workspace.refreshGroup()">{{tr('retry')}}</button></div><div v-else-if="list.length" class="data-table expense-table"><div class="data-table-head"><span>{{tr('item')}}</span><span>{{tr('source')}}</span><span>{{tr('payer')}}</span><span>{{tr('date')}}</span><span>{{tr('amount')}}</span><span></span></div><article v-for="item in list" :key="item.id" class="data-table-row"><div class="item-cell"><span class="service-icon expense">{{item.title.slice(0,1)}}</span><span><strong>{{item.title}}</strong><small>{{recordCategory(item)}}</small><SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError"/></span></div><span><span class="source-badge" :class="{shared:item.groupId}">{{itemGroup(item)?.name||tr('privateRecord')}}</span></span><span>{{workspace.members.find(m=>m.userId===item.paidBy)?.user?.name|| (item.paidBy===auth.record?.id?tr('myself'):'—')}}</span><span class="timezone-date"><strong>{{viewerDate(item.incurredOn)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small></span><span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="recordCurrency(item)"/><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span><span class="row-actions"><button class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button class="icon-button" :aria-label="tr('remove')" @click="pendingDelete=item">×</button></span></article></div><EmptyState v-else :title="tr('noExpenses')" :description="tr('noExpensesDesc')"/>
     <p v-if="hasUnsynced" class="field-help sync-legend"><strong>{{tr('syncLegendTitle')}}</strong> · ☁︎/ {{tr('syncLegendPending')}} · ⚠ {{tr('syncLegendError')}}</p>
+    <Pagination :meta="listMeta" @page="goToPage"/>
   </section>
   <AppDrawer :open="open" :title="tr(editingId?'editExpense':'createExpense')" @close="open=false"><form class="form-card ledger-form" @submit.prevent="submit">
     <div v-if="formError" class="notice danger inline">{{formError}}</div><div v-if="editing?.groupId&&personal" class="notice inline">{{tr('sharedRecordWarning',{group:sourceGroup?.name||tr('groups')})}}</div>

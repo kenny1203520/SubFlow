@@ -129,4 +129,39 @@ describe('workspace store offline behavior', () => {
 
     expect(outboxEntries).toHaveLength(0)
   })
+
+  it('queues a settlement edit locally and replays it as PATCH', async () => {
+    const settlement = { id: 'st1', groupId: 'g1', fromUserId: 'u1', toUserId: 'u2', createdBy: 'u1', amountMinor: 100, currency: 'TWD', baseCurrency: 'TWD', baseAmountMinor: 100, exchangeRate: '1', exchangeRateDate: '2026-08-01T00:00:00Z', settledOn: '2026-08-01T00:00:00Z', notes: '', createdAt: '', updatedAt: '' }
+    const fetchMock = vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      if (url.includes('/groups?perPage')) return Promise.resolve(envelope([{ id: 'g1', name: 'Home', description: '', currency: 'TWD', timezone: 'UTC', color: '#000', ownerId: 'u1', createdAt: '', updatedAt: '' }]))
+      if (url.includes('/currencies') || url.includes('/invitations/pending') || url.includes('/notifications') || url.includes('/groups/g1/members')) return Promise.resolve(envelope([]))
+      if (url.includes('/groups/g1/subscriptions') || url.includes('/groups/g1/expenses')) return Promise.resolve(envelope([]))
+      if (url.includes('/groups/g1/settlements')) return Promise.resolve(envelope([settlement]))
+      if (url.includes('/groups/g1/summary')) return Promise.resolve(envelope({}))
+      if (url.includes('/groups/g1/access')) return Promise.resolve(envelope({ permissions: [] }))
+      if (url.includes('/settlements/st1') && init?.method === 'PATCH') return Promise.resolve(envelope({ ...settlement, amountMinor: 250 }))
+      if (url.includes('/events')) return Promise.reject(new Error('no sse in test'))
+      return Promise.reject(new Error(`unexpected fetch: ${url}`))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
+    const workspace = useWorkspaceStore()
+    await workspace.selectGroup('g1')
+
+    Object.defineProperty(navigator, 'onLine', { value: false, configurable: true })
+    window.dispatchEvent(new Event('offline'))
+    const ok = await workspace.updateSettlement('st1', { fromUserId: 'u1', toUserId: 'u2', amountMinor: 250, settledOn: settlement.settledOn, notes: 'corrected' })
+    expect(ok).toBe(true)
+    expect(workspace.settlements[0]).toMatchObject({ amountMinor: 250, notes: 'corrected', pendingSync: true })
+    expect(outboxEntries).toHaveLength(1)
+    expect(outboxEntries[0]).toMatchObject({ kind: 'settlement', op: 'update', targetId: 'st1' })
+
+    Object.defineProperty(navigator, 'onLine', { value: true, configurable: true })
+    window.dispatchEvent(new Event('online'))
+    await new Promise(resolve => setTimeout(resolve, 0))
+    await workspace.syncOutbox()
+    const patched = fetchMock.mock.calls.find(call => String(call[0]).endsWith('/settlements/st1') && (call[1] as RequestInit)?.method === 'PATCH')
+    expect(patched).toBeTruthy()
+    expect(outboxEntries).toHaveLength(0)
+  })
 })

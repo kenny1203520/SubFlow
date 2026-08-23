@@ -559,7 +559,7 @@ func (s *Service) PreviewGroupCurrency(ctx context.Context, userID, groupID stri
 	if err != nil {
 		return nil, err
 	}
-	settlements, err := s.Stores.Settlements.List(ctx, groupID, pageAll("settled_on"))
+	settlements, err := s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: pageAll("settled_on")})
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +605,7 @@ func (s *Service) ChangeGroupCurrency(ctx context.Context, userID, groupID strin
 	if err != nil {
 		return nil, err
 	}
-	settlements, err := s.Stores.Settlements.List(ctx, groupID, pageAll("settled_on"))
+	settlements, err := s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: pageAll("settled_on")})
 	if err != nil {
 		return nil, err
 	}

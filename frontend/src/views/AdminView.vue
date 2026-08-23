@@ -155,7 +155,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
 
     <template v-if="section === 'overview'">
       <div class="admin-grid">
-        <section class="card"><h2>{{ tr('settings') }}</h2><p>{{ tr('siteName') }} · {{ settings.siteName }}</p><RouterLink v-if="can('system.settings.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'settings' } }">{{ tr('edit') }}</RouterLink></section>
+        <section class="card"><h2>{{ tr('settings') }}</h2><p>{{ tr('applicationName') }} · {{ settings.siteName }}</p><RouterLink v-if="can('system.settings.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'settings' } }">{{ tr('edit') }}</RouterLink></section>
         <section class="card"><h2>{{ tr('userManagement') }}</h2><p>{{ tr('records', { count: users.length }) }}</p><RouterLink v-if="can('system.users.assign')" class="ghost" :to="{ name: 'admin-section', params: { section: 'users' } }">{{ tr('members') }}</RouterLink></section>
         <section class="card"><h2>{{ tr('roleManagement') }}</h2><p>{{ tr('records', { count: roles.length }) }}</p><RouterLink v-if="can('system.roles.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'roles' } }">{{ tr('settings') }}</RouterLink></section>
       </div>
@@ -163,7 +163,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
 
     <form v-else-if="section === 'settings' && can('system.settings.manage')" class="card form-card admin-form" @submit.prevent="saveSettings">
       <h2>{{ tr('settings') }}</h2>
-      <BaseInput v-model="settings.siteName" :label="tr('siteName')" required :maxlength="120" />
+      <BaseInput v-model="settings.siteName" :label="tr('applicationName')" :help="tr('applicationNameHelp')" required :maxlength="255" />
       <label>{{ tr('timezone') }}<TimezoneSelect v-model="settings.defaultTimezone" /></label>
       <label>{{ tr('currency') }}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies" /></label>
       <fieldset class="settings-section"><legend>{{ tr('loginSecurity') }}</legend>
