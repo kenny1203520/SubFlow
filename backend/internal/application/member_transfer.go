@@ -166,7 +166,7 @@ func (s *Service) CancelMemberTransfer(ctx context.Context, userID, id string) e
 // may view it; CreateMemberTransfer/RespondMemberTransfer/
 // CancelMemberTransfer enforce who may act on any given one.
 func (s *Service) PendingMemberTransfers(ctx context.Context, userID, groupID string) ([]domain.MemberTransfer, error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.view"); err != nil {
 		return nil, err
 	}
 	return s.Stores.MemberTransfers.ListPending(ctx, groupID)

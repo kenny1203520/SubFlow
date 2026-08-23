@@ -566,7 +566,7 @@ func (s *Service) BillingDates(ctx context.Context, userID, id, cursor string, l
 		if subscription.OwnerID != userID {
 			return BillingDatePage{}, domain.ErrForbidden
 		}
-	} else if err = s.role(ctx, subscription.GroupID, userID, false); err != nil {
+	} else if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.subscriptions.read"); err != nil {
 		return BillingDatePage{}, err
 	} else if includePast && s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write") != nil {
 		includePast = false
@@ -610,7 +610,7 @@ func (s *Service) SubscriptionPeriods(ctx context.Context, userID, id, cursor st
 		if subscription.OwnerID != userID {
 			return SubscriptionPeriodPage{}, domain.ErrForbidden
 		}
-	} else if err = s.role(ctx, subscription.GroupID, userID, false); err != nil {
+	} else if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.subscriptions.read"); err != nil {
 		return SubscriptionPeriodPage{}, err
 	}
 	if limit < 1 || limit > 100 {
@@ -696,6 +696,9 @@ func (s *Service) BackfillSubscriptionPeriods(ctx context.Context, userID, id st
 		if subscription.OwnerID != userID {
 			return 0, domain.ErrForbidden
 		}
+	} else if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.subscriptions.write"); err != nil {
+		s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure")
+		return 0, err
 	} else if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write"); err != nil {
 		s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure")
 		return 0, err
@@ -778,13 +781,16 @@ func (s *Service) ensureBaseRevisionCovers(ctx context.Context, subscription *do
 }
 
 func (s *Service) ListSettlements(ctx context.Context, userID, groupID string, query ports.SettlementQuery) (ports.Page[domain.Settlement], error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "ledger.settlements.read"); err != nil {
 		return ports.Page[domain.Settlement]{}, err
 	}
 	return s.Stores.Settlements.List(ctx, groupID, query)
 }
 func (s *Service) CreateSettlement(ctx context.Context, userID string, value domain.Settlement) (*domain.Settlement, error) {
-	if err := s.role(ctx, value.GroupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.create"); err != nil {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"reason": "missing_create_permission"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	if value.AmountMinor <= 0 || value.FromUserID == value.ToUserID || value.SettledOn.IsZero() {
@@ -800,14 +806,15 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	if err != nil {
 		return nil, err
 	}
-	// Recording your own repayment (self -> anyone) is a basic action every
-	// member can do; recording on someone else's behalf (any from/to pair)
-	// requires the dedicated permission so it isn't silently open to whoever
-	// happens to hold the default member role.
+	// The basic create permission permits only recording a repayment made by
+	// yourself. A treasurer can record on another member's behalf only with
+	// the explicit management permission.
 	if userID != value.FromUserID {
-		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
-			s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(group.Currency)}, nil))
-			return nil, domain.ErrForbidden
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.manage"); permErr != nil {
+			if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"reason": "payer_not_actor", "from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(group.Currency)}, nil)); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, permErr
 		}
 	}
 	value.CreatedBy = userID
@@ -828,12 +835,16 @@ func (s *Service) UpdateSettlement(ctx context.Context, userID, id string, patch
 	if err != nil {
 		return nil, err
 	}
-	// Editing your own recorded settlement is a basic action; editing anyone
-	// else's requires the dedicated permission -- the same gate DeleteSettlement
-	// uses (not CreateSettlement's from-user-based gate, since editing a record
-	// you made is a different action from recording a payment on someone's behalf).
+	if permErr := s.groupPermission(ctx, userID, current.GroupID, "ledger.settlements.update"); permErr != nil {
+		if auditErr := s.audit(ctx, userID, current.GroupID, "settlement.updated", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "missing_update_permission"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, permErr
+	}
+	// A base update permission grants changes to records the caller created.
+	// Managing another member's record requires the separate elevated grant.
 	if current.CreatedBy != userID {
-		if permErr := s.groupPermission(ctx, userID, current.GroupID, "ledger.settlements.write"); permErr != nil {
+		if permErr := s.groupPermission(ctx, userID, current.GroupID, "ledger.settlements.manage"); permErr != nil {
 			if auditErr := s.audit(ctx, userID, current.GroupID, "settlement.updated", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "forbidden", "from_user_id": current.FromUserID, "to_user_id": current.ToUserID, "amount_minor": current.AmountMinor}, nil)); auditErr != nil {
 				return nil, auditErr
 			}
@@ -894,10 +905,18 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 	if _, err = s.Stores.Groups.Get(ctx, value.GroupID); err != nil {
 		return err
 	}
+	if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.delete"); permErr != nil {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "missing_delete_permission"}, nil)); auditErr != nil {
+			return auditErr
+		}
+		return permErr
+	}
 	if value.CreatedBy != userID {
-		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.write"); permErr != nil {
-			s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency)}, nil))
-			return domain.ErrForbidden
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.settlements.manage"); permErr != nil {
+			if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "not_creator", "from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency)}, nil)); auditErr != nil {
+				return auditErr
+			}
+			return permErr
 		}
 	}
 	err = s.Stores.Settlements.Delete(ctx, id)

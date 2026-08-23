@@ -87,7 +87,7 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID, locale stri
 			}
 		}
 	} else {
-		if err := s.role(ctx, groupID, userID, false); err != nil {
+		if err := s.groupPermission(ctx, userID, groupID, "group.view"); err != nil {
 			return nil, "", err
 		}
 		expenses, err := listAllExpenses(ctx, s, userID, groupID)

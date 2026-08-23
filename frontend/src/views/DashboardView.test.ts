@@ -21,6 +21,7 @@ import DashboardView from './DashboardView.vue'
 
 describe('DashboardView settlement permissions', () => {
   it('labels every settlement party and detail instead of collapsing them into one line', async () => {
+    workspace.groupPermissions = ['ledger.settlements.read']
     const wrapper = mount(DashboardView, { global: { stubs: { RouterLink: true, MoneyValue: true, EmptyState: true, SyncBadge: true, AppDrawer: true, ConfirmDialog: true, BaseCombobox: true, MonthNav: true, Pagination: true, PageSizeSelect: true, SettlementFilterBar: true } } })
     await nextTick()
     const row = wrapper.find('.settlement-row')
@@ -35,21 +36,27 @@ describe('DashboardView settlement permissions', () => {
     expect(row.text()).toContain('Dinner reimbursement')
   })
 
-  it('places the record repayment action in the repayment history header', async () => {
+  it('places the record repayment action in the repayment history header when creation is allowed', async () => {
+    workspace.groupPermissions = ['ledger.settlements.read', 'ledger.settlements.create']
     const wrapper = mount(DashboardView, { global: { stubs: { RouterLink: true, MoneyValue: true, EmptyState: true, SyncBadge: true, AppDrawer: true, ConfirmDialog: true, BaseCombobox: true, MonthNav: true, Pagination: true, PageSizeSelect: true, SettlementFilterBar: true } } })
     await nextTick()
     expect(wrapper.find('.settlement-history-controls .primary').text()).toBe('recordSettlement')
     expect(wrapper.findAll('.dashboard-grid button').map(button => button.text())).not.toContain('recordSettlement')
   })
 
-  it('hides edit and delete actions for another member settlement without write permission', async () => {
-    workspace.groupPermissions = []
+  it('hides each action unless its explicit permission and ownership rule allow it', async () => {
+    workspace.groupPermissions = ['ledger.settlements.read']
     const wrapper = mount(DashboardView, { global: { stubs: { RouterLink: true, MoneyValue: true, EmptyState: true, SyncBadge: true, AppDrawer: true, ConfirmDialog: true, BaseCombobox: true, MonthNav: true, Pagination: true, PageSizeSelect: true, SettlementFilterBar: true } } })
     await nextTick()
     expect(wrapper.findAll('button[aria-label="edit"]')).toHaveLength(0)
     expect(wrapper.findAll('button[aria-label="delete"]')).toHaveLength(0)
 
-    workspace.groupPermissions = ['ledger.settlements.write']
+    workspace.groupPermissions = ['ledger.settlements.read', 'ledger.settlements.update', 'ledger.settlements.delete']
+    await nextTick()
+    expect(wrapper.findAll('button[aria-label="edit"]')).toHaveLength(0)
+    expect(wrapper.findAll('button[aria-label="delete"]')).toHaveLength(0)
+
+    workspace.groupPermissions = ['ledger.settlements.read', 'ledger.settlements.update', 'ledger.settlements.delete', 'ledger.settlements.manage']
     await nextTick()
     expect(wrapper.findAll('button[aria-label="edit"]')).toHaveLength(1)
     expect(wrapper.findAll('button[aria-label="delete"]')).toHaveLength(1)

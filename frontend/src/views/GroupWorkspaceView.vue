@@ -14,6 +14,11 @@ const group = computed(() =>
 );
 const canReadAudit = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.audit.read'));
 const canManageRoles = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.roles.manage'));
+const canManageSettings = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.settings.manage'));
+const canReadExpenses = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.expenses.read'));
+const canReadSubscriptions = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.subscriptions.read'));
+const canViewGroup = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.view'));
+const canViewDashboard = computed(() => canViewGroup.value && canReadExpenses.value && canReadSubscriptions.value && (workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.settlements.read')));
 async function activate() {
     if (groupId.value) await workspace.selectGroup(groupId.value);
 }
@@ -28,25 +33,25 @@ watch(groupId, () => void activate());
                 <p class="eyebrow">{{tr('groupWorkspace')}}</p>
                 <h1>{{ group?.name || tr("groupWorkspace") }}</h1>
                 <p>{{ group?.description || tr("groupWorkspaceDesc") }}</p>
-                <div v-if="group" class="workspace-facts"><span>{{currencyLabel(group.currency)}}</span><span>{{timezoneLabel(group.timezone)}}</span><span>{{tr('memberCount',{count:workspace.members.length})}}</span><RouterLink :to="`/groups/${groupId}/settings`">{{tr('settings')}} →</RouterLink></div>
+                <div v-if="group" class="workspace-facts"><span>{{currencyLabel(group.currency)}}</span><span>{{timezoneLabel(group.timezone)}}</span><span>{{tr('memberCount',{count:workspace.members.length})}}</span><RouterLink v-if="canManageSettings" :to="`/groups/${groupId}/settings`">{{tr('settings')}} →</RouterLink></div>
             </div>
         </div>
         <nav class="group-tabs" :aria-label="tr('groupWorkspace')">
-            <RouterLink :to="`/groups/${groupId}/overview`">{{
+            <RouterLink v-if="canViewDashboard" :to="`/groups/${groupId}/overview`">{{
                 tr("groupOverview")
                 }}</RouterLink>
-            <RouterLink :to="`/groups/${groupId}/expenses`">{{
+            <RouterLink v-if="canReadExpenses" :to="`/groups/${groupId}/expenses`">{{
                 tr("splitExpenses")
                 }}</RouterLink>
-            <RouterLink :to="`/groups/${groupId}/subscriptions`">{{
+            <RouterLink v-if="canReadSubscriptions" :to="`/groups/${groupId}/subscriptions`">{{
                 tr("manageSubscriptions")
                 }}</RouterLink>
-            <RouterLink :to="`/groups/${groupId}/members`">{{
+            <RouterLink v-if="canViewGroup" :to="`/groups/${groupId}/members`">{{
                 tr("members")
                 }}</RouterLink>
             <RouterLink v-if="canManageRoles" :to="`/groups/${groupId}/roles`">{{ tr("roleManagement") }}</RouterLink>
             <RouterLink v-if="canReadAudit" :to="`/groups/${groupId}/audit`">{{ tr("auditLogs") }}</RouterLink>
-            <RouterLink :to="`/groups/${groupId}/settings`">{{
+            <RouterLink v-if="canManageSettings" :to="`/groups/${groupId}/settings`">{{
                 tr("settings")
                 }}</RouterLink>
         </nav>

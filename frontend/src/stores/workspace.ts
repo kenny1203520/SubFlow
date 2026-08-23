@@ -280,13 +280,22 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       } finally { groupBusy[key] = Math.max(0, groupBusy[key] - 1) }
     }
     const perPage = defaultPageSize.value
+    let accessLoaded = false
+    await load('access', () => api.get<GroupAccess>(`/groups/${id}/access`).then(value => value.data), value => { groupPermissions.value = value.permissions; accessLoaded = true })
+    const hasGroupPermission = (permission: string) => groupPermissions.value.includes('*') || groupPermissions.value.includes(permission)
+    // If access itself is unavailable (notably offline), preserve the prior
+    // load path so its snapshot fallback can still render cached data. Once
+    // access is known, avoid requesting resources the role cannot read.
+    const canViewGroup = !accessLoaded || hasGroupPermission('group.view')
+    const canReadExpenses = !accessLoaded || hasGroupPermission('ledger.expenses.read')
+    const canReadSubscriptions = !accessLoaded || hasGroupPermission('ledger.subscriptions.read')
+    const canReadSettlements = !accessLoaded || hasGroupPermission('ledger.settlements.read')
     await Promise.all([
-      load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }, cached?.members),
-      load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=${perPage}`), value => { subscriptions.value = value.data; subscriptionsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.subscriptions ? { data: cached.subscriptions } : undefined),
-      load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=${perPage}`), value => { expenses.value = value.data; expensesMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.expenses ? { data: cached.expenses } : undefined),
-      load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=${perPage}`), value => { settlements.value = value.data; settlementsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.settlements ? { data: cached.settlements } : undefined),
-      load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }),
-			load('access', () => api.get<GroupAccess>(`/groups/${id}/access`).then(value => value.data), value => { groupPermissions.value = value.permissions }),
+      canViewGroup ? load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }, cached?.members) : Promise.resolve(),
+      canReadSubscriptions ? load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=${perPage}`), value => { subscriptions.value = value.data; subscriptionsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.subscriptions ? { data: cached.subscriptions } : undefined) : Promise.resolve(),
+      canReadExpenses ? load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=${perPage}`), value => { expenses.value = value.data; expensesMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.expenses ? { data: cached.expenses } : undefined) : Promise.resolve(),
+      canReadSettlements ? load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=${perPage}`), value => { settlements.value = value.data; settlementsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.settlements ? { data: cached.settlements } : undefined) : Promise.resolve(),
+      canViewGroup && canReadExpenses && canReadSubscriptions && canReadSettlements ? load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }) : Promise.resolve(),
     ])
     if (expectedRequest === groupRequest && id === currentGroupId.value) {
       if (groupPermissions.value.includes('group.members.manage') && online.value) {

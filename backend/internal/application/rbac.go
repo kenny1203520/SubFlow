@@ -46,10 +46,13 @@ func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, r
 	return s.Stores.Audits.Create(ctx, &domain.AuditLog{ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, IP: ip, UserAgent: userAgent, Hash: hex.EncodeToString(mac.Sum(nil))})
 }
 
-func generatedRoleKey(name string) string { sum := sha256.Sum256([]byte(name + time.Now().UTC().String())); return fmt.Sprintf("custom-%x", sum[:6]) }
+func generatedRoleKey(name string) string {
+	sum := sha256.Sum256([]byte(name + time.Now().UTC().String()))
+	return fmt.Sprintf("custom-%x", sum[:6])
+}
 
 func (s *Service) ListGroupRoles(ctx context.Context, userID, groupID string) ([]domain.Role, error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.roles.manage"); err != nil {
 		return nil, err
 	}
 	return s.Stores.Roles.List(ctx, "group", groupID)
@@ -149,7 +152,9 @@ func (s *Service) CreateSystemRole(ctx context.Context, userID string, value dom
 	value.Scope, value.GroupID, value.CreatedBy = "system", "", userID
 	value.Name = strings.TrimSpace(value.Name)
 	value.Category = strings.TrimSpace(value.Category)
-	if value.Key == "" { value.Key = generatedRoleKey(value.Name) }
+	if value.Key == "" {
+		value.Key = generatedRoleKey(value.Name)
+	}
 	value.Key = strings.ToLower(strings.TrimSpace(value.Key))
 	if value.Name == "" || value.Key == "" || value.Protected {
 		return nil, domain.ErrInvalid
@@ -273,7 +278,9 @@ func (s *Service) CreateGroupRole(ctx context.Context, userID string, value doma
 	value.Scope = "group"
 	value.Name = strings.TrimSpace(value.Name)
 	value.Category = strings.TrimSpace(value.Category)
-	if value.Key == "" { value.Key = generatedRoleKey(value.Name) }
+	if value.Key == "" {
+		value.Key = generatedRoleKey(value.Name)
+	}
 	value.Key = strings.ToLower(strings.TrimSpace(value.Key))
 	value.CreatedBy = userID
 	if value.Name == "" || value.Key == "" || value.Protected {
