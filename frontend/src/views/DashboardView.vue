@@ -11,11 +11,15 @@ import AppDrawer from '../components/AppDrawer.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
 import MonthNav from '../components/MonthNav.vue'
+import Pagination from '../components/Pagination.vue'
+import PageSizeSelect from '../components/PageSizeSelect.vue'
+import SettlementFilterBar, { type SettlementFilters } from '../components/SettlementFilterBar.vue'
 import type { Settlement } from '../api/types'
-import { amountStep, majorToMinor } from '../api/money'
+import { amountStep, majorToMinor, minorToInput } from '../api/money'
 import { timezoneLabel } from '../timezone'
 import { currencyLabel } from '../currency'
-import { fromDateInput, todayInput } from '../dateInput'
+import { fromDateInput, toDateInput, todayInput } from '../dateInput'
+import { defaultPageSize } from '../pageSize'
 
 type Scope='personal'|'group'|'all'
 const workspace=useWorkspaceStore(),auth=useAuthStore(),route=useRoute(),router=useRouter()
@@ -27,9 +31,14 @@ const selectedGroup=ref('')
 const settlementOpen=ref(false)
 const settlementError=ref('')
 const pendingSettlementDelete=ref<Settlement>()
+const editingSettlementId=ref('')
+const settlementFilters=reactive<SettlementFilters>({memberId:'',from:'',to:'',sort:'-settled_on'})
+const settlementPage=ref(1)
+const settlementPerPage=ref(defaultPageSize.value)
 const viewerTimezone=computed(()=>auth.record?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC')
 const settlementForm=reactive({fromUserId:'',toUserId:'',amount:'',settledOn:todayInput(viewerTimezone.value),notes:''})
 const summary=computed(()=>scope.value==='group'?workspace.summary:workspace.personalSummary)
+const canManageOtherSettlements=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('ledger.settlements.write'))
 // A bound temp member has already been superseded by the real account that
 // joined, so a new settlement should be recorded against that real member
 // instead — history (balances/settlement list) still resolves their name.
@@ -39,6 +48,7 @@ const actionSubscriptions=computed(()=>scope.value==='group'&&selectedGroup.valu
 const accountingGroup=computed(()=>scope.value==='group'?workspace.groups.find(group=>group.id===selectedGroup.value):undefined)
 function viewerDate(value:string){return formatDate(value,{dateStyle:'medium',timeZone:viewerTimezone.value})}
 function sourceGroup(groupId?:string){return workspace.groups.find(group=>group.id===groupId)}
+function canModifySettlement(item:Settlement){return item.createdBy===auth.record?.id||canManageOtherSettlements.value}
 function originalTime(value:string,groupId?:string){const group=sourceGroup(groupId);return group?tr('originalTimezone',{date:formatDate(value,{dateStyle:'medium',timeZone:group.timezone}),timezone:timezoneLabel(group.timezone,value)}):''}
 // The upcoming-charges card otherwise shows the whole subscription's charge,
 // not what the viewer themselves owes once it's split among the group.
@@ -53,14 +63,37 @@ async function syncFromRoute(){
   selectedGroup.value=nestedGroup.value||String(route.query.groupId||workspace.groups[0]?.id||'')
   if(scope.value==='group'&&!selectedGroup.value){scope.value='personal'}
   await workspace.refreshDashboard(scope.value,selectedGroup.value,month.value)
+  // refreshDashboard's own settlement fetch (via refreshGroup) always uses the
+  // plain default sort/perPage -- reload with the filter bar's current
+  // sort/page/perPage so a filtered/sorted view survives a dashboard refresh.
+  if(scope.value==='group') await loadSettlements(1)
 }
+function settlementQuery(page=settlementPage.value,perPage=settlementPerPage.value){
+  const params:Record<string,string>={page:String(page),perPage:String(perPage)}
+  if(settlementFilters.memberId)params.memberId=settlementFilters.memberId
+  if(settlementFilters.from)params.from=settlementFilters.from
+  if(settlementFilters.to)params.to=settlementFilters.to
+  if(settlementFilters.sort)params.sort=settlementFilters.sort
+  return new URLSearchParams(params).toString()
+}
+async function loadSettlements(page=1){settlementPage.value=page;await workspace.loadSettlementsPage(settlementQuery(page))}
+function applySettlementFilters(){void loadSettlements(1)}
+function resetSettlementFilters(){Object.assign(settlementFilters,{memberId:'',from:'',to:'',sort:'-settled_on'});void loadSettlements(1)}
+function changeSettlementPageSize(value:number){settlementPerPage.value=value;void loadSettlements(1)}
 async function updateQuery(next:Partial<{scope:Scope;month:string;groupId:string}>){
   if(nestedGroup.value){month.value=next.month||month.value;await router.replace({query:{...route.query,month:month.value}});return}
   await router.replace({query:{scope:next.scope||scope.value,month:next.month||month.value,...((next.groupId||selectedGroup.value)&& (next.scope||scope.value)==='group'?{groupId:next.groupId||selectedGroup.value}:{})}})
 }
-function openSettlement(){settlementForm.fromUserId=String(workspace.currentMembership?.userId||'');settlementForm.toUserId='';settlementForm.amount='';settlementForm.settledOn=todayInput(viewerTimezone.value);settlementForm.notes='';settlementError.value='';settlementOpen.value=true}
-async function submitSettlement(){const ok=await workspace.addSettlement({fromUserId:settlementForm.fromUserId,toUserId:settlementForm.toUserId,amountMinor:majorToMinor(settlementForm.amount,workspace.currentGroup?.currency),settledOn:fromDateInput(settlementForm.settledOn,viewerTimezone.value),notes:settlementForm.notes});if(!ok){settlementError.value=workspace.localizedError||tr('requestFailed');return}settlementOpen.value=false}
-async function deleteSettlement(){if(!pendingSettlementDelete.value)return;await workspace.deleteSettlement(pendingSettlementDelete.value.id);pendingSettlementDelete.value=undefined}
+function openSettlement(){editingSettlementId.value='';settlementForm.fromUserId=String(workspace.currentMembership?.userId||'');settlementForm.toUserId='';settlementForm.amount='';settlementForm.settledOn=todayInput(viewerTimezone.value);settlementForm.notes='';settlementError.value='';settlementOpen.value=true}
+function editSettlement(item:Settlement){editingSettlementId.value=item.id;settlementForm.fromUserId=item.fromUserId;settlementForm.toUserId=item.toUserId;settlementForm.amount=minorToInput(item.amountMinor,workspace.currentGroup?.currency);settlementForm.settledOn=toDateInput(item.settledOn,viewerTimezone.value);settlementForm.notes=item.notes;settlementError.value='';settlementOpen.value=true}
+async function submitSettlement(){
+  const input={fromUserId:settlementForm.fromUserId,toUserId:settlementForm.toUserId,amountMinor:majorToMinor(settlementForm.amount,workspace.currentGroup?.currency),settledOn:fromDateInput(settlementForm.settledOn,viewerTimezone.value),notes:settlementForm.notes}
+  const ok=editingSettlementId.value?await workspace.updateSettlement(editingSettlementId.value,input):await workspace.addSettlement(input)
+  if(!ok){settlementError.value=workspace.localizedError||tr('requestFailed');return}
+  settlementOpen.value=false
+  await loadSettlements(settlementPage.value)
+}
+async function deleteSettlement(){if(!pendingSettlementDelete.value)return;await workspace.deleteSettlement(pendingSettlementDelete.value.id);pendingSettlementDelete.value=undefined;await loadSettlements(settlementPage.value)}
 watch(()=>[route.params.groupId,route.query.scope,route.query.groupId,route.query.month],()=>void syncFromRoute(),{immediate:true})
 </script>
 
@@ -77,9 +110,12 @@ watch(()=>[route.params.groupId,route.query.scope,route.query.groupId,route.quer
   <div class="dashboard-grid"><section class="card"><div class="card-title"><h2>{{tr('upcoming')}}</h2><RouterLink :to="actionSubscriptions">{{tr('manageSubscriptions')}} →</RouterLink></div><div v-if="summary?.upcoming?.length" class="data-list"><article v-for="item in summary.upcoming" :key="item.id" class="data-row"><div class="service-icon">{{item.name.slice(0,1)}}</div><div class="grow timezone-date"><strong>{{item.name}}</strong><small>{{viewerDate(item.nextBilling)}} · {{tr((item.lifecycleStatus||item.status) as 'active')}}</small><small v-if="item.groupId">{{originalTime(item.nextBilling,item.groupId)}}</small></div><span class="money"><MoneyValue :amount="item.amountMinor" :currency="item.currency" /><small v-if="upcomingShare(item)!==undefined">{{tr('personalShare')}}: <MoneyValue :amount="upcomingShare(item)!" :currency="item.currency" /></small></span></article></div><EmptyState v-else :title="tr('noUpcoming')" :description="tr('noUpcomingDesc')" /></section>
     <section v-if="scope==='group'" class="card"><div class="card-title"><div><h2>{{tr('balanceAsOfMonth')}}</h2><p class="setting-description">{{tr('balanceAsOfMonthDesc',{month:formatMonth(month)})}}</p></div><button class="ghost" @click="openSettlement">{{tr('recordSettlement')}}</button></div><div v-if="summary?.balances?.length" class="data-list"><article v-for="balance in summary.balances" :key="balance.userId" class="data-row"><div class="avatar">{{(workspace.members.find(m=>m.userId===balance.userId)?.user?.name||'?').slice(0,1)}}</div><div class="grow"><strong>{{workspace.members.find(m=>m.userId===balance.userId)?.user?.name||tr('unnamedMember')}}</strong><small>{{balance.amountMinor>0?tr('receivable'):balance.amountMinor<0?tr('payable'):tr('settled')}}</small></div><MoneyValue :amount="Math.abs(balance.amountMinor)" :currency="workspace.currentGroup?.currency" /></article></div><EmptyState v-else :title="tr('noBalances')" :description="tr('settled')" /></section>
   </div>
-  <section v-if="scope==='group'" class="card settlement-history"><div class="card-title"><h2>{{tr('settlements')}}</h2><span>{{tr('records',{count:workspace.settlements.length})}}</span></div><div v-if="workspace.settlements.length" class="data-list"><article v-for="item in workspace.settlements" :key="item.id" class="data-row"><div class="grow"><strong>{{workspace.members.find(m=>m.userId===item.fromUserId)?.user?.name||tr('unnamedMember')}} → {{workspace.members.find(m=>m.userId===item.toUserId)?.user?.name||tr('unnamedMember')}}</strong><small>{{formatDate(item.settledOn)}} · {{item.notes}}</small><SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError"/></div><MoneyValue :amount="item.amountMinor" :currency="workspace.currentGroup?.currency"/><button class="icon-button" :aria-label="tr('delete')" @click="pendingSettlementDelete=item">×</button></article></div><EmptyState v-else :title="tr('noSettlements')" :description="tr('recordSettlement')"/>
+  <section v-if="scope==='group'" class="card settlement-history"><div class="card-title"><h2>{{tr('settlements')}}</h2><span>{{tr('records',{count:workspace.settlementsMeta.totalItems})}}</span><PageSizeSelect :model-value="settlementPerPage" @update:model-value="changeSettlementPageSize"/></div>
+    <SettlementFilterBar :model-value="settlementFilters" :members="selectableMembers.map(m=>({userId:m.userId,label:m.user?.name||m.user?.email||m.userId}))" @update:model-value="Object.assign(settlementFilters,$event)" @apply="applySettlementFilters" @reset="resetSettlementFilters" />
+    <div v-if="workspace.settlements.length" class="data-list"><article v-for="item in workspace.settlements" :key="item.id" class="data-row"><div class="grow"><strong>{{workspace.members.find(m=>m.userId===item.fromUserId)?.user?.name||tr('unnamedMember')}} → {{workspace.members.find(m=>m.userId===item.toUserId)?.user?.name||tr('unnamedMember')}}</strong><small>{{formatDate(item.settledOn)}} · {{item.notes}}</small><SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError"/></div><MoneyValue :amount="item.amountMinor" :currency="workspace.currentGroup?.currency"/><button v-if="canModifySettlement(item)" class="icon-button" :aria-label="tr('edit')" @click="editSettlement(item)">✎</button><button v-if="canModifySettlement(item)" class="icon-button" :aria-label="tr('delete')" @click="pendingSettlementDelete=item">×</button></article></div><EmptyState v-else :title="tr('noSettlements')" :description="tr('recordSettlement')"/>
     <p v-if="workspace.settlements.some(item=>item.pendingSync||item.syncError)" class="field-help sync-legend"><strong>{{tr('syncLegendTitle')}}</strong> · ☁︎/ {{tr('syncLegendPending')}} · ⚠ {{tr('syncLegendError')}}</p>
+    <Pagination :meta="workspace.settlementsMeta" @page="loadSettlements"/>
   </section>
-  <AppDrawer :open="settlementOpen" :title="tr('recordSettlement')" @close="settlementOpen=false"><form class="form-card" @submit.prevent="submitSettlement"><div v-if="settlementError" class="notice danger inline">{{settlementError}}</div><div v-if="workspace.currentGroup" class="timezone-notice">{{tr('yourTimezone',{timezone:timezoneLabel(viewerTimezone)})}}<br>{{tr('groupTimezoneValue',{timezone:timezoneLabel(workspace.currentGroup.timezone)})}}</div><label>{{tr('fromMember')}}<select v-model="settlementForm.fromUserId" required><option v-for="member in selectableMembers" :key="member.userId" :value="member.userId">{{member.user?.name||member.user?.email}}</option></select></label><label>{{tr('toMember')}}<select v-model="settlementForm.toUserId" required><option value="" disabled>{{tr('toMember')}}</option><option v-for="member in selectableMembers.filter(m=>m.userId!==settlementForm.fromUserId)" :key="member.userId" :value="member.userId">{{member.user?.name||member.user?.email}}</option></select></label><div class="form-row"><label>{{tr('amount')}}<input v-model="settlementForm.amount" type="number" :min="amountStep(workspace.currentGroup?.currency)" :step="amountStep(workspace.currentGroup?.currency)" required></label><label>{{tr('settlementDate')}}<input v-model="settlementForm.settledOn" type="date" required></label></div><label>{{tr('notes')}}<textarea v-model="settlementForm.notes" rows="3"></textarea></label><div class="form-actions"><button type="button" class="ghost" @click="settlementOpen=false">{{tr('cancel')}}</button><button class="primary">{{tr('recordSettlement')}}</button></div></form></AppDrawer>
+  <AppDrawer :open="settlementOpen" :title="tr(editingSettlementId?'editSettlement':'recordSettlement')" @close="settlementOpen=false"><form class="form-card" @submit.prevent="submitSettlement"><div v-if="settlementError" class="notice danger inline">{{settlementError}}</div><div v-if="workspace.currentGroup" class="timezone-notice">{{tr('yourTimezone',{timezone:timezoneLabel(viewerTimezone)})}}<br>{{tr('groupTimezoneValue',{timezone:timezoneLabel(workspace.currentGroup.timezone)})}}</div><label>{{tr('fromMember')}}<select v-model="settlementForm.fromUserId" required><option v-for="member in selectableMembers" :key="member.userId" :value="member.userId">{{member.user?.name||member.user?.email}}</option></select></label><label>{{tr('toMember')}}<select v-model="settlementForm.toUserId" required><option value="" disabled>{{tr('toMember')}}</option><option v-for="member in selectableMembers.filter(m=>m.userId!==settlementForm.fromUserId)" :key="member.userId" :value="member.userId">{{member.user?.name||member.user?.email}}</option></select></label><div class="form-row"><label>{{tr('amount')}}<input v-model="settlementForm.amount" type="number" :min="amountStep(workspace.currentGroup?.currency)" :step="amountStep(workspace.currentGroup?.currency)" required></label><label>{{tr('settlementDate')}}<input v-model="settlementForm.settledOn" type="date" required></label></div><label>{{tr('notes')}}<textarea v-model="settlementForm.notes" rows="3"></textarea></label><div class="form-actions"><button type="button" class="ghost" @click="settlementOpen=false">{{tr('cancel')}}</button><button class="primary">{{tr(editingSettlementId?'saveChanges':'recordSettlement')}}</button></div></form></AppDrawer>
   <ConfirmDialog :open="!!pendingSettlementDelete" :title="tr('deleteSettlementConfirm')" danger @cancel="pendingSettlementDelete=undefined" @confirm="deleteSettlement"/>
 </section></template>

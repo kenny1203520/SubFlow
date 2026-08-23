@@ -869,8 +869,23 @@ func (r *Repository) GetSettlement(ctx context.Context, id string) (*domain.Sett
 	}
 	return settlementFrom(record), nil
 }
-func (r *Repository) ListSettlements(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Settlement], error) {
-	records, err := listRecords(r.app(ctx), CollectionSettlements, "group={:group}", req, dbx.Params{"group": groupID})
+func (r *Repository) ListSettlements(ctx context.Context, groupID string, query ports.SettlementQuery) (ports.Page[domain.Settlement], error) {
+	clauses := []string{"group={:group}"}
+	params := dbx.Params{"group": groupID}
+	if query.MemberID != "" {
+		clauses = append(clauses, "(from_user={:member} || to_user={:member})")
+		params["member"] = query.MemberID
+	}
+	if !query.From.IsZero() {
+		clauses = append(clauses, "settled_on>={:from}")
+		params["from"] = query.From
+	}
+	if !query.To.IsZero() {
+		clauses = append(clauses, "settled_on<={:to}")
+		params["to"] = query.To
+	}
+	filter := strings.Join(clauses, " && ")
+	records, err := listRecords(r.app(ctx), CollectionSettlements, filter, query.PageRequest, params)
 	if err != nil {
 		return ports.Page[domain.Settlement]{}, err
 	}
@@ -878,8 +893,11 @@ func (r *Repository) ListSettlements(ctx context.Context, groupID string, req po
 	for i, record := range records {
 		items[i] = *settlementFrom(record)
 	}
-	count, _ := countFiltered(r.app(ctx), CollectionSettlements, "group={:group}", dbx.Params{"group": groupID})
-	return page(items, req, count), nil
+	count, err := countFiltered(r.app(ctx), CollectionSettlements, filter, params)
+	if err != nil {
+		return ports.Page[domain.Settlement]{}, err
+	}
+	return page(items, query.PageRequest, count), nil
 }
 func (r *Repository) DeleteSettlement(ctx context.Context, id string) error {
 	record, err := r.app(ctx).FindRecordById(CollectionSettlements, id)

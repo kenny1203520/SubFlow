@@ -109,6 +109,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.DELETE("/api/subflow/v1/expenses/{id}", a.deleteExpense).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/settlements", a.listSettlements).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/settlements", a.createSettlement).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/settlements/{id}", a.updateSettlement).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/settlements/{id}", a.deleteSettlement).Bind(bind)
 	e.Router.GET("/api/subflow/v1/export/personal", a.exportPersonalLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/export", a.exportGroupLedger).Bind(bind)
@@ -781,12 +782,49 @@ func (a *API) deleteExpense(e *core.RequestEvent) error {
 	}
 	return noContent(e)
 }
-func (a *API) listSettlements(e *core.RequestEvent) error {
+func (a *API) settlementQuery(e *core.RequestEvent) (ports.SettlementQuery, error) {
 	page, err := pageRequest(e, "settlements")
+	if err != nil {
+		return ports.SettlementQuery{}, err
+	}
+	query := e.Request.URL.Query()
+	result := ports.SettlementQuery{PageRequest: page, MemberID: query.Get("memberId")}
+	location := time.UTC
+	if user, findErr := a.Service.Stores.Users.Get(e.Request.Context(), authID(e)); findErr == nil && user.Timezone != "" {
+		if value, loadErr := time.LoadLocation(user.Timezone); loadErr == nil {
+			location = value
+		}
+	}
+	parseDate := func(value string, end bool) (time.Time, error) {
+		if value == "" {
+			return time.Time{}, nil
+		}
+		date, parseErr := time.ParseInLocation("2006-01-02", value, location)
+		if parseErr != nil {
+			return time.Time{}, domain.ErrInvalid
+		}
+		if end {
+			date = date.AddDate(0, 0, 1).Add(-time.Nanosecond)
+		}
+		return date.UTC(), nil
+	}
+	if result.From, err = parseDate(query.Get("from"), false); err != nil {
+		return ports.SettlementQuery{}, err
+	}
+	if result.To, err = parseDate(query.Get("to"), true); err != nil {
+		return ports.SettlementQuery{}, err
+	}
+	if !result.From.IsZero() && !result.To.IsZero() && result.From.After(result.To) {
+		return ports.SettlementQuery{}, domain.ErrInvalid
+	}
+	return result, nil
+}
+func (a *API) listSettlements(e *core.RequestEvent) error {
+	query, err := a.settlementQuery(e)
 	if err != nil {
 		return fail(e, err)
 	}
-	values, err := a.Service.ListSettlements(e.Request.Context(), authID(e), groupID(e), page)
+	values, err := a.Service.ListSettlements(e.Request.Context(), authID(e), groupID(e), query)
 	if err != nil {
 		return fail(e, err)
 	}
@@ -803,6 +841,17 @@ func (a *API) createSettlement(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusCreated, created, nil)
+}
+func (a *API) updateSettlement(e *core.RequestEvent) error {
+	var value domain.Settlement
+	if e.BindBody(&value) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	updated, err := a.Service.UpdateSettlement(e.Request.Context(), authID(e), e.Request.PathValue("id"), value)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, updated, nil)
 }
 func (a *API) deleteSettlement(e *core.RequestEvent) error {
 	if err := a.Service.DeleteSettlement(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
