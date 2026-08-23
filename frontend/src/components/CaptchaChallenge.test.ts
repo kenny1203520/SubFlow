@@ -49,3 +49,33 @@ describe('CaptchaChallenge Turnstile actions', () => {
     wrapper.unmount()
   })
 })
+
+describe('CaptchaChallenge provider token lifecycle', () => {
+  afterEach(() => {
+    document.head.querySelectorAll('script[src*="hcaptcha.com"], script[src*="google.com/recaptcha"]').forEach(node => node.remove())
+    delete (window as any).hcaptcha
+    delete (window as any).grecaptcha
+  })
+
+  it.each([
+    ['hcaptcha', 'https://js.hcaptcha.com/1/api.js?render=explicit', 'hcaptcha'],
+    ['recaptcha', 'https://www.google.com/recaptcha/api.js?render=explicit', 'grecaptcha'],
+  ])('clears a stale %s token after provider expiry', async (provider, scriptURL, apiName) => {
+    setActivePinia(createPinia())
+    const setup = useSetupStore()
+    setup.status = { initialized: true, captchaProvider: provider, captchaSiteKey: 'site-key', captchaFlows: flows }
+    const render = vi.fn().mockReturnValue('widget-1')
+    ;(window as any)[apiName] = { render, remove: vi.fn() }
+    const script = document.createElement('script')
+    script.src = scriptURL
+    document.head.appendChild(script)
+
+    const wrapper = mount(CaptchaChallenge, { props: { flow: 'login' } })
+    await flushPromises()
+    const options = render.mock.calls[0][1]
+    options.callback('fresh-token')
+    options['expired-callback']()
+    expect(wrapper.emitted('update:modelValue')).toEqual([[''], ['fresh-token'], ['']])
+    wrapper.unmount()
+  })
+})

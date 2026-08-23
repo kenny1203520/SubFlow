@@ -287,7 +287,11 @@ func (s *Service) VerifyCaptcha(ctx context.Context, flow, token, remoteIP strin
 	if err != nil {
 		return err
 	}
-	err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), s.CaptchaAppURL)
+	err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), captcha.ApplicationIdentity{
+		Name:    s.CaptchaAppName,
+		URL:     s.CaptchaAppURL,
+		SiteKey: settings.CaptchaSiteKey,
+	})
 	if s.Stores.Audits != nil {
 		outcome := "success"
 		reason := "verified"

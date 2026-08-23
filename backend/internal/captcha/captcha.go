@@ -15,6 +15,17 @@ import (
 
 type Verifier struct{ Client *http.Client }
 
+// ApplicationIdentity is sourced from PocketBase's Application settings.  It
+// deliberately has no environment-variable fallback: CAPTCHA providers must
+// be configured for the same public application that PocketBase advertises.
+// Name is retained here for providers that identify an application by name;
+// the currently supported browser CAPTCHA providers bind to URL or site key.
+type ApplicationIdentity struct {
+	Name    string
+	URL     string
+	SiteKey string
+}
+
 // VerificationError carries a safe, stable failure category for audit logs.
 // It deliberately excludes provider response text, submitted tokens and keys.
 type VerificationError struct{ Reason string }
@@ -50,10 +61,13 @@ func (v Verifier) CreateCommunityChallenge(secret, flow string) (altcha.Challeng
 	return altcha.CreateChallenge(altcha.ChallengeOptions{Algorithm: altcha.SHA256, HMACKey: secret, Expires: &expires, Params: params})
 }
 
-// Verify validates a provider response. expectedAction and expectedAppURL are
-// intentionally enforced only for Turnstile; the other supported providers
-// have their own response contracts and remain backward compatible.
-func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token, remoteIP, expectedAction, expectedAppURL string) error {
+// Verify validates a provider response. The application identity always comes
+// from PocketBase's Application settings. Turnstile validates its action and
+// hostname; reCAPTCHA validates its hostname; hCaptcha receives the configured
+// site key, as recommended by its Siteverify contract. hCaptcha explicitly
+// documents its hostname as non-authenticating metadata, so it is not trusted
+// as an authorization signal here.
+func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token, remoteIP, expectedAction string, app ApplicationIdentity) error {
 	if provider == "" {
 		return nil
 	}
@@ -82,13 +96,19 @@ func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token
 		}
 		return nil
 	}
-	endpoint := map[string]string{"recaptcha": "https://www.google.com/recaptcha/api/siteverify", "turnstile": "https://challenges.cloudflare.com/turnstile/v0/siteverify", "hcaptcha": "https://hcaptcha.com/siteverify"}[provider]
+	endpoint := map[string]string{"recaptcha": "https://www.google.com/recaptcha/api/siteverify", "turnstile": "https://challenges.cloudflare.com/turnstile/v0/siteverify", "hcaptcha": "https://api.hcaptcha.com/siteverify"}[provider]
 	if endpoint == "" {
 		return failure("provider_unsupported")
 	}
 	form := url.Values{"secret": {secret}, "response": {token}}
 	if remoteIP != "" {
 		form.Set("remoteip", remoteIP)
+	}
+	if provider == "hcaptcha" {
+		if app.SiteKey == "" {
+			return failure("sitekey_not_configured")
+		}
+		form.Set("sitekey", app.SiteKey)
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
@@ -114,10 +134,10 @@ func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token
 	}
 	if !result.Success {
 		for _, code := range result.ErrorCodes {
-			if code == "timeout-or-duplicate" {
+			if code == "timeout-or-duplicate" || code == "expired-input-response" || code == "already-seen-response" {
 				return failure("timeout_or_duplicate")
 			}
-			if code == "invalid-input-secret" {
+			if code == "invalid-input-secret" || code == "sitekey-secret-mismatch" {
 				return failure("secret_invalid")
 			}
 			if code == "invalid-input-response" || code == "missing-input-response" {
@@ -126,16 +146,18 @@ func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token
 		}
 		return failure("verification_failed")
 	}
-	if provider != "turnstile" {
+	if provider == "turnstile" {
+		if expectedAction == "" {
+			return failure("action_not_configured")
+		}
+		if result.Action != expectedAction {
+			return failure("action_mismatch")
+		}
+	}
+	if provider != "turnstile" && provider != "recaptcha" {
 		return nil
 	}
-	if expectedAction == "" {
-		return failure("action_not_configured")
-	}
-	if result.Action != expectedAction {
-		return failure("action_mismatch")
-	}
-	parsed, err := url.ParseRequestURI(expectedAppURL)
+	parsed, err := url.ParseRequestURI(app.URL)
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
 		return failure("hostname_not_configured")
 	}

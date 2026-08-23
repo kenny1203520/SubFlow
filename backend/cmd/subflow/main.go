@@ -74,7 +74,9 @@ func main() {
 		}
 		base := application.New(stores)
 		base.Rates = exchange.NewOpenERAPIProvider()
-		base.CaptchaAppURL = e.App.Settings().Meta.AppURL
+		applicationSettings := e.App.Settings().Meta
+		base.CaptchaAppName = applicationSettings.AppName
+		base.CaptchaAppURL = applicationSettings.AppURL
 		app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(event *core.RecordRequestPasswordResetRequestEvent) error {
 			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
 			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowPasswordReset, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
