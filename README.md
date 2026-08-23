@@ -73,6 +73,10 @@ Vite 透過 `VITE_BACKEND_URL` 將 `/api` 代理到 Go backend，預設為 `http
 
 預設 Compose 不會啟動 PostgreSQL、MySQL、MinIO/S3 或 SMTP image。未來外部資料庫、object storage 與郵件服務透過 adapter、DSN 或環境變數接入；`SUBFLOW_DATA_DRIVER=pocketbase` 仍是目前唯一可執行的資料層。
 
+## Turnstile
+
+在管理台選擇 Cloudflare Turnstile 後，填入同一個 widget 的 Site key 與 Secret key。部署前必須設定 `SUBFLOW_SETTINGS_ENCRYPTION_KEY`；SubFlow 會用它加密 PocketBase 的隱藏 CAPTCHA secret 欄位。Cloudflare widget 的 allowed domain 必須等於 PocketBase Dashboard 的 Application URL hostname，因為後端會驗證 Siteverify 回傳的 hostname 與每個流程的 action。
+
 ## 資料重置
 
 這個版本不遷移舊資料。需要完整重置時：

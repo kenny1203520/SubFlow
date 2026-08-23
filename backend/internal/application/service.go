@@ -19,6 +19,9 @@ type Service struct {
 	Rates   RateProvider
 	Captcha captcha.Verifier
 	Cipher  security.SettingsCipher
+	// CaptchaAppURL is the trusted PocketBase Application URL used to bind a
+	// Turnstile response to this installation's public hostname.
+	CaptchaAppURL string
 }
 
 func New(stores adapters.Stores) *Service {

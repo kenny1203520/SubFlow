@@ -176,6 +176,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
         <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaChallengeUrl" label="Sentinel challenge URL" help="Public ALTCHA Sentinel challenge endpoint." />
         <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaVerifyUrl" label="Sentinel verification URL" help="Server-side /v1/verify/signature endpoint." />
         <PasswordField v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'" v-model="settings.captchaSecret" :label="tr('captchaSecret')" autocomplete="off" :help="settings.captchaConfigured ? tr('captchaConfigured') : tr('captchaNotConfigured')" />
+        <p v-if="settings.captchaProvider==='turnstile'" class="field-help">The Site key and Secret key must belong to the same Turnstile widget. Its allowed domain must match PocketBase Dashboard → Settings → Application URL. Secrets are stored encrypted only when SUBFLOW_SETTINGS_ENCRYPTION_KEY is configured.</p>
         <p v-else-if="settings.captchaProvider==='altcha_community'" class="field-help">ALTCHA Community signing secret is generated and encrypted by SubFlow.</p>
       </fieldset>
       <fieldset v-if="settings.captchaProvider" class="settings-section"><legend>{{ tr('captchaFlows') }}</legend>

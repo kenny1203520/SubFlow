@@ -103,3 +103,39 @@ func TestSettingsFromUsesStoredCaptchaFlowsOnceSaved(t *testing.T) {
 		t.Fatalf("expected the saved (disabled) register flow config to round-trip, got %#v", reloaded.CaptchaFlows.Register)
 	}
 }
+
+func TestSaveSystemSettingsClearsRemovedCaptchaSecret(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	if err = EnsureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+
+	stores := NewStores(app)
+	ctx := context.Background()
+	settings, err := stores.Settings.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.CaptchaProvider = "turnstile"
+	settings.CaptchaSecretCiphertext = "encrypted-secret"
+	if err = stores.Settings.Save(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	settings.CaptchaProvider = ""
+	settings.CaptchaSecretCiphertext = ""
+	if err = stores.Settings.Save(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := stores.Settings.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.CaptchaSecretCiphertext != "" || reloaded.CaptchaConfigured {
+		t.Fatalf("removed CAPTCHA secret was retained: %#v", reloaded)
+	}
+}

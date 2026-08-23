@@ -7,16 +7,25 @@ const props=withDefaults(defineProps<{ flow?: string; trigger?: 'load'|'submit';
 const emit=defineEmits<{ 'update:modelValue':[value:string] }>()
 const setup=useSetupStore(), { tr }=useI18n(), host=ref<HTMLElement|null>(null), error=ref(''), widget=ref<string|number>('')
 const provider=computed(()=>setup.status.captchaProvider||'')
+const turnstileAction=computed(()=>({register:'register',passwordReset:'password_reset',otpRequest:'otp_request',login:'login'}[props.flow]||''))
 // solve() (trigger==='submit') awaits the next resolved/rejected token instead
 // of rendering eagerly on mount -- pending holds callers currently waiting.
 const pending=ref<Array<{resolve:(token:string)=>void;reject:(err:Error)=>void}>>([])
 function settlePending(token:string){ const waiters=pending.value.splice(0); waiters.forEach(w=>token?w.resolve(token):w.reject(new Error('captcha'))) }
 function script(url:string, module=false) { return new Promise<void>((resolve,reject)=>{ const old=document.querySelector(`script[src="${url}"]`); if(old){resolve();return};const node=document.createElement('script');node.src=url;node.async=true;if(module)node.type='module';node.onload=()=>resolve();node.onerror=()=>reject(new Error('captcha'));document.head.appendChild(node) }) }
 function altchaChallenge(){ return provider.value==='altcha_sentinel' ? setup.status.captchaChallengeUrl||'' : `/api/subflow/v1/auth/captcha/challenge?flow=${encodeURIComponent(props.flow)}` }
+function clearWidget(){
+  const api=(window as any)[provider.value==='turnstile'?'turnstile':provider.value==='hcaptcha'?'hcaptcha':'grecaptcha']
+  if(api&&widget.value!==''&&api.remove) api.remove(widget.value)
+  else if(api&&widget.value!==''&&api.reset) api.reset(widget.value)
+  widget.value=''
+  if(host.value) host.value.innerHTML=''
+}
+function rejectToken(){ emit('update:modelValue',''); error.value=tr('captchaVerificationFailed'); settlePending('') }
 async function render(){
   emit('update:modelValue',''); error.value=''; if(!provider.value||!host.value){settlePending('');return}
   try {
-    host.value.innerHTML=''; const key=setup.status.captchaSiteKey; const invisible=props.mode==='invisible'
+    clearWidget(); const key=setup.status.captchaSiteKey; const invisible=props.mode==='invisible'
     // Provider APIs verified directly against each vendor's docs -- none of
     // them expose a uniform "invisible" concept:
     //  - Turnstile has no size:'invisible'; its equivalent is the
@@ -31,7 +40,7 @@ async function render(){
     //    whether it's visible; true invisible mode is CSS display:none plus
     //    revealing the widget only if its state becomes 'code' (a manual
     //    challenge the automatic solve couldn't clear).
-    if(provider.value==='turnstile'){if(!key)return;await script('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit');widget.value=(window as any).turnstile.render(host.value,{sitekey:key,appearance:invisible?'interaction-only':'always',callback:(token:string)=>{emit('update:modelValue',token);settlePending(token)}})}
+    if(provider.value==='turnstile'){if(!key||!turnstileAction.value)throw new Error('captcha');await script('https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit');widget.value=(window as any).turnstile.render(host.value,{sitekey:key,action:turnstileAction.value,appearance:invisible?'interaction-only':'always',callback:(token:string)=>{emit('update:modelValue',token);settlePending(token)},'error-callback':rejectToken,'expired-callback':rejectToken})}
     else if(provider.value==='hcaptcha'){if(!key)return;await script('https://js.hcaptcha.com/1/api.js?render=explicit');const hcaptcha=(window as any).hcaptcha;widget.value=hcaptcha.render(host.value,{sitekey:key,size:invisible?'invisible':'normal',callback:(token:string)=>{emit('update:modelValue',token);settlePending(token)}});if(invisible)hcaptcha.execute(widget.value)}
     else if(provider.value==='recaptcha'){if(!key)return;await script('https://www.google.com/recaptcha/api.js?render=explicit');const grecaptcha=(window as any).grecaptcha;widget.value=grecaptcha.render(host.value,{sitekey:key,size:invisible?'invisible':'normal',callback:(token:string)=>{emit('update:modelValue',token);settlePending(token)}});if(invisible)grecaptcha.execute(widget.value)}
     else if(provider.value==='altcha_community'||provider.value==='altcha_sentinel'){
@@ -49,15 +58,16 @@ async function render(){
   } catch { error.value=tr('captchaVerificationFailed'); settlePending('') }
 }
 function solve(){ return new Promise<string>((resolve,reject)=>{ pending.value.push({resolve,reject}); void render() }) }
-defineExpose({ solve })
+function reset(){ clearWidget(); emit('update:modelValue',''); error.value=''; if(props.trigger==='load') void render() }
+defineExpose({ solve, reset })
 // A caller can switch which flow this same mounted instance represents (e.g.
 // AuthView toggling between login/register) without the component
 // unmounting, since v-if stays true across the switch -- so trigger/mode
 // changes must be able to re-sync, not just the initial mount.
-function sync(){ if(props.trigger==='load') void render(); else { if(host.value)host.value.innerHTML=''; emit('update:modelValue',''); error.value='' } }
+function sync(){ if(props.trigger==='load') void render(); else { clearWidget(); emit('update:modelValue',''); error.value='' } }
 onMounted(sync)
 watch(()=>[props.flow,props.trigger,props.mode],sync)
 watch(()=>[setup.status.captchaProvider,setup.status.captchaSiteKey,setup.status.captchaChallengeUrl],sync)
-onBeforeUnmount(()=>{const api=(window as any)[provider.value==='turnstile'?'turnstile':provider.value==='hcaptcha'?'hcaptcha':'grecaptcha'];if(api&&widget.value!==''&&api.reset)api.reset(widget.value)})
+onBeforeUnmount(clearWidget)
 </script>
 <template><div v-if="provider" class="captcha-challenge"><div ref="host"/><p v-if="error" class="form-error">{{error}}</p></div></template>

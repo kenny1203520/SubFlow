@@ -16,7 +16,7 @@ const mode=ref<AuthMode>('login'), email=ref(''), password=ref(''), name=ref('')
 const providers=ref<Array<{name:string;displayName?:string}>>([]), methods=ref<{otp?:{enabled?:boolean};mfa?:{enabled?:boolean};password?:{enabled?:boolean}}>({})
 const canPasswordRegistration=computed(()=>setup.allowRegistration)
 const isCodeMode=computed(()=>mode.value==='otp-verify'||mode.value==='mfa-verify')
-const captchaRef=ref<{ solve: () => Promise<string> } | null>(null)
+const captchaRef=ref<{ solve: () => Promise<string>; reset: () => void } | null>(null)
 function captchaFlowKey(m:AuthMode) { return m==='register'?'register':m==='otp-request'?'otpRequest':m==='login'?'login':'' }
 const captchaConfig=computed(()=>{ const key=captchaFlowKey(mode.value); return key ? setup.status.captchaFlows?.[key as 'register'|'otpRequest'|'login'] : undefined })
 const captchaEnabled=computed(()=>!!captchaConfig.value?.enabled)
@@ -28,6 +28,7 @@ async function resolveCaptchaToken() {
   if(captchaConfig.value?.trigger==='submit') return (captchaToken.value=await (captchaRef.value?.solve()||Promise.resolve('')))
   return captchaToken.value
 }
+function resetCaptcha(){ captchaToken.value=''; captchaRef.value?.reset() }
 
 function authError(reason: any) {
   const raw=[reason?.message, reason?.response?.message, reason?.data?.message, reason?.response?.data?.message].filter(Boolean).join(' ').toLowerCase()
@@ -46,7 +47,7 @@ function startOtpRequest(){ mode.value='otp-request'; code.value=''; otpId.value
 async function requestStandaloneOtp(){
   busy.value=true; error.value=''
   try { const token=await resolveCaptchaToken(); const result=await auth.requestOTP(email.value,token); otpId.value=result.otpId; captchaToken.value=''; mode.value='otp-verify' }
-  catch(reason){ error.value=authError(reason) } finally { busy.value=false }
+  catch(reason){ error.value=authError(reason) } finally { resetCaptcha(); busy.value=false }
 }
 async function requestMfaOtp(){
   const result=await auth.requestOTP(email.value)
@@ -73,7 +74,7 @@ async function submit(){
   try {
     if(mode.value==='login') await passwordLogin()
     else { const token=await resolveCaptchaToken(); await auth.register({email:email.value,password:password.value,name:name.value,captchaToken:token} as any); registered.value=true; mode.value='login'; password.value='' }
-  } catch(reason) { error.value=authError(reason) } finally { busy.value=false }
+  } catch(reason) { error.value=authError(reason) } finally { resetCaptcha(); busy.value=false }
 }
 async function resend(){ if(mode.value==='mfa-verify') { busy.value=true;error.value='';try{await requestMfaOtp()}catch(reason){error.value=authError(reason)}finally{busy.value=false} } else await requestStandaloneOtp() }
 function oauth(provider:string){ busy.value=true; error.value=''; auth.loginOAuth(provider).then(finish).catch(reason=>error.value=authError(reason)).finally(()=>busy.value=false) }
@@ -92,7 +93,7 @@ watch(()=>setup.allowRegistration,value=>{if(!value&&mode.value==='register')mod
         <BaseInput v-if="mode==='register'" v-model="name" :label="tr('displayName')" required autocomplete="name"/>
         <BaseInput v-if="mode==='login'||mode==='register'||mode==='otp-request'||isCodeMode" v-model="email" :label="tr('email')" type="email" required autocomplete="email" :disabled="isCodeMode"/>
         <PasswordField v-if="mode==='login'||mode==='register'" v-model="password" :label="tr('password')" :minlength="8" required :autocomplete="mode==='login'?'current-password':'new-password'"/>
-        <CaptchaChallenge v-if="captchaEnabled" ref="captchaRef" v-model="captchaToken" :trigger="captchaConfig?.trigger||'load'" :mode="captchaConfig?.mode||'interactive'"/>
+        <CaptchaChallenge v-if="captchaEnabled" ref="captchaRef" v-model="captchaToken" :flow="captchaFlowKey(mode)" :trigger="captchaConfig?.trigger||'load'" :mode="captchaConfig?.mode||'interactive'"/>
         <BaseInput v-if="isCodeMode" v-model="code" :label="tr('verificationCode')" required autocomplete="one-time-code" inputmode="numeric"/>
         <p v-if="registered" class="notice success">{{tr('verificationSent')}}</p><p v-if="error" class="form-error">{{error}}</p>
         <button class="primary wide" :disabled="busy">{{busy?tr('processing'):mode==='login'?tr('login'):mode==='register'?tr('register'):mode==='otp-request'?tr('sendVerificationCode'):tr('verify')}}</button>

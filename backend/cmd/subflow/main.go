@@ -74,14 +74,17 @@ func main() {
 		}
 		base := application.New(stores)
 		base.Rates = exchange.NewOpenERAPIProvider()
+		base.CaptchaAppURL = e.App.Settings().Meta.AppURL
 		app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(event *core.RecordRequestPasswordResetRequestEvent) error {
-			if err := base.VerifyCaptcha(event.Request.Context(), domain.CaptchaFlowPasswordReset, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
+			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowPasswordReset, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
 				return event.BadRequestError("captcha_verification_failed", nil)
 			}
 			return event.Next()
 		})
 		app.OnRecordRequestOTPRequest("users").BindFunc(func(event *core.RecordCreateOTPRequestEvent) error {
-			if err := base.VerifyCaptcha(event.Request.Context(), domain.CaptchaFlowOTPRequest, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
+			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowOTPRequest, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
 				return event.BadRequestError("captcha_verification_failed", nil)
 			}
 			return event.Next()
@@ -92,7 +95,8 @@ func main() {
 		// default (see captchaFlowsFrom's migration defaults), so existing
 		// installs see no behavior change until an admin opts in.
 		app.OnRecordAuthWithPasswordRequest("users").BindFunc(func(event *core.RecordAuthWithPasswordRequestEvent) error {
-			if err := base.VerifyCaptcha(event.Request.Context(), domain.CaptchaFlowLogin, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
+			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
+			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowLogin, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
 				return event.BadRequestError("captcha_verification_failed", nil)
 			}
 			return event.Next()
