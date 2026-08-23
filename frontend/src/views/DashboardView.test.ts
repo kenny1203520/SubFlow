@@ -35,6 +35,13 @@ describe('DashboardView settlement permissions', () => {
     expect(row.text()).toContain('Dinner reimbursement')
   })
 
+  it('places the record repayment action in the repayment history header', async () => {
+    const wrapper = mount(DashboardView, { global: { stubs: { RouterLink: true, MoneyValue: true, EmptyState: true, SyncBadge: true, AppDrawer: true, ConfirmDialog: true, BaseCombobox: true, MonthNav: true, Pagination: true, PageSizeSelect: true, SettlementFilterBar: true } } })
+    await nextTick()
+    expect(wrapper.find('.settlement-history-controls .primary').text()).toBe('recordSettlement')
+    expect(wrapper.findAll('.dashboard-grid button').map(button => button.text())).not.toContain('recordSettlement')
+  })
+
   it('hides edit and delete actions for another member settlement without write permission', async () => {
     workspace.groupPermissions = []
     const wrapper = mount(DashboardView, { global: { stubs: { RouterLink: true, MoneyValue: true, EmptyState: true, SyncBadge: true, AppDrawer: true, ConfirmDialog: true, BaseCombobox: true, MonthNav: true, Pagination: true, PageSizeSelect: true, SettlementFilterBar: true } } })
