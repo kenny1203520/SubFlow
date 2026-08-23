@@ -19,6 +19,10 @@ type Service struct {
 	Rates   RateProvider
 	Captcha captcha.Verifier
 	Cipher  security.SettingsCipher
+	// CAPTCHA application identity is read from PocketBase's Application
+	// settings, never from a separate CAPTCHA environment setting.
+	CaptchaAppName string
+	CaptchaAppURL  string
 }
 
 func New(stores adapters.Stores) *Service {

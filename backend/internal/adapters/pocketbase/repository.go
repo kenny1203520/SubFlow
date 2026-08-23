@@ -1495,9 +1495,9 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	record.Set("captcha_challenge_url", value.CaptchaChallengeURL)
 	record.Set("captcha_verify_url", value.CaptchaVerifyURL)
 	record.Set("captcha_flows", value.CaptchaFlows)
-	if value.CaptchaSecretCiphertext != "" {
-		record.Set("captcha_secret", value.CaptchaSecretCiphertext)
-	}
+	// Set this unconditionally so changing provider or disabling CAPTCHA can
+	// clear an obsolete credential instead of silently retaining it.
+	record.Set("captcha_secret", value.CaptchaSecretCiphertext)
 	if value.SetupTokenHash != "" {
 		record.Set("setup_secret_hash", value.SetupTokenHash)
 	}

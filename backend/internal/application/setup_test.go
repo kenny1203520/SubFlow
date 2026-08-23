@@ -132,3 +132,35 @@ func TestCaptchaSecretValueSupportsPlaintextFallback(t *testing.T) {
 		t.Fatalf("expected plaintext secret fallback, got %q", secret)
 	}
 }
+
+func TestSanitiseSettingsDoesNotTreatProviderSelectionAsASecret(t *testing.T) {
+	service := &Service{}
+	settings := service.sanitiseSettings(domain.SystemSettings{CaptchaProvider: "turnstile", CaptchaConfigured: false})
+	if settings.CaptchaConfigured {
+		t.Fatal("selecting a provider without a stored secret must not report configured")
+	}
+}
+
+func TestTurnstileActionsCoverEveryProtectedFlow(t *testing.T) {
+	actions := map[string]string{
+		domain.CaptchaFlowRegister:      "register",
+		domain.CaptchaFlowPasswordReset: "password_reset",
+		domain.CaptchaFlowOTPRequest:    "otp_request",
+		domain.CaptchaFlowLogin:         "login",
+	}
+	for flow, want := range actions {
+		if got := captchaTurnstileAction(flow); got != want {
+			t.Fatalf("captchaTurnstileAction(%q) = %q, want %q", flow, got, want)
+		}
+	}
+}
+
+func TestExternalCaptchaRequiresSecretAndEncryption(t *testing.T) {
+	flows := domain.CaptchaFlowSettings{Login: domain.CaptchaFlowConfig{Enabled: true}}
+	if !captchaFlowsEnabled(flows) || !captchaProviderRequiresSecret("turnstile") || !captchaProviderRequiresEncryptedSecret("turnstile") || !captchaProviderRequiresSiteKey("turnstile") {
+		t.Fatal("Turnstile must require an encrypted secret and site key when a flow is enabled")
+	}
+	if captchaProviderRequiresSecret("altcha_community") || captchaProviderRequiresEncryptedSecret("altcha_community") || captchaProviderRequiresSiteKey("altcha_sentinel") {
+		t.Fatal("ALTCHA provider requirements should preserve their distinct contracts")
+	}
+}
