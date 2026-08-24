@@ -80,8 +80,8 @@ func TestCreateSubscriptionRejectsNonMember(t *testing.T) {
 		TestAppFactory:        f.factory(),
 		BeforeTestFunc:        f.beforeTest(),
 		DisableTestAppCleanup: true,
-		ExpectedStatus:        http.StatusNotFound,
-		ExpectedContent:       []string{`"code":"not_found"`},
+		ExpectedStatus:        http.StatusForbidden,
+		ExpectedContent:       []string{`"code":"forbidden"`},
 	}
 	scenario.Test(t)
 }
