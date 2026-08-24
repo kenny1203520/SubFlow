@@ -14,10 +14,13 @@ import GroupWorkspaceView from './views/GroupWorkspaceView.vue'
 import AdminView from './views/AdminView.vue'
 import AboutView from './views/AboutView.vue'
 import SetupView from './views/SetupView.vue'
+import ShareView from './views/ShareView.vue'
+import ShareManagerView from './views/ShareManagerView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
   { path: '/auth', name: 'auth', component: AuthView, meta: { public: true } },
+	{ path: '/share/:token', name: 'share', component: ShareView, meta: { public: true } },
   { path: '/invite/:token', name: 'invite', component: InviteView },
   { path: '/', name: 'dashboard', component: DashboardView },
   { path: '/groups', name: 'groups', component: GroupsView },
@@ -32,10 +35,12 @@ export const routes: RouteRecordRaw[] = [
       { path: 'roles', name: 'group-roles', component: GroupRolesView },
       { path: 'audit', name: 'group-audit', component: GroupAuditView },
       { path: 'settings', name: 'group-settings', component: GroupsView },
+			{ path: 'share', name: 'group-share', component: ShareManagerView },
     ],
   },
   { path: '/personal/expenses', name: 'personal-expenses', component: ExpensesView },
   { path: '/personal/subscriptions', name: 'personal-subscriptions', component: SubscriptionsView },
+	{ path: '/personal/share', name: 'personal-share', component: ShareManagerView },
   { path: '/members', redirect: { name: 'groups' } },
   { path: '/subscriptions', redirect: { name: 'personal-subscriptions' } },
   { path: '/expenses', redirect: { name: 'personal-expenses' } },

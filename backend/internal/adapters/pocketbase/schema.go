@@ -31,6 +31,8 @@ const (
 	CollectionSystemRoles             = "system_roles"
 	CollectionGroupRoles              = "group_roles"
 	CollectionAuditLogs               = "audit_logs"
+	CollectionShares                  = "shares"
+	CollectionShareViewers            = "share_viewers"
 	CollectionSystemSettings          = "system_settings"
 )
 
@@ -192,6 +194,22 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		c.Fields.Add(&core.RelationField{Name: "actor", CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "scope", Required: true, Max: 24}, &core.TextField{Name: "action", Required: true, Max: 120}, &core.TextField{Name: "resource", Required: true, Max: 80}, &core.TextField{Name: "resource_id", Max: 32}, &core.TextField{Name: "outcome", Required: true, Max: 24}, &core.TextField{Name: "summary", Max: 4000}, &core.TextField{Name: "ip", Max: 80}, &core.TextField{Name: "user_agent", Max: 500}, &core.TextField{Name: "hash", Required: true, Max: 128})
 		c.AddIndex("idx_audit_logs_group_created", false, "group, created", "")
 		c.AddIndex("idx_audit_logs_actor_created", false, "actor, created", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	shares, err := ensureCollection(app, CollectionShares, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.SelectField{Name: "access_mode", Required: true, Values: []string{"link", "password", "accounts"}, MaxSelect: 1}, &core.TextField{Name: "password_hash", Hidden: true, Max: 256}, &core.BoolField{Name: "enabled"}, &core.DateField{Name: "expires_at"}, &core.SelectField{Name: "range_mode", Required: true, Values: []string{"all", "rolling", "fixed"}, MaxSelect: 1}, &core.NumberField{Name: "rolling_days", OnlyInt: true}, &core.DateField{Name: "starts_on"}, &core.DateField{Name: "ends_on"}, &core.BoolField{Name: "show_summary"}, &core.BoolField{Name: "show_expenses"}, &core.BoolField{Name: "show_subscriptions"}, &core.BoolField{Name: "show_settlements"}, &core.BoolField{Name: "show_identities"}, &core.BoolField{Name: "show_notes"}, &core.NumberField{Name: "access_version", OnlyInt: true})
+		c.AddIndex("idx_shares_token", true, "token_hash", "")
+		c.AddIndex("idx_shares_group", false, "group, created", "")
+		c.AddIndex("idx_shares_owner", false, "owner, created", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionShareViewers, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "share", Required: true, CollectionId: shares.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
+		c.AddIndex("idx_share_viewers_unique", true, "share, user", "")
 	})
 	if err != nil {
 		return "", err
@@ -618,7 +636,7 @@ func ensureRoleSeeds(app core.App) error {
 	return nil
 }
 func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
-	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.records.historical_write", "ledger.expenses.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update", "ledger.settlements.delete", "ledger.settlements.manage", "categories.manage"}
+	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.records.historical_write", "ledger.expenses.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update", "ledger.settlements.delete", "ledger.settlements.manage", "ledger.share.manage", "categories.manage"}
 	for _, seed := range []struct {
 		key, name   string
 		permissions []string

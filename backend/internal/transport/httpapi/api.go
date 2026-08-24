@@ -1,9 +1,15 @@
 package httpapi
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/pocketbase/pocketbase/apis"
@@ -14,7 +20,15 @@ import (
 	"subflow/internal/ports"
 )
 
-type API struct{ Service *application.Service }
+type shareAttempt struct {
+	Count   int
+	ResetAt time.Time
+}
+type API struct {
+	Service        *application.Service
+	shareAttemptMu sync.Mutex
+	shareAttempts  map[string]shareAttempt
+}
 
 type envelope struct {
 	Data any `json:"data"`
@@ -45,6 +59,9 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/auth/captcha/challenge", a.captchaChallenge)
 	e.Router.POST("/api/subflow/v1/setup/initialize", a.initializeSetup)
 	e.Router.POST("/api/subflow/v1/auth/register", a.register)
+	e.Router.GET("/api/subflow/v1/shares/{token}", a.publicShare)
+	e.Router.POST("/api/subflow/v1/shares/{token}/access", a.sharePasswordAccess)
+	e.Router.GET("/api/subflow/v1/shares/{token}/account", a.accountShare).Bind(bind)
 	e.Router.GET("/api/subflow/v1/auth/external-auths", a.listExternalAuths).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/auth/external-auths/{provider}", a.unlinkExternalAuth).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups", a.listGroups).Bind(bind)
@@ -60,6 +77,11 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/subscriptions", a.createPersonalSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/expenses", a.listPersonalExpenses).Bind(bind)
 	e.Router.POST("/api/subflow/v1/expenses", a.createPersonalExpense).Bind(bind)
+	e.Router.GET("/api/subflow/v1/personal/shares", a.listPersonalShares).Bind(bind)
+	e.Router.POST("/api/subflow/v1/personal/shares", a.createPersonalShare).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/personal/shares/{id}", a.updateShare).Bind(bind)
+	e.Router.POST("/api/subflow/v1/personal/shares/{id}/rotate", a.rotateShare).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/personal/shares/{id}", a.deleteShare).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups", a.createGroup).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}", a.getGroup).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/groups/{groupId}", a.updateGroup).Bind(bind)
@@ -69,6 +91,11 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/summary", a.dashboard).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/members", a.listMembers).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/access", a.groupAccess).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/shares", a.listGroupShares).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/shares", a.createGroupShare).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/shares/{id}", a.updateShare).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/shares/{id}/rotate", a.rotateShare).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/shares/{id}", a.deleteShare).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/members/{userId}", a.removeMember).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/roles", a.listGroupRoles).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/roles", a.createGroupRole).Bind(bind)
@@ -167,6 +194,215 @@ func fail(e *core.RequestEvent, err error) error {
 
 func (a *API) currencies(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, a.Service.Currencies(), nil)
+}
+
+const shareCookieName = "subflow_share_access"
+
+func shareCookieSignature(value string) string {
+	key := os.Getenv("SUBFLOW_SHARE_SESSION_HMAC_KEY")
+	if key == "" {
+		key = "subflow-share-local"
+	}
+	mac := hmac.New(sha256.New, []byte(key))
+	_, _ = mac.Write([]byte(value))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+func shareCookieValid(e *core.RequestEvent, value *domain.Share) bool {
+	cookie, err := e.Request.Cookie(shareCookieName)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(cookie.Value, ".")
+	if len(parts) != 4 || parts[0] != value.ID || parts[1] != strconv.Itoa(value.AccessVersion) {
+		return false
+	}
+	expires, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil || time.Now().Unix() > expires {
+		return false
+	}
+	payload := strings.Join(parts[:3], ".")
+	return hmac.Equal([]byte(parts[3]), []byte(shareCookieSignature(payload)))
+}
+func setShareCookie(e *core.RequestEvent, value *domain.Share) {
+	expires := time.Now().Add(8 * time.Hour).Unix()
+	payload := value.ID + "." + strconv.Itoa(value.AccessVersion) + "." + strconv.FormatInt(expires, 10)
+	http.SetCookie(e.Response, &http.Cookie{Name: shareCookieName, Value: payload + "." + shareCookieSignature(payload), Path: "/api/subflow/v1/shares/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: e.Request.TLS != nil, MaxAge: 8 * 60 * 60})
+}
+func (a *API) sharePasswordAllowed(ip, shareID string) bool {
+	a.shareAttemptMu.Lock()
+	defer a.shareAttemptMu.Unlock()
+	if a.shareAttempts == nil {
+		a.shareAttempts = map[string]shareAttempt{}
+	}
+	key := ip + ":" + shareID
+	attempt := a.shareAttempts[key]
+	if time.Now().After(attempt.ResetAt) {
+		return true
+	}
+	return attempt.Count < 5
+}
+func (a *API) recordSharePasswordFailure(ip, shareID string) {
+	a.shareAttemptMu.Lock()
+	defer a.shareAttemptMu.Unlock()
+	if a.shareAttempts == nil {
+		a.shareAttempts = map[string]shareAttempt{}
+	}
+	key := ip + ":" + shareID
+	attempt := a.shareAttempts[key]
+	if time.Now().After(attempt.ResetAt) {
+		attempt = shareAttempt{ResetAt: time.Now().Add(15 * time.Minute)}
+	}
+	attempt.Count++
+	a.shareAttempts[key] = attempt
+}
+func (a *API) clearSharePasswordFailures(ip, shareID string) {
+	a.shareAttemptMu.Lock()
+	defer a.shareAttemptMu.Unlock()
+	delete(a.shareAttempts, ip+":"+shareID)
+}
+func (a *API) publicShare(e *core.RequestEvent) error {
+	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
+	if err != nil {
+		_ = a.Service.AuditMissingShareAccess(e.Request.Context(), "", "unavailable")
+		return fail(e, domain.ErrNotFound)
+	}
+	if share.AccessMode == "password" && !shareCookieValid(e, share) {
+		return ok(e, http.StatusOK, map[string]bool{"requiresPassword": true}, nil)
+	}
+	if share.AccessMode == "accounts" {
+		return ok(e, http.StatusOK, map[string]bool{"requiresLogin": true}, nil)
+	}
+	if err = a.Service.AuditShareAccess(e.Request.Context(), share, "", "success", "link"); err != nil {
+		return fail(e, err)
+	}
+	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, page, nil)
+}
+func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
+	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
+	if err != nil {
+		_ = a.Service.AuditMissingShareAccess(e.Request.Context(), "", "unavailable")
+		return fail(e, domain.ErrNotFound)
+	}
+	if !a.sharePasswordAllowed(e.RealIP(), share.ID) {
+		_ = a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "rate_limited")
+		return fail(e, domain.ErrNotFound)
+	}
+	var body struct {
+		Password string `json:"password"`
+	}
+	if e.BindBody(&body) != nil || a.Service.VerifySharePassword(e.Request.Context(), share, body.Password) != nil {
+		a.recordSharePasswordFailure(e.RealIP(), share.ID)
+		_ = a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "password_invalid")
+		return fail(e, domain.ErrNotFound)
+	}
+	if err = a.Service.AuditShareAccess(e.Request.Context(), share, "", "success", "password"); err != nil {
+		return fail(e, err)
+	}
+	a.clearSharePasswordFailures(e.RealIP(), share.ID)
+	setShareCookie(e, share)
+	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, page, nil)
+}
+func (a *API) accountShare(e *core.RequestEvent) error {
+	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
+	if err != nil {
+		_ = a.Service.AuditMissingShareAccess(e.Request.Context(), authID(e), "unavailable")
+		return fail(e, domain.ErrNotFound)
+	}
+	if err = a.Service.AuthorizeShareViewer(e.Request.Context(), share, authID(e)); err != nil {
+		_ = a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "failure", "viewer_not_allowed")
+		return fail(e, domain.ErrNotFound)
+	}
+	if err = a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "success", "account"); err != nil {
+		return fail(e, err)
+	}
+	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, page, nil)
+}
+func sharePageNumber(e *core.RequestEvent) int {
+	value, err := strconv.Atoi(e.Request.URL.Query().Get("page"))
+	if err != nil || value < 1 {
+		return 1
+	}
+	return value
+}
+func (a *API) listPersonalShares(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "shares")
+	if err != nil {
+		return fail(e, err)
+	}
+	values, err := a.Service.ListShares(e.Request.Context(), authID(e), "", p)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, values.Items, pageMeta(values))
+}
+func (a *API) listGroupShares(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "shares")
+	if err != nil {
+		return fail(e, err)
+	}
+	values, err := a.Service.ListShares(e.Request.Context(), authID(e), groupID(e), p)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, values.Items, pageMeta(values))
+}
+func (a *API) createPersonalShare(e *core.RequestEvent) error {
+	var input application.ShareInput
+	if e.BindBody(&input) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.CreateShare(e.Request.Context(), authID(e), "", input)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, value, nil)
+}
+func (a *API) createGroupShare(e *core.RequestEvent) error {
+	var input application.ShareInput
+	if e.BindBody(&input) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.CreateShare(e.Request.Context(), authID(e), groupID(e), input)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, value, nil)
+}
+func (a *API) updateShare(e *core.RequestEvent) error {
+	var input application.ShareInput
+	if e.BindBody(&input) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.UpdateShare(e.Request.Context(), authID(e), e.Request.PathValue("id"), input)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) rotateShare(e *core.RequestEvent) error {
+	value, err := a.Service.RotateShare(e.Request.Context(), authID(e), e.Request.PathValue("id"))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) deleteShare(e *core.RequestEvent) error {
+	if err := a.Service.DeleteShare(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
 }
 func (a *API) listCategories(e *core.RequestEvent) error {
 	q := e.Request.URL.Query()

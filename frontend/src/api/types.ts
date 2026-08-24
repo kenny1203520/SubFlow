@@ -9,6 +9,11 @@ export type BillingCycle = 'daily' | 'every_n_days' | 'weekly' | 'every_n_weeks'
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
 
 export interface Group { id:string;name:string;description:string;currency:Currency;timezone:string;color:string;ownerId:string;createdAt:string;updatedAt:string }
+export type ShareAccessMode='link'|'password'|'accounts'
+export type ShareRangeMode='all'|'rolling'|'fixed'
+export interface ShareViewer { id?:string;shareId?:string;userId:string;email:string;name:string }
+export interface Share { id:string;groupId?:string;ownerId?:string;name:string;accessMode:ShareAccessMode;enabled:boolean;expiresAt?:string;rangeMode:ShareRangeMode;rollingDays?:number;startsOn?:string;endsOn?:string;showSummary:boolean;showExpenses:boolean;showSubscriptions:boolean;showSettlements:boolean;showIdentities:boolean;showNotes:boolean;viewers?:ShareViewer[];createdAt:string;updatedAt:string }
+export interface SharePage { name:string;currency:Currency;rangeLabel:string;showSummary:boolean;summary?:{expenseCount:number;subscriptionCount:number;settlementCount:number;expenseTotals:Record<string,number>};expenses?:Array<Record<string,unknown>>;subscriptions?:Array<Record<string,unknown>>;settlements?:Array<Record<string,unknown>>;nextPage?:number;requiresPassword?:boolean;requiresLogin?:boolean }
 export interface User { id:string;email:string;name:string;avatar?:string;timezone:string;defaultCurrency?:Currency;systemRoleId?:string;placeholder?:boolean;linkedUserId?:string }
 export interface SystemAccess { permissions:string[] }
 export interface GroupAccess { permissions:string[] }

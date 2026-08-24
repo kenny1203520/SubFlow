@@ -72,6 +72,17 @@ type AuditRepository interface {
 	List(context.Context, string, AuditQuery) (Page[domain.AuditLog], error)
 }
 
+type ShareRepository interface {
+	Create(context.Context, *domain.Share) error
+	Get(context.Context, string) (*domain.Share, error)
+	GetByTokenHash(context.Context, string) (*domain.Share, error)
+	List(context.Context, string, string, PageRequest) (Page[domain.Share], error)
+	Update(context.Context, *domain.Share) error
+	Delete(context.Context, string) error
+	ReplaceViewers(context.Context, string, []domain.ShareViewer) error
+	ListViewers(context.Context, string) ([]domain.ShareViewer, error)
+}
+
 type InvitationRepository interface {
 	Create(context.Context, *domain.Invitation) error
 	Get(context.Context, string) (*domain.Invitation, error)

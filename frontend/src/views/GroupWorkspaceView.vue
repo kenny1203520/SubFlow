@@ -15,6 +15,7 @@ const group = computed(() =>
 const canReadAudit = computed(() => workspace.groupPermissions.includes('group.audit.read'));
 const canManageRoles = computed(() => workspace.groupPermissions.includes('group.roles.manage'));
 const canManageSettings = computed(() => workspace.groupPermissions.includes('group.settings.manage'));
+const canManageShares = computed(() => workspace.groupPermissions.includes('ledger.share.manage'));
 const canReadExpenses = computed(() => workspace.groupPermissions.includes('ledger.expenses.read'));
 const canReadSubscriptions = computed(() => workspace.groupPermissions.includes('ledger.subscriptions.read'));
 const canViewGroup = computed(() => workspace.groupPermissions.includes('group.view'));
@@ -27,6 +28,7 @@ const routePermissions = computed<Record<string, string[]>>(() => ({
     'group-roles': ['group.roles.manage'],
     'group-audit': ['group.audit.read'],
     'group-settings': ['group.settings.manage'],
+		'group-share': ['ledger.share.manage'],
 }));
 const canAccessRoute = computed(() => (routePermissions.value[String(route.name)] || []).every(permission => workspace.groupPermissions.includes(permission)));
 const accessLoading = computed(() => workspace.groupBusy.access > 0);
@@ -62,9 +64,11 @@ watch(groupId, () => void activate());
                 }}</RouterLink>
             <RouterLink v-if="canManageRoles" :to="`/groups/${groupId}/roles`">{{ tr("roleManagement") }}</RouterLink>
             <RouterLink v-if="canReadAudit" :to="`/groups/${groupId}/audit`">{{ tr("auditLogs") }}</RouterLink>
+            <RouterLink v-if="canManageShares" :to="`/groups/${groupId}/share`">{{ tr('share') }}</RouterLink>
             <RouterLink v-if="canManageSettings" :to="`/groups/${groupId}/settings`">{{
                 tr("settings")
                 }}</RouterLink>
+				<RouterLink v-if="canManageShares" :to="`/groups/${groupId}/share`">{{ tr('share') }}</RouterLink>
         </nav>
         <div v-if="accessLoading" class="empty-inline">{{ tr('processing') }}</div>
         <div v-else-if="!canAccessRoute" class="resource-error">

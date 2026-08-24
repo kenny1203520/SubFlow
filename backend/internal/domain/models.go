@@ -246,6 +246,57 @@ type AuditLog struct {
 	CreatedAt  time.Time `json:"createdAt"`
 }
 
+// Share exposes a deliberately limited, read-only projection of either a
+// personal ledger or a group ledger. TokenHash and PasswordHash are never
+// returned by management APIs.
+type Share struct {
+	ID                string        `json:"id"`
+	GroupID           string        `json:"groupId,omitempty"`
+	OwnerID           string        `json:"ownerId,omitempty"`
+	Name              string        `json:"name"`
+	TokenHash         string        `json:"-"`
+	AccessMode        string        `json:"accessMode"`
+	PasswordHash      string        `json:"-"`
+	Enabled           bool          `json:"enabled"`
+	ExpiresAt         time.Time     `json:"expiresAt,omitempty"`
+	RangeMode         string        `json:"rangeMode"`
+	RollingDays       int           `json:"rollingDays,omitempty"`
+	StartsOn          time.Time     `json:"startsOn,omitempty"`
+	EndsOn            time.Time     `json:"endsOn,omitempty"`
+	ShowSummary       bool          `json:"showSummary"`
+	ShowExpenses      bool          `json:"showExpenses"`
+	ShowSubscriptions bool          `json:"showSubscriptions"`
+	ShowSettlements   bool          `json:"showSettlements"`
+	ShowIdentities    bool          `json:"showIdentities"`
+	ShowNotes         bool          `json:"showNotes"`
+	AccessVersion     int           `json:"-"`
+	Viewers           []ShareViewer `json:"viewers,omitempty"`
+	CreatedAt         time.Time     `json:"createdAt"`
+	UpdatedAt         time.Time     `json:"updatedAt"`
+}
+
+type ShareViewer struct {
+	ID      string `json:"id,omitempty"`
+	ShareID string `json:"shareId,omitempty"`
+	UserID  string `json:"userId"`
+	Email   string `json:"email,omitempty"`
+	Name    string `json:"name,omitempty"`
+}
+
+// SharePage is the public, redacted response shape. It intentionally uses
+// maps for ledger rows so no internal IDs or fields leak by accident.
+type SharePage struct {
+	Name          string           `json:"name"`
+	Currency      Currency         `json:"currency"`
+	RangeLabel    string           `json:"rangeLabel"`
+	ShowSummary   bool             `json:"showSummary"`
+	Summary       map[string]any   `json:"summary,omitempty"`
+	Expenses      []map[string]any `json:"expenses,omitempty"`
+	Subscriptions []map[string]any `json:"subscriptions,omitempty"`
+	Settlements   []map[string]any `json:"settlements,omitempty"`
+	NextPage      int              `json:"nextPage,omitempty"`
+}
+
 type Group struct {
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
