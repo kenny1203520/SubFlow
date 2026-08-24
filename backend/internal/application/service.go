@@ -43,6 +43,23 @@ func (s *Service) role(ctx context.Context, groupID, userID string, ownerOnly bo
 	return nil
 }
 
+// groupMemberships deliberately walks every page. Membership checks are an
+// authorization boundary and member-derived accounting validation must not
+// silently stop at PocketBase's 100-record page limit.
+func (s *Service) groupMemberships(ctx context.Context, groupID string) ([]domain.Membership, error) {
+	result := make([]domain.Membership, 0)
+	for page := 1; ; page++ {
+		values, err := s.Stores.Memberships.List(ctx, groupID, ports.PageRequest{Page: page, PerPage: 100})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, values.Items...)
+		if values.TotalPages == 0 || page >= values.TotalPages {
+			return result, nil
+		}
+	}
+}
+
 func (s *Service) expenseIsHistorical(ctx context.Context, userID string, value *domain.Expense) (bool, error) {
 	if value.GroupID == "" {
 		return false, nil
@@ -133,14 +150,14 @@ func (s *Service) ListGroups(ctx context.Context, userID string, page ports.Page
 }
 
 func (s *Service) GetGroup(ctx context.Context, userID, id string) (*domain.Group, error) {
-	if err := s.role(ctx, id, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, id, "group.view"); err != nil {
 		return nil, err
 	}
 	return s.Stores.Groups.Get(ctx, id)
 }
 
 func (s *Service) UpdateGroup(ctx context.Context, userID string, group domain.Group) (*domain.Group, error) {
-	if err := s.role(ctx, group.ID, userID, true); err != nil {
+	if err := s.groupPermission(ctx, userID, group.ID, "group.settings.manage"); err != nil {
 		return nil, err
 	}
 	current, err := s.Stores.Groups.Get(ctx, group.ID)
@@ -190,6 +207,7 @@ func (s *Service) DeleteGroup(ctx context.Context, userID, id string) error {
 	}
 	return err
 }
+
 // ListMembers hides bound placeholders from the members-list display: once a
 // temp member is bound to a real account, its membership row is kept forever
 // (historical expense/settlement records still reference the placeholder's
@@ -199,7 +217,7 @@ func (s *Service) DeleteGroup(ctx context.Context, userID, id string) error {
 // dashboard call Stores.Memberships.List directly and must keep seeing the
 // placeholder as a valid participant for split/history correctness.
 func (s *Service) ListMembers(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Membership], error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.view"); err != nil {
 		return ports.Page[domain.Membership]{}, err
 	}
 	if page.Page < 1 {
@@ -305,7 +323,7 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 	}
 	if v.GroupID != "" {
 		v.OwnerID = ""
-		if err := s.role(ctx, v.GroupID, userID, false); err != nil {
+		if err := s.groupPermission(ctx, userID, v.GroupID, "ledger.subscriptions.write"); err != nil {
 			return nil, err
 		}
 		if v.PaidBy == "" {
@@ -464,7 +482,7 @@ func (s *Service) StopSubscription(ctx context.Context, userID, id, endsOn strin
 		if v.OwnerID != userID {
 			return nil, domain.ErrForbidden
 		}
-	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
+	} else if err = s.groupPermission(ctx, userID, v.GroupID, "ledger.subscriptions.write"); err != nil {
 		return nil, err
 	}
 	location := s.accountingLocation(ctx, userID, v.GroupID)
@@ -526,7 +544,7 @@ func (s *Service) ResumeSubscription(ctx context.Context, userID, id string) (*d
 		if v.OwnerID != userID {
 			return nil, domain.ErrForbidden
 		}
-	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
+	} else if err = s.groupPermission(ctx, userID, v.GroupID, "ledger.subscriptions.write"); err != nil {
 		return nil, err
 	}
 	v.EndsOn = nil
@@ -538,7 +556,7 @@ func (s *Service) ResumeSubscription(ctx context.Context, userID, id string) (*d
 	return v, nil
 }
 func (s *Service) ListSubscriptions(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Subscription], error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "ledger.subscriptions.read"); err != nil {
 		return ports.Page[domain.Subscription]{}, err
 	}
 	result, err := s.Stores.Subscriptions.List(ctx, groupID, page)
@@ -565,7 +583,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		if current.OwnerID != userID {
 			return nil, domain.ErrForbidden
 		}
-	} else if err = s.role(ctx, current.GroupID, userID, false); err != nil {
+	} else if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.subscriptions.write"); err != nil {
 		return nil, err
 	}
 	if v.StartsOn.IsZero() {
@@ -790,7 +808,7 @@ func (s *Service) DeleteSubscription(ctx context.Context, userID, id string) err
 		if v.OwnerID != userID {
 			return domain.ErrForbidden
 		}
-	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
+	} else if err = s.groupPermission(ctx, userID, v.GroupID, "ledger.subscriptions.delete"); err != nil {
 		return err
 	}
 	err = s.Stores.Subscriptions.Delete(ctx, id)
@@ -804,12 +822,12 @@ func validExpense(v *domain.Expense) bool {
 	return strings.TrimSpace(v.Title) != "" && v.AmountMinor >= 0 && domain.IsCurrency(v.Currency) && !v.IncurredOn.IsZero() && v.PaidBy != ""
 }
 func (s *Service) memberIDs(ctx context.Context, groupID string) ([]string, error) {
-	page, err := s.Stores.Memberships.List(ctx, groupID, ports.PageRequest{Page: 1, PerPage: 100})
+	members, err := s.groupMemberships(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, len(page.Items))
-	for i, item := range page.Items {
+	ids := make([]string, len(members))
+	for i, item := range members {
 		ids[i] = item.UserID
 	}
 	return ids, nil
@@ -832,7 +850,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 	}
 	if v.GroupID != "" {
 		v.OwnerID = ""
-		if err := s.role(ctx, v.GroupID, userID, false); err != nil {
+		if err := s.groupPermission(ctx, userID, v.GroupID, "ledger.expenses.write"); err != nil {
 			return nil, err
 		}
 		members, err := s.memberIDs(ctx, v.GroupID)
@@ -910,7 +928,7 @@ func (s *Service) ListPersonalExpenses(ctx context.Context, userID string, page 
 	return result, nil
 }
 func (s *Service) ListExpenses(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Expense], error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "ledger.expenses.read"); err != nil {
 		return ports.Page[domain.Expense]{}, err
 	}
 	result, err := s.Stores.Expenses.List(ctx, groupID, page)
@@ -950,7 +968,7 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 		v.SplitMode = domain.SplitAmount
 		v.Splits = []domain.ExpenseSplit{{UserID: userID, AmountMinor: v.AmountMinor}}
 	} else {
-		if err = s.role(ctx, current.GroupID, userID, false); err != nil {
+		if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.expenses.write"); err != nil {
 			return nil, err
 		}
 		currentHistorical, historicalErr := s.expenseIsHistorical(ctx, userID, current)
@@ -1041,7 +1059,7 @@ func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
 		if v.OwnerID != userID {
 			return domain.ErrForbidden
 		}
-	} else if err = s.role(ctx, v.GroupID, userID, false); err != nil {
+	} else if err = s.groupPermission(ctx, userID, v.GroupID, "ledger.expenses.delete"); err != nil {
 		return err
 	}
 	historical, historicalErr := s.expenseIsHistorical(ctx, userID, v)
@@ -1062,8 +1080,13 @@ func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
 }
 
 func (s *Service) Dashboard(ctx context.Context, userID, groupID string) (domain.DashboardSummary, error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.view"); err != nil {
 		return domain.DashboardSummary{}, err
+	}
+	for _, permission := range []string{"ledger.expenses.read", "ledger.subscriptions.read"} {
+		if err := s.groupPermission(ctx, userID, groupID, permission); err != nil {
+			return domain.DashboardSummary{}, err
+		}
 	}
 	subs, err := s.Stores.Subscriptions.List(ctx, groupID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "next_billing"})
 	if err != nil {

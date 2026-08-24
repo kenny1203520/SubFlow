@@ -17,7 +17,7 @@ export const useAuthStore = defineStore('auth', () => {
   const authenticated = computed(() => authValid.value && !!authToken.value && !!record.value)
   const token = computed(() => authToken.value)
   const name = computed(() => String(record.value?.name || record.value?.email || tr('userFallback')))
-  const canAdminister = computed(() => permissions.value.some(value => value === '*' || value.startsWith('system.')))
+  const canAdminister = computed(() => permissions.value.some(value => value.startsWith('system.')))
 
   pb.authStore.onChange((nextToken, nextRecord) => {
     authToken.value = nextToken

@@ -80,7 +80,7 @@ func newSettlementFixture(t *testing.T) settlementFixture {
 	return settlementFixture{service: service, stores: stores, groupID: group.ID, ownerID: ownerID, memberID: memberID, otherID: otherID}
 }
 
-func TestCreateSettlementSelfToOtherIsAlwaysAllowed(t *testing.T) {
+func TestCreateSettlementSelfToOtherAllowedWithCreatePermission(t *testing.T) {
 	f := newSettlementFixture(t)
 	ctx := context.Background()
 	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
@@ -105,10 +105,26 @@ func TestCreateSettlementOnBehalfOfOthersRequiresPermission(t *testing.T) {
 	}
 }
 
-func TestCreateSettlementOnBehalfOfOthersAllowedWithGrantedPermission(t *testing.T) {
+func TestSettlementCreateRequiresExplicitCreatePermission(t *testing.T) {
 	f := newSettlementFixture(t)
 	ctx := context.Background()
-	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "Treasurer", Permissions: []string{"group.view", "ledger.expenses.read", "ledger.settlements.read", "ledger.settlements.write"}})
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "Read-only settlements", Permissions: []string{"group.view", "ledger.settlements.read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.ownerID, f.groupID, f.memberID, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now()})
+	if err != domain.ErrForbidden {
+		t.Fatalf("expected a member without ledger.settlements.create to be forbidden, got %v", err)
+	}
+}
+
+func TestCreateSettlementOnBehalfOfOthersAllowedWithManagePermission(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "Treasurer", Permissions: []string{"group.view", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.manage"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +153,7 @@ func TestCreateSettlementOwnerCanAlwaysRecordOnBehalfOfOthers(t *testing.T) {
 	}
 }
 
-func TestDeleteSettlementCreatorCanAlwaysDelete(t *testing.T) {
+func TestDeleteSettlementCreatorAllowedWithDeletePermission(t *testing.T) {
 	f := newSettlementFixture(t)
 	ctx := context.Background()
 	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
@@ -161,14 +177,33 @@ func TestDeleteSettlementRequiresPermissionForNonCreator(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = f.service.DeleteSettlement(ctx, f.otherID, settlement.ID); err != domain.ErrForbidden {
-		t.Fatalf("expected a non-creator without ledger.settlements.write to be forbidden, got %v", err)
+		t.Fatalf("expected a non-creator without ledger.settlements.manage to be forbidden, got %v", err)
 	}
 	if err = f.service.DeleteSettlement(ctx, f.ownerID, settlement.ID); err != nil {
 		t.Fatalf("expected the owner to delete any settlement, got %v", err)
 	}
 }
 
-func TestUpdateSettlementCreatorCanAlwaysEdit(t *testing.T) {
+func TestSettlementDeleteRequiresExplicitDeletePermission(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "No delete", Permissions: []string{"group.view", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.ownerID, f.groupID, f.memberID, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.DeleteSettlement(ctx, f.memberID, settlement.ID); err != domain.ErrForbidden {
+		t.Fatalf("expected a creator without ledger.settlements.delete to be forbidden, got %v", err)
+	}
+}
+
+func TestUpdateSettlementCreatorAllowedWithUpdatePermission(t *testing.T) {
 	f := newSettlementFixture(t)
 	ctx := context.Background()
 	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
@@ -199,10 +234,30 @@ func TestUpdateSettlementRequiresPermissionForNonCreator(t *testing.T) {
 	}
 	patch := domain.Settlement{FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 900, SettledOn: settlement.SettledOn}
 	if _, err = f.service.UpdateSettlement(ctx, f.otherID, settlement.ID, patch); err != domain.ErrForbidden {
-		t.Fatalf("expected a non-creator without ledger.settlements.write to be forbidden, got %v", err)
+		t.Fatalf("expected a non-creator without ledger.settlements.manage to be forbidden, got %v", err)
 	}
 	if _, err = f.service.UpdateSettlement(ctx, f.ownerID, settlement.ID, patch); err != nil {
 		t.Fatalf("expected the owner to edit any settlement, got %v", err)
+	}
+}
+
+func TestSettlementUpdateRequiresExplicitUpdatePermission(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "No update", Permissions: []string{"group.view", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.delete"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.ownerID, f.groupID, f.memberID, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 900, SettledOn: settlement.SettledOn})
+	if err != domain.ErrForbidden {
+		t.Fatalf("expected a creator without ledger.settlements.update to be forbidden, got %v", err)
 	}
 }
 
