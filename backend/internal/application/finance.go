@@ -697,10 +697,14 @@ func (s *Service) BackfillSubscriptionPeriods(ctx context.Context, userID, id st
 			return 0, domain.ErrForbidden
 		}
 	} else if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.subscriptions.write"); err != nil {
-		s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure")
+		if auditErr := s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure"); auditErr != nil {
+			return 0, auditErr
+		}
 		return 0, err
 	} else if err = s.groupPermission(ctx, userID, subscription.GroupID, "ledger.records.historical_write"); err != nil {
-		s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure")
+		if auditErr := s.audit(ctx, userID, subscription.GroupID, "subscription.backfilled", "subscription", subscription.ID, "failure"); auditErr != nil {
+			return 0, auditErr
+		}
 		return 0, err
 	}
 	location := s.accountingLocation(ctx, userID, subscription.GroupID)
