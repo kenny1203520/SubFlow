@@ -103,3 +103,100 @@ func TestSettingsFromUsesStoredCaptchaFlowsOnceSaved(t *testing.T) {
 		t.Fatalf("expected the saved (disabled) register flow config to round-trip, got %#v", reloaded.CaptchaFlows.Register)
 	}
 }
+
+func TestSaveSystemSettingsClearsRemovedCaptchaSecret(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	if err = EnsureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+
+	stores := NewStores(app)
+	ctx := context.Background()
+	settings, err := stores.Settings.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.CaptchaProvider = "turnstile"
+	settings.CaptchaSecretCiphertext = "encrypted-secret"
+	if err = stores.Settings.Save(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	settings.CaptchaProvider = ""
+	settings.CaptchaSecretCiphertext = ""
+	if err = stores.Settings.Save(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+
+	reloaded, err := stores.Settings.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.CaptchaSecretCiphertext != "" || reloaded.CaptchaConfigured {
+		t.Fatalf("removed CAPTCHA secret was retained: %#v", reloaded)
+	}
+}
+
+func TestSystemSettingsUsesPocketBaseApplicationName(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	if err = EnsureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+
+	collection, err := app.FindCollectionByNameOrId(CollectionSystemSettings)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if collection.Fields.GetByName("site_name") != nil {
+		t.Fatal("new system_settings collections must not create the retired site_name field")
+	}
+	// Simulate an existing installation that still has the retired duplicate
+	// field. New installations no longer create it (see EnsureSchema).
+	collection.Fields.Add(&core.TextField{Name: "site_name", Max: 120})
+	if err = app.Save(collection); err != nil {
+		t.Fatal(err)
+	}
+	legacy, err := app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacy.Set("site_name", "Legacy duplicate")
+	if err = app.Save(legacy); err != nil {
+		t.Fatal(err)
+	}
+	app.Settings().Meta.AppName = "PocketBase source of truth"
+	if err = app.Save(app.Settings()); err != nil {
+		t.Fatal(err)
+	}
+
+	stores := NewStores(app)
+	ctx := context.Background()
+	settings, err := stores.Settings.Get(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.SiteName != "PocketBase source of truth" {
+		t.Fatalf("SiteName = %q, want PocketBase application name", settings.SiteName)
+	}
+	settings.SiteName = "Renamed in SubFlow"
+	if err = stores.Settings.Save(ctx, settings); err != nil {
+		t.Fatal(err)
+	}
+	if app.Settings().Meta.AppName != "Renamed in SubFlow" {
+		t.Fatalf("PocketBase application name = %q, want renamed value", app.Settings().Meta.AppName)
+	}
+	legacy, err = app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := legacy.GetString("site_name"); got != "Legacy duplicate" {
+		t.Fatalf("legacy site_name was unexpectedly written: %q", got)
+	}
+}

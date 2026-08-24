@@ -3,6 +3,7 @@ package application_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"subflow/internal/domain"
@@ -80,6 +81,99 @@ func TestCreateGroupRoleRequiresPermission(t *testing.T) {
 	}
 	if role.Key == "" || role.Scope != "group" {
 		t.Fatalf("expected a generated key and group scope, got %#v", role)
+	}
+}
+
+func TestGroupRoleManagerCannotDelegatePermissionsTheyDoNotHold(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+
+	managerRole, err := f.service.CreateGroupRole(ctx, f.owner, domain.Role{GroupID: f.group.ID, Name: "Role manager", Permissions: []string{"group.roles.manage"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.owner, f.group.ID, f.member, managerRole.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = f.service.CreateGroupRole(ctx, f.member, domain.Role{GroupID: f.group.ID, Name: "Escalation", Permissions: []string{"ledger.settlements.manage"}}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected a role manager to be unable to delegate missing permissions, got %v", err)
+	}
+	audits, err := f.stores.Audits.List(ctx, f.group.ID, defaultAuditQuery())
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundFailureAudit := false
+	for _, audit := range audits.Items {
+		if audit.Action == "role.created" && audit.Outcome == "failure" {
+			foundFailureAudit = true
+			break
+		}
+	}
+	if !foundFailureAudit {
+		t.Fatalf("expected rejected role escalation to create a failure audit, got %#v", audits.Items)
+	}
+	if _, err = f.service.CreateGroupRole(ctx, f.member, domain.Role{GroupID: f.group.ID, Name: "Wildcard", Permissions: []string{"*"}}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("expected wildcard permissions to be invalid, got %v", err)
+	}
+
+	limited, err := f.service.CreateGroupRole(ctx, f.owner, domain.Role{GroupID: f.group.ID, Name: "Settlement manager", Permissions: []string{"ledger.settlements.manage"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.member, f.group.ID, f.member, limited.ID); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected a role manager to be unable to assign a role above their own permissions, got %v", err)
+	}
+}
+
+func TestSystemRoleManagerCannotEscalateTheirOwnRole(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	if err := f.stores.Users.SetSystemRole(ctx, f.owner, adminSystemRoleID(t, f)); err != nil {
+		t.Fatal(err)
+	}
+	managerRole, err := f.service.CreateSystemRole(ctx, f.owner, domain.Role{Name: "Role manager", Permissions: []string{"system.roles.manage"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignSystemRole(ctx, f.owner, f.member, managerRole.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err = f.service.UpdateSystemRole(ctx, f.member, domain.Role{ID: managerRole.ID, Name: managerRole.Name, Permissions: []string{"system.roles.manage", "system.settings.manage"}}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected system role manager to be unable to add missing permissions, got %v", err)
+	}
+	if _, err = f.service.CreateSystemRole(ctx, f.member, domain.Role{Name: "Wildcard", Permissions: []string{"*"}}); !errors.Is(err, domain.ErrInvalid) {
+		t.Fatalf("expected wildcard system permission to be invalid, got %v", err)
+	}
+}
+
+func TestGroupPermissionsFindsMembersBeyondFirstPage(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	target, err := f.stores.Users.Create(ctx, domain.SetupInput{AdminName: "Page two", Email: "page-two@example.com", Password: "correct-horse-battery-staple"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.stores.Memberships.Create(ctx, &domain.Membership{GroupID: f.group.ID, UserID: target.ID, Role: domain.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100; i++ {
+		user, createErr := f.stores.Users.Create(ctx, domain.SetupInput{AdminName: "Later member", Email: fmt.Sprintf("later-member-%03d@example.com", i), Password: "correct-horse-battery-staple"})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if createErr = f.stores.Memberships.Create(ctx, &domain.Membership{GroupID: f.group.ID, UserID: user.ID, Role: domain.RoleMember}); createErr != nil {
+			t.Fatal(createErr)
+		}
+	}
+
+	permissions, err := f.service.GroupPermissions(ctx, target.ID, f.group.ID)
+	if err != nil {
+		t.Fatalf("expected the member beyond page one to resolve permissions: %v", err)
+	}
+	if !contains(permissions, "ledger.expenses.read") {
+		t.Fatalf("expected member permissions, got %#v", permissions)
 	}
 }
 

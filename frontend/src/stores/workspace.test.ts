@@ -35,7 +35,7 @@ function validToken() {
   const payload = btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 })).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_')
   return `e30.${payload}.signature`
 }
-function envelope(data: unknown) { return new Response(JSON.stringify({ data }), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
+function envelope(data: unknown, meta?: unknown) { return new Response(JSON.stringify({ data, meta }), { status: 200, headers: { 'Content-Type': 'application/json' } }) }
 function failure(status: number, code: string) { return new Response(JSON.stringify({ error: { code, message: code } }), { status }) }
 
 const group = { id: 'g1', name: 'Home', description: '', currency: 'TWD', timezone: 'UTC', color: '#000', ownerId: 'u1', createdAt: '', updatedAt: '' }
@@ -179,6 +179,63 @@ describe('workspace store subscription actions', () => {
     const posted = fetchMock.mock.calls.find(call => String(call[0]).endsWith('/subscriptions/s1/stop') && (call[1] as RequestInit)?.method === 'POST')
     expect(posted).toBeTruthy()
     expect(JSON.parse(String((posted?.[1] as RequestInit)?.body))).toEqual({ endsOn: '2026-12-31' })
+  })
+})
+
+describe('workspace store settlement actions', () => {
+  it('addSettlement posts to the group and refreshes it', async () => {
+    const fetchMock = mockFetch([['/groups/g1/settlements', () => envelope({ id: 'st1' }), 'POST']])
+    const workspace = useWorkspaceStore()
+    await workspace.selectGroup('g1')
+    const ok = await workspace.addSettlement({ fromUserId: 'u1', toUserId: 'u2', amountMinor: 500, settledOn: '2026-08-01T00:00:00Z', notes: '' })
+    expect(ok).toBe(true)
+    const posted = fetchMock.mock.calls.find(call => String(call[0]).includes('/groups/g1/settlements') && (call[1] as RequestInit)?.method === 'POST')
+    expect(posted).toBeTruthy()
+  })
+
+  it('updateSettlement patches the settlement and refreshes the group', async () => {
+    const fetchMock = mockFetch([['/settlements/st1', () => envelope({ id: 'st1', amountMinor: 900 })]])
+    const workspace = useWorkspaceStore()
+    await workspace.selectGroup('g1')
+    const ok = await workspace.updateSettlement('st1', { fromUserId: 'u1', toUserId: 'u2', amountMinor: 900, settledOn: '2026-08-01T00:00:00Z', notes: '' })
+    expect(ok).toBe(true)
+    const patched = fetchMock.mock.calls.find(call => String(call[0]).endsWith('/settlements/st1') && (call[1] as RequestInit)?.method === 'PATCH')
+    expect(patched).toBeTruthy()
+  })
+
+  it('deleteSettlement deletes the settlement and refreshes the group', async () => {
+    const fetchMock = mockFetch([['/settlements/st1', () => envelope({ deleted: true })]])
+    const workspace = useWorkspaceStore()
+    await workspace.selectGroup('g1')
+    await workspace.deleteSettlement('st1')
+    const deleted = fetchMock.mock.calls.find(call => String(call[0]).endsWith('/settlements/st1') && (call[1] as RequestInit)?.method === 'DELETE')
+    expect(deleted).toBeTruthy()
+  })
+})
+
+describe('workspace store pagination actions', () => {
+  it('loadExpensesPage fetches the requested page and updates expensesMeta', async () => {
+    const meta = { page: 2, perPage: 10, totalItems: 25, totalPages: 3 }
+    const fetchMock = mockFetch([['/groups/g1/expenses?page=2&perPage=10', () => envelope([{ id: 'e2' }], meta)]])
+    const workspace = useWorkspaceStore()
+    await workspace.selectGroup('g1')
+    await workspace.loadExpensesPage(2, 10)
+    expect(workspace.expenses.map((v: { id: string }) => v.id)).toEqual(['e2'])
+    expect(workspace.expensesMeta).toEqual(meta)
+    const called = fetchMock.mock.calls.find(call => String(call[0]).includes('/groups/g1/expenses?page=2&perPage=10'))
+    expect(called).toBeTruthy()
+  })
+
+  it('loadSettlementsPage applies the query string and updates settlementsMeta', async () => {
+    const meta = { page:1, perPage:25, totalItems:1, totalPages:1 }
+    const fetchMock = mockFetch([['/groups/g1/settlements?memberId=u2', () => envelope([{ id: 'st1' }], meta)]])
+    const workspace = useWorkspaceStore()
+    await workspace.selectGroup('g1')
+    await workspace.loadSettlementsPage('memberId=u2')
+    expect(workspace.settlements.map((v: { id: string }) => v.id)).toEqual(['st1'])
+    expect(workspace.settlementsMeta).toEqual(meta)
+    const called = fetchMock.mock.calls.find(call => String(call[0]).includes('/groups/g1/settlements?memberId=u2'))
+    expect(called).toBeTruthy()
   })
 })
 

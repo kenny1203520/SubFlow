@@ -1,6 +1,7 @@
 ﻿<script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ProviderLinkedElsewhereError, useAuthStore } from '../stores/auth'
+import { useSetupStore } from '../stores/setup'
 import { useI18n } from '../i18n'
 import { useTheme } from '../theme'
 import TimezoneSelect from '../components/TimezoneSelect.vue'
@@ -8,10 +9,26 @@ import CurrencySelect from '../components/CurrencySelect.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useToastStore } from '../stores/toast'
 import CategoryManagement from '../components/CategoryManagement.vue'
-const auth = useAuthStore(), workspace=useWorkspaceStore(), toast = useToastStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), { t, tr } = useI18n(), { preference, setTheme } = useTheme()
+import CaptchaChallenge from '../components/CaptchaChallenge.vue'
+const auth = useAuthStore(), setup = useSetupStore(), workspace=useWorkspaceStore(), toast = useToastStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), resetCaptchaToken = ref(''), { t, tr } = useI18n(), { preference, setTheme } = useTheme()
 const form = reactive({ name: String(auth.record?.name || ''), timezone: String(auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone), default_currency:String(auth.record?.defaultCurrency||'TWD') })
 async function submit() { await auth.updateProfile(form); saved.value = true; setTimeout(() => saved.value = false, 1800) }
-async function resetPassword() { if (!auth.record?.email) return; resetBusy.value = true; try { await auth.requestPasswordReset(String(auth.record.email)); resetSent.value = true } finally { resetBusy.value = false } }
+const passwordResetCaptcha = computed(()=>setup.status.captchaFlows?.passwordReset)
+const passwordResetCaptchaEnabled = computed(()=>!!passwordResetCaptcha.value?.enabled)
+const resetCaptchaRef = ref<{ solve: () => Promise<string>; reset: () => void } | null>(null)
+async function resetPassword() {
+  if (!auth.record?.email) return
+  resetBusy.value = true
+  try {
+    const token = passwordResetCaptchaEnabled.value ? (passwordResetCaptcha.value?.trigger === 'submit' ? await (resetCaptchaRef.value?.solve() || Promise.resolve('')) : resetCaptchaToken.value) : ''
+    await auth.requestPasswordReset(String(auth.record.email), token)
+    resetSent.value = true
+  } finally {
+    resetCaptchaToken.value = ''
+    resetCaptchaRef.value?.reset()
+    resetBusy.value = false
+  }
+}
 
 const providers = ref<{ name: string; displayName: string }[]>([])
 const linkedProviders = ref<Set<string>>(new Set())
@@ -22,7 +39,7 @@ async function loadProviders() {
     linkedProviders.value = new Set((await auth.listLinkedProviders()).map(p => p.provider))
   } catch { /* provider list is a nice-to-have; leave the card empty on failure */ }
 }
-onMounted(loadProviders)
+onMounted(async()=>{ try { if (!setup.ready) await setup.refresh() } finally { await loadProviders() } })
 async function toggleProvider(name: string) {
   providerBusy[name] = true
   const wasLinked = linkedProviders.value.has(name)
@@ -76,6 +93,7 @@ async function toggleProvider(name: string) {
             </section>
             <section class="card form-card profile-security">
                 <div><p class="eyebrow">{{t.loginSecurity}}</p><h2>{{ t.loginSecurity }}</h2><p class="setting-description">{{ t.passwordResetUnavailable }}</p></div>
+                <CaptchaChallenge v-if="passwordResetCaptchaEnabled" ref="resetCaptchaRef" v-model="resetCaptchaToken" flow="passwordReset" :trigger="passwordResetCaptcha?.trigger || 'load'" :mode="passwordResetCaptcha?.mode || 'interactive'" />
                 <button type="button" class="ghost" :disabled="!auth.record?.email || resetBusy" @click="resetPassword">{{ resetBusy ? t.processing : t.resetPassword }}</button>
                 <p v-if="resetSent" class="success">{{ t.resetPasswordSent }}</p>
             </section>

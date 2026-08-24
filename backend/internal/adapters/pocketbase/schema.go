@@ -60,7 +60,6 @@ func ensureInitialSystemSettings(app core.App, appURL string) (string, error) {
 			return "", err
 		}
 		record.Set("key", "primary")
-		record.Set("site_name", "SubFlow")
 		record.Set("default_timezone", "UTC")
 		record.Set("default_currency", "TWD")
 	}
@@ -165,7 +164,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSystemSettings, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "site_name", Max: 120}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"}, &core.BoolField{Name: "allow_password_registration"}, &core.BoolField{Name: "allow_oidc_registration"}, &core.SelectField{Name: "captcha_provider", Values: []string{"", "recaptcha", "turnstile", "hcaptcha", "altcha", "altcha_community", "altcha_sentinel"}, MaxSelect: 1}, &core.TextField{Name: "captcha_site_key", Max: 512}, &core.TextField{Name: "captcha_challenge_url", Max: 1024}, &core.TextField{Name: "captcha_verify_url", Max: 1024}, &core.TextField{Name: "captcha_secret", Hidden: true, Max: 4096}, &core.JSONField{Name: "captcha_flows", MaxSize: 1024 * 8}, &core.TextField{Name: "setup_secret_hash", Hidden: true, Max: 128}, &core.BoolField{Name: "setup_token_issued"})
+		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"}, &core.BoolField{Name: "allow_password_registration"}, &core.BoolField{Name: "allow_oidc_registration"}, &core.SelectField{Name: "captcha_provider", Values: []string{"", "recaptcha", "turnstile", "hcaptcha", "altcha", "altcha_community", "altcha_sentinel"}, MaxSelect: 1}, &core.TextField{Name: "captcha_site_key", Max: 512}, &core.TextField{Name: "captcha_challenge_url", Max: 1024}, &core.TextField{Name: "captcha_verify_url", Max: 1024}, &core.TextField{Name: "captcha_secret", Hidden: true, Max: 4096}, &core.JSONField{Name: "captcha_flows", MaxSize: 1024 * 8}, &core.TextField{Name: "setup_secret_hash", Hidden: true, Max: 128}, &core.BoolField{Name: "setup_token_issued"})
 		c.AddIndex("idx_system_settings_key", true, "key", "")
 	})
 	if err != nil {
@@ -619,11 +618,11 @@ func ensureRoleSeeds(app core.App) error {
 	return nil
 }
 func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
-	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.records.historical_write", "ledger.expenses.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.write", "ledger.settlements.delete", "categories.manage"}
+	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.records.historical_write", "ledger.expenses.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update", "ledger.settlements.delete", "ledger.settlements.manage", "categories.manage"}
 	for _, seed := range []struct {
 		key, name   string
 		permissions []string
-	}{{"owner", "Owner", all}, {"member", "Member", []string{"group.view", "ledger.expenses.read", "ledger.expenses.write", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.settlements.read", "categories.manage"}}} {
+	}{{"owner", "Owner", all}, {"member", "Member", []string{"group.view", "ledger.expenses.read", "ledger.expenses.write", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update", "ledger.settlements.delete", "categories.manage"}}} {
 		record, err := app.FindFirstRecordByFilter(CollectionGroupRoles, "group={:group} && key={:key}", map[string]any{"group": group.Id, "key": seed.key})
 		if err != nil {
 			record, err = newSchemaRecord(app, CollectionGroupRoles)
@@ -638,13 +637,14 @@ func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
 			if err = app.Save(record); err != nil {
 				return err
 			}
-		} else if seed.key == "owner" {
+		} else {
 			current := []string{}
 			if err = json.Unmarshal([]byte(record.GetString("permissions")), &current); err != nil {
 				return err
 			}
+			current = migrateSettlementPermissions(current)
 			merged, changed := mergePermissions(current, seed.permissions)
-			if changed {
+			if changed || !sameStringSlice(current, []string(record.GetStringSlice("permissions"))) {
 				record.Set("permissions", merged)
 				if err = app.Save(record); err != nil {
 					return err
@@ -665,6 +665,41 @@ func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
 		}
 	}
 	return nil
+}
+
+// migrateSettlementPermissions splits the former combined write permission
+// into explicit create/update operations. It is deliberately applied to every
+// group role so custom roles keep their previous write capability after the
+// permission model is upgraded.
+func migrateSettlementPermissions(values []string) []string {
+	result := make([]string, 0, len(values)+1)
+	seen := map[string]bool{}
+	for _, value := range values {
+		if value == "ledger.settlements.write" {
+			for _, replacement := range []string{"ledger.settlements.create", "ledger.settlements.update"} {
+				if !seen[replacement] {
+					result, seen[replacement] = append(result, replacement), true
+				}
+			}
+			continue
+		}
+		if !seen[value] {
+			result, seen[value] = append(result, value), true
+		}
+	}
+	return result
+}
+
+func sameStringSlice(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func ensureLegacyCategory(app core.App, ownerID, groupID, name string) (string, error) {

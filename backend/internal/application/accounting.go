@@ -428,7 +428,7 @@ func (s *Service) ListCategories(ctx context.Context, userID, scope, groupID str
 		return nil, domain.ErrInvalid
 	}
 	if scope == "group" {
-		if groupID == "" || s.role(ctx, groupID, userID, false) != nil {
+		if groupID == "" || s.groupPermission(ctx, userID, groupID, "group.view") != nil {
 			return nil, domain.ErrForbidden
 		}
 	} else {
@@ -448,7 +448,7 @@ func (s *Service) CreateCategory(ctx context.Context, userID string, value domai
 		value.OwnerID, value.GroupID = userID, ""
 	} else {
 		value.OwnerID = ""
-		if value.GroupID == "" || s.role(ctx, value.GroupID, userID, false) != nil {
+		if value.GroupID == "" || s.groupPermission(ctx, userID, value.GroupID, "categories.manage") != nil {
 			return nil, domain.ErrForbidden
 		}
 	}
@@ -481,12 +481,8 @@ func (s *Service) UpdateCategory(ctx context.Context, userID string, value domai
 			return nil, domain.ErrForbidden
 		}
 	} else {
-		group, groupErr := s.Stores.Groups.Get(ctx, current.GroupID)
-		if groupErr != nil {
-			return nil, groupErr
-		}
-		if current.CreatedBy != userID && group.OwnerID != userID {
-			return nil, domain.ErrForbidden
+		if err = s.groupPermission(ctx, userID, current.GroupID, "categories.manage"); err != nil {
+			return nil, err
 		}
 	}
 	before := *current
@@ -540,7 +536,7 @@ func (s *Service) hydrateCategory(ctx context.Context, id string) *domain.Catego
 }
 
 func (s *Service) PreviewGroupCurrency(ctx context.Context, userID, groupID string, target domain.Currency) (*domain.CurrencyChangePreview, error) {
-	if err := s.role(ctx, groupID, userID, true); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.settings.manage"); err != nil {
 		return nil, err
 	}
 	group, err := s.Stores.Groups.Get(ctx, groupID)
@@ -559,7 +555,7 @@ func (s *Service) PreviewGroupCurrency(ctx context.Context, userID, groupID stri
 	if err != nil {
 		return nil, err
 	}
-	settlements, err := s.Stores.Settlements.List(ctx, groupID, pageAll("settled_on"))
+	settlements, err := s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: pageAll("settled_on")})
 	if err != nil {
 		return nil, err
 	}
@@ -605,7 +601,7 @@ func (s *Service) ChangeGroupCurrency(ctx context.Context, userID, groupID strin
 	if err != nil {
 		return nil, err
 	}
-	settlements, err := s.Stores.Settlements.List(ctx, groupID, pageAll("settled_on"))
+	settlements, err := s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: pageAll("settled_on")})
 	if err != nil {
 		return nil, err
 	}

@@ -68,9 +68,9 @@ func TestUpdateCategoryRejectsSystemScope(t *testing.T) {
 	}
 }
 
-// A group category can be updated by whoever created it or by the group
-// owner, but not by an unrelated member.
-func TestUpdateCategoryRequiresCreatorOrGroupOwner(t *testing.T) {
+// A group category can be updated by a member with categories.manage, while
+// a member without that permission is rejected.
+func TestUpdateCategoryRequiresCategoryPermission(t *testing.T) {
 	f := newHistoricalFixture(t)
 	ctx := context.Background()
 	category, err := f.service.CreateCategory(ctx, f.member, domain.Category{Scope: "group", GroupID: f.group.ID, CustomName: "Snacks"})
@@ -79,8 +79,20 @@ func TestUpdateCategoryRequiresCreatorOrGroupOwner(t *testing.T) {
 	}
 
 	third := newRealUserForCategoryTest(t, f, "third-member@example.com")
-	if _, err = f.service.UpdateCategory(ctx, third, domain.Category{ID: category.ID, CustomName: "Renamed"}); !errors.Is(err, domain.ErrForbidden) {
-		t.Fatalf("expected ErrForbidden for an unrelated member, got %v", err)
+	if _, err = f.service.UpdateCategory(ctx, third, domain.Category{ID: category.ID, CustomName: "Renamed by category manager"}); err != nil {
+		t.Fatalf("expected a member with categories.manage to update the category: %v", err)
+	}
+
+	restricted := newRealUserForCategoryTest(t, f, "restricted-member@example.com")
+	role, err := f.service.CreateGroupRole(ctx, f.owner, domain.Role{GroupID: f.group.ID, Name: "Ledger Reader", Permissions: []string{"ledger.expenses.read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.owner, f.group.ID, restricted, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.UpdateCategory(ctx, restricted, domain.Category{ID: category.ID, CustomName: "Unauthorized"}); !errors.Is(err, domain.ErrForbidden) {
+		t.Fatalf("expected ErrForbidden for a member without categories.manage, got %v", err)
 	}
 
 	if updated, err := f.service.UpdateCategory(ctx, f.member, domain.Category{ID: category.ID, CustomName: "Renamed by Creator"}); err != nil {

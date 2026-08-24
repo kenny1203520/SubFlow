@@ -47,7 +47,7 @@ const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.au
 const section = computed(() => String(route.params.section || 'overview'))
 const roleCategories = computed(() => [...new Set(roles.value.map(role => role.category).filter((value): value is string => !!value))].sort())
 const rolesByCategory = computed(() => roles.value.reduce<Record<string, AccessRole[]>>((groups, role) => { const category = role.category || tr('ungroupedRoles'); (groups[category] ||= []).push(role); return groups }, {}))
-const can = (permission: string) => auth.permissions.includes('*') || auth.permissions.includes(permission)
+const can = (permission: string) => auth.permissions.includes(permission)
 const pbAdminUrl = computed(() => {
   const base = import.meta.env.VITE_BACKEND_URL || window.location.origin
   return new URL('/_/', base).toString()
@@ -155,7 +155,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
 
     <template v-if="section === 'overview'">
       <div class="admin-grid">
-        <section class="card"><h2>{{ tr('settings') }}</h2><p>{{ tr('siteName') }} · {{ settings.siteName }}</p><RouterLink v-if="can('system.settings.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'settings' } }">{{ tr('edit') }}</RouterLink></section>
+        <section class="card"><h2>{{ tr('settings') }}</h2><p>{{ tr('applicationName') }} · {{ settings.siteName }}</p><RouterLink v-if="can('system.settings.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'settings' } }">{{ tr('edit') }}</RouterLink></section>
         <section class="card"><h2>{{ tr('userManagement') }}</h2><p>{{ tr('records', { count: users.length }) }}</p><RouterLink v-if="can('system.users.assign')" class="ghost" :to="{ name: 'admin-section', params: { section: 'users' } }">{{ tr('members') }}</RouterLink></section>
         <section class="card"><h2>{{ tr('roleManagement') }}</h2><p>{{ tr('records', { count: roles.length }) }}</p><RouterLink v-if="can('system.roles.manage')" class="ghost" :to="{ name: 'admin-section', params: { section: 'roles' } }">{{ tr('settings') }}</RouterLink></section>
       </div>
@@ -163,7 +163,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
 
     <form v-else-if="section === 'settings' && can('system.settings.manage')" class="card form-card admin-form" @submit.prevent="saveSettings">
       <h2>{{ tr('settings') }}</h2>
-      <BaseInput v-model="settings.siteName" :label="tr('siteName')" required :maxlength="120" />
+      <BaseInput v-model="settings.siteName" :label="tr('applicationName')" :help="tr('applicationNameHelp')" required :maxlength="255" />
       <label>{{ tr('timezone') }}<TimezoneSelect v-model="settings.defaultTimezone" /></label>
       <label>{{ tr('currency') }}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies" /></label>
       <fieldset class="settings-section"><legend>{{ tr('loginSecurity') }}</legend>
@@ -176,6 +176,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
         <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaChallengeUrl" label="Sentinel challenge URL" help="Public ALTCHA Sentinel challenge endpoint." />
         <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaVerifyUrl" label="Sentinel verification URL" help="Server-side /v1/verify/signature endpoint." />
         <PasswordField v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'" v-model="settings.captchaSecret" :label="tr('captchaSecret')" autocomplete="off" :help="settings.captchaConfigured ? tr('captchaConfigured') : tr('captchaNotConfigured')" />
+        <p v-if="settings.captchaProvider==='turnstile'" class="field-help">The Site key and Secret key must belong to the same Turnstile widget. Its allowed domain must match PocketBase Dashboard → Settings → Application URL. Secrets are stored encrypted only when SUBFLOW_SETTINGS_ENCRYPTION_KEY is configured.</p>
         <p v-else-if="settings.captchaProvider==='altcha_community'" class="field-help">ALTCHA Community signing secret is generated and encrypted by SubFlow.</p>
       </fieldset>
       <fieldset v-if="settings.captchaProvider" class="settings-section"><legend>{{ tr('captchaFlows') }}</legend>

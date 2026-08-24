@@ -52,7 +52,7 @@ router.beforeEach(async to => {
   if (!to.meta.public && !pb.authStore.isValid) return { name: 'auth', query: { redirect: to.fullPath } }
   if (to.name === 'auth' && pb.authStore.isValid) return { name: 'dashboard' }
   if (String(to.path).startsWith('/admin')) {
-    try { const response=await fetch('/api/subflow/v1/system/access',{headers:{Authorization:`Bearer ${pb.authStore.token}`}}); const body=await response.json(); const permissions:string[]=body?.data?.permissions||[]; if (!permissions.some(value=>value==='*'||value.startsWith('system.'))) return {name:'dashboard',query:{denied:'admin'}} } catch { return {name:'dashboard'} }
+    try { const response=await fetch('/api/subflow/v1/system/access',{headers:{Authorization:`Bearer ${pb.authStore.token}`}}); const body=await response.json(); const permissions:string[]=body?.data?.permissions||[]; if (!permissions.some(value=>value.startsWith('system.'))) return {name:'dashboard',query:{denied:'admin'}} } catch { return {name:'dashboard'} }
   }
   return true
 })

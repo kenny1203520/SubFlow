@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"subflow/internal/captcha"
 	"subflow/internal/domain"
 )
 
@@ -155,6 +156,7 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	if value.CaptchaProvider != "" && value.CaptchaProvider != "recaptcha" && value.CaptchaProvider != "turnstile" && value.CaptchaProvider != "hcaptcha" && value.CaptchaProvider != "altcha_community" && value.CaptchaProvider != "altcha_sentinel" {
 		return domain.SystemSettings{}, domain.ErrInvalid
 	}
+	providerChanged := value.CaptchaProvider != current.CaptchaProvider
 	if value.CaptchaProvider == "altcha_community" && value.CaptchaSecret == "" && current.CaptchaSecretCiphertext == "" {
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
@@ -163,6 +165,9 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 		value.CaptchaSecret = fmt.Sprintf("%x", key)
 	}
 	if value.CaptchaSecret != "" {
+		if captchaProviderRequiresEncryptedSecret(value.CaptchaProvider) && !s.Cipher.Available() {
+			return domain.SystemSettings{}, domain.ErrInvalid
+		}
 		if s.Cipher.Available() {
 			ciphertext, cipherErr := s.Cipher.Encrypt(value.CaptchaSecret)
 			if cipherErr != nil {
@@ -172,8 +177,16 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 		} else {
 			value.CaptchaSecretCiphertext = "plain:" + value.CaptchaSecret
 		}
+	} else if providerChanged || value.CaptchaProvider == "" {
+		value.CaptchaSecretCiphertext = ""
 	} else {
 		value.CaptchaSecretCiphertext = current.CaptchaSecretCiphertext
+	}
+	if captchaFlowsEnabled(value.CaptchaFlows) && captchaProviderRequiresSecret(value.CaptchaProvider) && value.CaptchaSecretCiphertext == "" {
+		return domain.SystemSettings{}, domain.ErrInvalid
+	}
+	if captchaFlowsEnabled(value.CaptchaFlows) && captchaProviderRequiresSiteKey(value.CaptchaProvider) && strings.TrimSpace(value.CaptchaSiteKey) == "" {
+		return domain.SystemSettings{}, domain.ErrInvalid
 	}
 	value.CaptchaConfigured = value.CaptchaSecretCiphertext != ""
 	value.CaptchaSecret = ""
@@ -206,8 +219,38 @@ func (s *Service) GetSystemSettings(ctx context.Context, userID string) (domain.
 func (s *Service) sanitiseSettings(value domain.SystemSettings) domain.SystemSettings {
 	value.CaptchaSecret = ""
 	value.CaptchaSecretCiphertext = ""
-	value.CaptchaConfigured = value.CaptchaConfigured || value.CaptchaProvider != ""
 	return value
+}
+
+func captchaFlowsEnabled(flows domain.CaptchaFlowSettings) bool {
+	return flows.Register.Enabled || flows.PasswordReset.Enabled || flows.OTPRequest.Enabled || flows.Login.Enabled
+}
+
+func captchaProviderRequiresSecret(provider string) bool {
+	return provider != "" && provider != "altcha_community"
+}
+
+func captchaProviderRequiresEncryptedSecret(provider string) bool {
+	return provider == "recaptcha" || provider == "turnstile" || provider == "hcaptcha" || provider == "altcha_sentinel"
+}
+
+func captchaProviderRequiresSiteKey(provider string) bool {
+	return provider == "recaptcha" || provider == "turnstile" || provider == "hcaptcha"
+}
+
+func captchaTurnstileAction(flow string) string {
+	switch flow {
+	case domain.CaptchaFlowRegister:
+		return "register"
+	case domain.CaptchaFlowPasswordReset:
+		return "password_reset"
+	case domain.CaptchaFlowOTPRequest:
+		return "otp_request"
+	case domain.CaptchaFlowLogin:
+		return "login"
+	default:
+		return ""
+	}
 }
 
 func (s *Service) captchaSecretValue(ciphertext string) (string, error) {
@@ -244,7 +287,23 @@ func (s *Service) VerifyCaptcha(ctx context.Context, flow, token, remoteIP strin
 	if err != nil {
 		return err
 	}
-	return s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP)
+	err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), captcha.ApplicationIdentity{
+		Name:    s.CaptchaAppName,
+		URL:     s.CaptchaAppURL,
+		SiteKey: settings.CaptchaSiteKey,
+	})
+	if s.Stores.Audits != nil {
+		outcome := "success"
+		reason := "verified"
+		if err != nil {
+			outcome, reason = "failure", captcha.FailureReason(err)
+		}
+		auditErr := s.audit(ctx, "", "", "captcha.verified", "captcha", flow, outcome, encodeAuditSummary(map[string]any{"flow": flow, "provider": settings.CaptchaProvider, "reason": reason}, nil))
+		if auditErr != nil {
+			return auditErr
+		}
+	}
+	return err
 }
 
 func (s *Service) CommunityCaptchaChallenge(ctx context.Context, flow string) (any, error) {

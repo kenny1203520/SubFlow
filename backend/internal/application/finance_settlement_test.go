@@ -2,6 +2,7 @@ package application_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/domain"
+	"subflow/internal/ports"
 )
 
 // settlementFixture builds a group with an owner and two additional members
@@ -78,7 +80,7 @@ func newSettlementFixture(t *testing.T) settlementFixture {
 	return settlementFixture{service: service, stores: stores, groupID: group.ID, ownerID: ownerID, memberID: memberID, otherID: otherID}
 }
 
-func TestCreateSettlementSelfToOtherIsAlwaysAllowed(t *testing.T) {
+func TestCreateSettlementSelfToOtherAllowedWithCreatePermission(t *testing.T) {
 	f := newSettlementFixture(t)
 	ctx := context.Background()
 	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
@@ -103,10 +105,26 @@ func TestCreateSettlementOnBehalfOfOthersRequiresPermission(t *testing.T) {
 	}
 }
 
-func TestCreateSettlementOnBehalfOfOthersAllowedWithGrantedPermission(t *testing.T) {
+func TestSettlementCreateRequiresExplicitCreatePermission(t *testing.T) {
 	f := newSettlementFixture(t)
 	ctx := context.Background()
-	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "Treasurer", Permissions: []string{"group.view", "ledger.expenses.read", "ledger.settlements.read", "ledger.settlements.write"}})
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "Read-only settlements", Permissions: []string{"group.view", "ledger.settlements.read"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.ownerID, f.groupID, f.memberID, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now()})
+	if err != domain.ErrForbidden {
+		t.Fatalf("expected a member without ledger.settlements.create to be forbidden, got %v", err)
+	}
+}
+
+func TestCreateSettlementOnBehalfOfOthersAllowedWithManagePermission(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "Treasurer", Permissions: []string{"group.view", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.manage"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +153,7 @@ func TestCreateSettlementOwnerCanAlwaysRecordOnBehalfOfOthers(t *testing.T) {
 	}
 }
 
-func TestDeleteSettlementCreatorCanAlwaysDelete(t *testing.T) {
+func TestDeleteSettlementCreatorAllowedWithDeletePermission(t *testing.T) {
 	f := newSettlementFixture(t)
 	ctx := context.Background()
 	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
@@ -159,9 +177,220 @@ func TestDeleteSettlementRequiresPermissionForNonCreator(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err = f.service.DeleteSettlement(ctx, f.otherID, settlement.ID); err != domain.ErrForbidden {
-		t.Fatalf("expected a non-creator without ledger.settlements.write to be forbidden, got %v", err)
+		t.Fatalf("expected a non-creator without ledger.settlements.manage to be forbidden, got %v", err)
 	}
 	if err = f.service.DeleteSettlement(ctx, f.ownerID, settlement.ID); err != nil {
 		t.Fatalf("expected the owner to delete any settlement, got %v", err)
+	}
+}
+
+func TestSettlementDeleteRequiresExplicitDeletePermission(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "No delete", Permissions: []string{"group.view", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.ownerID, f.groupID, f.memberID, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.DeleteSettlement(ctx, f.memberID, settlement.ID); err != domain.ErrForbidden {
+		t.Fatalf("expected a creator without ledger.settlements.delete to be forbidden, got %v", err)
+	}
+}
+
+func TestUpdateSettlementCreatorAllowedWithUpdatePermission(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(), Notes: "original",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{
+		FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 750, SettledOn: settlement.SettledOn, Notes: "revised",
+	})
+	if err != nil {
+		t.Fatalf("expected the creator to edit their own settlement, got %v", err)
+	}
+	if updated.AmountMinor != 750 || updated.Notes != "revised" {
+		t.Fatalf("expected the amount/notes to be updated, got %#v", updated)
+	}
+}
+
+func TestUpdateSettlementRequiresPermissionForNonCreator(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	patch := domain.Settlement{FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 900, SettledOn: settlement.SettledOn}
+	if _, err = f.service.UpdateSettlement(ctx, f.otherID, settlement.ID, patch); err != domain.ErrForbidden {
+		t.Fatalf("expected a non-creator without ledger.settlements.manage to be forbidden, got %v", err)
+	}
+	if _, err = f.service.UpdateSettlement(ctx, f.ownerID, settlement.ID, patch); err != nil {
+		t.Fatalf("expected the owner to edit any settlement, got %v", err)
+	}
+}
+
+func TestSettlementUpdateRequiresExplicitUpdatePermission(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := f.service.CreateGroupRole(ctx, f.ownerID, domain.Role{GroupID: f.groupID, Name: "No update", Permissions: []string{"group.view", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.delete"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.AssignGroupRole(ctx, f.ownerID, f.groupID, f.memberID, role.ID); err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 900, SettledOn: settlement.SettledOn})
+	if err != domain.ErrForbidden {
+		t.Fatalf("expected a creator without ledger.settlements.update to be forbidden, got %v", err)
+	}
+}
+
+func TestUpdateSettlementRejectsInvalidAmount(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 0, SettledOn: settlement.SettledOn}); err != domain.ErrInvalid {
+		t.Fatalf("expected a non-positive amount to be rejected, got %v", err)
+	}
+}
+
+func TestUpdateSettlementRejectsSameFromAndToUser(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{FromUserID: f.memberID, ToUserID: f.memberID, AmountMinor: 500, SettledOn: settlement.SettledOn}); err != domain.ErrInvalid {
+		t.Fatalf("expected fromUser==toUser to be rejected, got %v", err)
+	}
+}
+
+func TestUpdateSettlementRejectsNonMemberParty(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{FromUserID: f.memberID, ToUserID: "not-a-member", AmountMinor: 500, SettledOn: settlement.SettledOn}); err != domain.ErrInvalid {
+		t.Fatalf("expected a non-member party to be rejected, got %v", err)
+	}
+}
+
+func TestUpdateSettlementPinsGroupCurrency(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{
+		FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 900, SettledOn: settlement.SettledOn,
+		Currency: "USD", BaseCurrency: "USD", ExchangeRate: "0.5",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Currency != domain.CurrencyTWD || updated.BaseCurrency != domain.CurrencyTWD || updated.ExchangeRate != "1" {
+		t.Fatalf("expected currency/rate to stay pinned to the group's own currency at rate 1 regardless of the patch, got %#v", updated)
+	}
+}
+
+func TestUpdateSettlementWritesSuccessAuditWithoutNotes(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(), Notes: "private original note",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{
+		FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 750, SettledOn: settlement.SettledOn, Notes: "private revised note",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := f.stores.Audits.List(ctx, f.groupID, ports.AuditQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 10}, Action: "settlement.updated", Outcome: "success"})
+	if err != nil || len(entries.Items) != 1 {
+		t.Fatalf("expected one successful settlement update audit, got %#v (%v)", entries, err)
+	}
+	if strings.Contains(entries.Items[0].Summary, "private") || !strings.Contains(entries.Items[0].Summary, "notes_changed") {
+		t.Fatalf("expected redacted notes change summary, got %q", entries.Items[0].Summary)
+	}
+}
+
+func TestUpdateSettlementWritesFailureAudit(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	settlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{
+		GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: time.Now(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.UpdateSettlement(ctx, f.memberID, settlement.ID, domain.Settlement{FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 0, SettledOn: settlement.SettledOn}); err != domain.ErrInvalid {
+		t.Fatalf("expected invalid update, got %v", err)
+	}
+	entries, err := f.stores.Audits.List(ctx, f.groupID, ports.AuditQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 10}, Action: "settlement.updated", Outcome: "failure"})
+	if err != nil || len(entries.Items) != 1 || !strings.Contains(entries.Items[0].Summary, "invalid_amount") {
+		t.Fatalf("expected invalid update audit, got %#v (%v)", entries, err)
+	}
+}
+
+func TestListSettlementsFiltersByMemberAndDateRange(t *testing.T) {
+	f := newSettlementFixture(t)
+	ctx := context.Background()
+	early := time.Now().AddDate(0, 0, -10)
+	late := time.Now()
+	memberSettlement, err := f.service.CreateSettlement(ctx, f.memberID, domain.Settlement{GroupID: f.groupID, FromUserID: f.memberID, ToUserID: f.otherID, AmountMinor: 500, SettledOn: early})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.CreateSettlement(ctx, f.ownerID, domain.Settlement{GroupID: f.groupID, FromUserID: f.ownerID, ToUserID: f.otherID, AmountMinor: 700, SettledOn: late}); err != nil {
+		t.Fatal(err)
+	}
+
+	byMember, err := f.service.ListSettlements(ctx, f.ownerID, f.groupID, ports.SettlementQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 10}, MemberID: f.memberID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byMember.Items) != 1 || byMember.Items[0].ID != memberSettlement.ID {
+		t.Fatalf("expected the member filter to return only %s's settlement, got %#v", f.memberID, byMember.Items)
+	}
+
+	byDate, err := f.service.ListSettlements(ctx, f.ownerID, f.groupID, ports.SettlementQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 10}, From: early.AddDate(0, 0, -1), To: early.AddDate(0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(byDate.Items) != 1 || byDate.Items[0].ID != memberSettlement.ID {
+		t.Fatalf("expected the date range filter to return only the early settlement, got %#v", byDate.Items)
 	}
 }

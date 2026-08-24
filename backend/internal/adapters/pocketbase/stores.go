@@ -204,8 +204,8 @@ func (r *SettlementRepo) Create(ctx context.Context, v *domain.Settlement) error
 func (r *SettlementRepo) Get(ctx context.Context, id string) (*domain.Settlement, error) {
 	return r.GetSettlement(ctx, id)
 }
-func (r *SettlementRepo) List(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Settlement], error) {
-	return r.ListSettlements(ctx, groupID, req)
+func (r *SettlementRepo) List(ctx context.Context, groupID string, query ports.SettlementQuery) (ports.Page[domain.Settlement], error) {
+	return r.ListSettlements(ctx, groupID, query)
 }
 func (r *SettlementRepo) Update(ctx context.Context, v *domain.Settlement) error {
 	return r.UpdateSettlement(ctx, v)

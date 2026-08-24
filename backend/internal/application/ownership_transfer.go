@@ -140,7 +140,7 @@ func (s *Service) CancelOwnershipTransfer(ctx context.Context, userID, id string
 // for the owner-transfer UI to show its status. Any current member may view
 // it; only the initiator/target act on it, which the other methods enforce.
 func (s *Service) PendingOwnershipTransfer(ctx context.Context, userID, groupID string) (*domain.OwnershipTransfer, error) {
-	if err := s.role(ctx, groupID, userID, false); err != nil {
+	if err := s.groupPermission(ctx, userID, groupID, "group.view"); err != nil {
 		return nil, err
 	}
 	return s.Stores.OwnershipTransfers.FindPending(ctx, groupID)
