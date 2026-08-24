@@ -68,7 +68,6 @@ watch(groupId, () => void activate());
             <RouterLink v-if="canManageSettings" :to="`/groups/${groupId}/settings`">{{
                 tr("settings")
                 }}</RouterLink>
-				<RouterLink v-if="canManageShares" :to="`/groups/${groupId}/share`">{{ tr('share') }}</RouterLink>
         </nav>
         <div v-if="accessLoading" class="empty-inline">{{ tr('processing') }}</div>
         <div v-else-if="!canAccessRoute" class="resource-error">

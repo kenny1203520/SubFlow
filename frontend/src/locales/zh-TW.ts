@@ -33,6 +33,10 @@ export const zhTW = {
   permission_ledger_settlements_create:'新增還款',permission_ledger_settlements_update:'編輯自己建立的還款',permission_ledger_settlements_manage:'管理所有還款',permissionDesc_ledger_settlements_create:'可新增付款人為自己的還款。',permissionDesc_ledger_settlements_update:'可編輯自己建立的還款。',permissionDesc_ledger_settlements_manage:'可代他人新增還款並管理所有還款。',
   permission_ledger_share_manage: '管理分享頁面',
   permissionDesc_ledger_share_manage: '可建立與管理唯讀分享連結。',
+  shareLedgerGroup: '群組帳本', shareLedgerPersonal: '個人帳本', sharePages: '分享頁面', sharePagesDesc: '建立私密、密碼保護或限指定帳號檢視的唯讀帳本連結。',
+  createShare: '建立分享', newShare: '建立分享頁', editShare: '編輯分享頁', shareName: '名稱', shareNamePlaceholder: '例如：旅行支出', shareAccess: '檢視權限', shareAccessLink: '私密連結', shareAccessPassword: '連結＋密碼', shareAccessAccounts: '指定 SubFlow 帳號', sharePassword: '密碼', sharePasswordNew: '新密碼（留白則保持不變）', shareViewerEmails: '可檢視帳號 Email', shareViewerPlaceholder: 'reader@example.com',
+  shareEnabled: '啟用', shareExpires: '到期日（選填）', shareRange: '資料期間', shareRangeAll: '全部歷史', shareRangeRolling: '最近期間', shareRangeFixed: '固定日期', shareRecentDays: '最近天數', shareFrom: '起始日期', shareTo: '結束日期', shareContent: '分享內容', shareSummary: '摘要', shareExpenses: '支出', shareSubscriptions: '訂閱', shareSettlements: '結算', shareIdentities: '成員與付款人姓名', shareNotes: '備註',
+  shareLinkCopied: '分享連結已複製：{url}', shareEdit: '編輯', shareRegenerate: '重建連結', shareDelete: '刪除', shareDeleteConfirm: '確定要刪除「{name}」嗎？', noShares: '尚未建立分享頁面。', shareLoading: '載入中…', shareStatusEnabled: '已啟用', shareStatusDisabled: '已停用',
 } as const
 
 export type MessageKey = keyof typeof zhTW
