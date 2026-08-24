@@ -19,8 +19,8 @@ const bindTarget = ref<{userId:string;label:string}>()
 const pendingRemoval = ref<{userId:string;label:string}>()
 const invitationsPageSize = ref(defaultPageSize.value)
 const { tr, formatDate } = useI18n()
-const canManageMembers=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.members.manage'))
-const canManageRoles=computed(()=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes('group.roles.manage'))
+const canManageMembers=computed(()=>workspace.groupPermissions.includes('group.members.manage'))
+const canManageRoles=computed(()=>workspace.groupPermissions.includes('group.roles.manage'))
 // The owner role can only change hands via the ownership-transfer flow
 // below, not this generic per-member role assignment (the backend rejects
 // it), so it must not be offered here as a selectable option.

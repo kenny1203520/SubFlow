@@ -38,10 +38,11 @@ const settlementPerPage=ref(defaultPageSize.value)
 const viewerTimezone=computed(()=>auth.record?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone||'UTC')
 const settlementForm=reactive({fromUserId:'',toUserId:'',amount:'',settledOn:todayInput(viewerTimezone.value),notes:''})
 const summary=computed(()=>scope.value==='group'?workspace.summary:workspace.personalSummary)
-const hasSettlementPermission=(permission:string)=>workspace.groupPermissions.includes('*')||workspace.groupPermissions.includes(permission)
+const hasSettlementPermission=(permission:string)=>workspace.groupPermissions.includes(permission)
 const canCreateSettlement=computed(()=>hasSettlementPermission('ledger.settlements.create'))
 const canManageOtherSettlements=computed(()=>hasSettlementPermission('ledger.settlements.manage'))
 const canReadSettlements=computed(()=>hasSettlementPermission('ledger.settlements.read'))
+const canCreateExpense=computed(()=>scope.value!=='group'||workspace.groupPermissions.includes('ledger.expenses.write'))
 // A bound temp member has already been superseded by the real account that
 // joined, so a new settlement should be recorded against that real member
 // instead — history (balances/settlement list) still resolves their name.
@@ -103,7 +104,7 @@ watch(()=>[route.params.groupId,route.query.scope,route.query.groupId,route.quer
 </script>
 
 <template><section class="page dashboard-page">
-  <div class="page-heading"><div><p class="eyebrow">{{tr('overview')}}</p><h1>{{scope==='personal'?tr('dashboardPersonal'):scope==='all'?tr('dashboardAll'):tr('dashboardGroup')}}</h1><p>{{tr('dashboardDesc')}}</p></div><RouterLink class="primary" :to="actionExpense">{{tr('addExpense')}}</RouterLink></div>
+  <div class="page-heading"><div><p class="eyebrow">{{tr('overview')}}</p><h1>{{scope==='personal'?tr('dashboardPersonal'):scope==='all'?tr('dashboardAll'):tr('dashboardGroup')}}</h1><p>{{tr('dashboardDesc')}}</p></div><RouterLink v-if="canCreateExpense" class="primary" :to="actionExpense">{{tr('addExpense')}}</RouterLink></div>
   <div class="dashboard-toolbar">
     <div v-if="!nestedGroup" class="segmented scope-switch"><button :class="{active:scope==='personal'}" @click="updateQuery({scope:'personal'})">{{tr('personal')}}</button><button :class="{active:scope==='group'}" :disabled="!workspace.groups.length" @click="updateQuery({scope:'group',groupId:selectedGroup||workspace.groups[0]?.id})">{{tr('singleGroup')}}</button><button :class="{active:scope==='all'}" @click="updateQuery({scope:'all'})">{{tr('allGroups')}}</button></div>
     <BaseCombobox v-if="!nestedGroup&&scope==='group'" :model-value="selectedGroup" :options="workspace.groups.map(group=>({value:group.id,label:group.name,searchText:`${group.name} ${group.currency}`}))" :label="tr('chooseGroup')" :placeholder="tr('chooseGroup')" :allow-create="false" @update:model-value="updateQuery({groupId:$event})" />

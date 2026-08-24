@@ -820,10 +820,14 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	value.CreatedBy = userID
 	value.Currency, value.BaseCurrency = group.Currency, group.Currency
 	value.BaseAmountMinor, value.RateScaled, value.ExchangeRate, value.ExchangeRateDate = value.AmountMinor, domain.ExchangeRateScale, "1", value.SettledOn
-	if err = s.Stores.Settlements.Create(ctx, &value); err != nil {
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if createErr := s.Stores.Settlements.Create(tx, &value); createErr != nil {
+			return createErr
+		}
+		return s.audit(tx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency), "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
+	}); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency), "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
 	return &value, nil
 }
 func (s *Service) UpdateSettlement(ctx context.Context, userID, id string, patch domain.Settlement) (*domain.Settlement, error) {
@@ -919,9 +923,10 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 			return permErr
 		}
 	}
-	err = s.Stores.Settlements.Delete(ctx, id)
-	if err == nil {
-		s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency)}, nil))
-	}
-	return err
+	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if deleteErr := s.Stores.Settlements.Delete(tx, id); deleteErr != nil {
+			return deleteErr
+		}
+		return s.audit(tx, userID, value.GroupID, "settlement.deleted", "settlement", id, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency)}, nil))
+	})
 }

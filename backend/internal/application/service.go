@@ -43,6 +43,23 @@ func (s *Service) role(ctx context.Context, groupID, userID string, ownerOnly bo
 	return nil
 }
 
+// groupMemberships deliberately walks every page. Membership checks are an
+// authorization boundary and member-derived accounting validation must not
+// silently stop at PocketBase's 100-record page limit.
+func (s *Service) groupMemberships(ctx context.Context, groupID string) ([]domain.Membership, error) {
+	result := make([]domain.Membership, 0)
+	for page := 1; ; page++ {
+		values, err := s.Stores.Memberships.List(ctx, groupID, ports.PageRequest{Page: page, PerPage: 100})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, values.Items...)
+		if values.TotalPages == 0 || page >= values.TotalPages {
+			return result, nil
+		}
+	}
+}
+
 func (s *Service) expenseIsHistorical(ctx context.Context, userID string, value *domain.Expense) (bool, error) {
 	if value.GroupID == "" {
 		return false, nil
@@ -805,12 +822,12 @@ func validExpense(v *domain.Expense) bool {
 	return strings.TrimSpace(v.Title) != "" && v.AmountMinor >= 0 && domain.IsCurrency(v.Currency) && !v.IncurredOn.IsZero() && v.PaidBy != ""
 }
 func (s *Service) memberIDs(ctx context.Context, groupID string) ([]string, error) {
-	page, err := s.Stores.Memberships.List(ctx, groupID, ports.PageRequest{Page: 1, PerPage: 100})
+	members, err := s.groupMemberships(ctx, groupID)
 	if err != nil {
 		return nil, err
 	}
-	ids := make([]string, len(page.Items))
-	for i, item := range page.Items {
+	ids := make([]string, len(members))
+	for i, item := range members {
 		ids[i] = item.UserID
 	}
 	return ids, nil

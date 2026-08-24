@@ -12,13 +12,24 @@ const groupId = computed(() => String(route.params.groupId || ""));
 const group = computed(() =>
     workspace.groups.find((value) => value.id === groupId.value),
 );
-const canReadAudit = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.audit.read'));
-const canManageRoles = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.roles.manage'));
-const canManageSettings = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.settings.manage'));
-const canReadExpenses = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.expenses.read'));
-const canReadSubscriptions = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.subscriptions.read'));
-const canViewGroup = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('group.view'));
-const canViewDashboard = computed(() => canViewGroup.value && canReadExpenses.value && canReadSubscriptions.value && (workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.settlements.read')));
+const canReadAudit = computed(() => workspace.groupPermissions.includes('group.audit.read'));
+const canManageRoles = computed(() => workspace.groupPermissions.includes('group.roles.manage'));
+const canManageSettings = computed(() => workspace.groupPermissions.includes('group.settings.manage'));
+const canReadExpenses = computed(() => workspace.groupPermissions.includes('ledger.expenses.read'));
+const canReadSubscriptions = computed(() => workspace.groupPermissions.includes('ledger.subscriptions.read'));
+const canViewGroup = computed(() => workspace.groupPermissions.includes('group.view'));
+const canViewDashboard = computed(() => canViewGroup.value && canReadExpenses.value && canReadSubscriptions.value);
+const routePermissions = computed<Record<string, string[]>>(() => ({
+    'group-overview': ['group.view', 'ledger.expenses.read', 'ledger.subscriptions.read'],
+    'group-expenses': ['ledger.expenses.read'],
+    'group-subscriptions': ['ledger.subscriptions.read'],
+    'group-members': ['group.view'],
+    'group-roles': ['group.roles.manage'],
+    'group-audit': ['group.audit.read'],
+    'group-settings': ['group.settings.manage'],
+}));
+const canAccessRoute = computed(() => (routePermissions.value[String(route.name)] || []).every(permission => workspace.groupPermissions.includes(permission)));
+const accessLoading = computed(() => workspace.groupBusy.access > 0);
 async function activate() {
     if (groupId.value) await workspace.selectGroup(groupId.value);
 }
@@ -55,6 +66,11 @@ watch(groupId, () => void activate());
                 tr("settings")
                 }}</RouterLink>
         </nav>
-        <RouterView />
+        <div v-if="accessLoading" class="empty-inline">{{ tr('processing') }}</div>
+        <div v-else-if="!canAccessRoute" class="resource-error">
+            <p>{{ workspace.groupErrors.access || tr('forbiddenError') }}</p>
+            <RouterLink class="ghost" to="/groups">{{ tr('allGroupsLink') }}</RouterLink>
+        </div>
+        <RouterView v-else />
     </section>
 </template>

@@ -47,7 +47,7 @@ const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.au
 const section = computed(() => String(route.params.section || 'overview'))
 const roleCategories = computed(() => [...new Set(roles.value.map(role => role.category).filter((value): value is string => !!value))].sort())
 const rolesByCategory = computed(() => roles.value.reduce<Record<string, AccessRole[]>>((groups, role) => { const category = role.category || tr('ungroupedRoles'); (groups[category] ||= []).push(role); return groups }, {}))
-const can = (permission: string) => auth.permissions.includes('*') || auth.permissions.includes(permission)
+const can = (permission: string) => auth.permissions.includes(permission)
 const pbAdminUrl = computed(() => {
   const base = import.meta.env.VITE_BACKEND_URL || window.location.origin
   return new URL('/_/', base).toString()

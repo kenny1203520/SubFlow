@@ -33,8 +33,8 @@ function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat(
 // still resolves their name), just not as a choice for new participation.
 const selectableMembers = computed(() => workspace.members.filter(member => !(member.user?.placeholder && member.user?.linkedUserId)))
 const personal = computed(() => route.name === 'personal-subscriptions')
-const canWrite = computed(() => personal.value || workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.subscriptions.write'))
-const canDelete = computed(() => personal.value || workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.subscriptions.delete'))
+const canWrite = computed(() => personal.value || workspace.groupPermissions.includes('ledger.subscriptions.write'))
+const canDelete = computed(() => personal.value || workspace.groupPermissions.includes('ledger.subscriptions.delete'))
 const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
 const hasUnsynced = computed(() => list.value.some(item => item.pendingSync || item.syncError))
 const listMeta = computed(() => personal.value ? workspace.personalSubscriptionsMeta : workspace.subscriptionsMeta)
@@ -93,7 +93,7 @@ function reset() { editingId.value=''; formError.value=''; rateValid.value=true;
 async function loadFormCategories() { try { await workspace.loadCategories(personal.value && !editing.value?.groupId ? 'personal' : 'group', editing.value?.groupId || workspace.currentGroupId) } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
 async function create() { if(!canWrite.value)return; reset(); if(!personal.value) selectableMembers.value.forEach(member=>{form.participants[member.userId]=true}); drawer.value = true; await loadFormCategories() }
 function startInput(item: Subscription) { const value=item.startsOn||item.nextBilling; return item.billingCycle==='every_n_hours' ? toDateTimeInput(value,viewerTimezone()) : toDateInput(value,viewerTimezone()) }
-const canEditHistory = computed(() => workspace.groupPermissions.includes('*') || workspace.groupPermissions.includes('ledger.records.historical_write'))
+const canEditHistory = computed(() => workspace.groupPermissions.includes('ledger.records.historical_write'))
 async function loadRevisionDates(item: Subscription, more=false) { revisionDatesLoading.value=true; try { const result=await workspace.billingDates(item.id,more?revisionCursor.value:'',canEditHistory.value); revisionDates.value=more?[...revisionDates.value,...result.dates]:result.dates; revisionCursor.value=result.nextCursor||''; if(!form.effectiveBillingAt) form.effectiveBillingAt=revisionDates.value[0]||item.nextBilling } catch { formError.value=workspace.localizedError||tr('requestFailed') } finally { revisionDatesLoading.value=false } }
 const revisionDateOptions = computed(() => revisionDates.value.map(value => ({ value, label: pastBillingDate(value) ? `${viewerDate(value)} · ${tr('subscriptionPastPeriod')}` : viewerDate(value), searchText: `${viewerDate(value)} ${value}` })))
 function pastBillingDate(value: string) { return !!editing.value?.nextBilling && new Date(value) < new Date(editing.value.nextBilling) }

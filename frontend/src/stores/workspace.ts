@@ -282,7 +282,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const perPage = defaultPageSize.value
     let accessLoaded = false
     await load('access', () => api.get<GroupAccess>(`/groups/${id}/access`).then(value => value.data), value => { groupPermissions.value = value.permissions; accessLoaded = true })
-    const hasGroupPermission = (permission: string) => groupPermissions.value.includes('*') || groupPermissions.value.includes(permission)
+    const hasGroupPermission = (permission: string) => groupPermissions.value.includes(permission)
     // If access itself is unavailable (notably offline), preserve the prior
     // load path so its snapshot fallback can still render cached data. Once
     // access is known, avoid requesting resources the role cannot read.
