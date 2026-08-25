@@ -283,7 +283,7 @@ func (a *API) publicShare(e *core.RequestEvent) error {
 	if err = a.Service.AuditShareAccess(e.Request.Context(), share, "", "success", "link"); err != nil {
 		return fail(e, err)
 	}
-	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
+	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e), sharePageSize(e))
 	if err != nil {
 		return a.shareProjectionFailure(e, share, "")
 	}
@@ -312,7 +312,7 @@ func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
 	}
 	a.clearSharePasswordFailures(e.RealIP(), share.ID)
 	setShareCookie(e, share)
-	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
+	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e), sharePageSize(e))
 	if err != nil {
 		return a.shareProjectionFailure(e, share, "")
 	}
@@ -331,11 +331,18 @@ func (a *API) accountShare(e *core.RequestEvent) error {
 	if err = a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "success", "account"); err != nil {
 		return fail(e, err)
 	}
-	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
+	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e), sharePageSize(e))
 	if err != nil {
 		return a.shareProjectionFailure(e, share, authID(e))
 	}
 	return ok(e, http.StatusOK, page, nil)
+}
+func sharePageSize(e *core.RequestEvent) int {
+	value, err := strconv.Atoi(e.Request.URL.Query().Get("perPage"))
+	if err != nil || (value != 5 && value != 10 && value != 15 && value != 25) {
+		return 25
+	}
+	return value
 }
 func sharePageNumber(e *core.RequestEvent) int {
 	value, err := strconv.Atoi(e.Request.URL.Query().Get("page"))

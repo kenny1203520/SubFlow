@@ -294,15 +294,18 @@ func (s *Service) AuthorizeShareViewer(ctx context.Context, value *domain.Share,
 	return domain.ErrNotFound
 }
 
-func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber int) (*domain.SharePage, error) {
+func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber, perPage int) (*domain.SharePage, error) {
 	if pageNumber < 1 {
 		pageNumber = 1
+	}
+	if perPage != 5 && perPage != 10 && perPage != 15 && perPage != 25 {
+		perPage = 25
 	}
 	start, end, label, err := s.shareRange(ctx, value)
 	if err != nil {
 		return nil, err
 	}
-	page := &domain.SharePage{Name: value.Name, RangeLabel: label, ShowSummary: value.ShowSummary}
+	page := &domain.SharePage{Name: value.Name, RangeLabel: label, ShowSummary: value.ShowSummary, Page: pageNumber, PerPage: perPage}
 	if value.GroupID != "" {
 		group, groupErr := s.Stores.Groups.Get(ctx, value.GroupID)
 		if groupErr != nil {
@@ -353,26 +356,27 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 	}
 	hasMore := false
 	if value.ShowExpenses {
-		items, more := pageExpenses(filteredExpenses, pageNumber)
+		items, more := pageExpenses(filteredExpenses, pageNumber, perPage)
 		hasMore = hasMore || more
 		for _, item := range items {
 			page.Expenses = append(page.Expenses, s.shareExpenseRow(ctx, value, item))
 		}
 	}
 	if value.ShowSubscriptions {
-		items, more := pageSubscriptions(filteredSubs, pageNumber)
+		items, more := pageSubscriptions(filteredSubs, pageNumber, perPage)
 		hasMore = hasMore || more
 		for _, item := range items {
 			page.Subscriptions = append(page.Subscriptions, s.shareSubscriptionRow(ctx, value, item))
 		}
 	}
 	if value.ShowSettlements && value.GroupID != "" {
-		items, more := pageSettlements(settlements, pageNumber)
+		items, more := pageSettlements(settlements, pageNumber, perPage)
 		hasMore = hasMore || more
 		for _, item := range items {
 			page.Settlements = append(page.Settlements, s.shareSettlementRow(ctx, value, item))
 		}
 	}
+	balanceRows := []map[string]any{}
 	if value.GroupID != "" && value.ShowSettlements {
 		balanceExpenses := append([]domain.Expense(nil), filteredExpenses...)
 		for i := range balanceExpenses {
@@ -386,8 +390,25 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 			if balance.AmountMinor == 0 {
 				continue
 			}
-			page.Balances = append(page.Balances, s.shareBalanceRow(ctx, value, balance, index))
+			balanceRows = append(balanceRows, s.shareBalanceRow(ctx, value, balance, index))
 		}
+		start, end, more := pageBounds(len(balanceRows), pageNumber, perPage)
+		page.Balances = balanceRows[start:end]
+		hasMore = hasMore || more
+	}
+	page.TotalItems = 0
+	page.TotalPages = 0
+	if value.ShowExpenses {
+		page.TotalItems += len(filteredExpenses)
+		page.TotalPages = max(page.TotalPages, totalPages(len(filteredExpenses), perPage))
+	}
+	if value.ShowSubscriptions {
+		page.TotalItems += len(filteredSubs)
+		page.TotalPages = max(page.TotalPages, totalPages(len(filteredSubs), perPage))
+	}
+	if value.ShowSettlements && value.GroupID != "" {
+		page.TotalItems += len(settlements) + len(balanceRows)
+		page.TotalPages = max(page.TotalPages, totalPages(len(settlements), perPage), totalPages(len(balanceRows), perPage))
 	}
 	if hasMore {
 		page.NextPage = pageNumber + 1
@@ -430,27 +451,33 @@ func filterSettlements(values []domain.Settlement, start, end time.Time) []domai
 	}
 	return result
 }
-func pageBounds(length, page int) (int, int, bool) {
-	start := (page - 1) * 25
+func totalPages(length, perPage int) int {
+	if length == 0 {
+		return 0
+	}
+	return (length + perPage - 1) / perPage
+}
+func pageBounds(length, page, perPage int) (int, int, bool) {
+	start := (page - 1) * perPage
 	if start >= length {
 		return length, length, false
 	}
-	end := start + 25
+	end := start + perPage
 	if end > length {
 		end = length
 	}
 	return start, end, end < length
 }
-func pageExpenses(v []domain.Expense, page int) ([]domain.Expense, bool) {
-	start, end, more := pageBounds(len(v), page)
+func pageExpenses(v []domain.Expense, page, perPage int) ([]domain.Expense, bool) {
+	start, end, more := pageBounds(len(v), page, perPage)
 	return v[start:end], more
 }
-func pageSubscriptions(v []domain.Subscription, page int) ([]domain.Subscription, bool) {
-	start, end, more := pageBounds(len(v), page)
+func pageSubscriptions(v []domain.Subscription, page, perPage int) ([]domain.Subscription, bool) {
+	start, end, more := pageBounds(len(v), page, perPage)
 	return v[start:end], more
 }
-func pageSettlements(v []domain.Settlement, page int) ([]domain.Settlement, bool) {
-	start, end, more := pageBounds(len(v), page)
+func pageSettlements(v []domain.Settlement, page, perPage int) ([]domain.Settlement, bool) {
+	start, end, more := pageBounds(len(v), page, perPage)
 	return v[start:end], more
 }
 

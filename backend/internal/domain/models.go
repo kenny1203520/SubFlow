@@ -307,6 +307,10 @@ type SharePage struct {
 	Subscriptions []map[string]any `json:"subscriptions,omitempty"`
 	Settlements   []map[string]any `json:"settlements,omitempty"`
 	Balances      []map[string]any `json:"balances,omitempty"`
+	Page          int              `json:"page"`
+	PerPage       int              `json:"perPage"`
+	TotalItems    int              `json:"totalItems"`
+	TotalPages    int              `json:"totalPages"`
 	NextPage      int              `json:"nextPage,omitempty"`
 }
 
