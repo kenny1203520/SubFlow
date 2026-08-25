@@ -38,3 +38,14 @@ func TestValidShareValidatesConfiguredRanges(t *testing.T) {
 		t.Fatal("inverted fixed range accepted")
 	}
 }
+func TestShareDateConfiguredTreatsLegacyZeroAsUnset(t *testing.T) {
+	if shareDateConfigured(time.Time{}) {
+		t.Fatal("zero time should be treated as no expiry")
+	}
+	if shareDateConfigured(time.Date(0, time.January, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatal("legacy year zero should be treated as no expiry")
+	}
+	if !shareDateConfigured(time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)) {
+		t.Fatal("configured date should be recognized")
+	}
+}

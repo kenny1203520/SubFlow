@@ -18,6 +18,7 @@ const shares = ref<Share[]>([])
 const busy = ref(false)
 const error = ref('')
 const copied = ref('')
+const knownUrls = ref<Record<string, string>>({})
 const editing = ref<Share | null | undefined>(undefined)
 const form = reactive({ name: '', accessMode: 'link' as ShareAccessMode, password: '', viewerEmails: '', enabled: true, expiresAt: '', rangeMode: 'all' as ShareRangeMode, rollingDays: 30, startsOn: '', endsOn: '', showSummary: true, showExpenses: true, showSubscriptions: true, showSettlements: true, showIdentities: false, showNotes: false })
 const contacts = ref<Contact[]>([])
@@ -77,6 +78,26 @@ async function createContact() {
 }
 
 const base = computed(() => isGroup.value ? `/groups/${groupId.value}/shares` : '/personal/shares')
+const knownUrlsKey = computed(() => 'subflow.share.urls.' + (isGroup.value ? 'group.' + groupId.value : 'personal'))
+function loadKnownUrls() {
+  try {
+    const value = sessionStorage.getItem(knownUrlsKey.value)
+    knownUrls.value = value ? JSON.parse(value) : {}
+  } catch { knownUrls.value = {} }
+}
+function rememberUrl(id: string, url: string) {
+  knownUrls.value = { ...knownUrls.value, [id]: url }
+  try { sessionStorage.setItem(knownUrlsKey.value, JSON.stringify(knownUrls.value)) } catch {}
+}
+function knownShareUrl(value: Share) { return knownUrls.value[value.id] || '' }
+function openShare(value: Share) {
+  const url = knownShareUrl(value)
+  if (url) window.open(new URL(url, window.location.origin).toString(), '_blank', 'noopener')
+}
+function showLinkUnavailable() {
+  copied.value = tr('shareLinkUnavailable')
+  setTimeout(() => { copied.value = '' }, 5000)
+}
 const accessOptions = computed(() => [
   { value: 'link' as const, label: tr('shareAccessLink'), description: tr('shareAccessDescLink'), marker: '↗' },
   { value: 'password' as const, label: tr('shareAccessPassword'), description: tr('shareAccessDescPassword'), marker: '⌁' },
@@ -111,7 +132,7 @@ async function save() {
     if (editing.value?.id) await client.patch<Share>(base.value + '/' + editing.value.id, payload())
     else {
       const result = await client.post<Share & { url?: string }>(base.value, payload())
-      if (result.data.url) await copy(result.data.url)
+      if (result.data.url) { rememberUrl(result.data.id, result.data.url); await copy(result.data.url) }
     }
     editing.value = undefined
     await load()
@@ -121,14 +142,14 @@ async function save() {
   } finally { busy.value = false }
 }
 async function remove(value: Share) { if (!confirm(tr('shareDeleteConfirm', { name: value.name }))) return; await client.delete(`${base.value}/${value.id}`); await load() }
-async function rotate(value: Share) { const result = await client.post<Share & { url: string }>(`${base.value}/${value.id}/rotate`); await copy(result.data.url); await load() }
+async function rotate(value: Share) { const result = await client.post<Share & { url: string }>(`${base.value}/${value.id}/rotate`); rememberUrl(result.data.id, result.data.url); await copy(result.data.url); await load() }
 async function copy(value: string) { const url = new URL(value, window.location.origin).toString(); await navigator.clipboard?.writeText(url); copied.value = tr('shareLinkCopied', { url }); setTimeout(() => { copied.value = '' }, 3000) }
 function status(value: Share) { return tr(value.enabled ? 'shareStatusEnabled' : 'shareStatusDisabled') }
 function range(value: Share) { if (value.rangeMode === 'all') return tr('shareRangeAll'); if (value.rangeMode === 'rolling') return tr('shareRangeRollingValue', { days: value.rollingDays || 30 }); return value.startsOn && value.endsOn ? tr('shareRangeFixedValue', { from: formatDate(value.startsOn), to: formatDate(value.endsOn) }) : tr('shareRangeFixed') }
 function expiry(value: Share) { return meaningfulDate(value.expiresAt) ? tr('shareExpiryValue', { date: formatDate(value.expiresAt!) }) : tr('shareNoExpiry') }
 function accessLabel(value: ShareAccessMode) { return tr(`shareAccess${value[0].toUpperCase()}${value.slice(1)}`) }
-onMounted(async () => { await load(); await loadContacts() })
-watch(groupId, load)
+onMounted(async () => { loadKnownUrls(); await load(); await loadContacts() })
+watch(groupId, () => { loadKnownUrls(); void load() })
 </script>
 
 <template>
@@ -147,7 +168,7 @@ watch(groupId, load)
       </form>
     </section>
 
-    <section class="shares-card card" aria-labelledby="shares-list-title"><div class="shares-heading"><div><p class="eyebrow">{{ tr('shareActiveLinks') }}</p><h2 id="shares-list-title">{{ tr('shareListTitle') }}</h2><p>{{ tr('shareListDesc') }}</p></div><span v-if="shares.length" class="shares-count">{{ shares.length }}</span></div><p v-if="busy && !shares.length" class="loading-state">{{ tr('shareLoading') }}</p><div v-else-if="shares.length" class="share-list"><article v-for="share in shares" :key="share.id" class="share-item"><div class="share-status" :class="{ inactive: !share.enabled }" aria-hidden="true"></div><div class="share-item-main"><div class="share-item-title"><h3>{{ share.name }}</h3><span class="status-pill" :class="{ inactive: !share.enabled }">{{ status(share) }}</span></div><div class="share-facts"><span>{{ accessLabel(share.accessMode) }}</span><span>{{ range(share) }}</span><span>{{ expiry(share) }}</span><span v-if="share.accessMode === 'accounts'">{{ tr('shareViewerCount', { count: share.viewers?.length || 0 }) }}</span></div></div><div class="share-actions"><button class="ghost" @click="reset(share)">{{ tr('shareEdit') }}</button><button class="ghost" @click="rotate(share)">{{ tr('shareRegenerate') }}</button><button class="ghost danger-text" @click="remove(share)">{{ tr('shareDelete') }}</button></div></article></div><div v-else class="share-empty"><div class="empty-mark" aria-hidden="true">↗</div><h3>{{ tr('noShares') }}</h3><p>{{ tr('noSharesDesc') }}</p><button class="primary" @click="reset()">{{ tr('createFirstShare') }}</button></div></section>
+    <section class="shares-card card" aria-labelledby="shares-list-title"><div class="shares-heading"><div><p class="eyebrow">{{ tr('shareActiveLinks') }}</p><h2 id="shares-list-title">{{ tr('shareListTitle') }}</h2><p>{{ tr('shareListDesc') }}</p></div><span v-if="shares.length" class="shares-count">{{ shares.length }}</span></div><p v-if="busy && !shares.length" class="loading-state">{{ tr('shareLoading') }}</p><div v-else-if="shares.length" class="share-list"><article v-for="share in shares" :key="share.id" class="share-item"><div class="share-status" :class="{ inactive: !share.enabled }" aria-hidden="true"></div><div class="share-item-main"><div class="share-item-title"><h3>{{ share.name }}</h3><span class="status-pill" :class="{ inactive: !share.enabled }">{{ status(share) }}</span></div><div class="share-facts"><span>{{ accessLabel(share.accessMode) }}</span><span>{{ range(share) }}</span><span>{{ expiry(share) }}</span><span v-if="share.accessMode === 'accounts'">{{ tr('shareViewerCount', { count: share.viewers?.length || 0 }) }}</span></div></div><div class="share-actions"><button v-if="knownShareUrl(share)" class="ghost" @click="copy(knownShareUrl(share))">{{ tr('shareCopyLink') }}</button><button v-if="knownShareUrl(share)" class="ghost" @click="openShare(share)">{{ tr('shareOpenLink') }}</button><button v-else class="ghost" @click="showLinkUnavailable">{{ tr('shareLinkUnavailableShort') }}</button><button class="ghost" @click="reset(share)">{{ tr('shareEdit') }}</button><button class="ghost" @click="rotate(share)">{{ tr('shareRegenerate') }}</button><button class="ghost danger-text" @click="remove(share)">{{ tr('shareDelete') }}</button></div></article></div><div v-else class="share-empty"><div class="empty-mark" aria-hidden="true">↗</div><h3>{{ tr('noShares') }}</h3><p>{{ tr('noSharesDesc') }}</p><button class="primary" @click="reset()">{{ tr('createFirstShare') }}</button></div></section>
   </section>
 </template>
 

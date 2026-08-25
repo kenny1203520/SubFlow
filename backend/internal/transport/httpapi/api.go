@@ -264,6 +264,10 @@ func (a *API) clearSharePasswordFailures(ip, shareID string) {
 	defer a.shareAttemptMu.Unlock()
 	delete(a.shareAttempts, ip+":"+shareID)
 }
+func (a *API) shareProjectionFailure(e *core.RequestEvent, share *domain.Share, actor string) error {
+	_ = a.Service.AuditShareAccess(e.Request.Context(), share, actor, "failure", "projection_failed")
+	return fail(e, domain.ErrNotFound)
+}
 func (a *API) publicShare(e *core.RequestEvent) error {
 	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
 	if err != nil {
@@ -281,7 +285,7 @@ func (a *API) publicShare(e *core.RequestEvent) error {
 	}
 	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
 	if err != nil {
-		return fail(e, err)
+		return a.shareProjectionFailure(e, share, "")
 	}
 	return ok(e, http.StatusOK, page, nil)
 }
@@ -310,7 +314,7 @@ func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
 	setShareCookie(e, share)
 	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
 	if err != nil {
-		return fail(e, err)
+		return a.shareProjectionFailure(e, share, "")
 	}
 	return ok(e, http.StatusOK, page, nil)
 }
@@ -329,7 +333,7 @@ func (a *API) accountShare(e *core.RequestEvent) error {
 	}
 	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e))
 	if err != nil {
-		return fail(e, err)
+		return a.shareProjectionFailure(e, share, authID(e))
 	}
 	return ok(e, http.StatusOK, page, nil)
 }

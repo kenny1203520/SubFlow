@@ -248,9 +248,12 @@ func (s *Service) DeleteShare(ctx context.Context, userID, id string) error {
 	})
 }
 
+func shareDateConfigured(value time.Time) bool {
+	return !value.IsZero() && value.Year() > 1
+}
 func (s *Service) FindAvailableShare(ctx context.Context, token string) (*domain.Share, error) {
 	value, err := s.Stores.Shares.GetByTokenHash(ctx, shareTokenHash(token))
-	if err != nil || !value.Enabled || (!value.ExpiresAt.IsZero() && !value.ExpiresAt.After(s.Now())) {
+	if err != nil || !value.Enabled || (shareDateConfigured(value.ExpiresAt) && !value.ExpiresAt.After(s.Now())) {
 		return nil, domain.ErrNotFound
 	}
 	return value, nil
@@ -308,28 +311,32 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 	} else if user, userErr := s.Stores.Users.Get(ctx, value.OwnerID); userErr == nil {
 		page.Currency = user.DefaultCurrency
 	}
-	expenses, err := s.allShareExpenses(ctx, value)
-	if err != nil {
-		return nil, err
-	}
 	filteredExpenses := make([]domain.Expense, 0)
-	for _, item := range expenses {
-		if inRange(item.IncurredOn, start, end) {
-			filteredExpenses = append(filteredExpenses, item)
+	if value.ShowExpenses || value.ShowSummary {
+		expenses, err := s.allShareExpenses(ctx, value)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range expenses {
+			if inRange(item.IncurredOn, start, end) {
+				filteredExpenses = append(filteredExpenses, item)
+			}
 		}
 	}
-	subs, err := s.allShareSubscriptions(ctx, value)
-	if err != nil {
-		return nil, err
-	}
 	filteredSubs := make([]domain.Subscription, 0)
-	for _, item := range subs {
-		if item.StartsOn.Before(end) && (item.EndsOn.IsZero() || !item.EndsOn.Before(start)) {
-			filteredSubs = append(filteredSubs, item)
+	if value.ShowSubscriptions || value.ShowSummary {
+		subs, err := s.allShareSubscriptions(ctx, value)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range subs {
+			if item.StartsOn.Before(end) && (item.EndsOn.IsZero() || !item.EndsOn.Before(start)) {
+				filteredSubs = append(filteredSubs, item)
+			}
 		}
 	}
 	settlements := []domain.Settlement{}
-	if value.GroupID != "" {
+	if value.GroupID != "" && (value.ShowSettlements || value.ShowSummary) {
 		settlements, err = s.allShareSettlements(ctx, value.GroupID)
 		if err != nil {
 			return nil, err
@@ -385,7 +392,7 @@ func (s *Service) shareRange(ctx context.Context, value *domain.Share) (time.Tim
 	}
 	now := s.Now().In(location)
 	if value.RangeMode == "all" {
-		return time.Time{}, time.Date(9999, 12, 31, 23, 59, 59, 0, location), "all", nil
+		return time.Time{}, now.AddDate(100, 0, 0), "all", nil
 	}
 	if value.RangeMode == "rolling" {
 		day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, location)
