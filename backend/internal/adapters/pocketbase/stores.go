@@ -22,6 +22,8 @@ type CategoryRepo struct{ *Repository }
 type ExchangeRateRepo struct{ *Repository }
 type RoleRepo struct{ *Repository }
 type AuditRepo struct{ *Repository }
+type ShareRepo struct{ *Repository }
+type ContactRepo struct{ *Repository }
 type UserRepo struct{ *Repository }
 type SystemSettingsRepo struct{ *Repository }
 
@@ -39,6 +41,8 @@ type Stores struct {
 	ExchangeRates      *ExchangeRateRepo
 	Roles              *RoleRepo
 	Audits             *AuditRepo
+	Shares             *ShareRepo
+	Contacts           *ContactRepo
 	Users              *UserRepo
 	Settings           *SystemSettingsRepo
 	Transactions       *Repository
@@ -46,7 +50,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &MemberTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &MemberTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &ShareRepo{base}, &ContactRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -257,6 +261,38 @@ func (r *AuditRepo) Create(ctx context.Context, v *domain.AuditLog) error {
 func (r *AuditRepo) List(ctx context.Context, groupID string, query ports.AuditQuery) (ports.Page[domain.AuditLog], error) {
 	return r.ListAudits(ctx, groupID, query)
 }
+func (r *ShareRepo) Create(ctx context.Context, v *domain.Share) error { return r.CreateShare(ctx, v) }
+func (r *ShareRepo) Get(ctx context.Context, id string) (*domain.Share, error) {
+	return r.GetShare(ctx, id)
+}
+func (r *ShareRepo) GetByTokenHash(ctx context.Context, hash string) (*domain.Share, error) {
+	return r.GetShareByTokenHash(ctx, hash)
+}
+func (r *ShareRepo) List(ctx context.Context, groupID, ownerID string, req ports.PageRequest) (ports.Page[domain.Share], error) {
+	return r.ListShares(ctx, groupID, ownerID, req)
+}
+func (r *ShareRepo) Update(ctx context.Context, v *domain.Share) error { return r.UpdateShare(ctx, v) }
+func (r *ShareRepo) Delete(ctx context.Context, id string) error       { return r.DeleteShare(ctx, id) }
+func (r *ShareRepo) ReplaceViewers(ctx context.Context, shareID string, values []domain.ShareViewer) error {
+	return r.ReplaceShareViewers(ctx, shareID, values)
+}
+func (r *ShareRepo) ListViewers(ctx context.Context, shareID string) ([]domain.ShareViewer, error) {
+	return r.ListShareViewers(ctx, shareID)
+}
+
+func (r *ContactRepo) Create(ctx context.Context, v *domain.Contact) error {
+	return r.CreateContact(ctx, v)
+}
+func (r *ContactRepo) Get(ctx context.Context, id string) (*domain.Contact, error) {
+	return r.GetContact(ctx, id)
+}
+func (r *ContactRepo) List(ctx context.Context, ownerID string, req ports.PageRequest) (ports.Page[domain.Contact], error) {
+	return r.ListContacts(ctx, ownerID, req)
+}
+func (r *ContactRepo) Update(ctx context.Context, v *domain.Contact) error {
+	return r.UpdateContact(ctx, v)
+}
+func (r *ContactRepo) Delete(ctx context.Context, id string) error { return r.DeleteContact(ctx, id) }
 
 func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {
 	return r.GetUser(ctx, id)

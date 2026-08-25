@@ -119,6 +119,18 @@ type User struct {
 	LinkedUserID string `json:"linkedUserId,omitempty"`
 }
 
+// Contact is a private address-book entry owned by one user. Contacts may
+// refer to people who have not registered yet; share access validation still
+// requires an existing SubFlow account.
+type Contact struct {
+	ID        string    `json:"id"`
+	OwnerID   string    `json:"ownerId"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // LinkedProvider is an OAuth2 provider linked to a user's account (see
 // Service.ListLinkedProviders / UnlinkProvider), letting them sign in with
 // that provider directly instead of email/password.
@@ -244,6 +256,64 @@ type AuditLog struct {
 	UserAgent  string    `json:"userAgent,omitempty"`
 	Hash       string    `json:"hash"`
 	CreatedAt  time.Time `json:"createdAt"`
+}
+
+// Share exposes a deliberately limited, read-only projection of either a
+// personal ledger or a group ledger. TokenHash and PasswordHash are never
+// returned by management APIs.
+type Share struct {
+	ID                string        `json:"id"`
+	GroupID           string        `json:"groupId,omitempty"`
+	OwnerID           string        `json:"ownerId,omitempty"`
+	Name              string        `json:"name"`
+	TokenHash         string        `json:"-"`
+	AccessMode        string        `json:"accessMode"`
+	PasswordHash      string        `json:"-"`
+	Enabled           bool          `json:"enabled"`
+	ExpiresAt         time.Time     `json:"expiresAt,omitempty"`
+	RangeMode         string        `json:"rangeMode"`
+	RollingDays       int           `json:"rollingDays,omitempty"`
+	StartsOn          time.Time     `json:"startsOn,omitempty"`
+	EndsOn            time.Time     `json:"endsOn,omitempty"`
+	ShowSummary       bool          `json:"showSummary"`
+	ShowExpenses      bool          `json:"showExpenses"`
+	ShowSubscriptions bool          `json:"showSubscriptions"`
+	ShowSettlements   bool          `json:"showSettlements"`
+	ShowIdentities    bool          `json:"showIdentities"`
+	ShowNotes         bool          `json:"showNotes"`
+	AccessVersion     int           `json:"-"`
+	Viewers           []ShareViewer `json:"viewers,omitempty"`
+	CreatedAt         time.Time     `json:"createdAt"`
+	UpdatedAt         time.Time     `json:"updatedAt"`
+}
+
+type ShareViewer struct {
+	ID      string `json:"id,omitempty"`
+	ShareID string `json:"shareId,omitempty"`
+	UserID  string `json:"userId"`
+	Email   string `json:"email,omitempty"`
+	Name    string `json:"name,omitempty"`
+}
+
+// SharePage is the public, redacted response shape. It intentionally uses
+// maps for ledger rows so no internal IDs or fields leak by accident.
+type SharePage struct {
+	Name          string           `json:"name"`
+	Currency      Currency         `json:"currency"`
+	RangeLabel    string           `json:"rangeLabel"`
+	ShowSummary   bool             `json:"showSummary"`
+	Summary       map[string]any   `json:"summary,omitempty"`
+	Records       []map[string]any `json:"records,omitempty"`
+	RecordCounts  map[string]int   `json:"recordCounts,omitempty"`
+	Expenses      []map[string]any `json:"expenses,omitempty"`
+	Subscriptions []map[string]any `json:"subscriptions,omitempty"`
+	Settlements   []map[string]any `json:"settlements,omitempty"`
+	Balances      []map[string]any `json:"balances,omitempty"`
+	Page          int              `json:"page"`
+	PerPage       int              `json:"perPage"`
+	TotalItems    int              `json:"totalItems"`
+	TotalPages    int              `json:"totalPages"`
+	NextPage      int              `json:"nextPage,omitempty"`
 }
 
 type Group struct {

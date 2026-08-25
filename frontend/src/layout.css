@@ -13,11 +13,12 @@
 .group-workspace .settings-form { width:min(100%, 1080px); max-width:none; }
 .group-workspace .settings-form + section { width:100%; max-width:none; }
 
-.profile-layout { display:grid; grid-template-columns:minmax(0, 1.45fr) minmax(320px, .9fr); grid-template-areas:"account appearance" "account security" "categories categories"; align-items:start; gap:var(--card-gap); }
+.profile-layout { display:grid; grid-template-columns:minmax(0, 1.45fr) minmax(320px, .9fr); grid-template-areas:"account appearance" "account security" "categories categories" "contacts contacts"; align-items:start; gap:var(--card-gap); }
 .profile-account { grid-area:account; }
 .profile-appearance { grid-area:appearance; display:grid; grid-template-columns:minmax(0, 1fr); gap:18px; }
 .profile-security { grid-area:security; }
 .profile-categories { grid-area:categories; }
+.profile-contacts { grid-area:contacts; }
 .profile-appearance .theme-options { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; }
 
 .audit-filter-bar { display:grid; grid-template-columns:minmax(220px, 1.5fr) repeat(3, minmax(160px, 1fr)) minmax(145px, .75fr) minmax(145px, .75fr) minmax(200px, auto); align-items:end; gap:14px; padding:20px; border:1px solid var(--line); border-radius:14px; background:var(--surface); }
@@ -35,7 +36,7 @@
 }
 @media (max-width: 840px) {
   .page { padding-inline:20px; }
-  .profile-layout { grid-template-columns:1fr; grid-template-areas:"account" "appearance" "security" "categories"; }
+  .profile-layout { grid-template-columns:1fr; grid-template-areas:"account" "appearance" "security" "categories" "contacts"; }
   .audit-filter-bar { grid-template-columns:repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 580px) {
