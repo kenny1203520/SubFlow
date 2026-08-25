@@ -540,7 +540,7 @@ func shareRecordSearchText(row map[string]any) string {
 		case time.Time:
 			builder.WriteString(typed.Format(time.RFC3339))
 		default:
-			builder.WriteString(fmt.Sprint(value))
+			_, _ = fmt.Fprint(&builder, value)
 		}
 		builder.WriteByte(' ')
 	}
@@ -588,30 +588,6 @@ func totalPages(length, perPage int) int {
 	}
 	return (length + perPage - 1) / perPage
 }
-func pageBounds(length, page, perPage int) (int, int, bool) {
-	start := (page - 1) * perPage
-	if start >= length {
-		return length, length, false
-	}
-	end := start + perPage
-	if end > length {
-		end = length
-	}
-	return start, end, end < length
-}
-func pageExpenses(v []domain.Expense, page, perPage int) ([]domain.Expense, bool) {
-	start, end, more := pageBounds(len(v), page, perPage)
-	return v[start:end], more
-}
-func pageSubscriptions(v []domain.Subscription, page, perPage int) ([]domain.Subscription, bool) {
-	start, end, more := pageBounds(len(v), page, perPage)
-	return v[start:end], more
-}
-func pageSettlements(v []domain.Settlement, page, perPage int) ([]domain.Settlement, bool) {
-	start, end, more := pageBounds(len(v), page, perPage)
-	return v[start:end], more
-}
-
 func subscriptionInShareRange(item domain.Subscription, start, end time.Time) bool {
 	return item.StartsOn.Before(end) && (item.EndsOn == nil || !item.EndsOn.Before(start))
 }
