@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -372,6 +373,22 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 			page.Settlements = append(page.Settlements, s.shareSettlementRow(ctx, value, item))
 		}
 	}
+	if value.GroupID != "" && value.ShowSettlements {
+		balanceExpenses := append([]domain.Expense(nil), filteredExpenses...)
+		for i := range balanceExpenses {
+			splits, splitErr := s.Stores.Expenses.ListSplits(ctx, balanceExpenses[i].ID)
+			if splitErr != nil {
+				return nil, splitErr
+			}
+			balanceExpenses[i].Splits = splits
+		}
+		for index, balance := range domain.MemberBalances(balanceExpenses, settlements) {
+			if balance.AmountMinor == 0 {
+				continue
+			}
+			page.Balances = append(page.Balances, s.shareBalanceRow(ctx, value, balance, index))
+		}
+	}
 	if hasMore {
 		page.NextPage = pageNumber + 1
 	}
@@ -520,6 +537,16 @@ func (s *Service) shareSubscriptionRow(ctx context.Context, share *domain.Share,
 	}
 	return row
 }
+func (s *Service) shareBalanceRow(ctx context.Context, share *domain.Share, v domain.MemberBalance, index int) map[string]any {
+	label := fmt.Sprintf("Member %d", index+1)
+	if share.ShowIdentities {
+		if name := s.displayName(ctx, v.UserID); name != "" {
+			label = name
+		}
+	}
+	return map[string]any{"member": label, "amountMinor": v.AmountMinor}
+}
+
 func (s *Service) shareSettlementRow(ctx context.Context, share *domain.Share, v domain.Settlement) map[string]any {
 	row := map[string]any{"amountMinor": v.AmountMinor, "currency": v.Currency, "settledOn": v.SettledOn}
 	if share.ShowIdentities {
