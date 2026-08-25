@@ -39,6 +39,7 @@ var groupRolePermissions = map[string]struct{}{
 	"ledger.settlements.update":       {},
 	"ledger.settlements.delete":       {},
 	"ledger.settlements.manage":       {},
+	"ledger.share.manage":             {},
 	"categories.manage":               {},
 }
 

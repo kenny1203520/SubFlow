@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onErrorCaptured, onMounted, ref, watch } from 'vue'
+import { computed, onErrorCaptured, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
 import { useWorkspaceStore } from './stores/workspace'
@@ -20,6 +20,7 @@ const setup = useSetupStore()
 const router = useRouter()
 const route = useRoute()
 const { tr } = useI18n()
+const publicRoute = computed(() => route.meta.public === true)
 const routeError = ref<unknown>()
 const routeRetry = ref(0)
 let hydratedUser = ''
@@ -75,7 +76,7 @@ watch(() => auth.authenticated, authenticated => {
   timezoneChecked.value = false
   timezoneMismatch.value = undefined
   workspace.clear()
-  if (auth.ready && setup.initialized && route.name !== 'auth') void router.replace({ name: 'auth' })
+  if (auth.ready && setup.initialized && route.name !== 'auth' && !publicRoute.value) void router.replace({ name: 'auth' })
 })
 watch(() => setup.initialized, initialized => { if (!initialized && route.name !== 'setup') void router.replace({ name: 'setup' }) })
 watch(() => route.fullPath, () => { routeError.value = undefined })
@@ -87,7 +88,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
   <TimezoneMismatchDialog :open="!!timezoneMismatch" :saved-timezone="timezoneMismatch?.saved||''" :current-timezone="timezoneMismatch?.current||''" @update="applyDetectedTimezone" @later="timezoneMismatch=undefined" />
   <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div>
   <RouterView v-else-if="!setup.initialized" />
-  <RouterView v-else-if="!auth.authenticated" />
+  <RouterView v-else-if="!auth.authenticated || publicRoute" />
   <div v-else class="shell">
     <aside class="sidebar">
       <RouterLink class="brand" :to="{ name: 'dashboard' }"><span>SF</span><strong>SubFlow</strong></RouterLink>
@@ -95,6 +96,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
       <nav>
         <RouterLink :to="{ name: 'dashboard' }"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" /></svg><span>{{ tr('overview') }}</span></RouterLink>
         <RouterLink :to="{ name: 'personal-expenses' }"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg><span>{{ tr('personalLedger') }}</span></RouterLink>
+				<RouterLink :to="{ name: 'personal-share' }"><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6l6 6-6 6" /></svg><span>{{ tr('share') }}</span></RouterLink>
         <RouterLink :to="{ name: 'groups' }"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3-8-3Zm0 5 8 3 8-3M4 16.5l8 3 8-3" /></svg><span>{{ tr('groups') }}</span></RouterLink>
         <RouterLink :to="{ name: 'about' }"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg><span>{{ tr('about') }}</span></RouterLink>
         <RouterLink class="mobile-only-link" :to="{ name: 'profile' }"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg><span>{{ tr('profile') }}</span></RouterLink>

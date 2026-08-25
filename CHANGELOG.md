@@ -6,6 +6,22 @@
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-08-26
+
+### Fixed
+- Resolved Go staticcheck and unused-function findings in the public share implementation.
+- Promoted the validated share-page release through the release branch and master workflow.
+
+
+## [0.1.18] - 2026-08-26
+
+### Fixed
+- Improved public share page responsive layout for wide screens, tablets, and mobile devices.
+- Added clickable SubFlow branding that returns to the dashboard.
+- Replaced broken share-page glyphs with accessible inline SVG icons and completed share translations.
+- Added icon rendering coverage for public share states and record types.
+
+
 ## [0.1.17] - 2026-08-24
 
 ### Added
