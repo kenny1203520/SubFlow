@@ -13,7 +13,7 @@ Workflow 需要兩個 repository secret（`Settings` → `Secrets and variables`
 
 `Dockerfile` 的三個 base image 都來自 Docker Hardened Images（`dhi.io/node`、`dhi.io/golang`、`dhi.io/alpine-base`），只有具備 DHI 授權的帳號才拉得到。**沒有設定這兩個 secret，build job 會在拉取 base image 時失敗。**
 
-推送到 GHCR 用的是內建的 `GITHUB_TOKEN`，不需要額外設定。首次發布後，套件預設為 private，若要公開需到 repository 的 `Packages` 頁面手動改成 public。
+推送到 GHCR 用的是內建的 GITHUB_TOKEN，不需要額外設定。首次發布後，套件預設為 private，若要公開需到 repository 的 Packages 頁面手動改成 public。部署時也必須設定 SUBFLOW_SETTINGS_ENCRYPTION_KEY，並在資料生命週期內保持不變；它同時保護 CAPTCHA secret 與管理頁取回分享 URL 所需的加密資料。更換密鑰不會立即使公開 URL 失效，但管理頁將無法解密既有 URL。
 
 ## 版本編號
 

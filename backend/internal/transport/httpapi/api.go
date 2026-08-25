@@ -81,6 +81,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/personal/shares", a.createPersonalShare).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/personal/shares/{id}", a.updateShare).Bind(bind)
 	e.Router.POST("/api/subflow/v1/personal/shares/{id}/rotate", a.rotateShare).Bind(bind)
+	e.Router.POST("/api/subflow/v1/personal/shares/{id}/remember", a.rememberShare).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/personal/shares/{id}", a.deleteShare).Bind(bind)
 	e.Router.GET("/api/subflow/v1/personal/contacts", a.listPersonalContacts).Bind(bind)
 	e.Router.POST("/api/subflow/v1/personal/contacts", a.createPersonalContact).Bind(bind)
@@ -99,6 +100,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/shares", a.createGroupShare).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/shares/{id}", a.updateShare).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/shares/{id}/rotate", a.rotateShare).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/shares/{id}/remember", a.rememberShare).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/shares/{id}", a.deleteShare).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/members/{userId}", a.removeMember).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/roles", a.listGroupRoles).Bind(bind)
@@ -164,6 +166,10 @@ func fail(e *core.RequestEvent, err error) error {
 	code := "internal_error"
 	message := "服務暫時無法處理請求"
 	switch {
+	case errors.Is(err, domain.ErrConfiguration):
+		status = http.StatusServiceUnavailable
+		code = "configuration_error"
+		message = "分享連結保存功能尚未設定"
 	case errors.Is(err, domain.ErrInvalid):
 		status = http.StatusBadRequest
 		code = "invalid_request"
@@ -426,6 +432,19 @@ func (a *API) updateShare(e *core.RequestEvent) error {
 }
 func (a *API) rotateShare(e *core.RequestEvent) error {
 	value, err := a.Service.RotateShare(e.Request.Context(), authID(e), e.Request.PathValue("id"))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) rememberShare(e *core.RequestEvent) error {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if e.BindBody(&body) != nil || strings.TrimSpace(body.Token) == "" {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.RememberShareToken(e.Request.Context(), authID(e), e.Request.PathValue("id"), body.Token)
 	if err != nil {
 		return fail(e, err)
 	}

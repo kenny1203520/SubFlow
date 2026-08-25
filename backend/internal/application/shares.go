@@ -40,6 +40,33 @@ func shareTokenHash(token string) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
+func shareURL(token string) string {
+	return "/share/" + token
+}
+
+func (s *Service) encryptShareToken(token string) (string, error) {
+	if !s.Cipher.Available() {
+		return "", domain.ErrConfiguration
+	}
+	ciphertext, err := s.Cipher.Encrypt(token)
+	if err != nil {
+		return "", domain.ErrConfiguration
+	}
+	return ciphertext, nil
+}
+
+func (s *Service) shareURL(value *domain.Share) error {
+	if value.TokenCiphertext == "" {
+		value.URL = ""
+		return nil
+	}
+	token, err := s.Cipher.Decrypt(value.TokenCiphertext)
+	if err != nil {
+		return domain.ErrConfiguration
+	}
+	value.URL = shareURL(token)
+	return nil
+}
 func (s *Service) sharePermission(ctx context.Context, userID, groupID string) error {
 	if groupID == "" {
 		return nil
@@ -110,7 +137,14 @@ func (s *Service) CreateShare(ctx context.Context, userID, groupID string, input
 	if err != nil {
 		return nil, err
 	}
-	value.TokenHash, value.Enabled, value.AccessVersion = shareTokenHash(token), true, 1
+	ciphertext, err := s.encryptShareToken(token)
+	if err != nil {
+		if auditErr := s.audit(ctx, userID, groupID, "share.created", "share", "", "failure", encodeAuditSummary(map[string]any{"reason": "configuration"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, err
+	}
+	value.TokenHash, value.TokenCiphertext, value.Enabled, value.AccessVersion = shareTokenHash(token), ciphertext, true, 1
 	if value.AccessMode == "password" {
 		hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if hashErr != nil {
@@ -131,7 +165,8 @@ func (s *Service) CreateShare(ctx context.Context, userID, groupID string, input
 		return nil, err
 	}
 	value.Viewers = viewers
-	return &CreatedShare{Share: &value, URL: "/share/" + token}, nil
+	value.URL = shareURL(token)
+	return &CreatedShare{Share: &value, URL: value.URL}, nil
 }
 
 func (s *Service) ListShares(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Share], error) {
@@ -148,6 +183,9 @@ func (s *Service) ListShares(ctx context.Context, userID, groupID string, page p
 	}
 	for i := range result.Items {
 		result.Items[i].Viewers, _ = s.Stores.Shares.ListViewers(ctx, result.Items[i].ID)
+		if err := s.shareURL(&result.Items[i]); err != nil {
+			return ports.Page[domain.Share]{}, err
+		}
 	}
 	return result, nil
 }
@@ -212,6 +250,9 @@ func (s *Service) UpdateShare(ctx context.Context, userID, id string, input Shar
 		return nil, err
 	}
 	value.Viewers = viewers
+	if err := s.shareURL(&value); err != nil {
+		return nil, err
+	}
 	return &value, nil
 }
 
@@ -224,7 +265,14 @@ func (s *Service) RotateShare(ctx context.Context, userID, id string) (*CreatedS
 	if err != nil {
 		return nil, err
 	}
-	value.TokenHash, value.AccessVersion = shareTokenHash(token), value.AccessVersion+1
+	ciphertext, err := s.encryptShareToken(token)
+	if err != nil {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "share.rotated", "share", value.ID, "failure", encodeAuditSummary(map[string]any{"reason": "configuration"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, err
+	}
+	value.TokenHash, value.TokenCiphertext, value.AccessVersion = shareTokenHash(token), ciphertext, value.AccessVersion+1
 	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if updateErr := s.Stores.Shares.Update(tx, value); updateErr != nil {
 			return updateErr
@@ -234,9 +282,41 @@ func (s *Service) RotateShare(ctx context.Context, userID, id string) (*CreatedS
 	if err != nil {
 		return nil, err
 	}
-	return &CreatedShare{Share: value, URL: "/share/" + token}, nil
+	value.URL = shareURL(token)
+	return &CreatedShare{Share: value, URL: value.URL}, nil
 }
 
+func (s *Service) RememberShareToken(ctx context.Context, userID, id, token string) (*domain.Share, error) {
+	value, err := s.managedShare(ctx, userID, id)
+	if err != nil {
+		return nil, err
+	}
+	token = strings.TrimSpace(token)
+	if token == "" || shareTokenHash(token) != value.TokenHash {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "share.url_remembered", "share", id, "failure", encodeAuditSummary(map[string]any{"reason": "token_mismatch"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, domain.ErrInvalid
+	}
+	ciphertext, err := s.encryptShareToken(token)
+	if err != nil {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "share.url_remembered", "share", id, "failure", encodeAuditSummary(map[string]any{"reason": "configuration"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, err
+	}
+	value.TokenCiphertext = ciphertext
+	value.URL = shareURL(token)
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if updateErr := s.Stores.Shares.Update(tx, value); updateErr != nil {
+			return updateErr
+		}
+		return s.audit(tx, userID, value.GroupID, "share.url_remembered", "share", id, "success", encodeAuditSummary(nil, nil))
+	}); err != nil {
+		return nil, err
+	}
+	return value, nil
+}
 func (s *Service) DeleteShare(ctx context.Context, userID, id string) error {
 	value, err := s.managedShare(ctx, userID, id)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tests"
 
 	"subflow/internal/ports"
@@ -61,5 +62,25 @@ func TestMergePermissionsBackfillsMissingEntries(t *testing.T) {
 	}
 	if want := []string{"group.view", "ledger.expenses.write", "ledger.records.historical_write"}; !reflect.DeepEqual(merged, want) {
 		t.Fatalf("merged permissions = %#v, want %#v", merged, want)
+	}
+}
+
+func TestShareSchemaKeepsCiphertextHidden(t *testing.T) {
+	app, err := tests.NewTestApp()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer app.Cleanup()
+	if err = EnsureSchema(app); err != nil {
+		t.Fatal(err)
+	}
+	shares, err := app.FindCollectionByNameOrId(CollectionShares)
+	if err != nil {
+		t.Fatal(err)
+	}
+	field := shares.Fields.GetByName("token_ciphertext")
+	textField, ok := field.(*core.TextField)
+	if !ok || !textField.Hidden {
+		t.Fatalf("token_ciphertext must be a hidden text field, got %#v", field)
 	}
 }

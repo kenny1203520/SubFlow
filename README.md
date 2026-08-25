@@ -75,7 +75,7 @@ Vite 透過 `VITE_BACKEND_URL` 將 `/api` 代理到 Go backend，預設為 `http
 
 ## Turnstile
 
-在管理台選擇 Cloudflare Turnstile 後，填入同一個 widget 的 Site key 與 Secret key。部署前必須設定 `SUBFLOW_SETTINGS_ENCRYPTION_KEY`；SubFlow 會用它加密 PocketBase 的隱藏 CAPTCHA secret 欄位。所有外部 CAPTCHA 的網站身分都以 PocketBase Dashboard 的 Application Name 與 Application URL 為唯一來源，不使用另一組環境變數。Turnstile widget 的 allowed domain（以及 reCAPTCHA 的網域設定）必須等於 Application URL hostname；hCaptcha 應在供應商後台將同一 hostname 加入 domain allowlist，後端也會把 PocketBase 的 site key 傳給 Siteverify。
+在管理台選擇 Cloudflare Turnstile 後，填入同一個 widget 的 Site key 與 Secret key。部署前必須設定 SUBFLOW_SETTINGS_ENCRYPTION_KEY；SubFlow 會用它加密 PocketBase 的隱藏 CAPTCHA secret 與分享 URL。這個密鑰必須長期保持不變；更換密鑰不會立即使公開分享 URL 失效，但管理頁將無法解密並顯示既有 URL。所有外部 CAPTCHA 的網站身分都以 PocketBase Dashboard 的 Application Name 與 Application URL 為唯一來源，不使用另一組環境變數。Turnstile widget 的 allowed domain（以及 reCAPTCHA 的網域設定）必須等於 Application URL hostname；hCaptcha 應在供應商後台將同一 hostname 加入 domain allowlist，後端也會把 PocketBase 的 site key 傳給 Siteverify。
 
 ## 資料重置
 

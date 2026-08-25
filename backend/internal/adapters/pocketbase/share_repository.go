@@ -135,6 +135,7 @@ func writeShare(record *core.Record, value *domain.Share) {
 	record.Set("owner", value.OwnerID)
 	record.Set("name", strings.TrimSpace(value.Name))
 	record.Set("token_hash", value.TokenHash)
+	record.Set("token_ciphertext", value.TokenCiphertext)
 	record.Set("access_mode", value.AccessMode)
 	record.Set("password_hash", value.PasswordHash)
 	record.Set("enabled", value.Enabled)
@@ -160,7 +161,7 @@ func shareDate(record *core.Record, field string) time.Time {
 	return value
 }
 func shareFrom(record *core.Record) *domain.Share {
-	value := &domain.Share{ID: record.Id, GroupID: record.GetString("group"), OwnerID: record.GetString("owner"), Name: record.GetString("name"), TokenHash: record.GetString("token_hash"), AccessMode: record.GetString("access_mode"), PasswordHash: record.GetString("password_hash"), Enabled: record.GetBool("enabled"), ExpiresAt: shareDate(record, "expires_at"), RangeMode: record.GetString("range_mode"), RollingDays: int(record.GetInt("rolling_days")), StartsOn: shareDate(record, "starts_on"), EndsOn: shareDate(record, "ends_on"), ShowSummary: record.GetBool("show_summary"), ShowExpenses: record.GetBool("show_expenses"), ShowSubscriptions: record.GetBool("show_subscriptions"), ShowSettlements: record.GetBool("show_settlements"), ShowIdentities: record.GetBool("show_identities"), ShowNotes: record.GetBool("show_notes"), AccessVersion: int(record.GetInt("access_version"))}
+	value := &domain.Share{ID: record.Id, GroupID: record.GetString("group"), OwnerID: record.GetString("owner"), Name: record.GetString("name"), TokenHash: record.GetString("token_hash"), TokenCiphertext: record.GetString("token_ciphertext"), AccessMode: record.GetString("access_mode"), PasswordHash: record.GetString("password_hash"), Enabled: record.GetBool("enabled"), ExpiresAt: shareDate(record, "expires_at"), RangeMode: record.GetString("range_mode"), RollingDays: int(record.GetInt("rolling_days")), StartsOn: shareDate(record, "starts_on"), EndsOn: shareDate(record, "ends_on"), ShowSummary: record.GetBool("show_summary"), ShowExpenses: record.GetBool("show_expenses"), ShowSubscriptions: record.GetBool("show_subscriptions"), ShowSettlements: record.GetBool("show_settlements"), ShowIdentities: record.GetBool("show_identities"), ShowNotes: record.GetBool("show_notes"), AccessVersion: int(record.GetInt("access_version"))}
 	hydrateTimes(record, &value.CreatedAt, &value.UpdatedAt)
 	return value
 }

@@ -24,6 +24,7 @@ var (
 	ErrRateUnavailable = errors.New("exchange rate unavailable")
 	ErrSetupDisabled   = errors.New("setup disabled")
 	ErrSetupToken      = errors.New("setup token invalid")
+	ErrConfiguration   = errors.New("configuration unavailable")
 )
 
 func NormalizeEmail(value string) string {

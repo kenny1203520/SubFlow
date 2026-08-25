@@ -267,6 +267,8 @@ type Share struct {
 	OwnerID           string        `json:"ownerId,omitempty"`
 	Name              string        `json:"name"`
 	TokenHash         string        `json:"-"`
+	TokenCiphertext   string        `json:"-"`
+	URL               string        `json:"url,omitempty"`
 	AccessMode        string        `json:"accessMode"`
 	PasswordHash      string        `json:"-"`
 	Enabled           bool          `json:"enabled"`

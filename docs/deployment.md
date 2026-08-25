@@ -24,3 +24,12 @@ container or PocketBase address such as `http://backend:8080`.
 Nginx must proxy `/api` and `/_/` to the backend. It must also use an SPA
 fallback for frontend routes, including `/setup`, while preserving query
 strings so a URL such as `/setup?token=...` reaches the Vue application.
+
+## Settings encryption key
+
+Set SUBFLOW_SETTINGS_ENCRYPTION_KEY in the production environment before creating
+or rotating share links. The same key encrypts CAPTCHA secrets and the token
+ciphertext used to restore share URLs in the management API. Keep it private and
+unchanged for the lifetime of the PocketBase data. Rotating the key does not
+immediately invalidate public URLs, but the management page cannot decrypt
+existing URLs until the original key is restored.

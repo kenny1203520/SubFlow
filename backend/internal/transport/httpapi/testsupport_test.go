@@ -12,6 +12,7 @@ import (
 	"subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/domain"
+	"subflow/internal/security"
 	"subflow/internal/transport/httpapi"
 )
 
@@ -41,7 +42,9 @@ func newAPITestApp(t *testing.T) *apiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &apiFixture{app: app, stores: stores, service: application.New(stores)}
+	service := application.New(stores)
+	service.Cipher = security.NewSettingsCipher("test-share-settings-key")
+	return &apiFixture{app: app, stores: stores, service: service}
 }
 
 // newUninitializedAPITestApp is like newAPITestApp but also captures the
@@ -66,7 +69,9 @@ func newUninitializedAPITestApp(t *testing.T) (*apiFixture, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &apiFixture{app: app, stores: stores, service: application.New(stores)}, parsed.Query().Get("token")
+	service := application.New(stores)
+	service.Cipher = security.NewSettingsCipher("test-share-settings-key")
+	return &apiFixture{app: app, stores: stores, service: service}, parsed.Query().Get("token")
 }
 
 // factory adapts this fixture's already-seeded app into a
