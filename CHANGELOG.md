@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+## [0.1.19] - 2026-08-26
+
+### Fixed
+- Resolved Go staticcheck and unused-function findings in the public share implementation.
+- Promoted the validated share-page release through the release branch and master workflow.
+
+
 ## [0.1.18] - 2026-08-26
 
 ### Fixed
