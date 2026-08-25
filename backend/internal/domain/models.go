@@ -119,6 +119,18 @@ type User struct {
 	LinkedUserID string `json:"linkedUserId,omitempty"`
 }
 
+// Contact is a private address-book entry owned by one user. Contacts may
+// refer to people who have not registered yet; share access validation still
+// requires an existing SubFlow account.
+type Contact struct {
+	ID        string    `json:"id"`
+	OwnerID   string    `json:"ownerId"`
+	Name      string    `json:"name"`
+	Email     string    `json:"email"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
 // LinkedProvider is an OAuth2 provider linked to a user's account (see
 // Service.ListLinkedProviders / UnlinkProvider), letting them sign in with
 // that provider directly instead of email/password.

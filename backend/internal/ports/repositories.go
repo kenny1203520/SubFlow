@@ -83,6 +83,14 @@ type ShareRepository interface {
 	ListViewers(context.Context, string) ([]domain.ShareViewer, error)
 }
 
+type ContactRepository interface {
+	Create(context.Context, *domain.Contact) error
+	Get(context.Context, string) (*domain.Contact, error)
+	List(context.Context, string, PageRequest) (Page[domain.Contact], error)
+	Update(context.Context, *domain.Contact) error
+	Delete(context.Context, string) error
+}
+
 type InvitationRepository interface {
 	Create(context.Context, *domain.Invitation) error
 	Get(context.Context, string) (*domain.Invitation, error)

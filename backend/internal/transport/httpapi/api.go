@@ -82,6 +82,10 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.PATCH("/api/subflow/v1/personal/shares/{id}", a.updateShare).Bind(bind)
 	e.Router.POST("/api/subflow/v1/personal/shares/{id}/rotate", a.rotateShare).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/personal/shares/{id}", a.deleteShare).Bind(bind)
+	e.Router.GET("/api/subflow/v1/personal/contacts", a.listPersonalContacts).Bind(bind)
+	e.Router.POST("/api/subflow/v1/personal/contacts", a.createPersonalContact).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/personal/contacts/{id}", a.updatePersonalContact).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/personal/contacts/{id}", a.deletePersonalContact).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups", a.createGroup).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}", a.getGroup).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/groups/{groupId}", a.updateGroup).Bind(bind)
@@ -400,6 +404,45 @@ func (a *API) rotateShare(e *core.RequestEvent) error {
 }
 func (a *API) deleteShare(e *core.RequestEvent) error {
 	if err := a.Service.DeleteShare(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
+}
+func (a *API) listPersonalContacts(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "contacts")
+	if err != nil {
+		return fail(e, err)
+	}
+	values, err := a.Service.ListContacts(e.Request.Context(), authID(e), p)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, values.Items, pageMeta(values))
+}
+func (a *API) createPersonalContact(e *core.RequestEvent) error {
+	var input application.ContactInput
+	if e.BindBody(&input) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.CreateContact(e.Request.Context(), authID(e), input)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, value, nil)
+}
+func (a *API) updatePersonalContact(e *core.RequestEvent) error {
+	var input application.ContactInput
+	if e.BindBody(&input) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.UpdateContact(e.Request.Context(), authID(e), e.Request.PathValue("id"), input)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) deletePersonalContact(e *core.RequestEvent) error {
+	if err := a.Service.DeleteContact(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
 		return fail(e, err)
 	}
 	return noContent(e)

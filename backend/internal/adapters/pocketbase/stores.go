@@ -23,6 +23,7 @@ type ExchangeRateRepo struct{ *Repository }
 type RoleRepo struct{ *Repository }
 type AuditRepo struct{ *Repository }
 type ShareRepo struct{ *Repository }
+type ContactRepo struct{ *Repository }
 type UserRepo struct{ *Repository }
 type SystemSettingsRepo struct{ *Repository }
 
@@ -41,6 +42,7 @@ type Stores struct {
 	Roles              *RoleRepo
 	Audits             *AuditRepo
 	Shares             *ShareRepo
+	Contacts           *ContactRepo
 	Users              *UserRepo
 	Settings           *SystemSettingsRepo
 	Transactions       *Repository
@@ -48,7 +50,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &MemberTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &ShareRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
+	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &MemberTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &ShareRepo{base}, &ContactRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -277,6 +279,20 @@ func (r *ShareRepo) ReplaceViewers(ctx context.Context, shareID string, values [
 func (r *ShareRepo) ListViewers(ctx context.Context, shareID string) ([]domain.ShareViewer, error) {
 	return r.ListShareViewers(ctx, shareID)
 }
+
+func (r *ContactRepo) Create(ctx context.Context, v *domain.Contact) error {
+	return r.CreateContact(ctx, v)
+}
+func (r *ContactRepo) Get(ctx context.Context, id string) (*domain.Contact, error) {
+	return r.GetContact(ctx, id)
+}
+func (r *ContactRepo) List(ctx context.Context, ownerID string, req ports.PageRequest) (ports.Page[domain.Contact], error) {
+	return r.ListContacts(ctx, ownerID, req)
+}
+func (r *ContactRepo) Update(ctx context.Context, v *domain.Contact) error {
+	return r.UpdateContact(ctx, v)
+}
+func (r *ContactRepo) Delete(ctx context.Context, id string) error { return r.DeleteContact(ctx, id) }
 
 func (r *UserRepo) Get(ctx context.Context, id string) (*domain.User, error) {
 	return r.GetUser(ctx, id)

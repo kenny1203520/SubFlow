@@ -33,6 +33,7 @@ const (
 	CollectionAuditLogs               = "audit_logs"
 	CollectionShares                  = "shares"
 	CollectionShareViewers            = "share_viewers"
+	CollectionContacts                = "contacts"
 	CollectionSystemSettings          = "system_settings"
 )
 
@@ -210,6 +211,13 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	_, err = ensureCollection(app, CollectionShareViewers, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "share", Required: true, CollectionId: shares.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
 		c.AddIndex("idx_share_viewers_unique", true, "share, user", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionContacts, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 120}, &core.EmailField{Name: "email", Required: true})
+		c.AddIndex("idx_contacts_owner_email", true, "owner, email", "")
 	})
 	if err != nil {
 		return "", err
