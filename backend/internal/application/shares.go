@@ -330,7 +330,7 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 			return nil, err
 		}
 		for _, item := range subs {
-			if item.StartsOn.Before(end) && (item.EndsOn.IsZero() || !item.EndsOn.Before(start)) {
+			if subscriptionInShareRange(item, start, end) {
 				filteredSubs = append(filteredSubs, item)
 			}
 		}
@@ -435,6 +435,10 @@ func pageSubscriptions(v []domain.Subscription, page int) ([]domain.Subscription
 func pageSettlements(v []domain.Settlement, page int) ([]domain.Settlement, bool) {
 	start, end, more := pageBounds(len(v), page)
 	return v[start:end], more
+}
+
+func subscriptionInShareRange(item domain.Subscription, start, end time.Time) bool {
+	return item.StartsOn.Before(end) && (item.EndsOn == nil || !item.EndsOn.Before(start))
 }
 
 func (s *Service) allShareExpenses(ctx context.Context, value *domain.Share) ([]domain.Expense, error) {

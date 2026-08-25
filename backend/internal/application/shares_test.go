@@ -49,3 +49,18 @@ func TestShareDateConfiguredTreatsLegacyZeroAsUnset(t *testing.T) {
 		t.Fatal("configured date should be recognized")
 	}
 }
+
+func TestSubscriptionInShareRangeAllowsOpenEndedSubscriptions(t *testing.T) {
+	start := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC)
+	end := time.Date(2027, time.January, 1, 0, 0, 0, 0, time.UTC)
+	item := domain.Subscription{StartsOn: time.Date(2026, time.June, 1, 0, 0, 0, 0, time.UTC)}
+	if !subscriptionInShareRange(item, start, end) {
+		t.Fatal("open-ended subscription should be included")
+	}
+
+	ended := end.AddDate(0, 0, -1)
+	item.EndsOn = &ended
+	if !subscriptionInShareRange(item, start, end) {
+		t.Fatal("subscription ending inside range should be included")
+	}
+}
