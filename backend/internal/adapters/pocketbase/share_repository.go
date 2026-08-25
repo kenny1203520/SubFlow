@@ -3,6 +3,7 @@ package pocketbase
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
@@ -122,6 +123,13 @@ func (r *Repository) ListShareViewers(ctx context.Context, shareID string) ([]do
 	return result, nil
 }
 
+func optionalShareDate(value time.Time) any {
+	if value.IsZero() {
+		return nil
+	}
+	return value
+}
+
 func writeShare(record *core.Record, value *domain.Share) {
 	record.Set("group", value.GroupID)
 	record.Set("owner", value.OwnerID)
@@ -130,11 +138,11 @@ func writeShare(record *core.Record, value *domain.Share) {
 	record.Set("access_mode", value.AccessMode)
 	record.Set("password_hash", value.PasswordHash)
 	record.Set("enabled", value.Enabled)
-	record.Set("expires_at", value.ExpiresAt)
+	record.Set("expires_at", optionalShareDate(value.ExpiresAt))
 	record.Set("range_mode", value.RangeMode)
 	record.Set("rolling_days", value.RollingDays)
-	record.Set("starts_on", value.StartsOn)
-	record.Set("ends_on", value.EndsOn)
+	record.Set("starts_on", optionalShareDate(value.StartsOn))
+	record.Set("ends_on", optionalShareDate(value.EndsOn))
 	record.Set("show_summary", value.ShowSummary)
 	record.Set("show_expenses", value.ShowExpenses)
 	record.Set("show_subscriptions", value.ShowSubscriptions)

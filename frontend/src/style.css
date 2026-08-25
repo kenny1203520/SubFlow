@@ -26,3 +26,12 @@ button.primary,.ghost,input,select,textarea{font-size:var(--font-size-secondary)
 .table,.data-table,.data-table-row,.data-table-header{font-size:var(--font-size-secondary)}
 .section-heading h3,.form-section h3{font-size:var(--font-size-section)}
 @media(max-width:700px){.page-heading h1{font-size:30px}.section-heading h3,.form-section h3{font-size:19px}.card{padding:20px 18px}.sidebar nav a{font-size:12px}}
+/* Share/contact form spacing and shape corrections. */
+.share-editor .editor-heading{border-radius:var(--radius) var(--radius) 0 0}
+.share-editor .access-detail{border-radius:12px;background:var(--surface-soft)}
+.share-editor .field-error{margin:0;color:var(--danger);font-size:14px;line-height:1.5;font-weight:650}
+.profile-contacts{gap:20px}
+.profile-contacts .contact-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:end}
+.profile-contacts .contact-form .form-actions{grid-column:1/-1}
+.profile-contacts .contact-form input{min-width:0}
+@media(max-width:700px){.profile-contacts .contact-form{grid-template-columns:1fr}.profile-contacts .contact-form .form-actions{grid-column:auto}}
