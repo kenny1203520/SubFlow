@@ -20,7 +20,7 @@
     "devDependencies": {
         "@types/node": "^25.6.0",
         "@vitejs/plugin-vue": "^6.0.8",
-        "@vitest/coverage-v8": "^4.1.10",
+        "@vitest/coverage-v8": "^4.1.11",
         "@vue/test-utils": "^2.4.11",
         "@vue/tsconfig": "^0.9.1",
         "eslint": "^9.17.0",
