@@ -283,7 +283,7 @@ func (a *API) publicShare(e *core.RequestEvent) error {
 	if err = a.Service.AuditShareAccess(e.Request.Context(), share, "", "success", "link"); err != nil {
 		return fail(e, err)
 	}
-	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e), sharePageSize(e))
+	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
 	if err != nil {
 		return a.shareProjectionFailure(e, share, "")
 	}
@@ -312,7 +312,7 @@ func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
 	}
 	a.clearSharePasswordFailures(e.RealIP(), share.ID)
 	setShareCookie(e, share)
-	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e), sharePageSize(e))
+	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
 	if err != nil {
 		return a.shareProjectionFailure(e, share, "")
 	}
@@ -331,12 +331,30 @@ func (a *API) accountShare(e *core.RequestEvent) error {
 	if err = a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "success", "account"); err != nil {
 		return fail(e, err)
 	}
-	page, err := a.Service.SharePage(e.Request.Context(), share, sharePageNumber(e), sharePageSize(e))
+	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
 	if err != nil {
 		return a.shareProjectionFailure(e, share, authID(e))
 	}
 	return ok(e, http.StatusOK, page, nil)
 }
+func sharePageOptions(e *core.RequestEvent) application.SharePageOptions {
+	section := e.Request.URL.Query().Get("section")
+	if section != "expenses" && section != "subscriptions" && section != "settlements" {
+		section = "all"
+	}
+	sortOrder := e.Request.URL.Query().Get("sort")
+	if sortOrder != "oldest" {
+		sortOrder = "newest"
+	}
+	return application.SharePageOptions{
+		Page:    sharePageNumber(e),
+		PerPage: sharePageSize(e),
+		Section: section,
+		Query:   e.Request.URL.Query().Get("q"),
+		Sort:    sortOrder,
+	}
+}
+
 func sharePageSize(e *core.RequestEvent) int {
 	value, err := strconv.Atoi(e.Request.URL.Query().Get("perPage"))
 	if err != nil || (value != 5 && value != 10 && value != 15 && value != 25) {

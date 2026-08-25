@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -294,18 +295,47 @@ func (s *Service) AuthorizeShareViewer(ctx context.Context, value *domain.Share,
 	return domain.ErrNotFound
 }
 
+type SharePageOptions struct {
+	Page    int
+	PerPage int
+	Section string
+	Query   string
+	Sort    string
+}
+
+type shareRecord struct {
+	kind       string
+	occurredOn time.Time
+	row        map[string]any
+}
+
 func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber, perPage int) (*domain.SharePage, error) {
+	return s.SharePageWithOptions(ctx, value, SharePageOptions{Page: pageNumber, PerPage: perPage})
+}
+
+func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share, options SharePageOptions) (*domain.SharePage, error) {
+	pageNumber := options.Page
 	if pageNumber < 1 {
 		pageNumber = 1
 	}
+	perPage := options.PerPage
 	if perPage != 5 && perPage != 10 && perPage != 15 && perPage != 25 {
 		perPage = 25
 	}
+	section := options.Section
+	if section != "expenses" && section != "subscriptions" && section != "settlements" {
+		section = "all"
+	}
+	sortNewest := options.Sort != "oldest"
+
 	start, end, label, err := s.shareRange(ctx, value)
 	if err != nil {
 		return nil, err
 	}
-	page := &domain.SharePage{Name: value.Name, RangeLabel: label, ShowSummary: value.ShowSummary, Page: pageNumber, PerPage: perPage}
+	page := &domain.SharePage{
+		Name: value.Name, RangeLabel: label, ShowSummary: value.ShowSummary,
+		Page: pageNumber, PerPage: perPage,
+	}
 	if value.GroupID != "" {
 		group, groupErr := s.Stores.Groups.Get(ctx, value.GroupID)
 		if groupErr != nil {
@@ -315,6 +345,7 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 	} else if user, userErr := s.Stores.Users.Get(ctx, value.OwnerID); userErr == nil {
 		page.Currency = user.DefaultCurrency
 	}
+
 	filteredExpenses := make([]domain.Expense, 0)
 	if value.ShowExpenses || value.ShowSummary {
 		expenses, err := s.allShareExpenses(ctx, value)
@@ -352,31 +383,89 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 		for _, item := range filteredExpenses {
 			totals[string(item.Currency)] += item.AmountMinor
 		}
-		page.Summary = map[string]any{"expenseCount": len(filteredExpenses), "subscriptionCount": len(filteredSubs), "settlementCount": len(settlements), "expenseTotals": totals}
+		page.Summary = map[string]any{
+			"expenseCount":      len(filteredExpenses),
+			"subscriptionCount": len(filteredSubs),
+			"settlementCount":   len(settlements),
+			"expenseTotals":     totals,
+		}
 	}
-	hasMore := false
+
+	records := make([]shareRecord, 0, len(filteredExpenses)+len(filteredSubs)+len(settlements))
 	if value.ShowExpenses {
-		items, more := pageExpenses(filteredExpenses, pageNumber, perPage)
-		hasMore = hasMore || more
-		for _, item := range items {
-			page.Expenses = append(page.Expenses, s.shareExpenseRow(ctx, value, item))
+		for _, item := range filteredExpenses {
+			row := s.shareExpenseRow(ctx, value, item)
+			row["type"] = "expense"
+			row["occurredOn"] = item.IncurredOn
+			records = append(records, shareRecord{kind: "expenses", occurredOn: item.IncurredOn, row: row})
 		}
 	}
 	if value.ShowSubscriptions {
-		items, more := pageSubscriptions(filteredSubs, pageNumber, perPage)
-		hasMore = hasMore || more
-		for _, item := range items {
-			page.Subscriptions = append(page.Subscriptions, s.shareSubscriptionRow(ctx, value, item))
+		for _, item := range filteredSubs {
+			occurredOn := item.NextBilling
+			if occurredOn.IsZero() {
+				occurredOn = item.StartsOn
+			}
+			row := s.shareSubscriptionRow(ctx, value, item)
+			row["type"] = "subscription"
+			row["occurredOn"] = occurredOn
+			records = append(records, shareRecord{kind: "subscriptions", occurredOn: occurredOn, row: row})
 		}
 	}
 	if value.ShowSettlements && value.GroupID != "" {
-		items, more := pageSettlements(settlements, pageNumber, perPage)
-		hasMore = hasMore || more
-		for _, item := range items {
-			page.Settlements = append(page.Settlements, s.shareSettlementRow(ctx, value, item))
+		for _, item := range settlements {
+			row := s.shareSettlementRow(ctx, value, item)
+			row["type"] = "settlement"
+			row["occurredOn"] = item.SettledOn
+			records = append(records, shareRecord{kind: "settlements", occurredOn: item.SettledOn, row: row})
 		}
 	}
-	balanceRows := []map[string]any{}
+
+	query := strings.ToLower(strings.TrimSpace(options.Query))
+	if query != "" {
+		filtered := records[:0]
+		for _, item := range records {
+			if strings.Contains(shareRecordSearchText(item.row), query) {
+				filtered = append(filtered, item)
+			}
+		}
+		records = filtered
+	}
+	sort.SliceStable(records, func(i, j int) bool {
+		if records[i].occurredOn.Equal(records[j].occurredOn) {
+			return records[i].kind < records[j].kind
+		}
+		if sortNewest {
+			return records[i].occurredOn.After(records[j].occurredOn)
+		}
+		return records[i].occurredOn.Before(records[j].occurredOn)
+	})
+
+	counts := map[string]int{"all": len(records), "expenses": 0, "subscriptions": 0, "settlements": 0}
+	for _, item := range records {
+		counts[item.kind]++
+	}
+	page.RecordCounts = counts
+
+	selected, totalItems, pageNumber, totalPagesValue, nextPage := paginateShareRecords(records, section, pageNumber, perPage)
+	page.Page = pageNumber
+	page.TotalItems = totalItems
+	page.TotalPages = totalPagesValue
+	for _, item := range selected {
+		page.Records = append(page.Records, item.row)
+		switch item.kind {
+		case "expenses":
+			page.Expenses = append(page.Expenses, item.row)
+		case "subscriptions":
+			page.Subscriptions = append(page.Subscriptions, item.row)
+		case "settlements":
+			page.Settlements = append(page.Settlements, item.row)
+		}
+	}
+	if nextPage > 0 {
+		page.NextPage = nextPage
+	}
+
 	if value.GroupID != "" && value.ShowSettlements {
 		balanceExpenses := append([]domain.Expense(nil), filteredExpenses...)
 		for i := range balanceExpenses {
@@ -390,30 +479,72 @@ func (s *Service) SharePage(ctx context.Context, value *domain.Share, pageNumber
 			if balance.AmountMinor == 0 {
 				continue
 			}
-			balanceRows = append(balanceRows, s.shareBalanceRow(ctx, value, balance, index))
+			row := s.shareBalanceRow(ctx, value, balance, index)
+			row["currency"] = page.Currency
+			page.Balances = append(page.Balances, row)
 		}
-		start, end, more := pageBounds(len(balanceRows), pageNumber, perPage)
-		page.Balances = balanceRows[start:end]
-		hasMore = hasMore || more
-	}
-	page.TotalItems = 0
-	page.TotalPages = 0
-	if value.ShowExpenses {
-		page.TotalItems += len(filteredExpenses)
-		page.TotalPages = max(page.TotalPages, totalPages(len(filteredExpenses), perPage))
-	}
-	if value.ShowSubscriptions {
-		page.TotalItems += len(filteredSubs)
-		page.TotalPages = max(page.TotalPages, totalPages(len(filteredSubs), perPage))
-	}
-	if value.ShowSettlements && value.GroupID != "" {
-		page.TotalItems += len(settlements) + len(balanceRows)
-		page.TotalPages = max(page.TotalPages, totalPages(len(settlements), perPage), totalPages(len(balanceRows), perPage))
-	}
-	if hasMore {
-		page.NextPage = pageNumber + 1
 	}
 	return page, nil
+}
+
+func paginateShareRecords(records []shareRecord, section string, pageNumber, perPage int) ([]shareRecord, int, int, int, int) {
+	selected := records
+	if section != "all" {
+		selected = make([]shareRecord, 0, len(records))
+		for _, item := range records {
+			if item.kind == section {
+				selected = append(selected, item)
+			}
+		}
+	}
+	totalItems := len(selected)
+	totalPagesValue := totalPages(totalItems, perPage)
+	if totalPagesValue < 1 {
+		totalPagesValue = 1
+	}
+	if pageNumber < 1 {
+		pageNumber = 1
+	}
+	if pageNumber > totalPagesValue {
+		pageNumber = totalPagesValue
+	}
+	start := (pageNumber - 1) * perPage
+	if start > totalItems {
+		start = totalItems
+	}
+	end := minInt(start+perPage, totalItems)
+	nextPage := 0
+	if pageNumber < totalPagesValue {
+		nextPage = pageNumber + 1
+	}
+	return selected[start:end], totalItems, pageNumber, totalPagesValue, nextPage
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func shareRecordSearchText(row map[string]any) string {
+	keys := make([]string, 0, len(row))
+	for key := range row {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	var builder strings.Builder
+	for _, key := range keys {
+		value := row[key]
+		switch typed := value.(type) {
+		case time.Time:
+			builder.WriteString(typed.Format(time.RFC3339))
+		default:
+			builder.WriteString(fmt.Sprint(value))
+		}
+		builder.WriteByte(' ')
+	}
+	return strings.ToLower(builder.String())
 }
 
 func (s *Service) shareRange(ctx context.Context, value *domain.Share) (time.Time, time.Time, string, error) {

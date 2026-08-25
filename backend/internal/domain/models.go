@@ -303,6 +303,8 @@ type SharePage struct {
 	RangeLabel    string           `json:"rangeLabel"`
 	ShowSummary   bool             `json:"showSummary"`
 	Summary       map[string]any   `json:"summary,omitempty"`
+	Records       []map[string]any `json:"records,omitempty"`
+	RecordCounts  map[string]int   `json:"recordCounts,omitempty"`
 	Expenses      []map[string]any `json:"expenses,omitempty"`
 	Subscriptions []map[string]any `json:"subscriptions,omitempty"`
 	Settlements   []map[string]any `json:"settlements,omitempty"`
