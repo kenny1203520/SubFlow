@@ -79,8 +79,8 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/expenses", a.createPersonalExpense).Bind(bind)
 	e.Router.GET("/api/subflow/v1/incomes", a.listPersonalIncomes).Bind(bind)
 	e.Router.POST("/api/subflow/v1/incomes", a.createPersonalIncome).Bind(bind)
-	e.Router.PATCH("/api/subflow/v1/incomes/{id}", a.updatePersonalIncome).Bind(bind)
-	e.Router.DELETE("/api/subflow/v1/incomes/{id}", a.deletePersonalIncome).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/incomes/{id}", a.updateGroupOrPersonalIncome).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/incomes/{id}", a.deleteGroupOrPersonalIncome).Bind(bind)
 	e.Router.GET("/api/subflow/v1/personal/ledger", a.personalLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/personal/shares", a.listPersonalShares).Bind(bind)
 	e.Router.POST("/api/subflow/v1/personal/shares", a.createPersonalShare).Bind(bind)
@@ -99,6 +99,12 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/currency-change/preview", a.previewCurrencyChange).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/currency-change", a.changeCurrency).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/summary", a.dashboard).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/ledger", a.groupLedger).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/incomes", a.listGroupIncomes).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/incomes", a.createGroupIncome).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/incomes/{id}", a.updateGroupOrPersonalIncome).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/incomes/{id}", a.deleteGroupOrPersonalIncome).Bind(bind)
+
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/members", a.listMembers).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/access", a.groupAccess).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/shares", a.listGroupShares).Bind(bind)
@@ -1123,6 +1129,79 @@ func (a *API) deletePersonalIncome(e *core.RequestEvent) error {
 }
 func (a *API) personalLedger(e *core.RequestEvent) error {
 	v, err := a.Service.PersonalLedger(e.Request.Context(), authID(e), e.Request.URL.Query().Get("date"))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, v, nil)
+}
+
+func (a *API) listGroupIncomes(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "-received_on")
+	if err != nil {
+		return fail(e, err)
+	}
+	v, err := a.Service.ListGroupIncomes(e.Request.Context(), authID(e), groupID(e), p)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *API) createGroupIncome(e *core.RequestEvent) error {
+	var v domain.Income
+	if err := e.BindBody(&v); err != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	v.GroupID = groupID(e)
+	if v.PaidBy == "" {
+		v.PaidBy = authID(e)
+	}
+	created, err := a.Service.CreateGroupIncome(e.Request.Context(), authID(e), v)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, created, nil)
+}
+func (a *API) updateGroupOrPersonalIncome(e *core.RequestEvent) error {
+	var v domain.Income
+	if err := e.BindBody(&v); err != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	v.ID = e.Request.PathValue("id")
+	current, err := a.Service.Stores.Incomes.Get(e.Request.Context(), v.ID)
+	if err != nil {
+		return fail(e, err)
+	}
+	if current.GroupID != "" {
+		updated, updateErr := a.Service.UpdateGroupIncome(e.Request.Context(), authID(e), v)
+		if updateErr != nil {
+			return fail(e, updateErr)
+		}
+		return ok(e, http.StatusOK, updated, nil)
+	}
+	updated, err := a.Service.UpdateIncome(e.Request.Context(), authID(e), v)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, updated, nil)
+}
+func (a *API) deleteGroupOrPersonalIncome(e *core.RequestEvent) error {
+	id := e.Request.PathValue("id")
+	current, err := a.Service.Stores.Incomes.Get(e.Request.Context(), id)
+	if err != nil {
+		return fail(e, err)
+	}
+	if current.GroupID != "" {
+		err = a.Service.DeleteGroupIncome(e.Request.Context(), authID(e), id)
+	} else {
+		err = a.Service.DeleteIncome(e.Request.Context(), authID(e), id)
+	}
+	if err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
+}
+func (a *API) groupLedger(e *core.RequestEvent) error {
+	v, err := a.Service.GroupLedger(e.Request.Context(), authID(e), groupID(e), e.Request.URL.Query().Get("date"))
 	if err != nil {
 		return fail(e, err)
 	}

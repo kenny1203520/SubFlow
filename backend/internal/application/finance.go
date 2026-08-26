@@ -287,6 +287,7 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	result := domain.DashboardSummary{Month: start.Format("2006-01")}
 	var expenses []domain.Expense
 	var subscriptions []domain.Subscription
+	var incomes []domain.Income
 	groupTimezone := map[string]string{}
 	// Every load below walks all pages: a single 100-row page silently
 	// truncated the inputs to the month's totals and, worse, to
@@ -301,6 +302,10 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if loadErr != nil {
 			return loadErr
 		}
+		groupIncomes, loadErr := listAllGroupIncomes(ctx, s, userID, groupID)
+		if loadErr != nil {
+			return loadErr
+		}
 		group, loadErr := s.Stores.Groups.Get(ctx, groupID)
 		if loadErr != nil {
 			return loadErr
@@ -308,6 +313,7 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		groupTimezone[groupID] = group.Timezone
 		expenses = append(expenses, groupExpenses...)
 		subscriptions = append(subscriptions, groupSubscriptions...)
+		incomes = append(incomes, groupIncomes...)
 		return nil
 	}
 	switch query.Scope {
@@ -317,6 +323,10 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			return result, err
 		}
 		subscriptions, err = listAllPersonalSubscriptions(ctx, s, userID)
+		if err != nil {
+			return result, err
+		}
+		incomes, err = listAllPersonalIncomes(ctx, s, userID)
 		if err != nil {
 			return result, err
 		}
@@ -402,6 +412,18 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	}
 	for _, expense := range expenses {
 		consumeExpense(expense)
+	}
+	for _, income := range incomes {
+		recordStart, recordEnd := recordRange(income.GroupID)
+		if income.ReceivedOn.Before(recordStart) || !income.ReceivedOn.Before(recordEnd) {
+			continue
+		}
+		displayCurrency, displayAmount := income.Currency, income.AmountMinor
+		if query.Scope == "group" {
+			displayCurrency, displayAmount = income.BaseCurrency, income.BaseAmountMinor
+		}
+		bucket(displayCurrency).CashInflowMinor += displayAmount
+		result.MonthIncomeMinor += displayAmount
 	}
 	now := s.Now()
 	monthSubscriptionExpenses := make([]domain.Expense, 0)
@@ -491,6 +513,16 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if loadErr != nil {
 			return result, loadErr
 		}
+		allIncomes, loadErr := listAllGroupIncomes(ctx, s, userID, query.GroupID)
+		if loadErr != nil {
+			return result, loadErr
+		}
+		filteredIncomes := make([]domain.Income, 0, len(allIncomes))
+		for _, income := range allIncomes {
+			if income.ReceivedOn.Before(end) {
+				filteredIncomes = append(filteredIncomes, income)
+			}
+		}
 		filteredSettlements := make([]domain.Settlement, 0, len(allSettlements))
 		for _, settlement := range allSettlements {
 			if settlement.SettledOn.Before(end) {
@@ -498,7 +530,7 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			}
 		}
 		resolvedExpenses, resolvedSettlements := s.resolvePlaceholderAliases(ctx, filteredExpenses, filteredSettlements)
-		result.Balances = domain.MemberBalances(resolvedExpenses, resolvedSettlements)
+		result.Balances = domain.MemberBalancesWithIncomes(resolvedExpenses, filteredIncomes, resolvedSettlements)
 	}
 	return result, nil
 }

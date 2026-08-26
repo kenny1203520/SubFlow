@@ -2,6 +2,7 @@ package pocketbase
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -48,6 +49,53 @@ func (r *Repository) ListPersonalIncomes(ctx context.Context, userID string, req
 	}
 	return page(items, req, count), nil
 }
+func (r *Repository) ListIncomes(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Income], error) {
+	filter := "group={:group}"
+	params := dbx.Params{"group": groupID}
+	recs, err := listRecords(r.app(ctx), CollectionIncomes, filter, req, params)
+	if err != nil {
+		return ports.Page[domain.Income]{}, err
+	}
+	items := make([]domain.Income, len(recs))
+	for i, rec := range recs {
+		items[i] = *incomeFrom(rec)
+	}
+	count, err := countFiltered(r.app(ctx), CollectionIncomes, filter, params)
+	if err != nil {
+		return ports.Page[domain.Income]{}, err
+	}
+	return page(items, req, count), nil
+}
+func (r *Repository) ListIncomesBetween(ctx context.Context, groupID string, from, to time.Time) ([]domain.Income, error) {
+	filter := "group={:group} && received_on>={:from} && received_on<{:to}"
+	params := dbx.Params{"group": groupID, "from": from, "to": to}
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionIncomes, filter, "received_on", 0, 0, params)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]domain.Income, len(recs))
+	for i, rec := range recs {
+		items[i] = *incomeFrom(rec)
+	}
+	return items, nil
+}
+func (r *Repository) ListGroupExpensesBetween(ctx context.Context, groupID string, from, to time.Time) ([]domain.Expense, error) {
+	filter := "group={:group} && incurred_on>={:from} && incurred_on<{:to}"
+	params := dbx.Params{"group": groupID, "from": from, "to": to}
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionExpenses, filter, "incurred_on", 0, 0, params)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]domain.Expense, len(recs))
+	for i, rec := range recs {
+		items[i] = *expenseFrom(rec)
+		items[i].Splits, err = r.ListExpenseSplits(ctx, rec.Id)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return items, nil
+}
 func (r *Repository) ListPersonalIncomesBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Income, error) {
 	filter := "owner={:user} && received_on>={:from} && received_on<{:to}"
 	params := dbx.Params{"user": userID, "from": from, "to": to}
@@ -81,7 +129,9 @@ func (r *Repository) DeleteIncome(ctx context.Context, id string) error {
 	return r.app(ctx).Delete(rec)
 }
 func writeIncome(r *core.Record, v *domain.Income) {
+	r.Set("group", v.GroupID)
 	r.Set("owner", v.OwnerID)
+	r.Set("paid_by", v.PaidBy)
 	r.Set("title", v.Title)
 	r.Set("category", v.Category)
 	r.Set("category_ref", v.CategoryID)
@@ -93,10 +143,13 @@ func writeIncome(r *core.Record, v *domain.Income) {
 	r.Set("exchange_rate_date", v.ExchangeRateDate)
 	r.Set("rate_mode", v.RateMode)
 	r.Set("received_on", v.ReceivedOn)
+	r.Set("split_mode", v.SplitMode)
+	r.Set("splits", v.Splits)
 	r.Set("notes", v.Notes)
 }
 func incomeFrom(r *core.Record) *domain.Income {
-	v := &domain.Income{ID: r.Id, OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), ReceivedOn: r.GetDateTime("received_on").Time(), Notes: r.GetString("notes")}
+	v := &domain.Income{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), PaidBy: r.GetString("paid_by"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), SplitMode: domain.SplitMode(r.GetString("split_mode")), ReceivedOn: r.GetDateTime("received_on").Time(), Notes: r.GetString("notes")}
+	_ = json.Unmarshal([]byte(r.GetString("splits")), &v.Splits)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if v.Currency == "" {
 		v.Currency = domain.CurrencyTWD

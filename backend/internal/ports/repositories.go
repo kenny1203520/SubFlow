@@ -171,6 +171,7 @@ type ExpenseRepository interface {
 	List(context.Context, string, PageRequest) (Page[domain.Expense], error)
 	ListPersonal(context.Context, string, PageRequest) (Page[domain.Expense], error)
 	ListPersonalBetween(context.Context, string, time.Time, time.Time) ([]domain.Expense, error)
+	ListBetween(context.Context, string, time.Time, time.Time) ([]domain.Expense, error)
 	Update(context.Context, *domain.Expense) error
 	Delete(context.Context, string) error
 	ReplaceSplits(context.Context, string, []domain.ExpenseSplit) error
@@ -188,6 +189,8 @@ type IncomeRepository interface {
 	Get(context.Context, string) (*domain.Income, error)
 	ListPersonal(context.Context, string, PageRequest) (Page[domain.Income], error)
 	ListPersonalBetween(context.Context, string, time.Time, time.Time) ([]domain.Income, error)
+	List(context.Context, string, PageRequest) (Page[domain.Income], error)
+	ListBetween(context.Context, string, time.Time, time.Time) ([]domain.Income, error)
 	Update(context.Context, *domain.Income) error
 	Delete(context.Context, string) error
 }

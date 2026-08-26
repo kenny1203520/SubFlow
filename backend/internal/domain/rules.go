@@ -406,7 +406,7 @@ func CanonicalSplits(amount int64, payer string, mode SplitMode, input []Expense
 	return values, nil
 }
 
-func MemberBalances(expenses []Expense, settlements []Settlement) []MemberBalance {
+func MemberBalancesWithIncomes(expenses []Expense, incomes []Income, settlements []Settlement) []MemberBalance {
 	totals := map[string]int64{}
 	for _, expense := range expenses {
 		amount := expense.BaseAmountMinor
@@ -415,6 +415,20 @@ func MemberBalances(expenses []Expense, settlements []Settlement) []MemberBalanc
 		}
 		totals[expense.PaidBy] += amount
 		for _, split := range expense.Splits {
+			share := split.BaseAmountMinor
+			if share == 0 {
+				share = split.AmountMinor
+			}
+			totals[split.UserID] -= share
+		}
+	}
+	for _, income := range incomes {
+		amount := income.BaseAmountMinor
+		if amount == 0 {
+			amount = income.AmountMinor
+		}
+		totals[income.PaidBy] += amount
+		for _, split := range income.Splits {
 			share := split.BaseAmountMinor
 			if share == 0 {
 				share = split.AmountMinor
@@ -440,6 +454,10 @@ func MemberBalances(expenses []Expense, settlements []Settlement) []MemberBalanc
 		result = append(result, MemberBalance{UserID: id, AmountMinor: totals[id]})
 	}
 	return result
+}
+
+func MemberBalances(expenses []Expense, settlements []Settlement) []MemberBalance {
+	return MemberBalancesWithIncomes(expenses, nil, settlements)
 }
 
 func SubscriptionLifecycle(v Subscription, now time.Time) string {

@@ -197,6 +197,9 @@ func (r *ExpenseRepo) ListPersonal(ctx context.Context, userID string, req ports
 func (r *ExpenseRepo) ListPersonalBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Expense, error) {
 	return r.ListPersonalExpensesBetween(ctx, userID, from, to)
 }
+func (r *ExpenseRepo) ListBetween(ctx context.Context, groupID string, from, to time.Time) ([]domain.Expense, error) {
+	return r.ListGroupExpensesBetween(ctx, groupID, from, to)
+}
 func (r *ExpenseRepo) ReplaceSplits(ctx context.Context, expenseID string, values []domain.ExpenseSplit) error {
 	return r.ReplaceExpenseSplits(ctx, expenseID, values)
 }
@@ -347,8 +350,14 @@ func (r *IncomeRepo) Get(ctx context.Context, id string) (*domain.Income, error)
 func (r *IncomeRepo) ListPersonal(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Income], error) {
 	return r.ListPersonalIncomes(ctx, userID, req)
 }
+func (r *IncomeRepo) List(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Income], error) {
+	return r.ListIncomes(ctx, groupID, req)
+}
 func (r *IncomeRepo) ListPersonalBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Income, error) {
 	return r.ListPersonalIncomesBetween(ctx, userID, from, to)
+}
+func (r *IncomeRepo) ListBetween(ctx context.Context, groupID string, from, to time.Time) ([]domain.Income, error) {
+	return r.ListIncomesBetween(ctx, groupID, from, to)
 }
 func (r *IncomeRepo) Update(ctx context.Context, v *domain.Income) error {
 	return r.UpdateIncome(ctx, v)
