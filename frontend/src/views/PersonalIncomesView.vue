@@ -5,6 +5,8 @@ import MoneyValue from '../components/MoneyValue.vue'
 import EmptyState from '../components/EmptyState.vue'
 import AppDrawer from '../components/AppDrawer.vue'
 import SyncBadge from '../components/SyncBadge.vue'
+import Pagination from '../components/Pagination.vue'
+import PageSizeSelect from '../components/PageSizeSelect.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useAuthStore } from '../stores/auth'
 import { useI18n } from '../i18n'
@@ -18,6 +20,10 @@ const saving = ref(false)
 const editing = ref<Income | null>(null)
 const form = reactive({ title: '', amount: '', currency: 'TWD' as Currency, category: '', date: '', notes: '' })
 const list = computed(() => [...workspace.personalIncomes].sort((a, b) => b.receivedOn.localeCompare(a.receivedOn)))
+const perPage = ref(workspace.personalIncomesMeta.perPage)
+const listMeta = computed(() => workspace.personalIncomesMeta)
+function goToPage(page: number) { void workspace.loadPersonalIncomesPage(page, perPage.value) }
+function changePageSize(value: number) { perPage.value = value; goToPage(1) }
 
 function dateValue(value = new Date()) {
   return value.toISOString().slice(0, 10)
@@ -64,7 +70,7 @@ async function submit() {
   }
 }
 async function remove(item: Income) {
-  if (window.confirm(tr('deleteIncomeConfirm', { name: item.title }))) await workspace.deleteIncome(item.id)
+  if (window.confirm(tr('deleteIncomeConfirm', { name: item.title }))) { await workspace.deleteIncome(item.id); await workspace.loadPersonalIncomesPage(listMeta.value.page, perPage.value) }
 }
 onMounted(() => { void workspace.refreshPersonal() })
 </script>
@@ -78,7 +84,7 @@ onMounted(() => { void workspace.refreshPersonal() })
   </div>
   <p v-if="workspace.error" class="inline-error">{{ workspace.localizedError }}</p>
   <section class="card data-card">
-    <div class="card-title"><h2>{{ tr('recentIncomes') }}</h2><span>{{ tr('records', { count: list.length }) }}</span></div>
+    <div class="card-title"><h2>{{ tr('recentIncomes') }}</h2><span>{{ tr('records', { count: listMeta.totalItems }) }}</span><PageSizeSelect :model-value="perPage" @update:model-value="changePageSize" /></div>
     <div v-if="list.length" class="data-table income-table">
       <div class="data-table-head"><span>{{ tr('item') }}</span><span>{{ tr('source') }}</span><span>{{ tr('receivedBy') }}</span><span>{{ tr('date') }}</span><span>{{ tr('amount') }}</span><span></span></div>
       <article v-for="item in list" :key="item.id" class="data-table-row">
@@ -91,15 +97,14 @@ onMounted(() => { void workspace.refreshPersonal() })
       </article>
     </div>
     <EmptyState v-else :title="tr('noIncomes')" :description="tr('noIncomesDesc')" />
+    <Pagination :meta="listMeta" @page="goToPage" />
   </section>
   <AppDrawer :open="open" :title="tr(editing ? 'editIncome' : 'createIncome')" @close="open = false">
-    <form class="form-card income-form" @submit.prevent="submit">
-      <label>{{ tr('incomeTitle') }}<input v-model="form.title" required /></label>
-      <div class="form-row"><label>{{ tr('amount') }}<input v-model="form.amount" type="number" min="0.01" step="0.01" required /></label><label>{{ tr('currency') }}<select v-model="form.currency"><option>TWD</option><option>USD</option><option>JPY</option><option>EUR</option></select></label></div>
-      <label>{{ tr('category') }}<input v-model="form.category" :placeholder="tr('uncategorized')" /></label>
-      <label>{{ tr('date') }}<input v-model="form.date" type="date" required /></label>
-      <label>{{ tr('notes') }}<textarea v-model="form.notes" rows="3"></textarea></label>
-      <button class="primary full-width" :disabled="saving">{{ saving ? tr('processing') : tr('saveRecord') }}</button>
+    <form class="form-card ledger-form" @submit.prevent="submit">
+      <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{ tr('item') }}</strong></div><div class="ledger-form-grid"><label class="ledger-wide">{{ tr('incomeTitle') }}<input v-model="form.title" required :placeholder="tr('itemPlaceholder')" /></label><label class="ledger-wide">{{ tr('category') }}<input v-model="form.category" :placeholder="tr('uncategorized')" /></label></div></section>
+      <section class="ledger-form-section"><div class="ledger-section-heading"><strong>{{ tr('amount') }} · {{ tr('currency') }}</strong></div><div class="ledger-form-grid"><label>{{ tr('amount') }}<input v-model="form.amount" type="number" min="0.01" step="0.01" required /></label><label>{{ tr('currency') }}<select v-model="form.currency"><option v-for="currency in workspace.currencies" :key="currency.code" :value="currency.code">{{ currency.code }}</option><option v-if="!workspace.currencies.length">TWD</option></select></label><label>{{ tr('date') }}<input v-model="form.date" type="date" required /></label></div></section>
+      <section class="ledger-form-section"><label>{{ tr('notes') }}<textarea v-model="form.notes" rows="3"></textarea></label></section>
+      <div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="open = false">{{ tr('cancel') }}</button><button class="primary" :disabled="saving">{{ saving ? tr('processing') : tr('saveRecord') }}</button></div>
     </form>
   </AppDrawer>
 </section>

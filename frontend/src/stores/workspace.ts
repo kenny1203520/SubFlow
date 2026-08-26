@@ -44,6 +44,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const settlementsMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
   const personalSubscriptionsMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
   const personalExpensesMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
+  const personalIncomesMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
   const groupRoles = ref<AccessRole[]>([])
   const ownershipTransfer = ref<OwnershipTransfer>()
   const memberTransfers = ref<MemberTransfer[]>([])
@@ -338,6 +339,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         personalSubscriptionsMeta.value = subscriptionPage.meta || { page:1, perPage, totalItems:subscriptionPage.data.length, totalPages:1 }
         personalExpenses.value = expensePage.data
         personalIncomes.value = incomePage.data
+        personalIncomesMeta.value = incomePage.meta || { page:1, perPage, totalItems:incomePage.data.length, totalPages:1 }
         personalExpensesMeta.value = expensePage.meta || { page:1, perPage, totalItems:expensePage.data.length, totalPages:1 }
         personalSummary.value = dashboard.data
         if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value, incomes: personalIncomes.value })
@@ -586,6 +588,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const result = await api.get<Expense[]>(`/expenses?${params.toString()}`)
     personalExpenses.value = result.data
     personalExpensesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
+  async function loadPersonalIncomesPage(page = 1, perPage = personalIncomesMeta.value.perPage || defaultPageSize.value, sort = '') {
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    if (sort) params.set('sort', sort)
+    const result = await api.get<Income[]>(`/incomes?${params.toString()}`)
+    personalIncomes.value = result.data
+    personalIncomesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
     return result
   }
   async function loadSubscriptionsPage(page = 1, perPage = subscriptionsMeta.value.perPage || defaultPageSize.value, sort = '') {
@@ -926,6 +936,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     personalSubscriptions.value = []
     personalExpenses.value = []
     personalIncomes.value = []
+    personalIncomesMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
     personalLedger.value = null
     personalSummary.value = null
     summary.value = null
@@ -941,11 +952,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
-    subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addIncome, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
-    loadExpensesPage, loadPersonalExpensesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
+    loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,
   }
