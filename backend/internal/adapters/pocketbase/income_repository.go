@@ -159,7 +159,7 @@ func incomeFrom(r *core.Record) *domain.Income {
 }
 
 func (r *Repository) ListPersonalExpensesBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Expense, error) {
-	filter := `(group="" && (owner={:user} || paid_by={:user})) && incurred_on>={:from} && incurred_on<{:to}`
+	filter := `(owner={:user} || paid_by={:user}) && incurred_on>={:from} && incurred_on<{:to}`
 	params := dbx.Params{"user": userID, "from": from, "to": to}
 	recs, err := r.app(ctx).FindRecordsByFilter(CollectionExpenses, filter, "incurred_on", 0, 0, params)
 	if err != nil {
