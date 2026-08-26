@@ -67,7 +67,7 @@ func (b *Bus) Subscribe(ctx context.Context, groupID string) (<-chan domain.Even
 }
 
 func BindRecordEvents(app core.App, bus *Bus) {
-	collections := []string{"groups", "group_members", "subscriptions", "expenses", "settlements"}
+	collections := []string{"groups", "group_members", "subscriptions", "expenses", "incomes", "settlements"}
 	for _, collection := range collections {
 		resource := collection
 		publish := func(kind string, e *core.RecordEvent) error {

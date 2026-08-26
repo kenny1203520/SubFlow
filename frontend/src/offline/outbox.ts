@@ -1,6 +1,6 @@
 import * as db from './db'
 
-export type OutboxKind = 'expense' | 'subscription' | 'settlement'
+export type OutboxKind = 'expense' | 'income' | 'subscription' | 'settlement'
 export type OutboxOp = 'create' | 'update' | 'delete'
 export type OutboxScope = 'personal' | 'group'
 

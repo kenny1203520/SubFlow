@@ -20,7 +20,7 @@ func TestFreshSchemaAndPortContracts(t *testing.T) {
 	if err := EnsureSchema(app); err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{CollectionGroups, CollectionMembers, CollectionInvitations, CollectionSubscriptions, CollectionExpenses} {
+	for _, name := range []string{CollectionGroups, CollectionMembers, CollectionInvitations, CollectionSubscriptions, CollectionExpenses, CollectionIncomes} {
 		if _, err := app.FindCollectionByNameOrId(name); err != nil {
 			t.Fatalf("missing %s: %v", name, err)
 		}

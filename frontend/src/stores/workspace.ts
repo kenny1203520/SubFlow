@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import { useI18n } from '../i18n'
@@ -18,7 +18,8 @@ type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' |
 // by up to 24h relative to the original (see dateInput.ts).
 type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'|'billingInterval'|'startsOn'|'splitMode'|'splits'|'revisionScope'|'effectiveBillingAt'|'endBillingAt'>>
 // incurredOn is optional for the same reason startsOn is on SubscriptionInput.
-type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'notes'> & Partial<Pick<Expense,'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'|'incurredOn'>>
+type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'notes'> & Partial<Pick<Expense, 'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'|'incurredOn'>>
+type IncomeInput = Pick<Income, 'title'|'category'|'amountMinor'|'currency'|'notes'> & Partial<Pick<Income, 'categoryId'|'baseCurrency'|'rateMode'|'exchangeRate'|'receivedOn'>>
 type SettlementInput = Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>
 
 export const useWorkspaceStore = defineStore('workspace', () => {
@@ -53,6 +54,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const groupBusy = reactive<Record<'access'|'members'|'subscriptions'|'expenses'|'settlements'|'summary', number>>({ access:0, members:0, subscriptions:0, expenses:0, settlements:0, summary:0 })
   const personalSubscriptions = ref<Subscription[]>([])
   const personalExpenses = ref<Expense[]>([])
+  const personalIncomes = ref<Income[]>([])
+  const personalLedger = ref<DailyLedger | null>(null)
   const personalSummary = ref<DashboardSummary | null>(null)
   const summary = ref<DashboardSummary | null>(null)
   const busy = reactive<Record<string, number>>({})
@@ -70,7 +73,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // Drives the topbar sync button's danger styling — a record stuck with a
   // failed sync needs the same visibility across any scope the user happens
   // to be viewing, not just the one it lives in.
-  const hasSyncErrors = computed(() => [expenses, subscriptions, settlements, personalExpenses, personalSubscriptions].some(list => list.value.some(item => item.syncError)))
+  const hasSyncErrors = computed(() => [expenses, subscriptions, settlements, personalExpenses, personalIncomes, personalSubscriptions].some(list => list.value.some(item => item.syncError)))
   let sse: SSEClient | undefined
   let sseStarted = false
   let loadedGroupId = ''
@@ -147,6 +150,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const now = new Date().toISOString()
     return { id, groupId, ownerId: groupId ? undefined : auth.record?.id, title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.currency, baseAmountMinor: input.amountMinor, exchangeRate: '1', exchangeRateDate: now, rateMode: 'automatic', paidBy: input.paidBy, incurredOn: input.incurredOn || now, notes: input.notes, splitMode: input.splitMode, splits: input.splits, createdAt: now, updatedAt: now, pendingSync: true }
   }
+  function localIncome(id: string, input: IncomeInput): Income { const now = new Date().toISOString(); return { id, ownerId: auth.record?.id || "", title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.baseCurrency || input.currency, baseAmountMinor: input.amountMinor, exchangeRate: "1", exchangeRateDate: now, rateMode: "automatic", receivedOn: input.receivedOn || now, notes: input.notes, createdAt: now, updatedAt: now, pendingSync: true } }
   function localSubscription(id: string, input: SubscriptionInput, groupId?: string): Subscription {
     const now = new Date().toISOString()
     const startsOn = input.startsOn || now
@@ -320,14 +324,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       try {
         if (!online.value) throw new ApiError(0, 'network_error', 'offline')
         const perPage = defaultPageSize.value
-        const [subscriptionPage, expensePage, dashboard] = await Promise.all([
+        const [subscriptionPage, expensePage, incomePage, dashboard] = await Promise.all([
           api.get<Subscription[]>(`/subscriptions?perPage=${perPage}`),
           api.get<Expense[]>(`/expenses?perPage=${perPage}`),
+          api.get<Income[]>("/incomes?perPage=" + perPage),
           api.get<DashboardSummary>(`/dashboard?scope=${scope}${month ? `&month=${encodeURIComponent(month)}` : ''}`),
         ])
         personalSubscriptions.value = subscriptionPage.data
         personalSubscriptionsMeta.value = subscriptionPage.meta || { page:1, perPage, totalItems:subscriptionPage.data.length, totalPages:1 }
         personalExpenses.value = expensePage.data
+        personalIncomes.value = incomePage.data
         personalExpensesMeta.value = expensePage.meta || { page:1, perPage, totalItems:expensePage.data.length, totalPages:1 }
         personalSummary.value = dashboard.data
         if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value })
@@ -341,6 +347,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }, 'personal', false)
   }
 
+  async function refreshPersonalLedger(date = '') { const userId = auth.record?.id; const cached = userId && date ? await snapshotStore.loadLedger(userId, date) : undefined; try { if (!online.value) throw new ApiError(0, 'network_error', 'offline'); const query = date ? '?date=' + encodeURIComponent(date) : ''; personalLedger.value = (await api.get<DailyLedger>('/personal/ledger' + query)).data; if (userId && personalLedger.value) await snapshotStore.saveLedger(userId, personalLedger.value); return personalLedger.value } catch (reason) { if (reason instanceof ApiError && reason.code === 'network_error' && cached) { personalLedger.value = cached; return cached } throw reason } }
   async function refreshDashboard(scope: 'personal'|'group'|'all', groupId: string, month: string) {
     if (scope === 'group') {
       if (groupId) await selectGroup(groupId)
@@ -370,6 +377,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     pendingGroupRefresh = false
     if (shouldLoadGroups) await loadGroups()
     await refreshPersonal()
+    try { await refreshPersonalLedger() } catch { }
     if (shouldRefreshGroup) await refreshGroup()
   }
   function onEvent(event: SubFlowEvent) {
@@ -384,16 +392,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // ref, since Expense/Subscription/Settlement are different shapes and a
   // ref typed as their union can't be assigned a mapped array back.
   function markOfflineSyncError(entry: OutboxEntry, message: string) {
-    if (entry.kind === 'expense') { const list = entry.scope === 'group' ? expenses : personalExpenses; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) }
+    if (entry.kind === 'expense') { const list = entry.scope === 'group' ? expenses : personalExpenses; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) } else if (entry.kind === 'income') personalIncomes.value = personalIncomes.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item)
     else if (entry.kind === 'subscription') { const list = entry.scope === 'group' ? subscriptions : personalSubscriptions; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) }
     else settlements.value = settlements.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item)
   }
   function offlinePath(kind: OutboxKind, id: string) {
-    return kind === 'expense' ? `/expenses/${id}` : kind === 'subscription' ? `/subscriptions/${id}` : `/settlements/${id}`
+    return kind === 'expense' ? `/expenses/${id}` : kind === 'income' ? `/incomes/${id}` : kind === 'subscription' ? `/subscriptions/${id}` : `/settlements/${id}`
   }
   function offlineCreatePath(entry: OutboxEntry) {
     if (entry.kind === 'settlement') return `/groups/${entry.groupId}/settlements`
-    const base = entry.kind === 'expense' ? 'expenses' : 'subscriptions'
+    const base = entry.kind === 'expense' ? 'expenses' : entry.kind === 'income' ? 'incomes' : 'subscriptions'
     return entry.scope === 'group' ? `/groups/${entry.groupId}/${base}` : `/${base}`
   }
 
@@ -434,6 +442,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       }
       if (touchedPersonal) await refreshPersonal()
+      if (touchedPersonal) { try { await refreshPersonalLedger() } catch { } }
       if (touchedGroupId && touchedGroupId === currentGroupId.value) await refreshGroup()
       await refreshOutboxPending()
     } finally {
@@ -722,6 +731,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       )
     })
   }
+  async function addIncome(input: IncomeInput) { return run(async () => { await withOfflineFallback(async () => { await api.post<Income>('/incomes', input); }, async () => { const id = outbox.localId(); personalIncomes.value = [localIncome(id, input), ...personalIncomes.value]; if (personalLedger.value) personalLedger.value = { ...personalLedger.value, items: [{ id, kind: "income", recordId: id, occurredAt: input.receivedOn || new Date().toISOString(), title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, status: "pending" }, ...personalLedger.value.items] as any }; const userId = auth.record?.id; if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input }); }); await refreshPersonalLedger(input.receivedOn || '') }) }
   async function addPersonalSubscription(input: SubscriptionInput, backfill = false) {
     let createdId = ''
     const ok = await run(async () => {
@@ -814,6 +824,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
   }
 
+  async function updateIncome(id: string, input: IncomeInput) { return run(async () => { await withOfflineFallback(async () => { await api.patch<Income>(`/incomes/${id}`, input); }, async () => { personalIncomes.value = personalIncomes.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item); const userId = auth.record?.id; if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'update', scope: 'personal', groupId: '', targetId: id, payload: input }); }); await refreshPersonalLedger(input.receivedOn || '') }) }
+  async function deleteIncome(id: string) { return run(async () => { await withOfflineFallback(async () => { await api.delete(`/incomes/${id}`); }, async () => { await localDelete('income', 'personal', '', id); personalIncomes.value = personalIncomes.value.filter(item => item.id !== id); }); await refreshPersonalLedger() }) }
   async function exportLedger(groupId?: string) {
     const path = groupId ? `/groups/${groupId}/export` : '/export/personal'
     const { blob, filename } = await api.getBlob(`${path}?locale=${encodeURIComponent(locale.value)}`)
@@ -845,6 +857,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     for (const key of Object.keys(groupErrors) as Array<keyof typeof groupErrors>) groupErrors[key] = ''
     personalSubscriptions.value = []
     personalExpenses.value = []
+    personalIncomes.value = []
+    personalLedger.value = null
     personalSummary.value = null
     summary.value = null
     error.value = ''
@@ -859,10 +873,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
-    subscriptions, expenses, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, updateExpense, deleteExpense, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, updateSettlement, deleteSettlement, refreshPersonal, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
+    addExpense, addPersonalExpense, updateExpense, deleteExpense, addIncome, updateIncome, deleteIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
     loadExpensesPage, loadPersonalExpensesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,

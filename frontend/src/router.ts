@@ -16,13 +16,15 @@ import AboutView from './views/AboutView.vue'
 import SetupView from './views/SetupView.vue'
 import ShareView from './views/ShareView.vue'
 import ShareManagerView from './views/ShareManagerView.vue'
+import PersonalLedgerView from './views/PersonalLedgerView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
   { path: '/auth', name: 'auth', component: AuthView, meta: { public: true } },
 	{ path: '/share/:token', name: 'share', component: ShareView, meta: { public: true } },
   { path: '/invite/:token', name: 'invite', component: InviteView },
-  { path: '/', name: 'dashboard', component: DashboardView },
+  { path: '/', redirect: { name: 'personal-ledger' } },
+  { path: '/overview', name: 'dashboard', component: DashboardView },
   { path: '/groups', name: 'groups', component: GroupsView },
   {
     path: '/groups/:groupId', component: GroupWorkspaceView,
@@ -38,6 +40,7 @@ export const routes: RouteRecordRaw[] = [
 			{ path: 'share', name: 'group-share', component: ShareManagerView },
     ],
   },
+  { path: '/personal', name: 'personal-ledger', component: PersonalLedgerView },
   { path: '/personal/expenses', name: 'personal-expenses', component: ExpensesView },
   { path: '/personal/subscriptions', name: 'personal-subscriptions', component: SubscriptionsView },
 	{ path: '/personal/share', name: 'personal-share', component: ShareManagerView },
@@ -48,16 +51,16 @@ export const routes: RouteRecordRaw[] = [
   { path: '/about', name: 'about', component: AboutView },
   { path: '/admin', name: 'admin', component: AdminView },
   { path: '/admin/:section(settings|users|roles|audit)', name: 'admin-section', component: AdminView },
-  { path: '/:pathMatch(.*)*', redirect: { name: 'dashboard' } },
+  { path: '/:pathMatch(.*)*', redirect: { name: 'personal-ledger' } },
 ]
 
 export const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach(async to => {
 	if (to.name === 'setup') return true
   if (!to.meta.public && !pb.authStore.isValid) return { name: 'auth', query: { redirect: to.fullPath } }
-  if (to.name === 'auth' && pb.authStore.isValid) return { name: 'dashboard' }
+  if (to.name === 'auth' && pb.authStore.isValid) return { name: 'personal-ledger' }
   if (String(to.path).startsWith('/admin')) {
-    try { const response=await fetch('/api/subflow/v1/system/access',{headers:{Authorization:`Bearer ${pb.authStore.token}`}}); const body=await response.json(); const permissions:string[]=body?.data?.permissions||[]; if (!permissions.some(value=>value.startsWith('system.'))) return {name:'dashboard',query:{denied:'admin'}} } catch { return {name:'dashboard'} }
+    try { const response=await fetch('/api/subflow/v1/system/access',{headers:{Authorization:`Bearer ${pb.authStore.token}`}}); const body=await response.json(); const permissions:string[]=body?.data?.permissions||[]; if (!permissions.some(value=>value.startsWith('system.'))) return {name:'personal-ledger',query:{denied:'admin'}} } catch { return {name:'personal-ledger'} }
   }
   return true
 })

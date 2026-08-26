@@ -1,4 +1,4 @@
-import type { CurrencyInfo, Expense, Group, Membership, Settlement, Subscription } from '../api/types'
+import type { CurrencyInfo, DailyLedger, Expense, Group, Membership, Settlement, Subscription } from '../api/types'
 import * as db from './db'
 
 export type SnapshotScope = 'personal' | 'group'
@@ -51,3 +51,6 @@ export async function saveCurrencies(userId: string, currencies: CurrencyInfo[])
 export async function loadCurrencies(userId: string): Promise<CurrencyInfo[] | undefined> {
   return db.get<CurrencyInfo[]>('snapshots', `${userId}:currencies`)
 }
+
+export async function saveLedger(userId: string, ledger: DailyLedger): Promise<void> { await db.set('snapshots', userId + ":personal-ledger:" + ledger.date, ledger) }
+export async function loadLedger(userId: string, date: string): Promise<DailyLedger | undefined> { return db.get<DailyLedger>('snapshots', userId + ":personal-ledger:" + date) }

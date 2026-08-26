@@ -17,6 +17,7 @@ type MemberTransferRepo struct{ *Repository }
 type NotificationRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
+type IncomeRepo struct{ *Repository }
 type SettlementRepo struct{ *Repository }
 type CategoryRepo struct{ *Repository }
 type ExchangeRateRepo struct{ *Repository }
@@ -36,6 +37,7 @@ type Stores struct {
 	Notifications      *NotificationRepo
 	Subscriptions      *SubscriptionRepo
 	Expenses           *ExpenseRepo
+	Incomes            *IncomeRepo
 	Settlements        *SettlementRepo
 	Categories         *CategoryRepo
 	ExchangeRates      *ExchangeRateRepo
@@ -50,7 +52,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{base, &MembershipRepo{base}, &InvitationRepo{base}, &OwnershipTransferRepo{base}, &MemberTransferRepo{base}, &NotificationRepo{base}, &SubscriptionRepo{base}, &ExpenseRepo{base}, &SettlementRepo{base}, &CategoryRepo{base}, &ExchangeRateRepo{base}, &RoleRepo{base}, &AuditRepo{base}, &ShareRepo{base}, &ContactRepo{base}, &UserRepo{base}, &SystemSettingsRepo{base}, base}
+	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, Settlements: &SettlementRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -191,6 +193,9 @@ func (r *ExpenseRepo) Update(ctx context.Context, v *domain.Expense) error {
 func (r *ExpenseRepo) Delete(ctx context.Context, id string) error { return r.DeleteExpense(ctx, id) }
 func (r *ExpenseRepo) ListPersonal(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Expense], error) {
 	return r.ListPersonalExpenses(ctx, userID, req)
+}
+func (r *ExpenseRepo) ListPersonalBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Expense, error) {
+	return r.ListPersonalExpensesBetween(ctx, userID, from, to)
 }
 func (r *ExpenseRepo) ReplaceSplits(ctx context.Context, expenseID string, values []domain.ExpenseSplit) error {
 	return r.ReplaceExpenseSplits(ctx, expenseID, values)
@@ -333,3 +338,19 @@ func (r *SystemSettingsRepo) Get(ctx context.Context) (domain.SystemSettings, er
 func (r *SystemSettingsRepo) Save(ctx context.Context, value domain.SystemSettings) error {
 	return r.Repository.SaveSystemSettings(ctx, value)
 }
+func (r *IncomeRepo) Create(ctx context.Context, v *domain.Income) error {
+	return r.CreateIncome(ctx, v)
+}
+func (r *IncomeRepo) Get(ctx context.Context, id string) (*domain.Income, error) {
+	return r.GetIncome(ctx, id)
+}
+func (r *IncomeRepo) ListPersonal(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Income], error) {
+	return r.ListPersonalIncomes(ctx, userID, req)
+}
+func (r *IncomeRepo) ListPersonalBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Income, error) {
+	return r.ListPersonalIncomesBetween(ctx, userID, from, to)
+}
+func (r *IncomeRepo) Update(ctx context.Context, v *domain.Income) error {
+	return r.UpdateIncome(ctx, v)
+}
+func (r *IncomeRepo) Delete(ctx context.Context, id string) error { return r.DeleteIncome(ctx, id) }

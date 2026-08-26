@@ -535,6 +535,57 @@ type Expense struct {
 	UpdatedAt        time.Time      `json:"updatedAt"`
 }
 
+type Income struct {
+	ID string `json:"id"`
+	OwnerID string `json:"ownerId"`
+	Title string `json:"title"`
+	Category string `json:"category"`
+	CategoryID string `json:"categoryId,omitempty"`
+	CategoryInfo *Category `json:"categoryInfo,omitempty"`
+	AmountMinor int64 `json:"amountMinor"`
+	Currency Currency `json:"currency"`
+	BaseCurrency Currency `json:"baseCurrency"`
+	BaseAmountMinor int64 `json:"baseAmountMinor"`
+	ExchangeRate string `json:"exchangeRate"`
+	RateScaled int64 `json:"-"`
+	ExchangeRateDate time.Time `json:"exchangeRateDate"`
+	RateMode RateMode `json:"rateMode"`
+	ReceivedOn time.Time `json:"receivedOn"`
+	Notes string `json:"notes"`
+	CreatedAt time.Time `json:"createdAt"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+type DailyLedger struct {
+	Date string `json:"date"`
+	Timezone string `json:"timezone"`
+	Summaries []DailyLedgerCurrencySummary `json:"summaries"`
+	Items []LedgerItem `json:"items"`
+}
+type DailyLedgerCurrencySummary struct {
+	Currency Currency `json:"currency"`
+	IncomeMinor int64 `json:"incomeMinor"`
+	ExpenseMinor int64 `json:"expenseMinor"`
+	SubscriptionMinor int64 `json:"subscriptionMinor"`
+	NetMinor int64 `json:"netMinor"`
+	Count int `json:"count"`
+}
+type LedgerItem struct {
+	ID string `json:"id"`
+	Kind string `json:"kind"`
+	RecordID string `json:"recordId,omitempty"`
+	SubscriptionID string `json:"subscriptionId,omitempty"`
+	OccurredAt time.Time `json:"occurredAt"`
+	Title string `json:"title"`
+	Category string `json:"category,omitempty"`
+	CategoryID string `json:"categoryId,omitempty"`
+	AmountMinor int64 `json:"amountMinor"`
+	Currency Currency `json:"currency"`
+	BaseCurrency Currency `json:"baseCurrency,omitempty"`
+	BaseAmountMinor int64 `json:"baseAmountMinor,omitempty"`
+	Notes string `json:"notes,omitempty"`
+	Status string `json:"status"`
+}
+
 type ExpenseSplit struct {
 	ID                    string `json:"id,omitempty"`
 	ExpenseID             string `json:"expenseId,omitempty"`

@@ -1,0 +1,120 @@
+package pocketbase
+
+import (
+	"context"
+	"time"
+
+	"github.com/pocketbase/dbx"
+	"github.com/pocketbase/pocketbase/core"
+
+	"subflow/internal/domain"
+	"subflow/internal/ports"
+)
+
+func (r *Repository) CreateIncome(ctx context.Context, v *domain.Income) error {
+	rec, err := newRecord(r.app(ctx), CollectionIncomes)
+	if err != nil {
+		return err
+	}
+	writeIncome(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	v.ID = rec.Id
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) GetIncome(ctx context.Context, id string) (*domain.Income, error) {
+	rec, err := r.app(ctx).FindRecordById(CollectionIncomes, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return incomeFrom(rec), nil
+}
+func (r *Repository) ListPersonalIncomes(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Income], error) {
+	filter := "owner={:user}"
+	params := dbx.Params{"user": userID}
+	recs, err := listRecords(r.app(ctx), CollectionIncomes, filter, req, params)
+	if err != nil {
+		return ports.Page[domain.Income]{}, err
+	}
+	items := make([]domain.Income, len(recs))
+	for i, rec := range recs {
+		items[i] = *incomeFrom(rec)
+	}
+	count, err := countFiltered(r.app(ctx), CollectionIncomes, filter, params)
+	if err != nil {
+		return ports.Page[domain.Income]{}, err
+	}
+	return page(items, req, count), nil
+}
+func (r *Repository) ListPersonalIncomesBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Income, error) {
+	filter := "owner={:user} && received_on>={:from} && received_on<{:to}"
+	params := dbx.Params{"user": userID, "from": from, "to": to}
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionIncomes, filter, "received_on", 0, 0, params)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]domain.Income, len(recs))
+	for i, rec := range recs {
+		items[i] = *incomeFrom(rec)
+	}
+	return items, nil
+}
+func (r *Repository) UpdateIncome(ctx context.Context, v *domain.Income) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionIncomes, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeIncome(rec, v)
+	if err = r.app(ctx).Save(rec); err != nil {
+		return err
+	}
+	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+func (r *Repository) DeleteIncome(ctx context.Context, id string) error {
+	rec, err := r.app(ctx).FindRecordById(CollectionIncomes, id)
+	if err != nil {
+		return mapError(err)
+	}
+	return r.app(ctx).Delete(rec)
+}
+func writeIncome(r *core.Record, v *domain.Income) {
+	r.Set("owner", v.OwnerID)
+	r.Set("title", v.Title)
+	r.Set("category", v.Category)
+	r.Set("category_ref", v.CategoryID)
+	r.Set("amount_minor", v.AmountMinor)
+	r.Set("currency", v.Currency)
+	r.Set("base_currency", v.BaseCurrency)
+	r.Set("base_amount_minor", v.BaseAmountMinor)
+	r.Set("exchange_rate_scaled", v.RateScaled)
+	r.Set("exchange_rate_date", v.ExchangeRateDate)
+	r.Set("rate_mode", v.RateMode)
+	r.Set("received_on", v.ReceivedOn)
+	r.Set("notes", v.Notes)
+}
+func incomeFrom(r *core.Record) *domain.Income {
+	v := &domain.Income{ID: r.Id, OwnerID: r.GetString("owner"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), ReceivedOn: r.GetDateTime("received_on").Time(), Notes: r.GetString("notes")}
+	v.ExchangeRate = domain.FormatRate(v.RateScaled)
+	if v.Currency == "" {
+		v.Currency = domain.CurrencyTWD
+	}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v
+}
+
+func (r *Repository) ListPersonalExpensesBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Expense, error) {
+	filter := `(group="" && (owner={:user} || paid_by={:user})) && incurred_on>={:from} && incurred_on<{:to}`
+	params := dbx.Params{"user": userID, "from": from, "to": to}
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionExpenses, filter, "incurred_on", 0, 0, params)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]domain.Expense, len(recs))
+	for i, rec := range recs {
+		items[i] = *expenseFrom(rec)
+	}
+	return items, nil
+}

@@ -24,6 +24,7 @@ const (
 	CollectionSubscriptionRevisions   = "subscription_revisions"
 	CollectionSubscriptionOccurrences = "subscription_occurrences"
 	CollectionExpenses                = "expenses"
+	CollectionIncomes                 = "incomes"
 	CollectionExpenseSplits           = "expense_splits"
 	CollectionSettlements             = "settlements"
 	CollectionCategories              = "categories"
@@ -285,6 +286,13 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	_, err = ensureCollection(app, CollectionExpenses, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "subscription", CollectionId: mustCollectionID(app, CollectionSubscriptions), MaxSelect: 1}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.RelationField{Name: "paid_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.DateField{Name: "incurred_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_expenses_group_date", false, "`group`, incurred_on", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionIncomes, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.DateField{Name: "received_on", Required: true}, &core.TextField{Name: "notes", Max: 4000})
+		c.AddIndex("idx_incomes_owner_date", false, "owner, received_on", "")
 	})
 	if err != nil {
 		return "", err

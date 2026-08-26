@@ -170,6 +170,7 @@ type ExpenseRepository interface {
 	Get(context.Context, string) (*domain.Expense, error)
 	List(context.Context, string, PageRequest) (Page[domain.Expense], error)
 	ListPersonal(context.Context, string, PageRequest) (Page[domain.Expense], error)
+	ListPersonalBetween(context.Context, string, time.Time, time.Time) ([]domain.Expense, error)
 	Update(context.Context, *domain.Expense) error
 	Delete(context.Context, string) error
 	ReplaceSplits(context.Context, string, []domain.ExpenseSplit) error
@@ -180,6 +181,15 @@ type ExpenseRepository interface {
 	// index when both already have one on the same expense (see
 	// Service.repointUserReferences).
 	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
+}
+
+type IncomeRepository interface {
+	Create(context.Context, *domain.Income) error
+	Get(context.Context, string) (*domain.Income, error)
+	ListPersonal(context.Context, string, PageRequest) (Page[domain.Income], error)
+	ListPersonalBetween(context.Context, string, time.Time, time.Time) ([]domain.Income, error)
+	Update(context.Context, *domain.Income) error
+	Delete(context.Context, string) error
 }
 
 type SettlementRepository interface {

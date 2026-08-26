@@ -77,6 +77,11 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/subscriptions", a.createPersonalSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/expenses", a.listPersonalExpenses).Bind(bind)
 	e.Router.POST("/api/subflow/v1/expenses", a.createPersonalExpense).Bind(bind)
+	e.Router.GET("/api/subflow/v1/incomes", a.listPersonalIncomes).Bind(bind)
+	e.Router.POST("/api/subflow/v1/incomes", a.createPersonalIncome).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/incomes/{id}", a.updatePersonalIncome).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/incomes/{id}", a.deletePersonalIncome).Bind(bind)
+	e.Router.GET("/api/subflow/v1/personal/ledger", a.personalLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/personal/shares", a.listPersonalShares).Bind(bind)
 	e.Router.POST("/api/subflow/v1/personal/shares", a.createPersonalShare).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/personal/shares/{id}", a.updateShare).Bind(bind)
@@ -1076,6 +1081,54 @@ func (a *API) createPersonalExpense(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusCreated, created, nil)
 }
+func (a *API) listPersonalIncomes(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "incomes")
+	if err != nil {
+		return fail(e, err)
+	}
+	v, err := a.Service.ListPersonalIncomes(e.Request.Context(), authID(e), p)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *API) createPersonalIncome(e *core.RequestEvent) error {
+	var v domain.Income
+	if err := e.BindBody(&v); err != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	created, err := a.Service.CreateIncome(e.Request.Context(), authID(e), v)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, created, nil)
+}
+func (a *API) updatePersonalIncome(e *core.RequestEvent) error {
+	var v domain.Income
+	if err := e.BindBody(&v); err != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	v.ID = e.Request.PathValue("id")
+	updated, err := a.Service.UpdateIncome(e.Request.Context(), authID(e), v)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, updated, nil)
+}
+func (a *API) deletePersonalIncome(e *core.RequestEvent) error {
+	if err := a.Service.DeleteIncome(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
+}
+func (a *API) personalLedger(e *core.RequestEvent) error {
+	v, err := a.Service.PersonalLedger(e.Request.Context(), authID(e), e.Request.URL.Query().Get("date"))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, v, nil)
+}
+
 func (a *API) createExpense(e *core.RequestEvent) error {
 	var v domain.Expense
 	if err := e.BindBody(&v); err != nil {
