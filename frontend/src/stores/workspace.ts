@@ -167,7 +167,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // the optimistic change the user just made one line earlier.
   async function savePersonalSnapshot() {
     const userId = auth.record?.id
-    if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value })
+    if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value, incomes: personalIncomes.value })
   }
   function localSettlement(id: string, input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>, groupId: string): Settlement {
     const now = new Date().toISOString()
@@ -340,13 +340,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         personalIncomes.value = incomePage.data
         personalExpensesMeta.value = expensePage.meta || { page:1, perPage, totalItems:expensePage.data.length, totalPages:1 }
         personalSummary.value = dashboard.data
-        if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value })
+        if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value, incomes: personalIncomes.value })
       } catch (reason) {
         if (!(reason instanceof ApiError) || reason.code !== 'network_error') throw reason
         const cached = userId ? await snapshotStore.loadSnapshot(userId, 'personal', '') : undefined
         if (!cached) throw reason
         personalSubscriptions.value = cached.subscriptions
         personalExpenses.value = cached.expenses
+        personalIncomes.value = cached.incomes || []
       }
     }, 'personal', false)
   }
