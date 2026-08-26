@@ -6,10 +6,12 @@ import EmptyState from '../components/EmptyState.vue'
 import AppDrawer from '../components/AppDrawer.vue'
 import SyncBadge from '../components/SyncBadge.vue'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useAuthStore } from '../stores/auth'
 import { useI18n } from '../i18n'
 import type { Currency, Income } from '../api/types'
 
 const workspace = useWorkspaceStore()
+const auth = useAuthStore()
 const { tr, formatDate } = useI18n()
 const open = ref(false)
 const saving = ref(false)
@@ -71,17 +73,18 @@ onMounted(() => { void workspace.refreshPersonal() })
 <section class="page ledger-page income-management-page">
   <PersonalLedgerNav />
   <div class="page-heading">
-    <div><p class="eyebrow">{{ tr('income') }}</p><h1>{{ tr('income') }}</h1><p>{{ tr('incomeManagementDesc') }}</p></div>
+    <div><p class="eyebrow">{{ tr('incomePersonal') }}</p><h1>{{ tr('incomePersonal') }}</h1><p>{{ tr('incomeManagementDesc') }}</p></div>
     <button class="primary" @click="create">{{ tr('createIncome') }}</button>
   </div>
   <p v-if="workspace.error" class="inline-error">{{ workspace.localizedError }}</p>
   <section class="card data-card">
     <div class="card-title"><h2>{{ tr('recentIncomes') }}</h2><span>{{ tr('records', { count: list.length }) }}</span></div>
     <div v-if="list.length" class="data-table income-table">
-      <div class="data-table-head"><span>{{ tr('incomeTitle') }}</span><span>{{ tr('category') }}</span><span>{{ tr('date') }}</span><span>{{ tr('amount') }}</span><span></span></div>
+      <div class="data-table-head"><span>{{ tr('item') }}</span><span>{{ tr('source') }}</span><span>{{ tr('receivedBy') }}</span><span>{{ tr('date') }}</span><span>{{ tr('amount') }}</span><span></span></div>
       <article v-for="item in list" :key="item.id" class="data-table-row">
         <div class="item-cell"><span class="service-icon income">+</span><span><strong>{{ item.title }}</strong><small>{{ item.category || tr('uncategorized') }}</small><SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError" /></span></div>
-        <span>{{ item.category || tr('uncategorized') }}</span>
+        <span><span class="source-badge">{{ tr('privateRecord') }}</span></span>
+        <span>{{ auth.record?.name || auth.record?.email || tr('myself') }}</span>
         <span class="timezone-date"><strong>{{ formatDate(item.receivedOn) }}</strong></span>
         <span class="money-stack income"><MoneyValue :amount="item.amountMinor" :currency="item.currency" /></span>
         <span class="row-actions"><button class="icon-button" :aria-label="tr('editIncome')" @click="edit(item)">&#9998;</button><button class="icon-button" :aria-label="tr('deleteIncome')" @click="remove(item)">&times;</button></span>
@@ -104,5 +107,5 @@ onMounted(() => { void workspace.refreshPersonal() })
 
 <style scoped>
 .income-management-page{max-width:1200px;margin:auto}.income-table .income{color:#72d6ad}.income-form{display:grid;gap:1rem}.income-form label{display:grid;gap:.4rem;color:var(--muted)}.income-form input,.income-form select,.income-form textarea{box-sizing:border-box;width:100%;border:1px solid var(--border);border-radius:10px;background:var(--surface-strong);color:var(--text);padding:.75rem;font:inherit}.full-width{width:100%}.inline-error{color:#ff9b9b;margin:.75rem 0}
-@media(max-width:900px){.income-management-page{padding-bottom:calc(7rem + env(safe-area-inset-bottom))}.income-management-page .page-heading{align-items:flex-start}.income-management-page .page-heading .primary{white-space:nowrap}.income-table .data-table-head{display:none}.income-table .data-table-row{grid-template-columns:1fr auto;gap:.5rem}.income-table .data-table-row>span:nth-child(2),.income-table .data-table-row>span:nth-child(3){display:none}.income-table .row-actions{grid-column:2;grid-row:1}.income-table .money-stack{grid-column:1;grid-row:2;justify-self:start}.income-table .item-cell{grid-column:1;grid-row:1}}
+@media(max-width:900px){.income-management-page{padding-bottom:calc(7rem + env(safe-area-inset-bottom))}.income-management-page .page-heading{align-items:flex-start}.income-management-page .page-heading .primary{white-space:nowrap}.income-table .data-table-head{display:none}.income-table .data-table-row{grid-template-columns:1fr auto;gap:.5rem}.income-table .data-table-row>span:nth-child(2),.income-table .data-table-row>span:nth-child(3),.income-table .data-table-row>span:nth-child(4){display:none}.income-table .row-actions{grid-column:2;grid-row:1}.income-table .money-stack{grid-column:1;grid-row:2;justify-self:start}.income-table .item-cell{grid-column:1;grid-row:1}}
 </style>
