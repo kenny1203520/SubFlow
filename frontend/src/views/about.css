@@ -1,6 +1,6 @@
 .about-page{width:min(100%,880px);margin:0 auto}
 .about-hero{display:grid;justify-items:center;gap:14px;text-align:center;margin-bottom:28px}
-.about-mark{display:grid;place-items:center;width:72px;height:72px;border-radius:22px;background:linear-gradient(135deg,#7c7df9,#5959dc);color:#fff;font-size:24px;font-weight:800;box-shadow:0 14px 30px color-mix(in srgb,var(--brand) 30%,transparent)}
+
 .about-hero h1{margin:0;font-size:clamp(30px,4vw,40px);letter-spacing:-.04em}
 .about-hero p{max-width:560px;margin:0;color:var(--muted);font-size:14px;line-height:1.7}
 .about-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:20px}

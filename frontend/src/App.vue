@@ -7,6 +7,7 @@ import { useSetupStore } from './stores/setup'
 import { useTheme } from './theme'
 import { useI18n } from './i18n'
 import LanguageSwitcher from './components/LanguageSwitcher.vue'
+import Logo from './components/Logo.vue'
 import NotificationBell from './components/NotificationBell.vue'
 import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import PwaUpdatePrompt from './components/PwaUpdatePrompt.vue'
@@ -86,12 +87,12 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
   <PwaUpdatePrompt />
   <ToastContainer />
   <TimezoneMismatchDialog :open="!!timezoneMismatch" :saved-timezone="timezoneMismatch?.saved||''" :current-timezone="timezoneMismatch?.current||''" @update="applyDetectedTimezone" @later="timezoneMismatch=undefined" />
-  <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><div class="splash-mark">SF</div><strong>SubFlow</strong></div>
+  <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><Logo variant="lockup" size="lg" /></div>
   <RouterView v-else-if="!setup.initialized" />
   <RouterView v-else-if="!auth.authenticated || publicRoute" />
   <div v-else class="shell">
     <aside class="sidebar">
-      <RouterLink class="brand" :to="{ name: 'dashboard' }"><span>SF</span><strong>SubFlow</strong></RouterLink>
+      <RouterLink class="brand" :to="{ name: 'dashboard' }"><Logo variant="lockup" size="md" /></RouterLink>
       <p class="sidebar-label">{{ tr('workspace') }}</p>
       <nav>
         <RouterLink :to="{ name: 'dashboard' }"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" /></svg><span>{{ tr('overview') }}</span></RouterLink>
@@ -109,7 +110,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
     </aside>
     <main class="main">
       <header class="topbar">
-        <div><small class="topbar-label">SubFlow</small><strong>{{ tr('personalGroupFinance') }}</strong></div>
+        <div class="topbar-brand"><Logo variant="mark" size="sm" /><div><small class="topbar-label">SubFlow</small><strong>{{ tr('personalGroupFinance') }}</strong></div></div>
         <div class="topbar-actions">
           <span v-if="workspace.loading" class="sync"><i></i>{{ tr('syncing') }}</span>
           <span v-if="!workspace.online" class="offline-indicator" :title="tr('offlineIndicatorHelp')">⚠ {{ tr('offlineMode') }}</span>

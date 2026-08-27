@@ -3,6 +3,7 @@ import './about.css'
 import { computed } from 'vue'
 import { useI18n } from '../i18n'
 import { appDeveloper, appVersion, changelogUrl, containerImageRef, containerImageUrl, repositoryUrl, supportUrl } from '../appInfo'
+import Logo from '../components/Logo.vue'
 
 const { tr } = useI18n()
 const year = new Date().getFullYear()
@@ -17,7 +18,7 @@ const links = computed(() => [
 <template>
   <section class="page about-page">
     <div class="about-hero">
-      <div class="about-mark">SF</div>
+      <Logo class="about-logo" variant="mark" size="lg" />
       <h1>{{ tr('appName') }}</h1>
       <p>{{ tr('aboutTagline') }}</p>
     </div>

@@ -6,6 +6,7 @@ import { useI18n } from '../i18n'
 import { useSetupStore } from '../stores/setup'
 import ThemeSwitcher from '../components/ThemeSwitcher.vue'
 import LanguageSwitcher from '../components/LanguageSwitcher.vue'
+import Logo from '../components/Logo.vue'
 import BaseInput from '../components/BaseInput.vue'
 import PasswordField from '../components/PasswordField.vue'
 import CaptchaChallenge from '../components/CaptchaChallenge.vue'
@@ -83,7 +84,7 @@ watch(()=>setup.allowRegistration,value=>{if(!value&&mode.value==='register')mod
 </script>
 <template>
   <main class="auth-page"><div class="auth-controls"><ThemeSwitcher/><LanguageSwitcher/></div>
-    <section class="auth-story"><div class="brand hero-brand"><span>SF</span><strong>SubFlow</strong></div><p class="eyebrow">{{tr('sharedMoneyClearly')}}</p><h1>{{tr('sharedFinance')}}</h1><p>{{tr('sharedFinanceDesc')}}</p></section>
+    <section class="auth-story"><Logo class="hero-brand" variant="lockup" size="md" /><p class="eyebrow">{{tr('sharedMoneyClearly')}}</p><h1>{{tr('sharedFinance')}}</h1><p>{{tr('sharedFinanceDesc')}}</p></section>
     <section class="auth-panel"><div class="auth-card">
       <div v-if="canPasswordRegistration&&(mode==='login'||mode==='register')" class="segmented"><button type="button" :class="{active:mode==='login'}" @click="mode='login'">{{tr('login')}}</button><button type="button" :class="{active:mode==='register'}" @click="mode='register'">{{tr('register')}}</button></div>
       <button v-if="mode==='otp-request'||isCodeMode" type="button" class="back-auth" @click="backToPasswordLogin">← {{tr('backToPasswordLogin')}}</button>
