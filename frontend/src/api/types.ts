@@ -32,7 +32,9 @@ export interface CaptchaFlowConfig { enabled:boolean; trigger:CaptchaTrigger; mo
 export interface CaptchaFlowSettings { register:CaptchaFlowConfig; passwordReset:CaptchaFlowConfig; otpRequest:CaptchaFlowConfig; login:CaptchaFlowConfig }
 export interface Notification { id:string;userId:string;type:string;groupId?:string;resourceId?:string;readAt?:string;createdAt:string;updatedAt:string }
 export type SplitMode='equal'|'amount'|'percentage'
-export interface ExpenseSplit { id?:string;expenseId?:string;userId:string;amountMinor:number;baseAmountMinor?:number;percentageBasisPoints?:number }
+export interface BaseSplit  { id?:string;userId:string;amountMinor:number;baseAmountMinor?:number;percentageBasisPoints?:number }
+export interface ExpenseSplit extends BaseSplit { expenseId?:string }
+export interface IncomeSplit extends BaseSplit { incomeId?:string }
 export interface SubscriptionRevision { id:string;subscriptionId:string;scope:'future'|'one_off';effectiveBillingAt:string;endBillingAt?:string;name:string;category:string;categoryId?:string;amountMinor:number;currency:Currency;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;rateScaled:number;exchangeRateDate:string;rateMode:RateMode;paidBy:string;splitMode:SplitMode;splits:ExpenseSplit[];createdAt:string }
 export interface SubscriptionOccurrence { id:string;subscriptionId:string;revisionId:string;expenseId?:string;billingAt:string;status:'pending'|'posted'|'failed';error?:string;createdAt:string;updatedAt:string }
 interface ConvertedRecord { categoryId?:string;categoryInfo?:Category;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;exchangeRateDate:string;rateMode:RateMode }
@@ -42,7 +44,7 @@ interface ConvertedRecord { categoryId?:string;categoryInfo?:Category;baseCurren
 export interface OfflineState { pendingSync?:boolean;syncError?:string }
 export interface Subscription extends ConvertedRecord, OfflineState { id:string;groupId?:string;ownerId?:string;paidBy:string;name:string;category:string;amountMinor:number;currency:Currency;billingCycle:BillingCycle;billingInterval?:number;startsOn:string;endsOn?:string;nextBilling:string;status:SubscriptionStatus;lifecycleStatus?:'active'|'paused'|'ending'|'ended'|'cancelled';notes:string;splitMode?:SplitMode;splits?:ExpenseSplit[];revisionScope?:'future'|'one_off';effectiveBillingAt?:string;endBillingAt?:string;revisions?:SubscriptionRevision[];occurrences?:SubscriptionOccurrence[];createdAt:string;updatedAt:string }
 export interface Expense extends ConvertedRecord, OfflineState { id:string;groupId?:string;ownerId?:string;title:string;category:string;amountMinor:number;currency:Currency;paidBy:string;incurredOn:string;notes:string;splitMode?:SplitMode;splits?:ExpenseSplit[];createdAt:string;updatedAt:string }
-export interface Income extends ConvertedRecord, OfflineState { id:string;groupId?:string;ownerId?:string;paidBy?:string;title:string;category:string;amountMinor:number;currency:Currency;receivedOn:string;notes:string;splitMode?:SplitMode;splits?:ExpenseSplit[];createdAt:string;updatedAt:string }
+export interface Income extends ConvertedRecord, OfflineState { id:string;groupId?:string;ownerId?:string;title:string;category:string;amountMinor:number;currency:Currency;earnedBy?:string;receivedOn:string;notes:string;splitMode?:SplitMode;splits?:IncomeSplit[];createdAt:string;updatedAt:string }
 export type LedgerKind = "expense"|"income"|"subscription"
 export type LedgerStatus = "recorded"|"scheduled"|"pending"|"failed"
 export interface LedgerItem { id:string;kind:LedgerKind;recordId?:string;subscriptionId?:string;occurredAt:string;title:string;category?:string;categoryId?:string;amountMinor:number;currency:Currency;baseCurrency?:Currency;baseAmountMinor?:number;notes?:string;status:LedgerStatus }

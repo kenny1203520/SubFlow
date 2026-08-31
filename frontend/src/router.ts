@@ -7,6 +7,7 @@ import MembersView from './views/MembersView.vue'
 import GroupAuditView from './views/GroupAuditView.vue'
 import GroupRolesView from './views/GroupRolesView.vue'
 import SubscriptionsView from './views/SubscriptionsView.vue'
+import IncomesView from './views/IncomesView.vue'
 import ExpensesView from './views/ExpensesView.vue'
 import ProfileView from './views/ProfileView.vue'
 import InviteView from './views/InviteView.vue'
@@ -17,7 +18,6 @@ import SetupView from './views/SetupView.vue'
 import ShareView from './views/ShareView.vue'
 import ShareManagerView from './views/ShareManagerView.vue'
 import PersonalLedgerView from './views/PersonalLedgerView.vue'
-import PersonalIncomesView from './views/PersonalIncomesView.vue'
 import GroupLedgerView from './views/GroupLedgerView.vue'
 import GroupIncomesView from './views/GroupIncomesView.vue'
 
@@ -46,8 +46,8 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   { path: '/personal', name: 'personal-ledger', component: PersonalLedgerView },
+  { path: '/personal/incomes', name: 'personal-incomes', component: IncomesView },
   { path: '/personal/expenses', name: 'personal-expenses', component: ExpensesView },
-  { path: '/personal/incomes', name: 'personal-incomes', component: PersonalIncomesView },
   { path: '/personal/subscriptions', name: 'personal-subscriptions', component: SubscriptionsView },
   { path: '/personal/share', name: 'personal-share', component: ShareManagerView },
   { path: '/members', redirect: { name: 'groups' } },

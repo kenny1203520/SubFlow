@@ -19,7 +19,7 @@ type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' |
 type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'currency'|'billingCycle'|'status'|'notes'> & Partial<Pick<Subscription,'paidBy'|'endsOn'|'nextBilling'|'categoryId'|'rateMode'|'exchangeRate'|'billingInterval'|'startsOn'|'splitMode'|'splits'|'revisionScope'|'effectiveBillingAt'|'endBillingAt'>>
 // incurredOn is optional for the same reason startsOn is on SubscriptionInput.
 type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'notes'> & Partial<Pick<Expense, 'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'|'incurredOn'>>
-type IncomeInput = Pick<Income, 'title'|'category'|'amountMinor'|'currency'|'notes'> & Partial<Pick<Income, 'categoryId'|'baseCurrency'|'rateMode'|'exchangeRate'|'receivedOn'|'paidBy'|'splitMode'|'splits'>>
+type IncomeInput = Pick<Income, 'title'|'category'|'amountMinor'|'currency'| 'earnedBy' |'notes'> & Partial<Pick<Income, 'categoryId'|'baseCurrency'|'rateMode'|'exchangeRate'|'receivedOn'|'earnedBy'|'splitMode'|'splits'>>
 type SettlementInput = Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>
 
 export const useWorkspaceStore = defineStore('workspace', () => {
@@ -45,6 +45,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const personalSubscriptionsMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
   const personalExpensesMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
   const personalIncomesMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
+  const groupIncomesMeta = ref<Meta>({ page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 })
   const groupRoles = ref<AccessRole[]>([])
   const ownershipTransfer = ref<OwnershipTransfer>()
   const memberTransfers = ref<MemberTransfer[]>([])
@@ -153,7 +154,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const now = new Date().toISOString()
     return { id, groupId, ownerId: groupId ? undefined : auth.record?.id, title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.currency, baseAmountMinor: input.amountMinor, exchangeRate: '1', exchangeRateDate: now, rateMode: 'automatic', paidBy: input.paidBy, incurredOn: input.incurredOn || now, notes: input.notes, splitMode: input.splitMode, splits: input.splits, createdAt: now, updatedAt: now, pendingSync: true }
   }
-  function localIncome(id: string, input: IncomeInput, groupId = ""): Income { const now = new Date().toISOString(); return { id, groupId: groupId || undefined, ownerId: groupId ? undefined : auth.record?.id, paidBy: input.paidBy, title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.baseCurrency || input.currency, baseAmountMinor: input.amountMinor, exchangeRate: "1", exchangeRateDate: now, rateMode: "automatic", receivedOn: input.receivedOn || now, notes: input.notes, splitMode: input.splitMode, splits: input.splits, createdAt: now, updatedAt: now, pendingSync: true } }
+  function localIncome(id: string, input: IncomeInput, groupId = ""): Income { const now = new Date().toISOString(); return { id, groupId: groupId || undefined, ownerId: groupId ? undefined : auth.record?.id, earnedBy: input.earnedBy, title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, baseCurrency: input.baseCurrency || input.currency, baseAmountMinor: input.amountMinor, exchangeRate: "1", exchangeRateDate: now, rateMode: "automatic", receivedOn: input.receivedOn || now, notes: input.notes, splitMode: input.splitMode, splits: input.splits, createdAt: now, updatedAt: now, pendingSync: true } }
   function localSubscription(id: string, input: SubscriptionInput, groupId?: string): Subscription {
     const now = new Date().toISOString()
     const startsOn = input.startsOn || now
@@ -302,7 +303,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       canViewGroup ? load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }, cached?.members) : Promise.resolve(),
       canReadSubscriptions ? load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=${perPage}`), value => { subscriptions.value = value.data; subscriptionsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.subscriptions ? { data: cached.subscriptions } : undefined) : Promise.resolve(),
       canReadExpenses ? load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=${perPage}`), value => { expenses.value = value.data; expensesMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.expenses ? { data: cached.expenses } : undefined) : Promise.resolve(),
-      canReadIncomes ? load('incomes', () => api.get<Income[]>(`/groups/${id}/incomes?perPage=${perPage}`), value => { groupIncomes.value = value.data }, cached?.incomes ? { data: cached.incomes } : undefined) : Promise.resolve(),
+      canReadIncomes ? load('incomes', () => api.get<Income[]>(`/groups/${id}/incomes?perPage=${perPage}`), value => { groupIncomes.value = value.data; groupIncomesMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.incomes ? { data: cached.incomes } : undefined) : Promise.resolve(),
       canReadSettlements ? load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=${perPage}`), value => { settlements.value = value.data; settlementsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.settlements ? { data: cached.settlements } : undefined) : Promise.resolve(),
       canViewGroup && canReadExpenses && canReadSubscriptions && canReadSettlements ? load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }) : Promise.resolve(),
     ])
@@ -598,6 +599,15 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     personalIncomesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
     return result
   }
+  async function loadGroupIncomesPage(page = 1, perPage = groupIncomesMeta.value.perPage || defaultPageSize.value, sort = '') {
+    if (!currentGroupId.value) return
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    if (sort) params.set('sort', sort)
+    const result = await api.get<Income[]>('/groups/' + currentGroupId.value + '/incomes?' + params.toString())
+    groupIncomes.value = result.data
+    groupIncomesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    return result
+  }
   async function loadSubscriptionsPage(page = 1, perPage = subscriptionsMeta.value.perPage || defaultPageSize.value, sort = '') {
     if (!currentGroupId.value) return
     const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
@@ -775,7 +785,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         async () => { await api.post<Income>(`/groups/${currentGroupId.value}/incomes`, input); await refreshGroup() },
         async () => {
           const id = outbox.localId()
-          groupIncomes.value = [localIncome(id, { ...input, paidBy: input.paidBy || auth.record?.id }, currentGroupId.value), ...groupIncomes.value]
+          groupIncomes.value = [localIncome(id, { ...input, earnedBy: input.earnedBy || auth.record?.id }, currentGroupId.value), ...groupIncomes.value]
           const userId = auth.record?.id
           if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'create', scope: 'group', groupId: currentGroupId.value, targetId: id, payload: input })
         },
@@ -930,6 +940,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     subscriptions.value = []
     expenses.value = []
     groupIncomes.value = []
+    groupIncomesMeta.value = { page:1, perPage:defaultPageSize.value, totalItems:0, totalPages:0 }
     groupLedger.value = null
     settlements.value = []
     for (const key of Object.keys(groupErrors) as Array<keyof typeof groupErrors>) groupErrors[key] = ''
@@ -952,11 +963,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
-    subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, updateExpense, deleteExpense, addIncome, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
-    loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
+    loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,
   }

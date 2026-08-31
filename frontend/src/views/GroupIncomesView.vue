@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useAuthStore } from '../stores/auth'
 import { useI18n } from '../i18n'
-import type { Currency, ExpenseSplit, Income, SplitMode } from '../api/types'
+import type { Currency, IncomeSplit, Income, SplitMode } from '../api/types'
 
 const route = useRoute()
 const workspace = useWorkspaceStore()
@@ -16,7 +16,7 @@ const incomes = computed(() => workspace.groupIncomes)
 const editingId = ref('')
 const saving = ref(false)
 const error = ref('')
-const form = reactive({ title: '', amount: '', currency: 'TWD' as Currency, category: '', date: new Date().toISOString().slice(0, 10), notes: '', paidBy: '', splitMode: 'equal' as SplitMode, splits: {} as Record<string, string> })
+const form = reactive({ title: '', amount: '', currency: 'TWD' as Currency, category: '', date: new Date().toISOString().slice(0, 10), notes: '', earnedBy: '', splitMode: 'equal' as SplitMode, splits: {} as Record<string, string> })
 const memberOptions = computed(() => workspace.members.filter(member => !member.user?.placeholder))
 
 function nameOf(id: string) { return memberOptions.value.find(member => member.userId === id)?.user?.name || id }
@@ -31,7 +31,7 @@ function reset() {
   form.currency = (group.value?.currency || auth.record?.defaultCurrency || 'TWD') as Currency
   form.date = new Date().toISOString().slice(0, 10)
   form.notes = ''
-  form.paidBy = auth.record?.id || memberOptions.value[0]?.userId || ''
+  form.earnedBy = auth.record?.id || memberOptions.value[0]?.userId || ''
   form.splitMode = 'equal'
   form.splits = {}
 }
@@ -43,14 +43,14 @@ function edit(item: Income) {
   form.category = item.category
   form.date = item.receivedOn.slice(0, 10)
   form.notes = item.notes
-  form.paidBy = item.paidBy || auth.record?.id || ''
+  form.earnedBy = item.earnedBy || auth.record?.id || ''
   form.splitMode = item.splitMode || 'equal'
   form.splits = {}
   for (const split of item.splits || []) form.splits[split.userId] = form.splitMode === 'percentage' ? String((split.percentageBasisPoints || 0) / 100) : String((split.amountMinor || 0) / 100)
 }
-function splitPayload(_amount: number): ExpenseSplit[] {
+function splitPayload(_amount: number): IncomeSplit[] {
   const ids = memberOptions.value.map(member => member.userId)
-  const result: ExpenseSplit[] = []
+  const result: IncomeSplit[] = []
   for (const userId of ids) {
     const raw = Number(form.splits[userId] || 0)
     if (form.splitMode === 'equal') result.push({ userId, amountMinor: 0 })
@@ -60,7 +60,7 @@ function splitPayload(_amount: number): ExpenseSplit[] {
   return result.filter(split => split.amountMinor !== 0 || (split.percentageBasisPoints || 0) !== 0)
 }
 function validate(amount: number) {
-  if (!form.title.trim() || !Number.isFinite(amount) || amount <= 0 || !form.paidBy) return tr('invalidRequest')
+  if (!form.title.trim() || !Number.isFinite(amount) || amount <= 0 || !form.earnedBy) return tr('invalidRequest')
   const values = splitPayload(amount)
   if (form.splitMode === 'amount' && values.reduce((sum, value) => sum + value.amountMinor, 0) !== amount) return tr('splitInvalidAmount')
   if (form.splitMode === 'percentage' && values.reduce((sum, value) => sum + (value.percentageBasisPoints || 0), 0) !== 10000) return tr('splitInvalidPercentage')
@@ -72,7 +72,7 @@ async function submit() {
   if (validation) { error.value = validation; return }
   saving.value = true
   error.value = ''
-  const input = { title: form.title.trim(), amountMinor: amount, currency: form.currency as Currency, category: form.category, paidBy: form.paidBy, splitMode: form.splitMode, splits: splitPayload(amount), receivedOn: form.date + 'T12:00:00.000Z', notes: form.notes }
+  const input = { title: form.title.trim(), amountMinor: amount, currency: form.currency as Currency, category: form.category, earnedBy: form.earnedBy, splitMode: form.splitMode, splits: splitPayload(amount), receivedOn: form.date + 'T12:00:00.000Z', notes: form.notes }
   try {
     if (editingId.value) await workspace.updateGroupIncome(editingId.value, input)
     else await workspace.addGroupIncome(input)
@@ -98,7 +98,7 @@ onMounted(() => reset())
         <div class="card-title"><h2>{{ editingId ? tr('editIncome') : tr('addGroupIncome') }}</h2><button v-if="editingId" class="ghost" @click="reset">{{ tr('cancel') }}</button></div>
         <label>{{ tr('incomeTitle') }}<input v-model="form.title" required :placeholder="tr('itemPlaceholder')"></label>
         <div class="form-row"><label>{{ tr('amount') }}<input v-model="form.amount" type="number" min="0" step="0.01" required></label><label>{{ tr('currency') }}<select v-model="form.currency"><option>{{ group?.currency || 'TWD' }}</option><option>USD</option><option>JPY</option><option>EUR</option></select></label></div>
-        <div class="form-row"><label>{{ tr('category') }}<input v-model="form.category"></label><label>{{ tr('receivedBy') }}<select v-model="form.paidBy"><option v-for="member in memberOptions" :key="member.userId" :value="member.userId">{{ member.user?.name || member.userId }}</option></select></label></div>
+        <div class="form-row"><label>{{ tr('category') }}<input v-model="form.category"></label><label>{{ tr('receivedBy') }}<select v-model="form.earnedBy"><option v-for="member in memberOptions" :key="member.userId" :value="member.userId">{{ member.user?.name || member.userId }}</option></select></label></div>
         <label>{{ tr('splitMode') }}<select v-model="form.splitMode"><option value="equal">{{ tr('splitEqual') }}</option><option value="amount">{{ tr('splitAmount') }}</option><option value="percentage">{{ tr('splitPercentage') }}</option></select></label>
         <div v-if="form.splitMode !== 'equal'" class="split-editor"><label v-for="member in memberOptions" :key="member.userId">{{ member.user?.name || member.userId }}<input v-model="form.splits[member.userId]" type="number" min="0" step="0.01" placeholder="0"><small v-if="form.splitMode === 'percentage'">{{ tr('basisPointsHint') }}</small></label></div>
         <label>{{ tr('date') }}<input v-model="form.date" type="date" required></label>
@@ -111,7 +111,7 @@ onMounted(() => reset())
         <div class="rows">
           <article v-for="item in incomes" :key="item.id" class="row">
             <div class="service-icon">+</div>
-            <div class="grow"><strong>{{ item.title }}</strong><small>{{ formatDate(item.receivedOn) }} &middot; {{ nameOf(item.paidBy || '') }}</small></div>
+            <div class="grow"><strong>{{ item.title }}</strong><small>{{ formatDate(item.receivedOn) }} &middot; {{ nameOf(item.earnedBy || '') }}</small></div>
             <div class="money"><strong class="income">+{{ money(item.amountMinor, item.currency) }}</strong><small>{{ item.category || tr('uncategorized') }}</small></div>
             <div class="actions"><button class="ghost" @click="edit(item)">{{ tr('edit') }}</button><button class="ghost danger-text" @click="remove(item)">{{ tr('deleteIncome') }}</button></div>
           </article>
