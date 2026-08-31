@@ -200,10 +200,10 @@ func (r *ExpenseRepo) ListPersonalBetween(ctx context.Context, userID string, fr
 func (r *ExpenseRepo) ListBetween(ctx context.Context, groupID string, from, to time.Time) ([]domain.Expense, error) {
 	return r.ListGroupExpensesBetween(ctx, groupID, from, to)
 }
-func (r *ExpenseRepo) ReplaceSplits(ctx context.Context, expenseID string, values []domain.ExpenseSplit) error {
+func (r *ExpenseRepo) ReplaceSplits(ctx context.Context, expenseID string, values []*domain.ExpenseSplit) error {
 	return r.ReplaceExpenseSplits(ctx, expenseID, values)
 }
-func (r *ExpenseRepo) ListSplits(ctx context.Context, expenseID string) ([]domain.ExpenseSplit, error) {
+func (r *ExpenseRepo) ListSplits(ctx context.Context, expenseID string) ([]*domain.ExpenseSplit, error) {
 	return r.ListExpenseSplits(ctx, expenseID)
 }
 func (r *ExpenseRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
@@ -363,3 +363,6 @@ func (r *IncomeRepo) Update(ctx context.Context, v *domain.Income) error {
 	return r.UpdateIncome(ctx, v)
 }
 func (r *IncomeRepo) Delete(ctx context.Context, id string) error { return r.DeleteIncome(ctx, id) }
+func (r *IncomeRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	return r.ReassignIncomeUser(ctx, groupID, fromUserID, toUserID)
+}

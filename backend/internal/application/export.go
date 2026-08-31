@@ -292,13 +292,14 @@ func expenseRow(v domain.Expense, loc *time.Location, lookupName func(string) st
 
 // splitDetail renders every participant's share as "姓名:金額" pairs so the
 // export fully reflects how an expense was divided, not just its total.
-func splitDetail(splits []domain.ExpenseSplit, lookupName func(string) string) string {
+func splitDetail[T domain.Split](splits []T, lookupName func(string) string) string {
 	if len(splits) == 0 {
 		return ""
 	}
 	parts := make([]string, 0, len(splits))
 	for _, split := range splits {
-		parts = append(parts, fmt.Sprintf("%s:%s", lookupName(split.UserID), formatAmount(split.AmountMinor)))
+		base := split.GetBaseSplit()
+		parts = append(parts, fmt.Sprintf("%s:%s", lookupName(base.UserID), formatAmount(base.AmountMinor)))
 	}
 	return strings.Join(parts, "; ")
 }

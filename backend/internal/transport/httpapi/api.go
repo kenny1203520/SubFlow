@@ -1152,8 +1152,8 @@ func (a *API) createGroupIncome(e *core.RequestEvent) error {
 		return fail(e, domain.ErrInvalid)
 	}
 	v.GroupID = groupID(e)
-	if v.PaidBy == "" {
-		v.PaidBy = authID(e)
+	if v.EarnedBy == "" {
+		v.EarnedBy = authID(e)
 	}
 	created, err := a.Service.CreateGroupIncome(e.Request.Context(), authID(e), v)
 	if err != nil {

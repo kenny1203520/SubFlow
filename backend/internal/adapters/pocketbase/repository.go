@@ -651,7 +651,7 @@ func (r *Repository) ReassignSubscriptionUser(ctx context.Context, groupID, from
 			rec.Set("paid_by", toUserID)
 			changed = true
 		}
-		var splits []domain.ExpenseSplit
+		var splits []*domain.ExpenseSplit
 		if err = json.Unmarshal([]byte(rec.GetString("splits")), &splits); err == nil {
 			splitsChanged := false
 			for i := range splits {
@@ -760,7 +760,7 @@ func (r *Repository) DeleteExpense(ctx context.Context, id string) error {
 	return r.app(ctx).Delete(rec)
 }
 
-func (r *Repository) ReplaceExpenseSplits(ctx context.Context, expenseID string, values []domain.ExpenseSplit) error {
+func (r *Repository) ReplaceExpenseSplits(ctx context.Context, expenseID string, values []*domain.ExpenseSplit) error {
 	records, err := r.app(ctx).FindRecordsByFilter(CollectionExpenseSplits, "expense={:expense}", "", 0, 0, dbx.Params{"expense": expenseID})
 	if err != nil {
 		return err
@@ -789,14 +789,14 @@ func (r *Repository) ReplaceExpenseSplits(ctx context.Context, expenseID string,
 	return nil
 }
 
-func (r *Repository) ListExpenseSplits(ctx context.Context, expenseID string) ([]domain.ExpenseSplit, error) {
+func (r *Repository) ListExpenseSplits(ctx context.Context, expenseID string) ([]*domain.ExpenseSplit, error) {
 	records, err := r.app(ctx).FindRecordsByFilter(CollectionExpenseSplits, "expense={:expense}", "user", 0, 0, dbx.Params{"expense": expenseID})
 	if err != nil {
 		return nil, err
 	}
-	result := make([]domain.ExpenseSplit, len(records))
+	result := make([]*domain.ExpenseSplit, len(records))
 	for i, record := range records {
-		result[i] = domain.ExpenseSplit{ID: record.Id, ExpenseID: expenseID, UserID: record.GetString("user"), AmountMinor: int64(record.GetFloat("amount_minor")), BaseAmountMinor: int64(record.GetFloat("base_amount_minor")), PercentageBasisPoints: int(record.GetFloat("percentage_bp"))}
+		result[i] = &domain.ExpenseSplit{BaseSplit: domain.BaseSplit{ID: record.Id, UserID: record.GetString("user"), AmountMinor: int64(record.GetFloat("amount_minor")), BaseAmountMinor: int64(record.GetFloat("base_amount_minor")), PercentageBasisPoints: int(record.GetFloat("percentage_bp"))}, ExpenseID: expenseID}
 	}
 	return result, nil
 }

@@ -174,8 +174,8 @@ type ExpenseRepository interface {
 	ListBetween(context.Context, string, time.Time, time.Time) ([]domain.Expense, error)
 	Update(context.Context, *domain.Expense) error
 	Delete(context.Context, string) error
-	ReplaceSplits(context.Context, string, []domain.ExpenseSplit) error
-	ListSplits(context.Context, string) ([]domain.ExpenseSplit, error)
+	ReplaceSplits(context.Context, string, []*domain.ExpenseSplit) error
+	ListSplits(context.Context, string) ([]*domain.ExpenseSplit, error)
 	// ReassignUser moves every expense.paid_by and expense_splits.user
 	// reference from fromUserID to toUserID within groupID, merging into an
 	// existing split row rather than violating the (expense, user) unique
@@ -187,12 +187,13 @@ type ExpenseRepository interface {
 type IncomeRepository interface {
 	Create(context.Context, *domain.Income) error
 	Get(context.Context, string) (*domain.Income, error)
+	List(context.Context, string, PageRequest) (Page[domain.Income], error)
 	ListPersonal(context.Context, string, PageRequest) (Page[domain.Income], error)
 	ListPersonalBetween(context.Context, string, time.Time, time.Time) ([]domain.Income, error)
-	List(context.Context, string, PageRequest) (Page[domain.Income], error)
 	ListBetween(context.Context, string, time.Time, time.Time) ([]domain.Income, error)
 	Update(context.Context, *domain.Income) error
 	Delete(context.Context, string) error
+	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
 type SettlementRepository interface {

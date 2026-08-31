@@ -374,7 +374,7 @@ func TestExportLedgerIncludesExpenseSplitDetail(t *testing.T) {
 	if _, err = service.CreateExpense(ctx, ownerID, domain.Expense{
 		GroupID: groupID, Title: "Split Dinner", AmountMinor: 10000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		PaidBy: ownerID, IncurredOn: time.Date(2026, time.August, 3, 0, 0, 0, 0, time.UTC),
-		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: ownerID}, {UserID: created.ID}},
+		SplitMode: domain.SplitEqual, Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: ownerID}}, {BaseSplit: domain.BaseSplit{UserID: created.ID}}},
 	}); err != nil {
 		t.Fatal(err)
 	}

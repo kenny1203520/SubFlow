@@ -43,7 +43,7 @@ func validGroupIncome(v *domain.Income) bool {
 		domain.IsCurrency(v.Currency) &&
 		domain.IsCurrency(v.BaseCurrency) &&
 		!v.ReceivedOn.IsZero() &&
-		v.PaidBy != ""
+		v.EarnedBy != ""
 }
 
 func (s *Service) groupIncomeFailure(ctx context.Context, userID, groupID, action, id, reason string, cause error) error {
@@ -74,8 +74,8 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 		if v.Category == "" {
 			v.Category = current.Category
 		}
-		if v.PaidBy == "" {
-			v.PaidBy = current.PaidBy
+		if v.EarnedBy == "" {
+			v.EarnedBy = current.EarnedBy
 		}
 		if v.ReceivedOn.IsZero() {
 			v.ReceivedOn = current.ReceivedOn
@@ -90,11 +90,11 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 			v.SplitMode = current.SplitMode
 		}
 		if len(v.Splits) == 0 {
-			v.Splits = append([]domain.ExpenseSplit(nil), current.Splits...)
+			v.Splits = append([]*domain.IncomeSplit(nil), current.Splits...)
 		}
 	}
-	if v.PaidBy == "" {
-		v.PaidBy = userID
+	if v.EarnedBy == "" {
+		v.EarnedBy = userID
 	}
 	if v.RateMode == "" {
 		v.RateMode = domain.RateAutomatic
@@ -107,7 +107,7 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 		v.Currency = group.Currency
 	}
 	v.BaseCurrency = group.Currency
-	if _, err = s.Stores.Memberships.GetRole(ctx, v.GroupID, v.PaidBy); err != nil {
+	if _, err = s.Stores.Memberships.GetRole(ctx, v.GroupID, v.EarnedBy); err != nil {
 		return domain.ErrInvalid
 	}
 	members, err := s.memberIDs(ctx, v.GroupID)
@@ -116,9 +116,9 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 	}
 	if len(v.Splits) == 0 {
 		v.SplitMode = domain.SplitAmount
-		v.Splits = []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}
+		v.Splits = []*domain.IncomeSplit{{BaseSplit: domain.BaseSplit{UserID: v.EarnedBy, AmountMinor: v.AmountMinor}}}
 	}
-	v.Splits, err = domain.CanonicalSplits(v.AmountMinor, v.PaidBy, v.SplitMode, v.Splits, members)
+	v.Splits, err = domain.CanonicalSplits(v.AmountMinor, v.EarnedBy, v.SplitMode, v.Splits, members)
 	if err != nil {
 		return err
 	}
@@ -141,7 +141,7 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 			return err
 		}
 	}
-	v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
+	v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.EarnedBy, v.Splits)
 	if !validGroupIncome(v) {
 		return domain.ErrInvalid
 	}

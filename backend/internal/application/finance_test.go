@@ -63,7 +63,7 @@ func TestSubscriptionExpensesBetweenUsesRevisionAndBillingDate(t *testing.T) {
 		StartsOn:        time.Date(2025, time.August, 10, 0, 0, 0, 0, location),
 		PaidBy:          "alice",
 		SplitMode:       domain.SplitAmount,
-		Splits:          []domain.ExpenseSplit{{UserID: "alice", AmountMinor: 1000, BaseAmountMinor: 1000}},
+		Splits:          []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: "alice", AmountMinor: 1000, BaseAmountMinor: 1000}}},
 		Revisions: []domain.SubscriptionRevision{{
 			ID:                 "rev-1",
 			SubscriptionID:     "sub-1",
@@ -77,7 +77,7 @@ func TestSubscriptionExpensesBetweenUsesRevisionAndBillingDate(t *testing.T) {
 			BaseAmountMinor:    1500,
 			PaidBy:             "alice",
 			SplitMode:          domain.SplitAmount,
-			Splits:             []domain.ExpenseSplit{{UserID: "alice", AmountMinor: 1500, BaseAmountMinor: 1500}},
+			Splits:             []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: "alice", AmountMinor: 1500, BaseAmountMinor: 1500}}},
 		}},
 	}
 
@@ -133,9 +133,9 @@ func TestSubscriptionExpensesBetweenPreservesSplitsForBalances(t *testing.T) {
 		StartsOn:        time.Date(2025, time.August, 10, 0, 0, 0, 0, location),
 		PaidBy:          "alice",
 		SplitMode:       domain.SplitAmount,
-		Splits: []domain.ExpenseSplit{
-			{UserID: "alice", AmountMinor: 500, BaseAmountMinor: 500},
-			{UserID: "bob", AmountMinor: 500, BaseAmountMinor: 500},
+		Splits: []*domain.ExpenseSplit{
+			{BaseSplit: domain.BaseSplit{UserID: "alice", AmountMinor: 500, BaseAmountMinor: 500}},
+			{BaseSplit: domain.BaseSplit{UserID: "bob", AmountMinor: 500, BaseAmountMinor: 500}},
 		},
 	}
 
@@ -164,10 +164,10 @@ func TestSubscriptionUserShare(t *testing.T) {
 		ID:      "sub-shared",
 		GroupID: "group-1",
 		PaidBy:  "alice",
-		Splits: []domain.ExpenseSplit{
-			{UserID: "alice", AmountMinor: 300, BaseAmountMinor: 300},
-			{UserID: "bob", AmountMinor: 300, BaseAmountMinor: 300},
-			{UserID: "carol", AmountMinor: 300, BaseAmountMinor: 300},
+		Splits: []*domain.ExpenseSplit{
+			{BaseSplit: domain.BaseSplit{UserID: "alice", AmountMinor: 300, BaseAmountMinor: 300}},
+			{BaseSplit: domain.BaseSplit{UserID: "bob", AmountMinor: 300, BaseAmountMinor: 300}},
+			{BaseSplit: domain.BaseSplit{UserID: "carol", AmountMinor: 300, BaseAmountMinor: 300}},
 		},
 	}
 	personalOnly := domain.Subscription{ID: "sub-personal", PaidBy: "alice"}

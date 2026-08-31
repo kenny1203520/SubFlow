@@ -51,7 +51,7 @@ func TestDashboardAggregatesBeyondOnePageOfExpenses(t *testing.T) {
 			GroupID: f.group.ID, Title: fmt.Sprintf("Snack %d", index), AmountMinor: amount,
 			Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, PaidBy: f.owner,
 			IncurredOn: incurred, SplitMode: domain.SplitAmount,
-			Splits: []domain.ExpenseSplit{{UserID: f.member, AmountMinor: amount}},
+			Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: amount}}},
 		}); err != nil {
 			t.Fatalf("seeding expense %d: %v", index, err)
 		}

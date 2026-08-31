@@ -8,6 +8,7 @@ import (
 	"errors"
 	"math"
 	"math/big"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -152,18 +153,43 @@ func ConvertMinor(amount int64, from, to Currency, rateScaled int64) (int64, err
 	return quotient.Int64(), nil
 }
 
-func CanonicalBaseSplits(total int64, payer string, values []ExpenseSplit) []ExpenseSplit {
-	result := append([]ExpenseSplit(nil), values...)
+func cloneSplits[T Split](input []T) []T {
+	result := make([]T, len(input))
+	for i, value := range input {
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Pointer && !rv.IsNil() {
+			clone := reflect.New(rv.Elem().Type())
+			clone.Elem().Set(rv.Elem())
+			result[i] = clone.Interface().(T)
+			continue
+		}
+		result[i] = value
+	}
+	return result
+}
+
+func CanonicalBaseSplits[T Split](total int64, payer string, values []T) []T {
+	// Create a copy of the slice to avoid mutating the caller's underlying array
+	result := cloneSplits(values)
+
 	var allocated int64
 	target := 0
+	foundPayer := false
 	for i := range result {
-		allocated += result[i].BaseAmountMinor
-		if result[i].UserID == payer {
+		base := result[i].GetBaseSplit()
+		allocated += base.BaseAmountMinor
+
+		if base.UserID == payer {
 			target = i
+			foundPayer = true
 		}
 	}
 	if len(result) > 0 {
-		result[target].BaseAmountMinor += total - allocated
+		if !foundPayer {
+			target = 0
+		}
+		// Adjust the target's BaseAmountMinor to account for rounding/remainders
+		result[target].GetBaseSplit().BaseAmountMinor += total - allocated
 	}
 	return result
 }
@@ -338,7 +364,7 @@ func BillingDatesWithInterval(start time.Time, cycle BillingCycle, interval int,
 	return dates, nil
 }
 
-func CanonicalSplits(amount int64, payer string, mode SplitMode, input []ExpenseSplit, members []string) ([]ExpenseSplit, error) {
+func CanonicalSplits[T Split](amount int64, payer string, mode SplitMode, input []T, members []string) ([]T, error) {
 	if amount < 0 || len(input) == 0 {
 		return nil, ErrInvalid
 	}
@@ -347,17 +373,18 @@ func CanonicalSplits(amount int64, payer string, mode SplitMode, input []Expense
 		allowed[id] = true
 	}
 	seen := map[string]bool{}
-	values := append([]ExpenseSplit(nil), input...)
+	values := cloneSplits(input)
 	for _, v := range values {
-		if v.UserID == "" || seen[v.UserID] || !allowed[v.UserID] {
+		base := v.GetBaseSplit()
+		if base.UserID == "" || seen[base.UserID] || !allowed[base.UserID] {
 			return nil, ErrInvalid
 		}
-		seen[v.UserID] = true
+		seen[base.UserID] = true
 	}
-	sort.Slice(values, func(i, j int) bool { return values[i].UserID < values[j].UserID })
+	sort.Slice(values, func(i, j int) bool { return values[i].GetBaseSplit().UserID < values[j].GetBaseSplit().UserID })
 	remainderTarget := 0
 	for i := range values {
-		if values[i].UserID == payer {
+		if values[i].GetBaseSplit().UserID == payer {
 			remainderTarget = i
 			break
 		}
@@ -367,39 +394,42 @@ func CanonicalSplits(amount int64, payer string, mode SplitMode, input []Expense
 		q := amount / int64(len(values))
 		remainder := amount - q*int64(len(values))
 		for i := range values {
-			values[i].AmountMinor = q
-			values[i].PercentageBasisPoints = 0
+			base := values[i].GetBaseSplit()
+			base.AmountMinor = q
+			base.PercentageBasisPoints = 0
 		}
-		values[remainderTarget].AmountMinor += remainder
+		values[remainderTarget].GetBaseSplit().AmountMinor += remainder
 	case SplitAmount:
 		var total int64
 		for _, v := range values {
-			if v.AmountMinor < 0 {
+			base := v.GetBaseSplit()
+			if base.AmountMinor < 0 {
 				return nil, ErrInvalid
 			}
-			total += v.AmountMinor
+			total += base.AmountMinor
 		}
 		if total != amount {
 			return nil, ErrInvalid
 		}
 		for i := range values {
-			values[i].PercentageBasisPoints = 0
+			values[i].GetBaseSplit().PercentageBasisPoints = 0
 		}
 	case SplitPercentage:
 		totalBP := 0
 		var allocated int64
 		for i := range values {
-			if values[i].PercentageBasisPoints < 0 {
+			base := values[i].GetBaseSplit()
+			if base.PercentageBasisPoints < 0 {
 				return nil, ErrInvalid
 			}
-			totalBP += values[i].PercentageBasisPoints
-			values[i].AmountMinor = amount * int64(values[i].PercentageBasisPoints) / 10000
-			allocated += values[i].AmountMinor
+			totalBP += base.PercentageBasisPoints
+			base.AmountMinor = amount * int64(base.PercentageBasisPoints) / 10000
+			allocated += base.AmountMinor
 		}
 		if totalBP != 10000 {
 			return nil, ErrInvalid
 		}
-		values[remainderTarget].AmountMinor += amount - allocated
+		values[remainderTarget].GetBaseSplit().AmountMinor += amount - allocated
 	default:
 		return nil, ErrInvalid
 	}
@@ -427,7 +457,7 @@ func MemberBalancesWithIncomes(expenses []Expense, incomes []Income, settlements
 		if amount == 0 {
 			amount = income.AmountMinor
 		}
-		totals[income.PaidBy] += amount
+		totals[income.EarnedBy] += amount
 		for _, split := range income.Splits {
 			share := split.BaseAmountMinor
 			if share == 0 {

@@ -12,6 +12,7 @@ import (
 	"subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/domain"
+	"subflow/internal/ports"
 )
 
 type memberTransferFixture struct {
@@ -153,7 +154,7 @@ func TestMemberTransferAcceptRepointsDataAndRemovesFromGroup(t *testing.T) {
 	expense, err := f.service.CreateExpense(ctx, f.ownerID, domain.Expense{
 		GroupID: f.groupID, Title: "Groceries", AmountMinor: 10000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		PaidBy: f.fromID, IncurredOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
-		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: f.ownerID}, {UserID: f.fromID}},
+		SplitMode: domain.SplitEqual, Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.ownerID}}, {BaseSplit: domain.BaseSplit{UserID: f.fromID}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -162,7 +163,18 @@ func TestMemberTransferAcceptRepointsDataAndRemovesFromGroup(t *testing.T) {
 		GroupID: f.groupID, Name: "Shared Netflix", AmountMinor: 39900, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		BillingCycle: domain.BillingMonthly, StartsOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
 		Status: domain.SubscriptionActive, PaidBy: f.fromID, SplitMode: domain.SplitEqual,
-		Splits: []domain.ExpenseSplit{{UserID: f.ownerID}, {UserID: f.fromID}},
+		Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.ownerID}}, {BaseSplit: domain.BaseSplit{UserID: f.fromID}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	income, err := f.service.CreateGroupIncome(ctx, f.ownerID, domain.Income{
+		GroupID: f.groupID, Title: "Shared salary", AmountMinor: 20000, Currency: domain.CurrencyTWD,
+		BaseCurrency: domain.CurrencyTWD, EarnedBy: f.fromID, ReceivedOn: time.Date(2026, time.August, 2, 0, 0, 0, 0, time.UTC),
+		SplitMode: domain.SplitAmount, Splits: []*domain.IncomeSplit{
+			{BaseSplit: domain.BaseSplit{UserID: f.fromID, AmountMinor: 10000}},
+			{BaseSplit: domain.BaseSplit{UserID: f.toID, AmountMinor: 10000}},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -208,11 +220,30 @@ func TestMemberTransferAcceptRepointsDataAndRemovesFromGroup(t *testing.T) {
 	if updatedSub.PaidBy != f.toID {
 		t.Fatalf("expected the subscription's paid_by to be repointed to the target, got %q", updatedSub.PaidBy)
 	}
+	updatedIncome, err := f.stores.Incomes.Get(ctx, income.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedIncome.EarnedBy != f.toID {
+		t.Fatalf("expected the income's earned_by to be repointed to the target, got %q", updatedIncome.EarnedBy)
+	}
+	if len(updatedIncome.Splits) != 1 || updatedIncome.Splits[0].UserID != f.toID || updatedIncome.Splits[0].AmountMinor != 20000 {
+		t.Fatalf("expected duplicate income splits to merge into the target, got %#v", updatedIncome.Splits)
+	}
 }
 
 func TestMemberTransferDeclineLeavesDataUnchanged(t *testing.T) {
 	f := newMemberTransferFixture(t)
 	ctx := context.Background()
+	income := &domain.Income{
+		GroupID: f.groupID, EarnedBy: f.fromID, Title: "Unchanged", AmountMinor: 10000,
+		Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, BaseAmountMinor: 10000,
+		ReceivedOn: time.Date(2026, time.August, 4, 0, 0, 0, 0, time.UTC),
+		SplitMode:  domain.SplitAmount, Splits: []*domain.IncomeSplit{{BaseSplit: domain.BaseSplit{UserID: f.fromID, AmountMinor: 10000, BaseAmountMinor: 10000}}},
+	}
+	if err := f.stores.Incomes.Create(ctx, income); err != nil {
+		t.Fatal(err)
+	}
 	transfer, err := f.service.CreateMemberTransfer(ctx, f.ownerID, f.groupID, f.fromID, f.toID)
 	if err != nil {
 		t.Fatal(err)
@@ -226,6 +257,13 @@ func TestMemberTransferDeclineLeavesDataUnchanged(t *testing.T) {
 	}
 	if _, err = f.stores.Memberships.GetRole(ctx, f.groupID, f.fromID); err != nil {
 		t.Fatalf("expected the source member to remain in the group after a decline, got %v", err)
+	}
+	unchanged, err := f.stores.Incomes.Get(ctx, income.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unchanged.EarnedBy != f.fromID || len(unchanged.Splits) != 1 || unchanged.Splits[0].UserID != f.fromID {
+		t.Fatalf("declining a transfer must not change income references: %#v", unchanged)
 	}
 }
 
@@ -247,5 +285,76 @@ func TestMemberTransferCancelRequiresMembersManagePermission(t *testing.T) {
 	}
 	if _, err = f.service.RespondMemberTransfer(ctx, f.toID, transfer.ID, true); err != domain.ErrConflict {
 		t.Fatalf("expected responding to a cancelled transfer to conflict, got %v", err)
+	}
+}
+
+func TestGroupIncomeCanonicalizationConversionAndAudits(t *testing.T) {
+	f := newMemberTransferFixture(t)
+	ctx := context.Background()
+	receivedOn := time.Date(2026, time.August, 3, 0, 0, 0, 0, time.UTC)
+
+	created, err := f.service.CreateGroupIncome(ctx, f.ownerID, domain.Income{
+		GroupID: f.groupID, Title: "Consulting", AmountMinor: 1000, Currency: domain.CurrencyUSD,
+		RateMode: domain.RateManual, ExchangeRate: "30", EarnedBy: f.fromID, ReceivedOn: receivedOn,
+		SplitMode: domain.SplitAmount, Splits: []*domain.IncomeSplit{
+			{BaseSplit: domain.BaseSplit{UserID: f.fromID, AmountMinor: 400}},
+			{BaseSplit: domain.BaseSplit{UserID: f.toID, AmountMinor: 600}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.BaseCurrency != domain.CurrencyTWD || created.BaseAmountMinor != 30000 {
+		t.Fatalf("unexpected converted income: %#v", created)
+	}
+	amounts := map[string]int64{}
+	baseAmounts := map[string]int64{}
+	for _, split := range created.Splits {
+		amounts[split.UserID] = split.AmountMinor
+		baseAmounts[split.UserID] = split.BaseAmountMinor
+	}
+	if amounts[f.fromID] != 400 || amounts[f.toID] != 600 || baseAmounts[f.fromID] != 12000 || baseAmounts[f.toID] != 18000 {
+		t.Fatalf("income splits were not canonicalized/converted: %#v", created.Splits)
+	}
+
+	updated, err := f.service.UpdateGroupIncome(ctx, f.ownerID, domain.Income{
+		ID: created.ID, AmountMinor: 2000, Currency: domain.CurrencyUSD, RateMode: domain.RateManual,
+		ExchangeRate: "31", EarnedBy: f.toID, ReceivedOn: receivedOn, SplitMode: domain.SplitPercentage,
+		Splits: []*domain.IncomeSplit{
+			{BaseSplit: domain.BaseSplit{UserID: f.fromID, PercentageBasisPoints: 4000}},
+			{BaseSplit: domain.BaseSplit{UserID: f.toID, PercentageBasisPoints: 6000}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.BaseAmountMinor != 62000 {
+		t.Fatalf("unexpected updated base amount: %#v", updated)
+	}
+	if updated.Splits[0].AmountMinor+updated.Splits[1].AmountMinor != 2000 || updated.Splits[0].BaseAmountMinor+updated.Splits[1].BaseAmountMinor != 62000 {
+		t.Fatalf("updated income splits were not canonicalized: %#v", updated.Splits)
+	}
+
+	for _, check := range []struct{ action, outcome string }{
+		{"income.created", "success"},
+		{"income.updated", "success"},
+	} {
+		logs, listErr := f.stores.Audits.List(ctx, f.groupID, ports.AuditQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 10}, Action: check.action, Outcome: check.outcome})
+		if listErr != nil || len(logs.Items) != 1 {
+			t.Fatalf("expected %s %s audit, got %#v (%v)", check.action, check.outcome, logs, listErr)
+		}
+	}
+
+	_, err = f.service.UpdateGroupIncome(ctx, f.ownerID, domain.Income{
+		ID: created.ID, AmountMinor: 2000, Currency: domain.CurrencyUSD, RateMode: domain.RateManual,
+		ExchangeRate: "31", EarnedBy: f.toID, ReceivedOn: receivedOn, SplitMode: domain.SplitPercentage,
+		Splits: []*domain.IncomeSplit{{BaseSplit: domain.BaseSplit{UserID: f.toID, PercentageBasisPoints: 9000}}},
+	})
+	if err != domain.ErrInvalid {
+		t.Fatalf("expected invalid percentage update, got %v", err)
+	}
+	logs, err := f.stores.Audits.List(ctx, f.groupID, ports.AuditQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 10}, Action: "income.updated", Outcome: "failure"})
+	if err != nil || len(logs.Items) != 1 {
+		t.Fatalf("expected failure audit for invalid update, got %#v (%v)", logs, err)
 	}
 }

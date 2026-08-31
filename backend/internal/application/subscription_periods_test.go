@@ -25,7 +25,7 @@ func TestSubscriptionPeriodsReportPerPeriodPrices(t *testing.T) {
 	edit.EndBillingAt = &rangeEnd
 	edit.AmountMinor = 60000
 	edit.SplitMode = domain.SplitEqual
-	edit.Splits = []domain.ExpenseSplit{{UserID: f.owner}, {UserID: f.member}}
+	edit.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.owner}}, {BaseSplit: domain.BaseSplit{UserID: f.member}}}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestSubscriptionPeriodsSurfacePostedAndFailedOccurrences(t *testing.T) {
 	postedExpense := domain.Expense{
 		GroupID: f.group.ID, SubscriptionID: f.subscription.ID, Title: "YouTube", AmountMinor: 12345,
 		Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, PaidBy: f.owner, IncurredOn: postedAt,
-		SplitMode: domain.SplitAmount, Splits: []domain.ExpenseSplit{{UserID: f.owner, AmountMinor: 12345}},
+		SplitMode: domain.SplitAmount, Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 12345}}},
 	}
 	if err = f.stores.Expenses.Create(ctx, &postedExpense); err != nil {
 		t.Fatal(err)

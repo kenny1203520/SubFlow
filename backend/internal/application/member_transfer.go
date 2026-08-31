@@ -22,6 +22,9 @@ import (
 // personal data sits outside the group-scoped boundary this operation works
 // within.
 func (s *Service) repointUserReferences(ctx context.Context, groupID, fromUserID, toUserID string, removeFromMembership bool) error {
+	if err := s.Stores.Incomes.ReassignUser(ctx, groupID, fromUserID, toUserID); err != nil {
+		return err
+	}
 	if err := s.Stores.Expenses.ReassignUser(ctx, groupID, fromUserID, toUserID); err != nil {
 		return err
 	}

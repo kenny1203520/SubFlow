@@ -90,7 +90,7 @@ func TestBackfillSubscriptionPeriodsCoversGapAfterLeadingOneOffRevision(t *testi
 		Name: f.subscription.Name, AmountMinor: f.subscription.AmountMinor, Currency: f.subscription.Currency,
 		BaseCurrency: f.subscription.BaseCurrency, BaseAmountMinor: f.subscription.AmountMinor, RateMode: domain.RateAutomatic,
 		PaidBy: f.owner, SplitMode: domain.SplitAmount,
-		Splits: []domain.ExpenseSplit{{UserID: f.owner, AmountMinor: 30000}, {UserID: f.member, AmountMinor: 0}},
+		Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}}, {BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}}},
 	}
 	if err := f.stores.Subscriptions.CreateRevision(ctx, &oneOff); err != nil {
 		t.Fatal(err)

@@ -130,7 +130,7 @@ func (s *Service) PostDueSubscriptions(ctx context.Context) error {
 // and regeneratePostedOccurrences (rewriting an already-posted period after
 // a historical edit changes which revision now governs it), so both paths
 // compute amounts identically.
-func revisionSplits(revision domain.SubscriptionRevision, members []string) ([]domain.ExpenseSplit, error) {
+func revisionSplits(revision domain.SubscriptionRevision, members []string) ([]*domain.ExpenseSplit, error) {
 	splits, err := domain.CanonicalSplits(revision.AmountMinor, revision.PaidBy, revision.SplitMode, revision.Splits, members)
 	if err != nil {
 		return nil, err

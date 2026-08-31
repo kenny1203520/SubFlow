@@ -157,7 +157,7 @@ func TestBillingDatePreservesMonthEndAnchor(t *testing.T) {
 
 func TestCanonicalSplits(t *testing.T) {
 	members := []string{"payer", "b", "c"}
-	equal, err := CanonicalSplits(100, "payer", SplitEqual, []ExpenseSplit{{UserID: "payer"}, {UserID: "b"}, {UserID: "c"}}, members)
+	equal, err := CanonicalSplits(100, "payer", SplitEqual, []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "payer"}}, {BaseSplit: BaseSplit{UserID: "b"}}, {BaseSplit: BaseSplit{UserID: "c"}}}, members)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func TestCanonicalSplits(t *testing.T) {
 	if amounts["payer"] != 34 || amounts["b"] != 33 || amounts["c"] != 33 {
 		t.Fatalf("unexpected equal split: %#v", amounts)
 	}
-	percentage, err := CanonicalSplits(101, "payer", SplitPercentage, []ExpenseSplit{{UserID: "payer", PercentageBasisPoints: 5000}, {UserID: "b", PercentageBasisPoints: 5000}}, members)
+	percentage, err := CanonicalSplits(101, "payer", SplitPercentage, []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "payer", PercentageBasisPoints: 5000}}, {BaseSplit: BaseSplit{UserID: "b", PercentageBasisPoints: 5000}}}, members)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,22 +179,83 @@ func TestCanonicalSplits(t *testing.T) {
 	if amounts["payer"] != 51 || amounts["b"] != 50 {
 		t.Fatalf("unexpected percentage split: %#v", amounts)
 	}
-	if _, err = CanonicalSplits(100, "payer", SplitPercentage, []ExpenseSplit{{UserID: "payer", PercentageBasisPoints: 9000}}, members); err == nil {
+	if _, err = CanonicalSplits(100, "payer", SplitPercentage, []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "payer", PercentageBasisPoints: 9000}}}, members); err == nil {
 		t.Fatal("invalid percentage total should fail")
 	}
 }
 
+func TestCanonicalSplitsSupportsIncomeSplitsAndPreservesInput(t *testing.T) {
+	input := []*IncomeSplit{
+		{BaseSplit: BaseSplit{UserID: "payer", PercentageBasisPoints: 5000}},
+		{BaseSplit: BaseSplit{UserID: "member", PercentageBasisPoints: 5000}},
+	}
+	got, err := CanonicalSplits(101, "payer", SplitPercentage, input, []string{"payer", "member"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	amounts := map[string]int64{}
+	for _, split := range got {
+		amounts[split.UserID] = split.AmountMinor
+	}
+	if amounts["payer"] != 51 || amounts["member"] != 50 {
+		t.Fatalf("unexpected income percentage split: %#v", got)
+	}
+	if input[0].AmountMinor != 0 || input[1].AmountMinor != 0 {
+		t.Fatalf("canonicalization mutated input: %#v", input)
+	}
+	base := CanonicalBaseSplits(100, "member", []*IncomeSplit{
+		{BaseSplit: BaseSplit{UserID: "payer", BaseAmountMinor: 33}},
+		{BaseSplit: BaseSplit{UserID: "member", BaseAmountMinor: 33}},
+	})
+	if base[0].BaseAmountMinor != 33 || base[1].BaseAmountMinor != 67 {
+		t.Fatalf("unexpected income base remainder: %#v", base)
+	}
+}
+
+func TestCanonicalSplitsAmountAndInputValidation(t *testing.T) {
+	members := []string{"payer", "member"}
+	amount, err := CanonicalSplits(100, "payer", SplitAmount, []*IncomeSplit{
+		{BaseSplit: BaseSplit{UserID: "payer", AmountMinor: 40}},
+		{BaseSplit: BaseSplit{UserID: "member", AmountMinor: 60}},
+	}, members)
+	if err != nil || amount[0].PercentageBasisPoints != 0 || amount[1].PercentageBasisPoints != 0 {
+		t.Fatalf("amount split was not canonicalized: %#v (%v)", amount, err)
+	}
+	for _, input := range [][]*IncomeSplit{
+		nil,
+		{{BaseSplit: BaseSplit{UserID: "payer"}}, {BaseSplit: BaseSplit{UserID: "payer"}}},
+		{{BaseSplit: BaseSplit{UserID: "payer", AmountMinor: 99}}, {BaseSplit: BaseSplit{UserID: "member", AmountMinor: 0}}},
+	} {
+		if _, err := CanonicalSplits(100, "payer", SplitAmount, input, members); err == nil {
+			t.Fatalf("expected invalid split input to fail: %#v", input)
+		}
+	}
+}
+
+func TestCanonicalBaseSplitsFallsBackToFirstWhenPayerMissing(t *testing.T) {
+	input := []*IncomeSplit{
+		{BaseSplit: BaseSplit{UserID: "a", BaseAmountMinor: 49}},
+		{BaseSplit: BaseSplit{UserID: "b", BaseAmountMinor: 50}},
+	}
+	got := CanonicalBaseSplits(100, "payer-not-in-splits", input)
+	if got[0].BaseAmountMinor != 50 || got[1].BaseAmountMinor != 50 {
+		t.Fatalf("expected first split to receive remainder: %#v", got)
+	}
+	if input[0].BaseAmountMinor != 49 {
+		t.Fatalf("canonical base splits mutated input: %#v", input)
+	}
+}
 func TestCanonicalBaseSplitsAllocatesRemainderToPayer(t *testing.T) {
 	cases := []struct {
 		name   string
 		total  int64
 		payer  string
-		values []ExpenseSplit
+		values []*ExpenseSplit
 	}{
-		{"even split, no remainder", 300, "b", []ExpenseSplit{{UserID: "a", BaseAmountMinor: 100}, {UserID: "b", BaseAmountMinor: 100}, {UserID: "c", BaseAmountMinor: 100}}},
-		{"uneven split, remainder to payer", 100, "b", []ExpenseSplit{{UserID: "a", BaseAmountMinor: 33}, {UserID: "b", BaseAmountMinor: 33}, {UserID: "c", BaseAmountMinor: 33}}},
-		{"single payer takes everything", 500, "solo", []ExpenseSplit{{UserID: "solo", BaseAmountMinor: 0}}},
-		{"payer not first in slice", 100, "c", []ExpenseSplit{{UserID: "a", BaseAmountMinor: 40}, {UserID: "b", BaseAmountMinor: 30}, {UserID: "c", BaseAmountMinor: 29}}},
+		{"even split, no remainder", 300, "b", []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "a", BaseAmountMinor: 100}}, {BaseSplit: BaseSplit{UserID: "b", BaseAmountMinor: 100}}, {BaseSplit: BaseSplit{UserID: "c", BaseAmountMinor: 100}}}},
+		{"uneven split, remainder to payer", 100, "b", []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "a", BaseAmountMinor: 33}}, {BaseSplit: BaseSplit{UserID: "b", BaseAmountMinor: 33}}, {BaseSplit: BaseSplit{UserID: "c", BaseAmountMinor: 33}}}},
+		{"single payer takes everything", 500, "solo", []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "solo", BaseAmountMinor: 0}}}},
+		{"payer not first in slice", 100, "c", []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "a", BaseAmountMinor: 40}}, {BaseSplit: BaseSplit{UserID: "b", BaseAmountMinor: 30}}, {BaseSplit: BaseSplit{UserID: "c", BaseAmountMinor: 29}}}},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
@@ -229,7 +290,7 @@ func TestCanonicalBaseSplitsAllocatesRemainderToPayer(t *testing.T) {
 }
 
 func TestCanonicalBaseSplitsEmptyInput(t *testing.T) {
-	if got := CanonicalBaseSplits(100, "payer", nil); len(got) != 0 {
+	if got := CanonicalBaseSplits(100, "payer", []*ExpenseSplit(nil)); len(got) != 0 {
 		t.Fatalf("expected empty result for empty input, got %#v", got)
 	}
 }
@@ -359,7 +420,7 @@ func TestNextBillingWithIntervalRespectsCustomInterval(t *testing.T) {
 }
 
 func TestMemberBalancesIncludeSettlements(t *testing.T) {
-	expenses := []Expense{{PaidBy: "a", AmountMinor: 900, Splits: []ExpenseSplit{{UserID: "a", AmountMinor: 300}, {UserID: "b", AmountMinor: 600}}}}
+	expenses := []Expense{{PaidBy: "a", AmountMinor: 900, Splits: []*ExpenseSplit{{BaseSplit: BaseSplit{UserID: "a", AmountMinor: 300}}, {BaseSplit: BaseSplit{UserID: "b", AmountMinor: 600}}}}}
 	settlements := []Settlement{{FromUserID: "b", ToUserID: "a", AmountMinor: 200}}
 	balances := MemberBalances(expenses, settlements)
 	values := map[string]int64{}

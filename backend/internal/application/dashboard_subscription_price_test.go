@@ -28,7 +28,7 @@ func TestDashboardMonthlyFiguresUseTheViewedMonthsPrice(t *testing.T) {
 	edit.EndBillingAt = &rangeEnd
 	edit.AmountMinor = 60000
 	edit.SplitMode = domain.SplitEqual
-	edit.Splits = []domain.ExpenseSplit{{UserID: f.owner}, {UserID: f.member}}
+	edit.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.owner}}, {BaseSplit: domain.BaseSplit{UserID: f.member}}}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatalf("owner should be allowed to revise a bounded past range: %v", err)
 	}

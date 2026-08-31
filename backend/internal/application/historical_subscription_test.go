@@ -85,9 +85,9 @@ func newHistoricalFixtureTZ(t *testing.T, timezone string) *historicalFixture {
 			t.Fatal(err)
 		}
 	}
-	splits := make([]domain.ExpenseSplit, 0, len(ids))
+	splits := make([]*domain.ExpenseSplit, 0, len(ids))
 	for _, id := range ids {
-		splits = append(splits, domain.ExpenseSplit{UserID: id})
+		splits = append(splits, &domain.ExpenseSplit{BaseSplit: domain.BaseSplit{UserID: id}})
 	}
 	created, err := service.CreateSubscription(ctx, ids[0], domain.Subscription{
 		GroupID:      group.ID,
@@ -126,9 +126,9 @@ func TestUpdateSubscriptionRejectsHistoricalEditWithoutPermission(t *testing.T) 
 	edit.RevisionScope = "one_off"
 	edit.EffectiveBillingAt = f.pastBilling
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.member, edit); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("expected ErrForbidden for a member editing a past period, got %v", err)
@@ -143,9 +143,9 @@ func TestUpdateSubscriptionAllowsHistoricalEditWithPermission(t *testing.T) {
 	edit.RevisionScope = "one_off"
 	edit.EffectiveBillingAt = f.pastBilling
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	// The owner seed role holds ledger.records.historical_write.
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
@@ -218,9 +218,9 @@ func TestUpdateSubscriptionHistoricalEditSurvivesNonUTCTimezone(t *testing.T) {
 	omitted.RevisionScope = "one_off"
 	omitted.EffectiveBillingAt = f.pastBilling
 	omitted.SplitMode = domain.SplitAmount
-	omitted.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	omitted.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, omitted); err != nil {
 		t.Fatalf("expected the historical edit to succeed with StartsOn omitted, got %v", err)
@@ -247,9 +247,9 @@ func TestUpdateSubscriptionFutureScopeHistoricalEditAppliesOnwardIndefinitely(t 
 	edit.RevisionScope = "future"
 	edit.EffectiveBillingAt = secondBilling
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatalf("owner should be allowed to revise a period onward: %v", err)
@@ -288,9 +288,9 @@ func TestUpdateSubscriptionBoundedRangeAppliesOnlyWithinRange(t *testing.T) {
 	edit.EffectiveBillingAt = start
 	edit.EndBillingAt = &end
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatalf("owner should be allowed to revise a bounded range: %v", err)
@@ -345,7 +345,7 @@ func TestUpdateSubscriptionRetroactivelyRegeneratesPostedOccurrence(t *testing.T
 	postedExpense := domain.Expense{
 		GroupID: f.group.ID, SubscriptionID: f.subscription.ID, Title: "YouTube", AmountMinor: 30000,
 		Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, PaidBy: f.owner, IncurredOn: secondBilling,
-		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: f.owner, AmountMinor: 15000}, {UserID: f.member, AmountMinor: 15000}},
+		SplitMode: domain.SplitEqual, Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 15000}}, {BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 15000}}},
 	}
 	if err = f.stores.Expenses.Create(ctx, &postedExpense); err != nil {
 		t.Fatal(err)
@@ -367,9 +367,9 @@ func TestUpdateSubscriptionRetroactivelyRegeneratesPostedOccurrence(t *testing.T
 	edit.RevisionScope = "one_off"
 	edit.EffectiveBillingAt = secondBilling
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 29000},
-		{UserID: f.member, AmountMinor: 1000},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 29000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 1000}},
 	}
 	if _, err = f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatalf("owner should be allowed to retroactively revise the posted period: %v", err)
@@ -451,9 +451,9 @@ func TestUpdateSubscriptionFutureScopeLiveEditAppliesOnwardIndefinitely(t *testi
 	edit.RevisionScope = "future"
 	edit.EffectiveBillingAt = f.subscription.NextBilling
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatalf("owner should be allowed to revise onward from the live period: %v", err)
@@ -485,9 +485,9 @@ func TestUpdateSubscriptionBoundedRangeLiveToLiveAppliesWithinRange(t *testing.T
 	edit.EffectiveBillingAt = start
 	edit.EndBillingAt = &end
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatalf("owner should be allowed to revise a live-to-live bounded range: %v", err)
@@ -524,9 +524,9 @@ func TestUpdateSubscriptionBoundedRangeHistoricalToLiveAppliesWithinRange(t *tes
 	edit.EffectiveBillingAt = start
 	edit.EndBillingAt = &end
 	edit.SplitMode = domain.SplitAmount
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: 30000},
-		{UserID: f.member, AmountMinor: 0},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 30000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 0}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatalf("owner should be allowed to revise a historical-to-live bounded range: %v", err)

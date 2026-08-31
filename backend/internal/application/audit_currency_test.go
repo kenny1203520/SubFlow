@@ -177,9 +177,9 @@ func TestOccurrenceRegeneratedDetailsIncludeCurrencyEvenWhenUnchanged(t *testing
 	// Both sides stay non-zero: PocketBase's NumberField treats a Required
 	// field's zero value as blank (see historical_subscription_test.go's
 	// note on the same quirk) -- unrelated to what this test is exercising.
-	edit.Splits = []domain.ExpenseSplit{
-		{UserID: f.owner, AmountMinor: edit.AmountMinor - 1000},
-		{UserID: f.member, AmountMinor: 1000},
+	edit.Splits = []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: edit.AmountMinor - 1000}},
+		{BaseSplit: domain.BaseSplit{UserID: f.member, AmountMinor: 1000}},
 	}
 	if _, err := f.service.UpdateSubscription(ctx, f.owner, edit); err != nil {
 		t.Fatal(err)

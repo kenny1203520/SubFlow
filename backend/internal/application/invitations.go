@@ -153,8 +153,14 @@ func (s *CollaborationService) AcceptInvitation(ctx context.Context, userID, tok
 }
 func (s *CollaborationService) accept(ctx context.Context, userID string, inv *domain.Invitation) (*domain.Invitation, error) {
 	now := s.Base.Now().UTC()
-	if inv.Status != domain.InvitationPending { return nil, domain.ErrConflict }
-	if !domain.InvitationUsable(*inv, now) { inv.Status = domain.InvitationExpired; _ = s.Base.Stores.Invitations.Update(ctx, inv); return nil, domain.ErrConflict }
+	if inv.Status != domain.InvitationPending {
+		return nil, domain.ErrConflict
+	}
+	if !domain.InvitationUsable(*inv, now) {
+		inv.Status = domain.InvitationExpired
+		_ = s.Base.Stores.Invitations.Update(ctx, inv)
+		return nil, domain.ErrConflict
+	}
 	user, err := s.Base.Stores.Users.Get(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -187,7 +193,9 @@ func (s *CollaborationService) accept(ctx context.Context, userID string, inv *d
 		}
 		inv.Status = domain.InvitationAccepted
 		inv.AcceptedBy = userID
-		if err := s.Base.Stores.Invitations.Update(tx, inv); err != nil { return err }
+		if err := s.Base.Stores.Invitations.Update(tx, inv); err != nil {
+			return err
+		}
 		return s.Base.Stores.Notifications.MarkReadForResource(tx, userID, inv.ID, now)
 	})
 	if err != nil {
@@ -202,18 +210,63 @@ func (s *CollaborationService) accept(ctx context.Context, userID string, inv *d
 	s.publish(ctx, "accepted", *inv)
 	return inv, nil
 }
-func (s *CollaborationService) ListMyInvitations(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Invitation], error) { user, err := s.Base.Stores.Users.Get(ctx, userID); if err != nil { return ports.Page[domain.Invitation]{}, err }; return s.Base.Stores.Invitations.ListForEmail(ctx, domain.NormalizeEmail(user.Email), page) }
-func (s *CollaborationService) AcceptInvitationByID(ctx context.Context, userID, id string) (*domain.Invitation, error) { inv, err := s.Base.Stores.Invitations.Get(ctx, id); if err != nil { return nil, err }; return s.accept(ctx, userID, inv) }
-func (s *CollaborationService) DeclineInvitation(ctx context.Context, userID, id string) (*domain.Invitation, error) {
-	inv, err := s.Base.Stores.Invitations.Get(ctx, id); if err != nil { return nil, err }
-	user, err := s.Base.Stores.Users.Get(ctx, userID); if err != nil { return nil, err }
-	if inv.Status != domain.InvitationPending || domain.NormalizeEmail(user.Email) != domain.NormalizeEmail(inv.Email) { return nil, domain.ErrForbidden }
-	inv.Status = domain.InvitationDeclined
-	if err = s.Base.Stores.Transactions.Within(ctx, func(tx context.Context) error { if err := s.Base.Stores.Invitations.Update(tx, inv); err != nil { return err }; return s.Base.Stores.Notifications.MarkReadForResource(tx, userID, inv.ID, s.Base.Now().UTC()) }); err != nil { return nil, err }
-	s.Base.audit(ctx, userID, inv.GroupID, "invitation.declined", "invitation", inv.ID, "success", encodeAuditSummary(map[string]any{"email": inv.Email}, nil)); s.publish(ctx, "updated", *inv); return inv, nil
+func (s *CollaborationService) ListMyInvitations(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Invitation], error) {
+	user, err := s.Base.Stores.Users.Get(ctx, userID)
+	if err != nil {
+		return ports.Page[domain.Invitation]{}, err
+	}
+	return s.Base.Stores.Invitations.ListForEmail(ctx, domain.NormalizeEmail(user.Email), page)
 }
-func (s *CollaborationService) ListNotifications(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Notification], error) { return s.Base.Stores.Notifications.ListForUser(ctx, userID, page) }
-func (s *CollaborationService) MarkNotificationRead(ctx context.Context, userID, id string) error { note, err := s.Base.Stores.Notifications.Get(ctx, id); if err != nil { return err }; if note.UserID != userID { return domain.ErrForbidden }; if note.ReadAt == nil { if err = s.Base.Stores.Notifications.MarkRead(ctx, id, s.Base.Now().UTC()); err == nil { s.Base.audit(ctx, userID, note.GroupID, "notification.read", "notification", id, "success", encodeAuditSummary(map[string]any{"type": note.Type}, nil)) } }; return err }
+func (s *CollaborationService) AcceptInvitationByID(ctx context.Context, userID, id string) (*domain.Invitation, error) {
+	inv, err := s.Base.Stores.Invitations.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return s.accept(ctx, userID, inv)
+}
+func (s *CollaborationService) DeclineInvitation(ctx context.Context, userID, id string) (*domain.Invitation, error) {
+	inv, err := s.Base.Stores.Invitations.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.Base.Stores.Users.Get(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if inv.Status != domain.InvitationPending || domain.NormalizeEmail(user.Email) != domain.NormalizeEmail(inv.Email) {
+		return nil, domain.ErrForbidden
+	}
+	inv.Status = domain.InvitationDeclined
+	if err = s.Base.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if err := s.Base.Stores.Invitations.Update(tx, inv); err != nil {
+			return err
+		}
+		return s.Base.Stores.Notifications.MarkReadForResource(tx, userID, inv.ID, s.Base.Now().UTC())
+	}); err != nil {
+		return nil, err
+	}
+	s.Base.audit(ctx, userID, inv.GroupID, "invitation.declined", "invitation", inv.ID, "success", encodeAuditSummary(map[string]any{"email": inv.Email}, nil))
+	s.publish(ctx, "updated", *inv)
+	return inv, nil
+}
+func (s *CollaborationService) ListNotifications(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Notification], error) {
+	return s.Base.Stores.Notifications.ListForUser(ctx, userID, page)
+}
+func (s *CollaborationService) MarkNotificationRead(ctx context.Context, userID, id string) error {
+	note, err := s.Base.Stores.Notifications.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if note.UserID != userID {
+		return domain.ErrForbidden
+	}
+	if note.ReadAt == nil {
+		if err = s.Base.Stores.Notifications.MarkRead(ctx, id, s.Base.Now().UTC()); err == nil {
+			s.Base.audit(ctx, userID, note.GroupID, "notification.read", "notification", id, "success", encodeAuditSummary(map[string]any{"type": note.Type}, nil))
+		}
+	}
+	return err
+}
 func (s *CollaborationService) publish(ctx context.Context, kind string, inv domain.Invitation) {
 	if s.Events != nil {
 		_ = s.Events.Publish(ctx, domain.Event{Type: kind, GroupID: inv.GroupID, Resource: "group_invitations", ResourceID: inv.ID, OccurredAt: s.Base.Now().UTC()})

@@ -187,7 +187,7 @@ func TestPostDueSubscriptionsSelfHealsSubscriptionWithNoRevisions(t *testing.T) 
 		RateMode: domain.RateAutomatic, BillingCycle: domain.BillingMonthly, BillingInterval: 1,
 		StartsOn: time.Date(2024, time.March, 3, 0, 0, 0, 0, time.UTC), NextBilling: now,
 		Status: domain.SubscriptionActive, SplitMode: domain.SplitAmount,
-		Splits: []domain.ExpenseSplit{{UserID: f.owner, AmountMinor: 1000, BaseAmountMinor: 1000}},
+		Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: f.owner, AmountMinor: 1000, BaseAmountMinor: 1000}}},
 	}
 	// Bypasses Service.CreateSubscription deliberately, to simulate a
 	// subscription that predates it always creating an initial revision.

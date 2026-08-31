@@ -377,7 +377,7 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 			return nil, memberErr
 		}
 		if len(v.Splits) == 0 {
-			v.SplitMode, v.Splits = domain.SplitAmount, []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}
+			v.SplitMode, v.Splits = domain.SplitAmount, []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}}
 		}
 		v.Splits, err = domain.CanonicalSplits(v.AmountMinor, v.PaidBy, v.SplitMode, v.Splits, members)
 		if err != nil {
@@ -395,7 +395,7 @@ func (s *Service) CreateSubscription(ctx context.Context, userID string, v domai
 		// pays the whole thing -- so it skips the group's multi-person
 		// canonicalization machinery entirely.
 		v.SplitMode = domain.SplitAmount
-		v.Splits = []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor, BaseAmountMinor: v.BaseAmountMinor}}
+		v.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: v.PaidBy, AmountMinor: v.AmountMinor, BaseAmountMinor: v.BaseAmountMinor}}}
 	}
 	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if createErr := s.Stores.Subscriptions.Create(tx, &v); createErr != nil {
@@ -633,7 +633,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 			v.SplitMode, v.Splits = current.SplitMode, current.Splits
 		}
 		if len(v.Splits) == 0 {
-			v.SplitMode, v.Splits = domain.SplitAmount, []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}
+			v.SplitMode, v.Splits = domain.SplitAmount, []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}}
 		}
 		v.Splits, err = domain.CanonicalSplits(v.AmountMinor, v.PaidBy, v.SplitMode, v.Splits, members)
 		if err != nil {
@@ -648,7 +648,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 		v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.PaidBy, v.Splits)
 	} else {
 		v.SplitMode = domain.SplitAmount
-		v.Splits = []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor, BaseAmountMinor: v.BaseAmountMinor}}
+		v.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: v.PaidBy, AmountMinor: v.AmountMinor, BaseAmountMinor: v.BaseAmountMinor}}}
 	}
 	scope := v.RevisionScope
 	if scope != "one_off" {
@@ -740,7 +740,7 @@ func (s *Service) UpdateSubscription(ctx context.Context, userID string, v domai
 	return &v, nil
 }
 func subscriptionRevision(v domain.Subscription, scope string, effective time.Time, endBilling *time.Time) domain.SubscriptionRevision {
-	return domain.SubscriptionRevision{SubscriptionID: v.ID, Scope: scope, EffectiveBillingAt: effective, EndBillingAt: endBilling, Name: v.Name, Category: v.Category, CategoryID: v.CategoryID, AmountMinor: v.AmountMinor, Currency: v.Currency, BaseCurrency: v.BaseCurrency, BaseAmountMinor: v.BaseAmountMinor, ExchangeRate: v.ExchangeRate, RateScaled: v.RateScaled, ExchangeRateDate: v.ExchangeRateDate, RateMode: v.RateMode, PaidBy: v.PaidBy, SplitMode: v.SplitMode, Splits: append([]domain.ExpenseSplit(nil), v.Splits...), Notes: v.Notes}
+	return domain.SubscriptionRevision{SubscriptionID: v.ID, Scope: scope, EffectiveBillingAt: effective, EndBillingAt: endBilling, Name: v.Name, Category: v.Category, CategoryID: v.CategoryID, AmountMinor: v.AmountMinor, Currency: v.Currency, BaseCurrency: v.BaseCurrency, BaseAmountMinor: v.BaseAmountMinor, ExchangeRate: v.ExchangeRate, RateScaled: v.RateScaled, ExchangeRateDate: v.ExchangeRateDate, RateMode: v.RateMode, PaidBy: v.PaidBy, SplitMode: v.SplitMode, Splits: append([]*domain.ExpenseSplit(nil), v.Splits...), Notes: v.Notes}
 }
 func (s *Service) hydrateSubscription(ctx context.Context, v *domain.Subscription) {
 	values, err := s.Stores.Subscriptions.ListRevisions(ctx, v.ID)
@@ -772,7 +772,7 @@ func applySubscriptionRevision(v *domain.Subscription, revision domain.Subscript
 	// Keep the subscription's own splits when a revision carries none, so a
 	// revision without split data cannot silently drop the participants.
 	if len(revision.Splits) > 0 {
-		v.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+		v.Splits = append([]*domain.ExpenseSplit(nil), revision.Splits...)
 	}
 	v.Notes = revision.Notes
 }
@@ -863,7 +863,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 		}
 		v.BaseCurrency = group.Currency
 		if len(v.Splits) == 0 {
-			v.Splits = []domain.ExpenseSplit{{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}
+			v.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: v.PaidBy, AmountMinor: v.AmountMinor}}}
 			v.SplitMode = domain.SplitAmount
 		}
 		v.Splits, err = domain.CanonicalSplits(v.AmountMinor, v.PaidBy, v.SplitMode, v.Splits, members)
@@ -881,7 +881,7 @@ func (s *Service) CreateExpense(ctx context.Context, userID string, v domain.Exp
 		}
 		v.BaseCurrency = v.Currency
 		v.SplitMode = domain.SplitAmount
-		v.Splits = []domain.ExpenseSplit{{UserID: userID, AmountMinor: v.AmountMinor}}
+		v.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: userID, AmountMinor: v.AmountMinor}}}
 	}
 	if _, err := s.validateCategory(ctx, userID, v.GroupID, v.CategoryID); err != nil {
 		return nil, err
@@ -966,7 +966,7 @@ func (s *Service) UpdateExpense(ctx context.Context, userID string, v domain.Exp
 			v.Currency = current.Currency
 		}
 		v.SplitMode = domain.SplitAmount
-		v.Splits = []domain.ExpenseSplit{{UserID: userID, AmountMinor: v.AmountMinor}}
+		v.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: userID, AmountMinor: v.AmountMinor}}}
 	} else {
 		if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.expenses.write"); err != nil {
 			return nil, err

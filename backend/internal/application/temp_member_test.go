@@ -85,7 +85,7 @@ func TestCreateTempMemberCanBePaidByAndSplitParticipant(t *testing.T) {
 	expense, err := collab.Base.CreateExpense(ctx, ownerID, domain.Expense{
 		GroupID: groupID, Title: "Groceries", AmountMinor: 10000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		PaidBy: membership.UserID, IncurredOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
-		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: ownerID}, {UserID: membership.UserID}},
+		SplitMode: domain.SplitEqual, Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: ownerID}}, {BaseSplit: domain.BaseSplit{UserID: membership.UserID}}},
 	})
 	if err != nil {
 		t.Fatalf("expected a placeholder to be usable as PaidBy and a split participant, got %v", err)
@@ -109,7 +109,7 @@ func TestBindingPlaceholderRewritesHistoricalData(t *testing.T) {
 	expense, err := collab.Base.CreateExpense(ctx, ownerID, domain.Expense{
 		GroupID: groupID, Title: "Groceries", AmountMinor: 10000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		PaidBy: ownerID, IncurredOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
-		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: ownerID}, {UserID: membership.UserID}},
+		SplitMode: domain.SplitEqual, Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: ownerID}}, {BaseSplit: domain.BaseSplit{UserID: membership.UserID}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -173,10 +173,10 @@ func TestBindingPlaceholderMergesConflictingExpenseSplits(t *testing.T) {
 		GroupID: groupID, Title: "Groceries", AmountMinor: 30000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		PaidBy: ownerID, IncurredOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
 		SplitMode: domain.SplitAmount,
-		Splits: []domain.ExpenseSplit{
-			{UserID: ownerID, AmountMinor: 10000},
-			{UserID: membership.UserID, AmountMinor: 10000},
-			{UserID: realUserID, AmountMinor: 10000},
+		Splits: []*domain.ExpenseSplit{
+			{BaseSplit: domain.BaseSplit{UserID: ownerID, AmountMinor: 10000}},
+			{BaseSplit: domain.BaseSplit{UserID: membership.UserID, AmountMinor: 10000}},
+			{BaseSplit: domain.BaseSplit{UserID: realUserID, AmountMinor: 10000}},
 		},
 	})
 	if err != nil {
@@ -201,7 +201,7 @@ func TestBindingPlaceholderMergesConflictingExpenseSplits(t *testing.T) {
 	var merged *domain.ExpenseSplit
 	for i := range splits {
 		if splits[i].UserID == realUserID {
-			merged = &splits[i]
+			merged = splits[i]
 		}
 	}
 	if merged == nil {
@@ -228,7 +228,7 @@ func TestBindingPlaceholderRewritesSubscriptionAcrossRevisions(t *testing.T) {
 		GroupID: groupID, Name: "Shared Netflix", AmountMinor: 39900, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		BillingCycle: domain.BillingMonthly, StartsOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
 		Status: domain.SubscriptionActive, PaidBy: ownerID, SplitMode: domain.SplitEqual,
-		Splits: []domain.ExpenseSplit{{UserID: ownerID}, {UserID: membership.UserID}},
+		Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: ownerID}}, {BaseSplit: domain.BaseSplit{UserID: membership.UserID}}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -240,7 +240,7 @@ func TestBindingPlaceholderRewritesSubscriptionAcrossRevisions(t *testing.T) {
 		SubscriptionID: sub.ID, Scope: "one_off", EffectiveBillingAt: sub.NextBilling.AddDate(0, 1, 0),
 		Name: sub.Name, AmountMinor: sub.AmountMinor, Currency: sub.Currency, BaseCurrency: sub.BaseCurrency,
 		RateMode: domain.RateAutomatic, PaidBy: membership.UserID, SplitMode: domain.SplitAmount,
-		Splits: []domain.ExpenseSplit{{UserID: ownerID, AmountMinor: sub.AmountMinor}},
+		Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: ownerID, AmountMinor: sub.AmountMinor}}},
 	}
 	if err = stores.Subscriptions.CreateRevision(ctx, &secondRevision); err != nil {
 		t.Fatal(err)
@@ -355,7 +355,7 @@ func TestWorkspaceDashboardFoldsBoundPlaceholderBalanceIntoRealUser(t *testing.T
 	if _, err = base.CreateExpense(ctx, ownerID, domain.Expense{
 		GroupID: groupID, Title: "Groceries", AmountMinor: 10000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
 		PaidBy: ownerID, IncurredOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
-		SplitMode: domain.SplitEqual, Splits: []domain.ExpenseSplit{{UserID: ownerID}, {UserID: membership.UserID}},
+		SplitMode: domain.SplitEqual, Splits: []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: ownerID}}, {BaseSplit: domain.BaseSplit{UserID: membership.UserID}}},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -433,5 +433,58 @@ func TestRemoveMemberGuardsBoundPlaceholderButCleansUpUnbound(t *testing.T) {
 		t.Fatal("expected removing a legacy bound placeholder to be refused")
 	} else if err != domain.ErrConflict {
 		t.Fatalf("expected ErrConflict, got %v", err)
+	}
+}
+
+func TestBindingPlaceholderRewritesAndMergesIncomeSplits(t *testing.T) {
+	collab, stores, ownerID, groupID := newTempMemberFixture(t)
+	ctx := context.Background()
+
+	membership, err := collab.Base.CreateTempMember(ctx, ownerID, groupID, "小明")
+	if err != nil {
+		t.Fatal(err)
+	}
+	realUserID := newRealUser(t, stores, "real-person@example.com")
+	if err = stores.Memberships.Create(ctx, &domain.Membership{GroupID: groupID, UserID: realUserID, Role: domain.RoleMember}); err != nil {
+		t.Fatal(err)
+	}
+	income, err := collab.Base.CreateGroupIncome(ctx, ownerID, domain.Income{
+		GroupID: groupID, Title: "Bonus", AmountMinor: 30000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD,
+		EarnedBy: membership.UserID, ReceivedOn: time.Date(2026, time.August, 1, 0, 0, 0, 0, time.UTC),
+		SplitMode: domain.SplitAmount, Splits: []*domain.IncomeSplit{
+			{BaseSplit: domain.BaseSplit{UserID: ownerID, AmountMinor: 10000}},
+			{BaseSplit: domain.BaseSplit{UserID: membership.UserID, AmountMinor: 10000}},
+			{BaseSplit: domain.BaseSplit{UserID: realUserID, AmountMinor: 10000}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inv, err := collab.CreateInvitationBinding(ctx, ownerID, groupID, "real-person@example.com", membership.UserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = collab.AcceptInvitationByID(ctx, realUserID, inv.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	updated, err := stores.Incomes.Get(ctx, income.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.EarnedBy != realUserID {
+		t.Fatalf("expected earned_by to be repointed, got %q", updated.EarnedBy)
+	}
+	if len(updated.Splits) != 2 {
+		t.Fatalf("expected conflicting income splits to merge, got %#v", updated.Splits)
+	}
+	for _, split := range updated.Splits {
+		if split.UserID == membership.UserID {
+			t.Fatalf("found split still pointing at deleted placeholder: %#v", updated.Splits)
+		}
+		if split.UserID == realUserID && (split.AmountMinor != 20000 || split.BaseAmountMinor != 20000) {
+			t.Fatalf("unexpected merged income split: %#v", split)
+		}
 	}
 }

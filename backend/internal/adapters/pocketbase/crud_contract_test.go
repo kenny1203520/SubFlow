@@ -136,10 +136,10 @@ func TestSubscriptionSplitsSurviveRoundTrip(t *testing.T) {
 	if err = stores.Groups.Create(ctx, group); err != nil {
 		t.Fatal(err)
 	}
-	splits := []domain.ExpenseSplit{
-		{UserID: members[0], AmountMinor: 10000, BaseAmountMinor: 10000},
-		{UserID: members[1], AmountMinor: 10000, BaseAmountMinor: 10000},
-		{UserID: members[2], AmountMinor: 10000, BaseAmountMinor: 10000},
+	splits := []*domain.ExpenseSplit{
+		{BaseSplit: domain.BaseSplit{UserID: members[0], AmountMinor: 10000, BaseAmountMinor: 10000}},
+		{BaseSplit: domain.BaseSplit{UserID: members[1], AmountMinor: 10000, BaseAmountMinor: 10000}},
+		{BaseSplit: domain.BaseSplit{UserID: members[2], AmountMinor: 10000, BaseAmountMinor: 10000}},
 	}
 	now := time.Now().UTC().Truncate(time.Second)
 	sub := &domain.Subscription{GroupID: group.ID, Name: "YouTube", AmountMinor: 30000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, BaseAmountMinor: 30000, RateMode: domain.RateAutomatic, BillingCycle: domain.BillingMonthly, NextBilling: now.AddDate(0, 0, 5), Status: domain.SubscriptionActive, PaidBy: members[0], SplitMode: domain.SplitEqual, Splits: splits}
@@ -164,14 +164,42 @@ func TestSubscriptionSplitsSurviveRoundTrip(t *testing.T) {
 		t.Fatalf("expected 1 revision, got %d", len(revisions))
 	}
 	assertSplits(t, "revision", revisions[0].Splits, splits)
+
+	income := &domain.Income{
+		GroupID: group.ID, EarnedBy: members[1], Title: "Salary", AmountMinor: 50000,
+		Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, BaseAmountMinor: 50000,
+		RateMode: domain.RateAutomatic, ReceivedOn: now, SplitMode: domain.SplitAmount,
+		Splits: []*domain.IncomeSplit{
+			{BaseSplit: domain.BaseSplit{UserID: members[0], AmountMinor: 20000, BaseAmountMinor: 20000}},
+			{BaseSplit: domain.BaseSplit{UserID: members[1], AmountMinor: 30000, BaseAmountMinor: 30000}},
+		},
+	}
+	if err = stores.Incomes.Create(ctx, income); err != nil {
+		t.Fatal(err)
+	}
+	loadedIncome, err := stores.Incomes.Get(ctx, income.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if loadedIncome.EarnedBy != income.EarnedBy || len(loadedIncome.Splits) != 2 {
+		t.Fatalf("income fields/splits were not restored: %#v", loadedIncome)
+	}
+	for _, split := range loadedIncome.Splits {
+		if split.UserID == members[0] && (split.AmountMinor != 20000 || split.BaseAmountMinor != 20000) {
+			t.Fatalf("income split for first member was not restored: %#v", split)
+		}
+		if split.UserID == members[1] && (split.AmountMinor != 30000 || split.BaseAmountMinor != 30000) {
+			t.Fatalf("income split for second member was not restored: %#v", split)
+		}
+	}
 }
 
-func assertSplits(t *testing.T, label string, got, want []domain.ExpenseSplit) {
+func assertSplits(t *testing.T, label string, got, want []*domain.ExpenseSplit) {
 	t.Helper()
 	if len(got) != len(want) {
 		t.Fatalf("%s splits were not restored: want %d, got %d (%#v)", label, len(want), len(got), got)
 	}
-	found := map[string]domain.ExpenseSplit{}
+	found := map[string]*domain.ExpenseSplit{}
 	for _, split := range got {
 		found[split.UserID] = split
 	}

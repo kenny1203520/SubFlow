@@ -21,16 +21,16 @@ type BillingDatePage struct {
 // occurrence record: "posted" once it has become an expense, "failed" when
 // posting could not produce one, and "pending" for periods not yet billed.
 type SubscriptionPeriod struct {
-	BillingAt       time.Time             `json:"billingAt"`
-	AmountMinor     int64                 `json:"amountMinor"`
-	Currency        domain.Currency       `json:"currency"`
-	BaseAmountMinor int64                 `json:"baseAmountMinor"`
-	BaseCurrency    domain.Currency       `json:"baseCurrency"`
-	PaidBy          string                `json:"paidBy"`
-	Splits          []domain.ExpenseSplit `json:"splits,omitempty"`
-	Status          string                `json:"status"`
-	ExpenseID       string                `json:"expenseId,omitempty"`
-	Error           string                `json:"error,omitempty"`
+	BillingAt       time.Time              `json:"billingAt"`
+	AmountMinor     int64                  `json:"amountMinor"`
+	Currency        domain.Currency        `json:"currency"`
+	BaseAmountMinor int64                  `json:"baseAmountMinor"`
+	BaseCurrency    domain.Currency        `json:"baseCurrency"`
+	PaidBy          string                 `json:"paidBy"`
+	Splits          []*domain.ExpenseSplit `json:"splits,omitempty"`
+	Status          string                 `json:"status"`
+	ExpenseID       string                 `json:"expenseId,omitempty"`
+	Error           string                 `json:"error,omitempty"`
 }
 
 type SubscriptionPeriodPage struct {
@@ -120,7 +120,7 @@ func subscriptionHasPostedOccurrence(subscription domain.Subscription, billingAt
 }
 
 func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt time.Time) domain.Expense {
-	result := domain.Expense{GroupID: subscription.GroupID, OwnerID: subscription.OwnerID, SubscriptionID: subscription.ID, Title: subscription.Name, Category: subscription.Category, CategoryID: subscription.CategoryID, AmountMinor: subscription.AmountMinor, Currency: subscription.Currency, BaseCurrency: subscription.BaseCurrency, BaseAmountMinor: subscription.BaseAmountMinor, ExchangeRate: subscription.ExchangeRate, RateScaled: subscription.RateScaled, ExchangeRateDate: subscription.ExchangeRateDate, RateMode: subscription.RateMode, PaidBy: subscription.PaidBy, IncurredOn: billingAt, Notes: subscription.Notes, SplitMode: subscription.SplitMode, Splits: append([]domain.ExpenseSplit(nil), subscription.Splits...)}
+	result := domain.Expense{GroupID: subscription.GroupID, OwnerID: subscription.OwnerID, SubscriptionID: subscription.ID, Title: subscription.Name, Category: subscription.Category, CategoryID: subscription.CategoryID, AmountMinor: subscription.AmountMinor, Currency: subscription.Currency, BaseCurrency: subscription.BaseCurrency, BaseAmountMinor: subscription.BaseAmountMinor, ExchangeRate: subscription.ExchangeRate, RateScaled: subscription.RateScaled, ExchangeRateDate: subscription.ExchangeRateDate, RateMode: subscription.RateMode, PaidBy: subscription.PaidBy, IncurredOn: billingAt, Notes: subscription.Notes, SplitMode: subscription.SplitMode, Splits: append([]*domain.ExpenseSplit(nil), subscription.Splits...)}
 	revision, ok := subscriptionRevisionAt(subscription.Revisions, billingAt)
 	if !ok {
 		// No revision has ever claimed this date — it predates every
@@ -152,12 +152,12 @@ func subscriptionExpenseOccurrence(subscription domain.Subscription, billingAt t
 		// A revision without splits must not discard the subscription's own,
 		// otherwise the fallback below charges the payer the full amount.
 		if len(revision.Splits) > 0 {
-			result.Splits = append([]domain.ExpenseSplit(nil), revision.Splits...)
+			result.Splits = append([]*domain.ExpenseSplit(nil), revision.Splits...)
 		}
 	}
 	if len(result.Splits) == 0 {
 		result.SplitMode = domain.SplitAmount
-		result.Splits = []domain.ExpenseSplit{{UserID: result.PaidBy, AmountMinor: result.AmountMinor, BaseAmountMinor: result.BaseAmountMinor}}
+		result.Splits = []*domain.ExpenseSplit{{BaseSplit: domain.BaseSplit{UserID: result.PaidBy, AmountMinor: result.AmountMinor, BaseAmountMinor: result.BaseAmountMinor}}}
 	}
 	return result
 }
@@ -221,7 +221,7 @@ func subscriptionRateFor(subscription domain.Subscription, monthDates []time.Tim
 // passed in rather than read off the subscription so callers can supply the
 // splits of the revision governing the period in question. Personal
 // subscriptions (no groupID) belong entirely to their owner.
-func subscriptionUserShare(splits []domain.ExpenseSplit, groupID, userID, scope string, displayAmount int64) int64 {
+func subscriptionUserShare(splits []*domain.ExpenseSplit, groupID, userID, scope string, displayAmount int64) int64 {
 	if groupID == "" {
 		return displayAmount
 	}
@@ -563,7 +563,7 @@ func (s *Service) resolvePlaceholderAliases(ctx context.Context, expenses []doma
 	for i, expense := range expenses {
 		expense.PaidBy = resolve(expense.PaidBy)
 		if len(expense.Splits) > 0 {
-			splits := make([]domain.ExpenseSplit, len(expense.Splits))
+			splits := make([]*domain.ExpenseSplit, len(expense.Splits))
 			for j, split := range expense.Splits {
 				split.UserID = resolve(split.UserID)
 				splits[j] = split

@@ -69,9 +69,9 @@ func TestWorkspaceDashboardReportsSplitSubscriptionShare(t *testing.T) {
 		}
 	}
 
-	splits := make([]domain.ExpenseSplit, 0, len(ids))
+	splits := make([]*domain.ExpenseSplit, 0, len(ids))
 	for _, id := range ids {
-		splits = append(splits, domain.ExpenseSplit{UserID: id})
+		splits = append(splits, &domain.ExpenseSplit{BaseSplit: domain.BaseSplit{UserID: id}})
 	}
 	created, err := service.CreateSubscription(ctx, payer, domain.Subscription{
 		GroupID:      group.ID,
