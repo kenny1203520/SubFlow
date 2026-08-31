@@ -177,6 +177,9 @@ func TestSubscriptionSplitsSurviveRoundTrip(t *testing.T) {
 	if err = stores.Incomes.Create(ctx, income); err != nil {
 		t.Fatal(err)
 	}
+	if err = stores.Incomes.ReplaceSplits(ctx, income.ID, income.Splits); err != nil {
+		t.Fatal(err)
+	}
 	loadedIncome, err := stores.Incomes.Get(ctx, income.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -191,6 +194,14 @@ func TestSubscriptionSplitsSurviveRoundTrip(t *testing.T) {
 		if split.UserID == members[1] && (split.AmountMinor != 30000 || split.BaseAmountMinor != 30000) {
 			t.Fatalf("income split for second member was not restored: %#v", split)
 		}
+	}
+	listedIncomes, err := stores.Incomes.List(ctx, group.ID, ports.PageRequest{Page: 1, PerPage: 20})
+	if err != nil || len(listedIncomes.Items) != 1 || len(listedIncomes.Items[0].Splits) != 2 {
+		t.Fatalf("income list must hydrate child splits: %#v %v", listedIncomes, err)
+	}
+	betweenIncomes, err := stores.Incomes.ListBetween(ctx, group.ID, now.Add(-time.Hour), now.Add(time.Hour))
+	if err != nil || len(betweenIncomes) != 1 || len(betweenIncomes[0].Splits) != 2 {
+		t.Fatalf("income date list must hydrate child splits: %#v %v", betweenIncomes, err)
 	}
 }
 

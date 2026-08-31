@@ -363,6 +363,12 @@ func (r *IncomeRepo) Update(ctx context.Context, v *domain.Income) error {
 	return r.UpdateIncome(ctx, v)
 }
 func (r *IncomeRepo) Delete(ctx context.Context, id string) error { return r.DeleteIncome(ctx, id) }
+func (r *IncomeRepo) ReplaceSplits(ctx context.Context, incomeID string, values []*domain.IncomeSplit) error {
+	return r.ReplaceIncomeSplits(ctx, incomeID, values)
+}
+func (r *IncomeRepo) ListSplits(ctx context.Context, incomeID string) ([]*domain.IncomeSplit, error) {
+	return r.ListIncomeSplits(ctx, incomeID)
+}
 func (r *IncomeRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
 	return r.ReassignIncomeUser(ctx, groupID, fromUserID, toUserID)
 }

@@ -244,6 +244,9 @@ func TestMemberTransferDeclineLeavesDataUnchanged(t *testing.T) {
 	if err := f.stores.Incomes.Create(ctx, income); err != nil {
 		t.Fatal(err)
 	}
+	if err := f.stores.Incomes.ReplaceSplits(ctx, income.ID, income.Splits); err != nil {
+		t.Fatal(err)
+	}
 	transfer, err := f.service.CreateMemberTransfer(ctx, f.ownerID, f.groupID, f.fromID, f.toID)
 	if err != nil {
 		t.Fatal(err)

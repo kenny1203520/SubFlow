@@ -193,6 +193,8 @@ type IncomeRepository interface {
 	ListBetween(context.Context, string, time.Time, time.Time) ([]domain.Income, error)
 	Update(context.Context, *domain.Income) error
 	Delete(context.Context, string) error
+	ReplaceSplits(context.Context, string, []*domain.IncomeSplit) error
+	ListSplits(context.Context, string) ([]*domain.IncomeSplit, error)
 	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 

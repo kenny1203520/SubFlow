@@ -157,7 +157,12 @@ func (s *Service) CreateGroupIncome(ctx context.Context, userID string, v domain
 	if err := s.prepareGroupIncome(ctx, userID, &v, nil); err != nil {
 		return nil, s.groupIncomeFailure(ctx, userID, v.GroupID, "income.created", "", "invalid_or_write_failed", err)
 	}
-	if err := s.Stores.Incomes.Create(ctx, &v); err != nil {
+	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if createErr := s.Stores.Incomes.Create(tx, &v); createErr != nil {
+			return createErr
+		}
+		return s.Stores.Incomes.ReplaceSplits(tx, v.ID, v.Splits)
+	}); err != nil {
 		return nil, s.groupIncomeFailure(ctx, userID, v.GroupID, "income.created", "", "write_failed", err)
 	}
 	if err := s.audit(ctx, userID, v.GroupID, "income.created", "income", v.ID, "success", incomeAuditSummary(&v)); err != nil {
@@ -165,7 +170,6 @@ func (s *Service) CreateGroupIncome(ctx context.Context, userID string, v domain
 	}
 	return &v, nil
 }
-
 func (s *Service) ListGroupIncomes(ctx context.Context, userID, groupID string, p ports.PageRequest) (ports.Page[domain.Income], error) {
 	if err := s.groupPermission(ctx, userID, groupID, "ledger.incomes.read"); err != nil {
 		return ports.Page[domain.Income]{}, err
@@ -195,7 +199,12 @@ func (s *Service) UpdateGroupIncome(ctx context.Context, userID string, v domain
 		return nil, s.groupIncomeFailure(ctx, userID, current.GroupID, "income.updated", v.ID, "invalid_or_write_failed", err)
 	}
 	v.ID, v.OwnerID = current.ID, ""
-	if err = s.Stores.Incomes.Update(ctx, &v); err != nil {
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if updateErr := s.Stores.Incomes.Update(tx, &v); updateErr != nil {
+			return updateErr
+		}
+		return s.Stores.Incomes.ReplaceSplits(tx, v.ID, v.Splits)
+	}); err != nil {
 		return nil, s.groupIncomeFailure(ctx, userID, current.GroupID, "income.updated", v.ID, "write_failed", err)
 	}
 	if err = s.audit(ctx, userID, current.GroupID, "income.updated", "income", v.ID, "success", incomeAuditSummary(&v)); err != nil {
@@ -203,7 +212,6 @@ func (s *Service) UpdateGroupIncome(ctx context.Context, userID string, v domain
 	}
 	return &v, nil
 }
-
 func (s *Service) DeleteGroupIncome(ctx context.Context, userID, id string) error {
 	current, err := s.Stores.Incomes.Get(ctx, id)
 	if err != nil {

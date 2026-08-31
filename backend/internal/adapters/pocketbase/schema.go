@@ -26,6 +26,7 @@ const (
 	CollectionExpenses                = "expenses"
 	CollectionIncomes                 = "incomes"
 	CollectionExpenseSplits           = "expense_splits"
+	CollectionIncomeSplits            = "income_splits"
 	CollectionSettlements             = "settlements"
 	CollectionCategories              = "categories"
 	CollectionExchangeRates           = "exchange_rates"
@@ -291,7 +292,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionIncomes, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "earned_by", CollectionId: users.Id, MaxSelect: 1}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.DateField{Name: "received_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.JSONField{Name: "splits", MaxSize: 1024 * 128}, &core.TextField{Name: "notes", Max: 4000})
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "earned_by", CollectionId: users.Id, MaxSelect: 1}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.DateField{Name: "received_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_incomes_owner_date", false, "owner, received_on", "")
 		c.AddIndex("idx_incomes_group_date", false, "group, received_on", "")
 	})
@@ -308,6 +309,13 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	_, err = ensureCollection(app, CollectionExpenseSplits, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "expense", Required: true, CollectionId: mustCollectionID(app, CollectionExpenses), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "percentage_bp", OnlyInt: true})
 		c.AddIndex("idx_splits_expense_user", true, "expense, user", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionIncomeSplits, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "income", Required: true, CollectionId: mustCollectionID(app, CollectionIncomes), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "percentage_bp", OnlyInt: true})
+		c.AddIndex("idx_splits_income_user", true, "income, user", "")
 	})
 	if err != nil {
 		return "", err
@@ -507,6 +515,73 @@ func backfillFinance(app core.App) error {
 		}
 		if changed {
 			if err = app.Save(expense); err != nil {
+				return err
+			}
+		}
+	}
+	incomes, err := app.FindRecordsByFilter(CollectionIncomes, "", "", 0, 0, nil)
+	if err != nil {
+		return err
+	}
+	for _, income := range incomes {
+		changed := false
+		if income.GetString("currency") == "" {
+			currency := "TWD"
+			if groupID := income.GetString("group"); groupID != "" {
+				if group, findErr := app.FindRecordById(CollectionGroups, groupID); findErr == nil {
+					currency = group.GetString("currency")
+				}
+			}
+			income.Set("currency", currency)
+			changed = true
+		}
+		if income.GetString("split_mode") == "" {
+			income.Set("split_mode", "amount")
+			changed = true
+		}
+		if income.GetString("base_currency") == "" {
+			income.Set("base_currency", income.GetString("currency"))
+			income.Set("base_amount_minor", income.GetFloat("amount_minor"))
+			income.Set("exchange_rate_scaled", domain.ExchangeRateScale)
+			income.Set("exchange_rate_date", income.GetDateTime("received_on").Time())
+			income.Set("rate_mode", "automatic")
+			changed = true
+		}
+		if income.GetString("category_ref") == "" {
+			id, categoryErr := ensureLegacyCategory(app, income.GetString("owner"), income.GetString("group"), income.GetString("category"))
+			if categoryErr != nil {
+				return categoryErr
+			}
+			income.Set("category_ref", id)
+			changed = true
+		}
+		splits, findErr := app.FindRecordsByFilter(CollectionIncomeSplits, "income={:income}", "", 0, 0, map[string]any{"income": income.Id})
+		if findErr != nil {
+			return findErr
+		}
+		if len(splits) == 0 && income.GetString("earned_by") != "" {
+			split, createErr := newSchemaRecord(app, CollectionIncomeSplits)
+			if createErr != nil {
+				return createErr
+			}
+			split.Set("income", income.Id)
+			split.Set("user", income.GetString("earned_by"))
+			split.Set("amount_minor", income.GetFloat("amount_minor"))
+			split.Set("base_amount_minor", income.GetFloat("base_amount_minor"))
+			if createErr = app.Save(split); createErr != nil {
+				return createErr
+			}
+		}
+		for _, split := range splits {
+			if split.GetFloat("base_amount_minor") == 0 {
+				split.Set("base_amount_minor", split.GetFloat("amount_minor"))
+				if err = app.Save(split); err != nil {
+					return err
+				}
+			}
+		}
+		if changed {
+			if err = app.Save(income); err != nil {
 				return err
 			}
 		}

@@ -2,7 +2,8 @@ package pocketbase
 
 import (
 	"context"
-	"encoding/json"
+	"database/sql"
+	"errors"
 	"time"
 
 	"github.com/pocketbase/dbx"
@@ -25,13 +26,15 @@ func (r *Repository) CreateIncome(ctx context.Context, v *domain.Income) error {
 	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
 	return nil
 }
+
 func (r *Repository) GetIncome(ctx context.Context, id string) (*domain.Income, error) {
 	rec, err := r.app(ctx).FindRecordById(CollectionIncomes, id)
 	if err != nil {
 		return nil, mapError(err)
 	}
-	return incomeFrom(rec), nil
+	return r.hydrateIncome(ctx, rec)
 }
+
 func (r *Repository) ListPersonalIncomes(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Income], error) {
 	filter := "owner={:user}"
 	params := dbx.Params{"user": userID}
@@ -41,7 +44,11 @@ func (r *Repository) ListPersonalIncomes(ctx context.Context, userID string, req
 	}
 	items := make([]domain.Income, len(recs))
 	for i, rec := range recs {
-		items[i] = *incomeFrom(rec)
+		value, hydrateErr := r.hydrateIncome(ctx, rec)
+		if hydrateErr != nil {
+			return ports.Page[domain.Income]{}, hydrateErr
+		}
+		items[i] = *value
 	}
 	count, err := countFiltered(r.app(ctx), CollectionIncomes, filter, params)
 	if err != nil {
@@ -49,6 +56,7 @@ func (r *Repository) ListPersonalIncomes(ctx context.Context, userID string, req
 	}
 	return page(items, req, count), nil
 }
+
 func (r *Repository) ListIncomes(ctx context.Context, groupID string, req ports.PageRequest) (ports.Page[domain.Income], error) {
 	filter := "group={:group}"
 	params := dbx.Params{"group": groupID}
@@ -58,7 +66,11 @@ func (r *Repository) ListIncomes(ctx context.Context, groupID string, req ports.
 	}
 	items := make([]domain.Income, len(recs))
 	for i, rec := range recs {
-		items[i] = *incomeFrom(rec)
+		value, hydrateErr := r.hydrateIncome(ctx, rec)
+		if hydrateErr != nil {
+			return ports.Page[domain.Income]{}, hydrateErr
+		}
+		items[i] = *value
 	}
 	count, err := countFiltered(r.app(ctx), CollectionIncomes, filter, params)
 	if err != nil {
@@ -66,6 +78,7 @@ func (r *Repository) ListIncomes(ctx context.Context, groupID string, req ports.
 	}
 	return page(items, req, count), nil
 }
+
 func (r *Repository) ListIncomesBetween(ctx context.Context, groupID string, from, to time.Time) ([]domain.Income, error) {
 	filter := "group={:group} && received_on>={:from} && received_on<{:to}"
 	params := dbx.Params{"group": groupID, "from": from, "to": to}
@@ -75,10 +88,15 @@ func (r *Repository) ListIncomesBetween(ctx context.Context, groupID string, fro
 	}
 	items := make([]domain.Income, len(recs))
 	for i, rec := range recs {
-		items[i] = *incomeFrom(rec)
+		value, hydrateErr := r.hydrateIncome(ctx, rec)
+		if hydrateErr != nil {
+			return nil, hydrateErr
+		}
+		items[i] = *value
 	}
 	return items, nil
 }
+
 func (r *Repository) ListGroupExpensesBetween(ctx context.Context, groupID string, from, to time.Time) ([]domain.Expense, error) {
 	filter := "group={:group} && incurred_on>={:from} && incurred_on<{:to}"
 	params := dbx.Params{"group": groupID, "from": from, "to": to}
@@ -96,6 +114,7 @@ func (r *Repository) ListGroupExpensesBetween(ctx context.Context, groupID strin
 	}
 	return items, nil
 }
+
 func (r *Repository) ListPersonalIncomesBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Income, error) {
 	filter := "owner={:user} && received_on>={:from} && received_on<{:to}"
 	params := dbx.Params{"user": userID, "from": from, "to": to}
@@ -105,10 +124,15 @@ func (r *Repository) ListPersonalIncomesBetween(ctx context.Context, userID stri
 	}
 	items := make([]domain.Income, len(recs))
 	for i, rec := range recs {
-		items[i] = *incomeFrom(rec)
+		value, hydrateErr := r.hydrateIncome(ctx, rec)
+		if hydrateErr != nil {
+			return nil, hydrateErr
+		}
+		items[i] = *value
 	}
 	return items, nil
 }
+
 func (r *Repository) UpdateIncome(ctx context.Context, v *domain.Income) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionIncomes, v.ID)
 	if err != nil {
@@ -121,56 +145,91 @@ func (r *Repository) UpdateIncome(ctx context.Context, v *domain.Income) error {
 	hydrateTimes(rec, &v.CreatedAt, &v.UpdatedAt)
 	return nil
 }
+
+func (r *Repository) ReplaceIncomeSplits(ctx context.Context, incomeID string, values []*domain.IncomeSplit) error {
+	app := r.app(ctx)
+	records, err := app.FindRecordsByFilter(CollectionIncomeSplits, "income={:income}", "", 0, 0, dbx.Params{"income": incomeID})
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if err = app.Delete(record); err != nil {
+			return err
+		}
+	}
+	for _, value := range values {
+		record, createErr := newRecord(app, CollectionIncomeSplits)
+		if createErr != nil {
+			return createErr
+		}
+		record.Set("income", incomeID)
+		record.Set("user", value.UserID)
+		record.Set("amount_minor", value.AmountMinor)
+		record.Set("base_amount_minor", value.BaseAmountMinor)
+		record.Set("percentage_bp", value.PercentageBasisPoints)
+		if err = app.Save(record); err != nil {
+			return err
+		}
+		value.ID = record.Id
+		value.IncomeID = incomeID
+	}
+	return nil
+}
+
+func (r *Repository) ListIncomeSplits(ctx context.Context, incomeID string) ([]*domain.IncomeSplit, error) {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionIncomeSplits, "income={:income}", "user", 0, 0, dbx.Params{"income": incomeID})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]*domain.IncomeSplit, len(records))
+	for i, record := range records {
+		result[i] = &domain.IncomeSplit{BaseSplit: domain.BaseSplit{ID: record.Id, UserID: record.GetString("user"), AmountMinor: int64(record.GetFloat("amount_minor")), BaseAmountMinor: int64(record.GetFloat("base_amount_minor")), PercentageBasisPoints: int(record.GetFloat("percentage_bp"))}, IncomeID: incomeID}
+	}
+	return result, nil
+}
+
 func (r *Repository) ReassignIncomeUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
-	records, err := r.app(ctx).FindRecordsByFilter(CollectionIncomes, "group={:group}", "", 0, 0, dbx.Params{"group": groupID})
+	app := r.app(ctx)
+	records, err := app.FindRecordsByFilter(CollectionIncomes, "group={:group} && earned_by={:from}", "", 0, 0, dbx.Params{"group": groupID, "from": fromUserID})
 	if err != nil {
 		return mapError(err)
 	}
 	for _, record := range records {
-		changed := false
-		if record.GetString("earned_by") == fromUserID {
-			record.Set("earned_by", toUserID)
-			changed = true
+		record.Set("earned_by", toUserID)
+		if err = app.Save(record); err != nil {
+			return err
 		}
-		var splits []*domain.IncomeSplit
-		if raw := record.GetString("splits"); raw != "" {
-			if err = json.Unmarshal([]byte(raw), &splits); err != nil {
+	}
+	splitRecords, err := app.FindRecordsByFilter(CollectionIncomeSplits, "income.group={:group} && user={:from}", "", 0, 0, dbx.Params{"group": groupID, "from": fromUserID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, record := range splitRecords {
+		incomeID := record.GetString("income")
+		existing, findErr := app.FindFirstRecordByFilter(CollectionIncomeSplits, "income={:income} && user={:to}", dbx.Params{"income": incomeID, "to": toUserID})
+		if findErr == nil {
+			existing.Set("amount_minor", existing.GetFloat("amount_minor")+record.GetFloat("amount_minor"))
+			existing.Set("base_amount_minor", existing.GetFloat("base_amount_minor")+record.GetFloat("base_amount_minor"))
+			existing.Set("percentage_bp", existing.GetFloat("percentage_bp")+record.GetFloat("percentage_bp"))
+			if err = app.Save(existing); err != nil {
 				return err
 			}
-		}
-		if len(splits) > 0 {
-			merged := make([]*domain.IncomeSplit, 0, len(splits))
-			byUser := make(map[string]*domain.IncomeSplit, len(splits))
-			for _, split := range splits {
-				if split == nil {
-					continue
-				}
-				if split.UserID == fromUserID {
-					split.UserID = toUserID
-					changed = true
-				}
-				if existing := byUser[split.UserID]; existing != nil {
-					existing.AmountMinor += split.AmountMinor
-					existing.BaseAmountMinor += split.BaseAmountMinor
-					existing.PercentageBasisPoints += split.PercentageBasisPoints
-					changed = true
-					continue
-				}
-				byUser[split.UserID] = split
-				merged = append(merged, split)
-			}
-			if changed {
-				record.Set("splits", merged)
-			}
-		}
-		if changed {
-			if err = r.app(ctx).Save(record); err != nil {
+			if err = app.Delete(record); err != nil {
 				return err
 			}
+			continue
+		}
+		if !errors.Is(findErr, sql.ErrNoRows) {
+			return mapError(findErr)
+		}
+		record.Set("user", toUserID)
+		if err = app.Save(record); err != nil {
+			return err
 		}
 	}
 	return nil
 }
+
 func (r *Repository) DeleteIncome(ctx context.Context, id string) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionIncomes, id)
 	if err != nil {
@@ -178,6 +237,7 @@ func (r *Repository) DeleteIncome(ctx context.Context, id string) error {
 	}
 	return r.app(ctx).Delete(rec)
 }
+
 func writeIncome(r *core.Record, v *domain.Income) {
 	r.Set("group", v.GroupID)
 	r.Set("owner", v.OwnerID)
@@ -194,18 +254,27 @@ func writeIncome(r *core.Record, v *domain.Income) {
 	r.Set("rate_mode", v.RateMode)
 	r.Set("received_on", v.ReceivedOn)
 	r.Set("split_mode", v.SplitMode)
-	r.Set("splits", v.Splits)
 	r.Set("notes", v.Notes)
 }
+
 func incomeFrom(r *core.Record) *domain.Income {
 	v := &domain.Income{ID: r.Id, GroupID: r.GetString("group"), OwnerID: r.GetString("owner"), EarnedBy: r.GetString("earned_by"), Title: r.GetString("title"), Category: r.GetString("category"), CategoryID: r.GetString("category_ref"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), RateMode: domain.RateMode(r.GetString("rate_mode")), SplitMode: domain.SplitMode(r.GetString("split_mode")), ReceivedOn: r.GetDateTime("received_on").Time(), Notes: r.GetString("notes")}
-	_ = json.Unmarshal([]byte(r.GetString("splits")), &v.Splits)
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	if v.Currency == "" {
 		v.Currency = domain.CurrencyTWD
 	}
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
+}
+
+func (r *Repository) hydrateIncome(ctx context.Context, record *core.Record) (*domain.Income, error) {
+	v := incomeFrom(record)
+	splits, err := r.ListIncomeSplits(ctx, v.ID)
+	if err != nil {
+		return nil, err
+	}
+	v.Splits = splits
+	return v, nil
 }
 
 func (r *Repository) ListPersonalExpensesBetween(ctx context.Context, userID string, from, to time.Time) ([]domain.Expense, error) {
