@@ -117,7 +117,7 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                     :disabled="exporting || !workspace.online"
                     :title="workspace.online ? '' : tr('offlineActionDisabled')" @click="exportLedger">{{
                         tr('exportLedger') }}</button><button v-if="canWrite" class="primary" @click="create">{{
-                        tr('createExpense') }}</button></div>
+                        tr('createIncome') }}</button></div>
         </div>
         <div v-if="exportError" class="notice danger inline">{{ exportError }}</div>
         <section class="card data-card">
@@ -125,17 +125,17 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                 <h2>{{ tr('recentIncomes') }}</h2><span>{{ tr('records', { count: listMeta.totalItems }) }}</span>
                 <PageSizeSelect :model-value="perPage" @update:model-value="changePageSize" />
             </div>
-            <div v-if="!personal && workspace.groupErrors.expenses" class="resource-error">
-                <p>{{ workspace.groupErrors.expenses }}</p><button class="ghost" @click="workspace.refreshGroup()">{{
+            <div v-if="!personal && workspace.groupErrors.incomes" class="resource-error">
+                <p>{{ workspace.groupErrors.incomes }}</p><button class="ghost" @click="workspace.refreshGroup()">{{
                     tr('retry') }}</button>
             </div>
-            <div v-else-if="list.length" class="data-table expense-table">
+            <div v-else-if="list.length" class="data-table income-table">
                 <div class="data-table-head">
                     <span>{{ tr('item') }}</span><span>{{ tr('source') }}</span><span>{{ tr('receivedBy') }}</span><span>{{
                         tr('date') }}</span><span>{{ tr('amount') }}</span><span></span>
                 </div>
                 <article v-for="item in list" :key="item.id" class="data-table-row">
-                    <div class="item-cell"><span class="service-icon expense">{{ item.title.slice(0, 1)
+                    <div class="item-cell"><span class="service-icon income">{{ item.title.slice(0, 1)
                             }}</span><span><strong>{{ item.title }}</strong><small>{{ recordCategory(item) }}</small>
                             <SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError" />
                         </span></div><span><span class="source-badge" :class="{ shared: item.groupId }">{{
@@ -154,12 +154,12 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                             @click="pendingDelete = item">×</button></span>
                 </article>
             </div>
-            <EmptyState v-else :title="tr('noExpenses')" :description="tr('noExpensesDesc')" />
+            <EmptyState v-else :title="tr('noIncomes')" :description="tr('noIncomesDesc')" />
             <p v-if="hasUnsynced" class="field-help sync-legend"><strong>{{ tr('syncLegendTitle') }}</strong> · ☁︎/
                 {{ tr('syncLegendPending') }} · ⚠ {{ tr('syncLegendError') }}</p>
             <Pagination :meta="listMeta" @page="goToPage" />
         </section>
-        <AppDrawer :open="open" :title="tr(editingId ? 'editExpense' : 'createExpense')" @close="open = false">
+        <AppDrawer :open="open" :title="tr(editingId ? 'editIncome' : 'createIncome')" @close="open = false">
             <form class="form-card ledger-form" @submit.prevent="submit">
                 <div v-if="formError" class="notice danger inline">{{ formError }}</div>
                 <div v-if="editing?.groupId && personal" class="notice inline">
@@ -231,14 +231,14 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                 <div class="form-actions ledger-form-actions"><button type="button" class="ghost"
                         @click="open = false">{{ tr('cancel') }}</button><button class="primary"
                         :disabled="workspace.loading || !splitValid || !rateValid">{{ tr(editingId ? 'saveChanges' :
-                        'createExpense') }}</button>
+                        'createIncome') }}</button>
                 </div>
             </form>
         </AppDrawer>
         <ConfirmDialog :open="!!pendingDelete"
-            :title="pendingDelete ? tr('removeExpenseConfirm', { name: pendingDelete.title }) : ''" danger
+            :title="pendingDelete ? tr('removeIncomeConfirm', { name: pendingDelete.title }) : ''" danger
             @cancel="pendingDelete = undefined" @confirm="remove" />
-        <SourceDialog :open="!!sourceItem" kind="expenses" :group="sourceItem ? itemGroup(sourceItem) : undefined"
+        <SourceDialog :open="!!sourceItem" kind="incomes" :group="sourceItem ? itemGroup(sourceItem) : undefined"
             :currency="sourceItem?.currency || 'TWD'" @close="sourceItem = undefined" />
     </section>
 </template>

@@ -19,7 +19,6 @@ import ShareView from './views/ShareView.vue'
 import ShareManagerView from './views/ShareManagerView.vue'
 import PersonalLedgerView from './views/PersonalLedgerView.vue'
 import GroupLedgerView from './views/GroupLedgerView.vue'
-import GroupIncomesView from './views/GroupIncomesView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
@@ -36,7 +35,7 @@ export const routes: RouteRecordRaw[] = [
       { path: 'overview', name: 'group-overview', component: DashboardView },
       { path: 'ledger', name: 'group-ledger', component: GroupLedgerView },
       { path: 'expenses', name: 'group-expenses', component: ExpensesView },
-      { path: 'incomes', name: 'group-incomes', component: GroupIncomesView },
+      { path: 'incomes', name: 'group-incomes', component: IncomesView },
       { path: 'subscriptions', name: 'group-subscriptions', component: SubscriptionsView },
       { path: 'members', name: 'group-members', component: MembersView },
       { path: 'roles', name: 'group-roles', component: GroupRolesView },
