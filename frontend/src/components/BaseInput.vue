@@ -6,9 +6,13 @@ const props = withDefaults(defineProps<{
   label: string
   id?: string
   type?: string
+  inputmode?: 'none' | 'text' | 'decimal' | 'numeric' | 'tel' | 'search' | 'email' | 'url'
   autocomplete?: string
   placeholder?: string
   required?: boolean
+  min?: string | number
+  max?: string | number
+  step?: string | number
   minlength?: number
 	maxlength?: number
   disabled?: boolean
@@ -27,7 +31,7 @@ const describedBy = computed(() => [props.help ? helpId.value : '', props.error 
   <label class="base-input" :for="inputId">
     <span class="base-input-label">{{ label }}</span>
     <span class="base-input-control">
-      <input :id="inputId" :value="modelValue" :type="type" :autocomplete="autocomplete" :placeholder="placeholder" :required="required" :minlength="minlength" :maxlength="maxlength" :disabled="disabled" :aria-invalid="!!error" :aria-describedby="describedBy" @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)">
+      <input :id="inputId" :value="modelValue" :type="type" :inputmode="inputmode" :autocomplete="autocomplete" :placeholder="placeholder" :required="required" :min="min" :max="max" :step="step" :minlength="minlength" :maxlength="maxlength" :disabled="disabled" :aria-invalid="!!error" :aria-describedby="describedBy" @input="emit('update:modelValue', ($event.target as HTMLInputElement).value)">
       <slot name="trailing" />
     </span>
     <small v-if="help" :id="helpId" class="base-input-help">{{ help }}</small>
