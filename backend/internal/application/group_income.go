@@ -239,6 +239,9 @@ func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested st
 	if err := s.groupPermission(ctx, userID, groupID, "ledger.incomes.read"); err != nil {
 		return domain.DailyLedger{}, err
 	}
+	if err := s.groupPermission(ctx, userID, groupID, "ledger.subscriptions.read"); err != nil {
+		return domain.DailyLedger{}, err
+	}
 	date, timezone, from, to, err := s.personalLedgerBounds(ctx, userID, requested)
 	if err != nil {
 		return domain.DailyLedger{}, err
@@ -264,11 +267,11 @@ func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested st
 			kind = "subscription"
 			posted[expense.SubscriptionID+":"+expense.IncurredOn.In(local).Format("2006-01-02")] = true
 		}
-		items = append(items, domain.LedgerItem{ID: expense.ID, Kind: kind, RecordID: expense.ID, SubscriptionID: expense.SubscriptionID, OccurredAt: expense.IncurredOn, Title: expense.Title, Category: expense.Category, CategoryID: expense.CategoryID, AmountMinor: expense.AmountMinor, Currency: expense.Currency, BaseCurrency: expense.BaseCurrency, BaseAmountMinor: expense.BaseAmountMinor, Notes: expense.Notes, Status: "recorded"})
+		items = append(items, domain.LedgerItem{ID: expense.ID, Kind: kind, RecordID: expense.ID, SubscriptionID: expense.SubscriptionID, GroupID: expense.GroupID, OccurredAt: expense.IncurredOn, Title: expense.Title, Category: expense.Category, CategoryID: expense.CategoryID, AmountMinor: expense.AmountMinor, Currency: expense.Currency, BaseCurrency: expense.BaseCurrency, BaseAmountMinor: expense.BaseAmountMinor, Notes: expense.Notes, Status: "recorded"})
 	}
 	for i := range incomes {
 		income := incomes[i]
-		items = append(items, domain.LedgerItem{ID: income.ID, Kind: "income", RecordID: income.ID, OccurredAt: income.ReceivedOn, Title: income.Title, Category: income.Category, CategoryID: income.CategoryID, AmountMinor: income.AmountMinor, Currency: income.Currency, BaseCurrency: income.BaseCurrency, BaseAmountMinor: income.BaseAmountMinor, Notes: income.Notes, Status: "recorded"})
+		items = append(items, domain.LedgerItem{ID: income.ID, Kind: "income", RecordID: income.ID, GroupID: income.GroupID, OccurredAt: income.ReceivedOn, Title: income.Title, Category: income.Category, CategoryID: income.CategoryID, AmountMinor: income.AmountMinor, Currency: income.Currency, BaseCurrency: income.BaseCurrency, BaseAmountMinor: income.BaseAmountMinor, Notes: income.Notes, Status: "recorded"})
 	}
 	var subscriptions []domain.Subscription
 	for page := 1; ; page++ {
@@ -305,7 +308,7 @@ func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested st
 			if failed {
 				status = "failed"
 			}
-			items = append(items, domain.LedgerItem{ID: subscription.ID + ":" + date, Kind: "subscription", SubscriptionID: subscription.ID, OccurredAt: subscription.NextBilling, Title: subscription.Name, Category: subscription.Category, CategoryID: subscription.CategoryID, AmountMinor: subscription.AmountMinor, Currency: subscription.Currency, BaseCurrency: subscription.BaseCurrency, BaseAmountMinor: subscription.BaseAmountMinor, Notes: subscription.Notes, Status: status})
+			items = append(items, domain.LedgerItem{ID: subscription.ID + ":" + date, Kind: "subscription", SubscriptionID: subscription.ID, GroupID: subscription.GroupID, OccurredAt: subscription.NextBilling, Title: subscription.Name, Category: subscription.Category, CategoryID: subscription.CategoryID, AmountMinor: subscription.AmountMinor, Currency: subscription.Currency, BaseCurrency: subscription.BaseCurrency, BaseAmountMinor: subscription.BaseAmountMinor, Notes: subscription.Notes, Status: status})
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].OccurredAt.Before(items[j].OccurredAt) })

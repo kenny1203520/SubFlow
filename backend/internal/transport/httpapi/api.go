@@ -588,7 +588,7 @@ func (a *API) changeCurrency(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, value, nil)
 }
 
-var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}, "audits": {"created": true, "-created": true}}
+var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "incomes": {"received_on": true, "-received_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}, "audits": {"created": true, "-created": true}}
 
 func pageRequest(e *core.RequestEvent, resource string) (ports.PageRequest, error) {
 	q := e.Request.URL.Query()
@@ -600,6 +600,17 @@ func pageRequest(e *core.RequestEvent, resource string) (ports.PageRequest, erro
 	}
 	return ports.PageRequest{Page: p, PerPage: pp, Sort: sort}, nil
 }
+func personalAllScope(e *core.RequestEvent) (bool, error) {
+	switch e.Request.URL.Query().Get("scope") {
+	case "", "personal":
+		return false, nil
+	case "all":
+		return true, nil
+	default:
+		return false, domain.ErrInvalid
+	}
+}
+
 func pageMeta[T any](p ports.Page[T]) map[string]int {
 	return map[string]int{"page": p.Page, "perPage": p.PerPage, "totalItems": p.TotalItems, "totalPages": p.TotalPages}
 }
@@ -984,7 +995,14 @@ func (a *API) listPersonalSubscriptions(e *core.RequestEvent) error {
 	if err != nil {
 		return fail(e, err)
 	}
+	all, err := personalAllScope(e)
+	if err != nil {
+		return fail(e, err)
+	}
 	v, err := a.Service.ListPersonalSubscriptions(e.Request.Context(), authID(e), p)
+	if all {
+		v, err = a.Service.ListAllScopeSubscriptions(e.Request.Context(), authID(e), p)
+	}
 	if err != nil {
 		return fail(e, err)
 	}
@@ -1067,7 +1085,14 @@ func (a *API) listPersonalExpenses(e *core.RequestEvent) error {
 	if err != nil {
 		return fail(e, err)
 	}
+	all, err := personalAllScope(e)
+	if err != nil {
+		return fail(e, err)
+	}
 	v, err := a.Service.ListPersonalExpenses(e.Request.Context(), authID(e), p)
+	if all {
+		v, err = a.Service.ListAllScopeExpenses(e.Request.Context(), authID(e), p)
+	}
 	if err != nil {
 		return fail(e, err)
 	}
@@ -1092,7 +1117,14 @@ func (a *API) listPersonalIncomes(e *core.RequestEvent) error {
 	if err != nil {
 		return fail(e, err)
 	}
+	all, err := personalAllScope(e)
+	if err != nil {
+		return fail(e, err)
+	}
 	v, err := a.Service.ListPersonalIncomes(e.Request.Context(), authID(e), p)
+	if all {
+		v, err = a.Service.ListAllScopeIncomes(e.Request.Context(), authID(e), p)
+	}
 	if err != nil {
 		return fail(e, err)
 	}
@@ -1128,7 +1160,11 @@ func (a *API) deletePersonalIncome(e *core.RequestEvent) error {
 	return noContent(e)
 }
 func (a *API) personalLedger(e *core.RequestEvent) error {
-	v, err := a.Service.PersonalLedger(e.Request.Context(), authID(e), e.Request.URL.Query().Get("date"))
+	all, err := personalAllScope(e)
+	if err != nil {
+		return fail(e, err)
+	}
+	v, err := a.Service.PersonalLedger(e.Request.Context(), authID(e), e.Request.URL.Query().Get("date"), all)
 	if err != nil {
 		return fail(e, err)
 	}

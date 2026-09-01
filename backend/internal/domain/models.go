@@ -578,6 +578,7 @@ type LedgerItem struct {
 	Kind            string    `json:"kind"`
 	RecordID        string    `json:"recordId,omitempty"`
 	SubscriptionID  string    `json:"subscriptionId,omitempty"`
+	GroupID         string    `json:"groupId,omitempty"`
 	OccurredAt      time.Time `json:"occurredAt"`
 	Title           string    `json:"title"`
 	Category        string    `json:"category,omitempty"`

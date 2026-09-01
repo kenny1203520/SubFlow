@@ -199,7 +199,7 @@ func (s *Service) personalLedgerBounds(ctx context.Context, userID, requested st
 	from := time.Date(x.Year(), x.Month(), x.Day(), 0, 0, 0, 0, loc)
 	return d, tz, from, from.AddDate(0, 0, 1), nil
 }
-func (s *Service) PersonalLedger(ctx context.Context, userID, requested string) (domain.DailyLedger, error) {
+func (s *Service) PersonalLedger(ctx context.Context, userID, requested string, includeGroups bool) (domain.DailyLedger, error) {
 	d, tz, from, to, e := s.personalLedgerBounds(ctx, userID, requested)
 	if e != nil {
 		return domain.DailyLedger{}, e
@@ -211,6 +211,32 @@ func (s *Service) PersonalLedger(ctx context.Context, userID, requested string) 
 	ins, e := s.Stores.Incomes.ListPersonalBetween(ctx, userID, from.UTC(), to.UTC())
 	if e != nil {
 		return domain.DailyLedger{}, e
+	}
+	if includeGroups {
+		groups, groupErr := listAllGroups(ctx, s, userID)
+		if groupErr != nil {
+			return domain.DailyLedger{}, groupErr
+		}
+		for _, group := range groups {
+			if permissionErr := s.groupPermission(ctx, userID, group.ID, "ledger.expenses.read"); permissionErr == nil {
+				values, listErr := s.Stores.Expenses.ListBetween(ctx, group.ID, from.UTC(), to.UTC())
+				if listErr != nil {
+					return domain.DailyLedger{}, listErr
+				}
+				ex = append(ex, values...)
+			} else if permissionErr != domain.ErrForbidden {
+				return domain.DailyLedger{}, permissionErr
+			}
+			if permissionErr := s.groupPermission(ctx, userID, group.ID, "ledger.incomes.read"); permissionErr == nil {
+				values, listErr := s.Stores.Incomes.ListBetween(ctx, group.ID, from.UTC(), to.UTC())
+				if listErr != nil {
+					return domain.DailyLedger{}, listErr
+				}
+				ins = append(ins, values...)
+			} else if permissionErr != domain.ErrForbidden {
+				return domain.DailyLedger{}, permissionErr
+			}
+		}
 	}
 	items := make([]domain.LedgerItem, 0, len(ex)+len(ins))
 	subIDs := map[string]bool{}
@@ -224,18 +250,35 @@ func (s *Service) PersonalLedger(ctx context.Context, userID, requested string) 
 			k = "subscription"
 			subIDs[x.SubscriptionID] = true
 		}
-		items = append(items, domain.LedgerItem{ID: x.ID, Kind: k, RecordID: x.ID, SubscriptionID: x.SubscriptionID, OccurredAt: x.IncurredOn, Title: x.Title, Category: x.Category, CategoryID: x.CategoryID, AmountMinor: x.AmountMinor, Currency: x.Currency, BaseCurrency: x.BaseCurrency, BaseAmountMinor: x.BaseAmountMinor, Notes: x.Notes, Status: "recorded"})
+		items = append(items, domain.LedgerItem{ID: x.ID, Kind: k, RecordID: x.ID, SubscriptionID: x.SubscriptionID, GroupID: x.GroupID, OccurredAt: x.IncurredOn, Title: x.Title, Category: x.Category, CategoryID: x.CategoryID, AmountMinor: x.AmountMinor, Currency: x.Currency, BaseCurrency: x.BaseCurrency, BaseAmountMinor: x.BaseAmountMinor, Notes: x.Notes, Status: "recorded"})
 	}
 	for i := range ins {
 		x := ins[i]
-		items = append(items, domain.LedgerItem{ID: x.ID, Kind: "income", RecordID: x.ID, OccurredAt: x.ReceivedOn, Title: x.Title, Category: x.Category, CategoryID: x.CategoryID, AmountMinor: x.AmountMinor, Currency: x.Currency, BaseCurrency: x.BaseCurrency, BaseAmountMinor: x.BaseAmountMinor, Notes: x.Notes, Status: "recorded"})
+		items = append(items, domain.LedgerItem{ID: x.ID, Kind: "income", RecordID: x.ID, GroupID: x.GroupID, OccurredAt: x.ReceivedOn, Title: x.Title, Category: x.Category, CategoryID: x.CategoryID, AmountMinor: x.AmountMinor, Currency: x.Currency, BaseCurrency: x.BaseCurrency, BaseAmountMinor: x.BaseAmountMinor, Notes: x.Notes, Status: "recorded"})
 	}
-	subs, e := s.ListPersonalSubscriptions(ctx, userID, ports.PageRequest{Page: 1, PerPage: 100, Sort: "next_billing"})
+	subs, e := listAllPersonalSubscriptions(ctx, s, userID)
 	if e != nil {
 		return domain.DailyLedger{}, e
 	}
-	for i := range subs.Items {
-		sub := subs.Items[i]
+	if includeGroups {
+		groups, groupErr := listAllGroups(ctx, s, userID)
+		if groupErr != nil {
+			return domain.DailyLedger{}, groupErr
+		}
+		for _, group := range groups {
+			if permissionErr := s.groupPermission(ctx, userID, group.ID, "ledger.subscriptions.read"); permissionErr == nil {
+				values, listErr := listAllSubscriptions(ctx, s, userID, group.ID)
+				if listErr != nil {
+					return domain.DailyLedger{}, listErr
+				}
+				subs = append(subs, values...)
+			} else if permissionErr != domain.ErrForbidden {
+				return domain.DailyLedger{}, permissionErr
+			}
+		}
+	}
+	for i := range subs {
+		sub := subs[i]
 		failed, scheduled := false, false
 		for _, o := range sub.Occurrences {
 			if o.BillingAt.In(from.Location()).Format("2006-01-02") != d {
@@ -259,7 +302,7 @@ func (s *Service) PersonalLedger(ctx context.Context, userID, requested string) 
 			if failed {
 				st = "failed"
 			}
-			items = append(items, domain.LedgerItem{ID: sub.ID + ":" + d, Kind: "subscription", SubscriptionID: sub.ID, OccurredAt: sub.NextBilling, Title: sub.Name, Category: sub.Category, CategoryID: sub.CategoryID, AmountMinor: sub.AmountMinor, Currency: sub.Currency, BaseCurrency: sub.BaseCurrency, BaseAmountMinor: sub.BaseAmountMinor, Notes: sub.Notes, Status: st})
+			items = append(items, domain.LedgerItem{ID: sub.ID + ":" + d, Kind: "subscription", SubscriptionID: sub.ID, GroupID: sub.GroupID, OccurredAt: sub.NextBilling, Title: sub.Name, Category: sub.Category, CategoryID: sub.CategoryID, AmountMinor: sub.AmountMinor, Currency: sub.Currency, BaseCurrency: sub.BaseCurrency, BaseAmountMinor: sub.BaseAmountMinor, Notes: sub.Notes, Status: st})
 		}
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].OccurredAt.Before(items[j].OccurredAt) })
