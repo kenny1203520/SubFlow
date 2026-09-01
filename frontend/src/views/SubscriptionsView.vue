@@ -35,6 +35,8 @@ const selectableMembers = computed(() => workspace.members.filter(member => !(me
 const personal = computed(() => route.name === 'personal-subscriptions')
 const canWrite = computed(() => personal.value || workspace.groupPermissions.includes('ledger.subscriptions.write'))
 const canDelete = computed(() => personal.value || workspace.groupPermissions.includes('ledger.subscriptions.delete'))
+function canManageItem(item: Subscription) { return personal.value ? !item.groupId : canWrite.value }
+function canDeleteItem(item: Subscription) { return personal.value ? !item.groupId : canDelete.value }
 const list = computed(() => personal.value ? workspace.personalSubscriptions : workspace.subscriptions)
 const hasUnsynced = computed(() => list.value.some(item => item.pendingSync || item.syncError))
 const listMeta = computed(() => personal.value ? workspace.personalSubscriptionsMeta : workspace.subscriptionsMeta)
@@ -211,7 +213,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
           <span><button class="source-badge" :class="{shared:item.groupId}" @click="sourceItem=item">{{itemGroup(item)?.name||tr('privateRecord')}}</button></span>
           <span class="timezone-date"><strong>{{viewerDate(item.nextBilling)}}</strong><small v-if="item.groupId">{{originalTime(item)}}</small><small v-if="hasFailedPeriod(item)" class="danger-text">⚠ {{tr('periodHasFailures')}}</small></span><span>{{cycleLabel(item)}}</span><span class="pill">{{tr(statusKey(item))}}</span>
           <span class="money-stack"><MoneyValue :amount="item.amountMinor" :currency="item.currency"/><small>{{tr('currentPeriodPrice')}}</small><small v-if="subscriptionShare(item)!==undefined">{{tr('personalShare')}}: <MoneyValue :amount="subscriptionShare(item)!" :currency="item.currency"/></small><small v-if="item.baseCurrency&&item.baseCurrency!==item.currency">{{tr('reportingAmount')}}: <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency"/></small><small v-if="item.exchangeRate">{{tr('exchangeRate')}} {{item.exchangeRate}}</small></span>
-          <span class="row-actions"><button class="ghost" @click="openPeriods(item)">{{tr('periodHistory')}}</button><button v-if="canWrite&&item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="canWrite&&item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button v-if="canWrite" class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button v-if="canDelete" class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span>
+          <span class="row-actions"><button class="ghost" @click="openPeriods(item)">{{tr('periodHistory')}}</button><button v-if="canManageItem(item)&&item.endsOn&&item.lifecycleStatus==='ending'" class="ghost" @click="cancelStop(item)">{{tr('cancelStop')}}</button><button v-else-if="canManageItem(item)&&item.lifecycleStatus!=='ended'&&item.lifecycleStatus!=='cancelled'" class="ghost" @click="openStop(item)">{{tr('stop')}}</button><button v-if="canManageItem(item)" class="icon-button" :aria-label="tr('edit')" @click="edit(item)">✎</button><button v-if="canDeleteItem(item)" class="icon-button" :aria-label="tr('delete')" @click="pendingDelete=item">×</button></span>
         </article>
       </div>
       <EmptyState v-else :title="tr('noSubscriptions')" :description="tr('noSubscriptionsDesc')"/>

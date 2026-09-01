@@ -34,6 +34,8 @@ function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat(
 const personal = computed(() => route.name === 'personal-incomes')
 const canWrite = computed(() => personal.value || workspace.groupPermissions.includes('ledger.incomes.write'))
 const canDelete = computed(() => personal.value || workspace.groupPermissions.includes('ledger.incomes.delete'))
+function canEditItem(item: Income) { return personal.value ? !item.groupId : canWrite.value }
+function canDeleteItem(item: Income) { return personal.value ? !item.groupId : canDelete.value }
 const canExport = computed(() => personal.value || ['group.view', 'ledger.incomes.read', 'ledger.subscriptions.read', 'ledger.settlements.read'].every(permission => workspace.groupPermissions.includes(permission)))
 const list = computed(() => personal.value ? workspace.personalIncomes : workspace.groupIncomes)
 const hasUnsynced = computed(() => list.value.some(item => item.pendingSync || item.syncError))
@@ -148,8 +150,8 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                             v-if="item.baseCurrency && item.baseCurrency !== item.currency">{{ tr('reportingAmount') }}:
                             <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency" />
                         </small><small v-if="item.exchangeRate">{{ tr('exchangeRate') }} {{ item.exchangeRate }}</small>
-                    </span><span class="row-actions"><button v-if="canWrite" class="icon-button"
-                            :aria-label="tr('edit')" @click="edit(item)">✎</button><button v-if="canDelete"
+                    </span><span class="row-actions"><button v-if="canEditItem(item)" class="icon-button"
+                            :aria-label="tr('edit')" @click="edit(item)">✎</button><button v-if="canDeleteItem(item)"
                             class="icon-button" :aria-label="tr('remove')"
                             @click="pendingDelete = item">×</button></span>
                 </article>

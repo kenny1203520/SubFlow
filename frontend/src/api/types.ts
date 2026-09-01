@@ -47,7 +47,7 @@ export interface Expense extends ConvertedRecord, OfflineState { id:string;group
 export interface Income extends ConvertedRecord, OfflineState { id:string;groupId?:string;ownerId?:string;title:string;category:string;amountMinor:number;currency:Currency;earnedBy?:string;receivedOn:string;notes:string;splitMode?:SplitMode;splits?:IncomeSplit[];createdAt:string;updatedAt:string }
 export type LedgerKind = "expense"|"income"|"subscription"
 export type LedgerStatus = "recorded"|"scheduled"|"pending"|"failed"
-export interface LedgerItem { id:string;kind:LedgerKind;recordId?:string;subscriptionId?:string;occurredAt:string;title:string;category?:string;categoryId?:string;amountMinor:number;currency:Currency;baseCurrency?:Currency;baseAmountMinor?:number;notes?:string;status:LedgerStatus }
+export interface LedgerItem { id:string;kind:LedgerKind;recordId?:string;subscriptionId?:string;groupId?:string;occurredAt:string;title:string;category?:string;categoryId?:string;amountMinor:number;currency:Currency;baseCurrency?:Currency;baseAmountMinor?:number;notes?:string;status:LedgerStatus }
 export interface DailyLedgerCurrencySummary { currency:Currency;incomeMinor:number;expenseMinor:number;subscriptionMinor:number;netMinor:number;count:number }
 export interface DailyLedger { date:string;timezone:string;summaries:DailyLedgerCurrencySummary[];items:LedgerItem[] }
 export interface Settlement extends OfflineState { id:string;groupId:string;fromUserId:string;toUserId:string;createdBy:string;amountMinor:number;currency:Currency;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;exchangeRateDate:string;settledOn:string;notes:string;createdAt:string;updatedAt:string }

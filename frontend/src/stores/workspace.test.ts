@@ -319,3 +319,20 @@ describe('workspace store run()/retryLast() error wrapper', () => {
     expect(postCalls).toHaveLength(2)
   })
 })
+
+describe('workspace all-scope personal pages', () => {
+  it('requests scope=all for personal expense, income, and subscription pages', async () => {
+    const fetchMock = mockFetch([
+      ['/expenses?page=2&perPage=10&scope=all', () => envelope([])],
+      ['/incomes?page=2&perPage=10&scope=all', () => envelope([])],
+      ['/subscriptions?page=2&perPage=10&scope=all', () => envelope([])],
+    ])
+    const workspace = useWorkspaceStore()
+    await workspace.loadPersonalExpensesPage(2, 10)
+    await workspace.loadPersonalIncomesPage(2, 10)
+    await workspace.loadPersonalSubscriptionsPage(2, 10)
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/expenses?page=2&perPage=10&scope=all'))).toBe(true)
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/incomes?page=2&perPage=10&scope=all'))).toBe(true)
+    expect(fetchMock.mock.calls.some(call => String(call[0]).includes('/subscriptions?page=2&perPage=10&scope=all'))).toBe(true)
+  })
+})

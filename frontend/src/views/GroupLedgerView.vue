@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
+import LedgerQuickAddDrawer from '../components/LedgerQuickAddDrawer.vue'
 import type { Currency } from '../api/types'
 
 const route = useRoute()
@@ -12,6 +13,7 @@ const groupId = computed(() => String(route.params.groupId || ''))
 const date = ref(new Date().toISOString().slice(0, 10))
 const loading = ref(false)
 const loadError = ref('')
+const quickAdd = ref(false)
 const ledger = computed(() => workspace.groupLedger)
 const items = computed(() => ledger.value?.items || [])
 const group = computed(() => workspace.groups.find(value => value.id === groupId.value))
@@ -29,6 +31,7 @@ function move(days: number) {
   date.value = next.toISOString().slice(0, 10)
 }
 function today() { date.value = currentDate() }
+async function saved() { quickAdd.value = false; await load() }
 async function load() {
   if (!groupId.value) return
   loading.value = true
@@ -53,7 +56,7 @@ watch([groupId, date], () => { if (groupId.value) void load() })
         <h1>{{ group?.name || tr('groupLedger') }}</h1>
         <p>{{ tr('groupLedgerDesc') }}</p>
       </div>
-      <RouterLink class="primary" :to="'/groups/' + groupId + '/incomes'">+ {{ tr('addGroupIncome') }}</RouterLink>
+      <button class="primary" @click="quickAdd=true">+ {{ tr('addRecord') }}</button>
     </header>
     <p v-if="loadError" class="notice danger">{{ loadError }}</p>
     <section class="ledger-datebar card">
@@ -101,7 +104,8 @@ watch([groupId, date], () => { if (groupId.value) void load() })
         </div>
       </article>
     </section>
-    <RouterLink class="ledger-fab" :to="'/groups/' + groupId + '/incomes'" :aria-label="tr('addGroupIncome')">+</RouterLink>
+        <LedgerQuickAddDrawer :open="quickAdd" :group-id="groupId" :date="date" @close="quickAdd=false" @saved="saved" />
+    <button class="ledger-fab" :aria-label="tr('addRecord')" @click="quickAdd=true">+</button>
   </section>
 </template>
 

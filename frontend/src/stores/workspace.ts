@@ -331,9 +331,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         if (!online.value) throw new ApiError(0, 'network_error', 'offline')
         const perPage = defaultPageSize.value
         const [subscriptionPage, expensePage, incomePage, dashboard] = await Promise.all([
-          api.get<Subscription[]>(`/subscriptions?perPage=${perPage}`),
-          api.get<Expense[]>(`/expenses?perPage=${perPage}`),
-          api.get<Income[]>("/incomes?perPage=" + perPage),
+          api.get<Subscription[]>(`/subscriptions?scope=all&perPage=${perPage}`),
+          api.get<Expense[]>(`/expenses?scope=all&perPage=${perPage}`),
+          api.get<Income[]>("/incomes?scope=all&perPage=" + perPage),
           api.get<DashboardSummary>(`/dashboard?scope=${scope}${month ? `&month=${encodeURIComponent(month)}` : ''}`),
         ])
         personalSubscriptions.value = subscriptionPage.data
@@ -355,7 +355,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }, 'personal', false)
   }
 
-  async function refreshPersonalLedger(date = '') { const userId = auth.record?.id; const cached = userId && date ? await snapshotStore.loadLedger(userId, date) : undefined; try { if (!online.value) throw new ApiError(0, 'network_error', 'offline'); const query = date ? '?date=' + encodeURIComponent(date) : ''; personalLedger.value = (await api.get<DailyLedger>('/personal/ledger' + query)).data; if (userId && personalLedger.value) await snapshotStore.saveLedger(userId, personalLedger.value); return personalLedger.value } catch (reason) { if (reason instanceof ApiError && reason.code === 'network_error' && cached) { personalLedger.value = cached; return cached } throw reason } }
+  async function refreshPersonalLedger(date = '') { const userId = auth.record?.id; const cached = userId && date ? await snapshotStore.loadLedger(userId, date) : undefined; try { if (!online.value) throw new ApiError(0, 'network_error', 'offline'); const query = new URLSearchParams({ scope: 'all' }); if (date) query.set('date', date); personalLedger.value = (await api.get<DailyLedger>('/personal/ledger?' + query.toString())).data; if (userId && personalLedger.value) await snapshotStore.saveLedger(userId, personalLedger.value); return personalLedger.value } catch (reason) { if (reason instanceof ApiError && reason.code === 'network_error' && cached) { personalLedger.value = cached; return cached } throw reason } }
   async function refreshGroupLedger(date = "") {
     if (!currentGroupId.value) return null
     const id = currentGroupId.value
@@ -584,7 +584,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return result
   }
   async function loadPersonalExpensesPage(page = 1, perPage = personalExpensesMeta.value.perPage || defaultPageSize.value, sort = '') {
-    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage), scope:'all' })
     if (sort) params.set('sort', sort)
     const result = await api.get<Expense[]>(`/expenses?${params.toString()}`)
     personalExpenses.value = result.data
@@ -592,7 +592,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return result
   }
   async function loadPersonalIncomesPage(page = 1, perPage = personalIncomesMeta.value.perPage || defaultPageSize.value, sort = '') {
-    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage), scope:'all' })
     if (sort) params.set('sort', sort)
     const result = await api.get<Income[]>(`/incomes?${params.toString()}`)
     personalIncomes.value = result.data
@@ -618,7 +618,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return result
   }
   async function loadPersonalSubscriptionsPage(page = 1, perPage = personalSubscriptionsMeta.value.perPage || defaultPageSize.value, sort = '') {
-    const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
+    const params = new URLSearchParams({ page:String(page), perPage:String(perPage), scope:'all' })
     if (sort) params.set('sort', sort)
     const result = await api.get<Subscription[]>(`/subscriptions?${params.toString()}`)
     personalSubscriptions.value = result.data
