@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"subflow/internal/domain"
 	"subflow/internal/ports"
@@ -223,10 +224,29 @@ func (s *Service) DeleteGroupIncome(ctx context.Context, userID, id string) erro
 	if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.incomes.delete"); err != nil {
 		return s.groupIncomeFailure(ctx, userID, current.GroupID, "income.deleted", id, "forbidden", err)
 	}
-	if err = s.Stores.Incomes.Delete(ctx, id); err != nil {
+	items, err := s.Stores.Attachments.List(ctx, "income", id, time.Time{})
+	if err != nil {
+		return err
+	}
+	if len(items) > 0 {
+		for _, permission := range []string{"ledger.attachments.read", "ledger.attachments.delete"} {
+			if err = s.groupPermission(ctx, userID, current.GroupID, permission); err != nil {
+				return s.groupIncomeFailure(ctx, userID, current.GroupID, "income.deleted", id, "attachment_permission_denied", err)
+			}
+		}
+	}
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if deleteErr := s.Stores.Attachments.DeleteTarget(tx, "income", id); deleteErr != nil {
+			return deleteErr
+		}
+		if deleteErr := s.Stores.Incomes.Delete(tx, id); deleteErr != nil {
+			return deleteErr
+		}
+		return s.audit(tx, userID, current.GroupID, "income.deleted", "income", id, "success", incomeAuditSummary(current))
+	}); err != nil {
 		return s.groupIncomeFailure(ctx, userID, current.GroupID, "income.deleted", id, "delete_failed", err)
 	}
-	return s.audit(ctx, userID, current.GroupID, "income.deleted", "income", id, "success", incomeAuditSummary(current))
+	return nil
 }
 
 func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested string) (domain.DailyLedger, error) {

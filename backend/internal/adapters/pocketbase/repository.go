@@ -1430,7 +1430,7 @@ func settingsFrom(record *core.Record) domain.SystemSettings {
 		password, oidc = true, true
 	}
 	provider := record.GetString("captcha_provider")
-	return domain.SystemSettings{Initialized: record.GetBool("initialized"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: record.GetString("captcha_secret"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: record.GetString("captcha_secret"), AttachmentDefaultMaxSize: int64(record.GetFloat("attachment_default_max_size")), AttachmentDefaultMaxCount: record.GetInt("attachment_default_max_count"), AttachmentLimitMaxSize: int64(record.GetFloat("attachment_limit_max_size")), AttachmentLimitMaxCount: record.GetInt("attachment_limit_max_count"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
 }
 
 // captchaFlowsFrom reads the per-flow captcha configuration, falling back to
@@ -1465,7 +1465,7 @@ func captchaFlowsFrom(record *core.Record, provider string) domain.CaptchaFlowSe
 
 func defaultSystemSettings() domain.SystemSettings {
 	unconfigured := domain.CaptchaFlowConfig{Enabled: false, Trigger: "load", Mode: "interactive"}
-	return domain.SystemSettings{SiteName: "SubFlow", DefaultTimezone: "UTC", DefaultCurrency: domain.CurrencyTWD, AllowPasswordRegistration: true, AllowOIDCRegistration: true, AllowRegistration: true, CaptchaFlows: domain.CaptchaFlowSettings{Register: unconfigured, PasswordReset: unconfigured, OTPRequest: unconfigured, Login: unconfigured}}
+	return domain.SystemSettings{SiteName: "SubFlow", DefaultTimezone: "UTC", DefaultCurrency: domain.CurrencyTWD, AllowPasswordRegistration: true, AllowOIDCRegistration: true, AllowRegistration: true, AttachmentDefaultMaxSize: 20 * 1024 * 1024, AttachmentDefaultMaxCount: 10, AttachmentLimitMaxSize: 20 * 1024 * 1024, AttachmentLimitMaxCount: 10, CaptchaFlows: domain.CaptchaFlowSettings{Register: unconfigured, PasswordReset: unconfigured, OTPRequest: unconfigured, Login: unconfigured}}
 }
 
 // applicationName is deliberately sourced from PocketBase's own settings.
@@ -1497,6 +1497,19 @@ func (r *Repository) GetSystemSettings(ctx context.Context) (domain.SystemSettin
 	if value.DefaultCurrency == "" {
 		value.DefaultCurrency = domain.CurrencyTWD
 	}
+	defaults := defaultSystemSettings()
+	if value.AttachmentDefaultMaxSize <= 0 {
+		value.AttachmentDefaultMaxSize = defaults.AttachmentDefaultMaxSize
+	}
+	if value.AttachmentDefaultMaxCount <= 0 {
+		value.AttachmentDefaultMaxCount = defaults.AttachmentDefaultMaxCount
+	}
+	if value.AttachmentLimitMaxSize <= 0 {
+		value.AttachmentLimitMaxSize = defaults.AttachmentLimitMaxSize
+	}
+	if value.AttachmentLimitMaxCount <= 0 {
+		value.AttachmentLimitMaxCount = defaults.AttachmentLimitMaxCount
+	}
 	return value, nil
 }
 
@@ -1524,6 +1537,10 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	record.Set("allow_registration", value.AllowPasswordRegistration)
 	record.Set("allow_password_registration", value.AllowPasswordRegistration)
 	record.Set("allow_oidc_registration", value.AllowOIDCRegistration)
+	record.Set("attachment_default_max_size", value.AttachmentDefaultMaxSize)
+	record.Set("attachment_default_max_count", value.AttachmentDefaultMaxCount)
+	record.Set("attachment_limit_max_size", value.AttachmentLimitMaxSize)
+	record.Set("attachment_limit_max_count", value.AttachmentLimitMaxCount)
 	record.Set("captcha_provider", value.CaptchaProvider)
 	record.Set("captcha_site_key", value.CaptchaSiteKey)
 	record.Set("captcha_challenge_url", value.CaptchaChallengeURL)
@@ -1601,10 +1618,12 @@ func writeGroup(r *core.Record, v *domain.Group) {
 	r.Set("currency", v.Currency)
 	r.Set("timezone", v.Timezone)
 	r.Set("color", v.Color)
+	r.Set("attachment_max_size", v.AttachmentMaxSize)
+	r.Set("attachment_max_count", v.AttachmentMaxCount)
 	r.Set("owner", v.OwnerID)
 }
 func groupFrom(r *core.Record) *domain.Group {
-	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Timezone: r.GetString("timezone"), Color: r.GetString("color"), OwnerID: r.GetString("owner")}
+	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Timezone: r.GetString("timezone"), Color: r.GetString("color"), OwnerID: r.GetString("owner"), AttachmentMaxSize: int64(r.GetFloat("attachment_max_size")), AttachmentMaxCount: r.GetInt("attachment_max_count")}
 	if v.Timezone == "" {
 		v.Timezone = "UTC"
 	}

@@ -92,7 +92,7 @@ func (s *Service) InitializeSetup(ctx context.Context, input domain.SetupInput) 
 		if !allowPassword && !allowOIDC && input.AllowRegistration {
 			allowPassword, allowOIDC = true, true
 		}
-		settings = domain.SystemSettings{Initialized: true, SiteName: input.SiteName, DefaultTimezone: input.DefaultTimezone, DefaultCurrency: input.DefaultCurrency, AllowRegistration: allowPassword, AllowPasswordRegistration: allowPassword, AllowOIDCRegistration: allowOIDC}
+		settings = domain.SystemSettings{Initialized: true, SiteName: input.SiteName, DefaultTimezone: input.DefaultTimezone, DefaultCurrency: input.DefaultCurrency, AllowRegistration: allowPassword, AllowPasswordRegistration: allowPassword, AllowOIDCRegistration: allowOIDC, AttachmentDefaultMaxSize: 20 * 1024 * 1024, AttachmentDefaultMaxCount: 10, AttachmentLimitMaxSize: 20 * 1024 * 1024, AttachmentLimitMaxCount: 10}
 		return s.Stores.Settings.Save(tx, settings)
 	})
 	if err != nil {
@@ -150,6 +150,22 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	if err != nil {
 		return domain.SystemSettings{}, err
 	}
+	// Preserve attachment settings for older clients that omit the new fields.
+	if value.AttachmentDefaultMaxSize == 0 {
+		value.AttachmentDefaultMaxSize = current.AttachmentDefaultMaxSize
+	}
+	if value.AttachmentDefaultMaxCount == 0 {
+		value.AttachmentDefaultMaxCount = current.AttachmentDefaultMaxCount
+	}
+	if value.AttachmentLimitMaxSize == 0 {
+		value.AttachmentLimitMaxSize = current.AttachmentLimitMaxSize
+	}
+	if value.AttachmentLimitMaxCount == 0 {
+		value.AttachmentLimitMaxCount = current.AttachmentLimitMaxCount
+	}
+	if value.AttachmentDefaultMaxSize <= 0 || value.AttachmentDefaultMaxCount <= 0 || value.AttachmentLimitMaxSize < value.AttachmentDefaultMaxSize || value.AttachmentLimitMaxCount < value.AttachmentDefaultMaxCount || value.AttachmentLimitMaxSize > 1024*1024*1024 || value.AttachmentLimitMaxCount > 1000 {
+		return domain.SystemSettings{}, domain.ErrInvalid
+	}
 	if value.CaptchaProvider == "altcha" {
 		value.CaptchaProvider = "altcha_community"
 	}
@@ -192,9 +208,6 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	value.CaptchaSecret = ""
 	value.Initialized = true
 	value.AllowRegistration = value.AllowPasswordRegistration
-	if err := s.Stores.Settings.Save(ctx, value); err != nil {
-		return domain.SystemSettings{}, err
-	}
 	// Never put the captcha secret itself in the audit trail; only whether it changed.
 	var settingsChanges changeSet
 	settingsChanges.addString("site_name", current.SiteName, value.SiteName)
@@ -204,7 +217,18 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	settingsChanges.addBool("allow_oidc_registration", current.AllowOIDCRegistration, value.AllowOIDCRegistration)
 	settingsChanges.addString("captcha_provider", current.CaptchaProvider, value.CaptchaProvider)
 	settingsChanges.addBool("captcha_secret_changed", false, current.CaptchaSecretCiphertext != value.CaptchaSecretCiphertext)
-	s.audit(ctx, userID, "", "system.settings.updated", "system_settings", "primary", "success", encodeAuditSummary(nil, settingsChanges))
+	settingsChanges.addInt64("attachment_default_max_size", current.AttachmentDefaultMaxSize, value.AttachmentDefaultMaxSize)
+	settingsChanges.addInt("attachment_default_max_count", current.AttachmentDefaultMaxCount, value.AttachmentDefaultMaxCount)
+	settingsChanges.addInt64("attachment_limit_max_size", current.AttachmentLimitMaxSize, value.AttachmentLimitMaxSize)
+	settingsChanges.addInt("attachment_limit_max_count", current.AttachmentLimitMaxCount, value.AttachmentLimitMaxCount)
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if saveErr := s.Stores.Settings.Save(tx, value); saveErr != nil {
+			return saveErr
+		}
+		return s.audit(tx, userID, "", "system.settings.updated", "system_settings", "primary", "success", encodeAuditSummary(nil, settingsChanges))
+	}); err != nil {
+		return domain.SystemSettings{}, err
+	}
 	return s.sanitiseSettings(value), nil
 }
 

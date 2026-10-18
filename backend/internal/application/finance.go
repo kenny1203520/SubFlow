@@ -959,7 +959,22 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 			return permErr
 		}
 	}
+	items, err := s.Stores.Attachments.List(ctx, "settlement", id, time.Time{})
+	if err != nil {
+		return err
+	}
+	if len(items) > 0 {
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.attachments.read"); permErr != nil {
+			return permErr
+		}
+		if permErr := s.groupPermission(ctx, userID, value.GroupID, "ledger.attachments.delete"); permErr != nil {
+			return permErr
+		}
+	}
 	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if deleteErr := s.Stores.Attachments.DeleteTarget(tx, "settlement", id); deleteErr != nil {
+			return deleteErr
+		}
 		if deleteErr := s.Stores.Settlements.Delete(tx, id); deleteErr != nil {
 			return deleteErr
 		}

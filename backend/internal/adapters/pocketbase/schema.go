@@ -28,6 +28,7 @@ const (
 	CollectionExpenseSplits           = "expense_splits"
 	CollectionIncomeSplits            = "income_splits"
 	CollectionSettlements             = "settlements"
+	CollectionAttachments             = "attachments"
 	CollectionCategories              = "categories"
 	CollectionExchangeRates           = "exchange_rates"
 	CollectionSystemRoles             = "system_roles"
@@ -155,7 +156,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		}
 	}
 	groups, err := ensureCollection(app, CollectionGroups, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "description", Max: 2000}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.TextField{Name: "timezone", Max: 64}, &core.TextField{Name: "color", Max: 32}, &core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
+		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "description", Max: 2000}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.TextField{Name: "timezone", Max: 64}, &core.TextField{Name: "color", Max: 32}, &core.NumberField{Name: "attachment_max_size", OnlyInt: true}, &core.NumberField{Name: "attachment_max_count", OnlyInt: true}, &core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
 		c.AddIndex("idx_groups_owner", false, "owner", "")
 	})
 	if err != nil {
@@ -169,8 +170,16 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionSystemSettings, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"}, &core.BoolField{Name: "allow_password_registration"}, &core.BoolField{Name: "allow_oidc_registration"}, &core.SelectField{Name: "captcha_provider", Values: []string{"", "recaptcha", "turnstile", "hcaptcha", "altcha", "altcha_community", "altcha_sentinel"}, MaxSelect: 1}, &core.TextField{Name: "captcha_site_key", Max: 512}, &core.TextField{Name: "captcha_challenge_url", Max: 1024}, &core.TextField{Name: "captcha_verify_url", Max: 1024}, &core.TextField{Name: "captcha_secret", Hidden: true, Max: 4096}, &core.JSONField{Name: "captcha_flows", MaxSize: 1024 * 8}, &core.TextField{Name: "setup_secret_hash", Hidden: true, Max: 128}, &core.BoolField{Name: "setup_token_issued"})
+		c.Fields.Add(&core.TextField{Name: "key", Required: true, Max: 40}, &core.BoolField{Name: "initialized"}, &core.TextField{Name: "default_timezone", Max: 64}, &core.SelectField{Name: "default_currency", Values: currencyValues(), MaxSelect: 1}, &core.BoolField{Name: "allow_registration"}, &core.BoolField{Name: "allow_password_registration"}, &core.BoolField{Name: "allow_oidc_registration"}, &core.NumberField{Name: "attachment_default_max_size", OnlyInt: true}, &core.NumberField{Name: "attachment_default_max_count", OnlyInt: true}, &core.NumberField{Name: "attachment_limit_max_size", OnlyInt: true}, &core.NumberField{Name: "attachment_limit_max_count", OnlyInt: true}, &core.SelectField{Name: "captcha_provider", Values: []string{"", "recaptcha", "turnstile", "hcaptcha", "altcha", "altcha_community", "altcha_sentinel"}, MaxSelect: 1}, &core.TextField{Name: "captcha_site_key", Max: 512}, &core.TextField{Name: "captcha_challenge_url", Max: 1024}, &core.TextField{Name: "captcha_verify_url", Max: 1024}, &core.TextField{Name: "captcha_secret", Hidden: true, Max: 4096}, &core.JSONField{Name: "captcha_flows", MaxSize: 1024 * 8}, &core.TextField{Name: "setup_secret_hash", Hidden: true, Max: 128}, &core.BoolField{Name: "setup_token_issued"})
 		c.AddIndex("idx_system_settings_key", true, "key", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionAttachments, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "target_type", Required: true, Values: []string{"income", "expense", "settlement", "subscription", "subscription_period"}, MaxSelect: 1}, &core.TextField{Name: "target_id", Required: true, Max: 64}, &core.DateField{Name: "billing_at"}, &core.RelationField{Name: "uploaded_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.FileField{Name: "file", Required: true, MaxSelect: 1, MaxSize: 1024 * 1024 * 1024, Protected: true}, &core.TextField{Name: "file_name", Required: true, Max: 255}, &core.NumberField{Name: "file_size", Required: true, OnlyInt: true}, &core.TextField{Name: "media_type", Required: true, Max: 128}, &core.TextField{Name: "request_id", Required: true, Max: 64})
+		c.AddIndex("idx_attachments_target", false, "target_type,target_id,billing_at,created", "")
+		c.AddIndex("idx_attachments_request", true, "uploaded_by,request_id", "")
 	})
 	if err != nil {
 		return "", err
@@ -728,7 +737,7 @@ func ensureRoleSeeds(app core.App) error {
 	return nil
 }
 func ensureGroupRoleSeeds(app core.App, group *core.Record) error {
-	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.records.historical_write", "ledger.expenses.delete", "ledger.incomes.read", "ledger.incomes.write", "ledger.incomes.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update", "ledger.settlements.delete", "ledger.settlements.manage", "ledger.share.manage", "categories.manage"}
+	all := []string{"group.view", "group.settings.manage", "group.members.manage", "group.roles.manage", "group.audit.read", "ledger.expenses.read", "ledger.expenses.write", "ledger.records.historical_write", "ledger.expenses.delete", "ledger.incomes.read", "ledger.incomes.write", "ledger.incomes.delete", "ledger.subscriptions.read", "ledger.subscriptions.write", "ledger.subscriptions.delete", "ledger.settlements.read", "ledger.settlements.create", "ledger.settlements.update", "ledger.settlements.delete", "ledger.settlements.manage", "ledger.attachments.read", "ledger.attachments.upload", "ledger.attachments.delete", "ledger.share.manage", "categories.manage"}
 	for _, seed := range []struct {
 		key, name   string
 		permissions []string

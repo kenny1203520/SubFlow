@@ -14,6 +14,8 @@ import CategorySelect from '../components/CategorySelect.vue'
 import PayerSelect from '../components/PayerSelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
+import AttachmentPanel from '../components/AttachmentPanel.vue'
+import AttachmentEntry from '../components/AttachmentEntry.vue'
 import Pagination from '../components/Pagination.vue'
 import PageSizeSelect from '../components/PageSizeSelect.vue'
 import type { Currency, Income, IncomeSplit, SplitMode } from '../api/types'
@@ -51,7 +53,7 @@ async function reloadCurrentPage(page: number) {
         else await workspace.loadGroupIncomesPage(listMeta.value.totalPages, perPage.value)
     }
 }
-const open = ref(false), editingId = ref(''), pendingDelete = ref<Income>(), sourceItem = ref<Income>(), formError = ref(''), rateValid = ref(true), exportError = ref(''), exporting = ref(false)
+const open = ref(false), editingId = ref(''), pendingDelete = ref<Income>(), sourceItem = ref<Income>(), formError = ref(''), rateValid = ref(true), exportError = ref(''), exporting = ref(false), pendingFiles = ref<File[]>([])
 const form = reactive({ title: '', category: '', categoryId: '', amount: '', currency: 'TWD' as Currency, rateMode: 'automatic' as 'automatic' | 'manual', exchangeRate: '', earnedBy: '', receivedOn: todayInput(viewerTimezone()), notes: '', splitMode: 'equal' as SplitMode, participants: {} as Record<string, boolean>, values: {} as Record<string, string> })
 // See SubscriptionsView.vue: only send receivedOn back when the user actually
 // touched the date input, so an untouched value keeps its exact stored
@@ -72,7 +74,7 @@ const incomeMinor = computed(() => majorToMinor(form.amount || '0', currency.val
 const splitValid = computed(() => personal.value && !editing.value?.groupId ? true : form.splitMode === 'equal' ? participants.value.length > 0 : form.splitMode === 'amount' ? splitTotalMinor.value === incomeMinor.value : splitTotalMinor.value === 10000)
 watch([currency, reportingCurrency], ([from, to]) => { if (from === to) { form.rateMode = 'automatic'; form.exchangeRate = '' } })
 
-function reset() { editingId.value = ''; formError.value = ''; rateValid.value = true; receivedOnTouched.value = false; Object.assign(form, { title: '', category: '', categoryId: '', amount: '', currency: workspace.currentGroup?.currency || auth.record?.defaultCurrency || 'TWD', rateMode: 'automatic', exchangeRate: '', earnedBy: auth.record?.id || '', receivedOn: todayInput(viewerTimezone()), notes: '', splitMode: 'equal', participants: {}, values: {} }) }
+function reset() { editingId.value = ''; pendingFiles.value = []; formError.value = ''; rateValid.value = true; receivedOnTouched.value = false; Object.assign(form, { title: '', category: '', categoryId: '', amount: '', currency: workspace.currentGroup?.currency || auth.record?.defaultCurrency || 'TWD', rateMode: 'automatic', exchangeRate: '', earnedBy: auth.record?.id || '', receivedOn: todayInput(viewerTimezone()), notes: '', splitMode: 'equal', participants: {}, values: {} }) }
 async function loadFormCategories() { try { await workspace.loadCategories(personal.value && !editing.value?.groupId ? 'personal' : 'group', editing.value?.groupId || workspace.currentGroupId) } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
 async function create() { if (!canWrite.value) return; reset(); if (!personal.value) selectableMembers.value.forEach(m => { form.participants[m.userId] = true }); open.value = true; await loadFormCategories() }
 async function edit(item: Income) { if (!canWrite.value) return; reset(); editingId.value = item.id; if (item.groupId && workspace.currentGroupId !== item.groupId) await workspace.selectGroup(item.groupId); const selected = item.splits?.map(split => split.userId) || workspace.members.map(m => m.userId); Object.assign(form, { title: item.title, category: item.category, categoryId: item.categoryId || '', amount: minorToInput(item.amountMinor, item.currency), currency: item.currency || 'TWD', rateMode: item.rateMode || 'automatic', exchangeRate: item.exchangeRate || '', earnedBy: item.earnedBy, receivedOn: toDateInput(item.receivedOn, viewerTimezone()), notes: item.notes, splitMode: item.splitMode || 'equal', participants: Object.fromEntries(selected.map(id => [id, true])), values: Object.fromEntries((item.splits || []).map(split => [split.userId, (item.splitMode === 'percentage' ? (split.percentageBasisPoints || 0) / 100 : minorToInput(split.amountMinor, item.currency)).toString()])) }); open.value = true; await loadFormCategories() }
@@ -83,6 +85,7 @@ async function submit() {
     const page = listMeta.value.page
     const receivedOn = fromDateInput(form.receivedOn, viewerTimezone())
     const input = { title: form.title, category: form.category || '', categoryId: form.categoryId, amountMinor: incomeMinor.value, currency: currency.value, rateMode: form.rateMode, exchangeRate: form.exchangeRate, earnedBy: form.earnedBy || auth.record?.id || '', ...(!editingId.value || receivedOnTouched.value ? { receivedOn } : {}), notes: form.notes, splitMode: form.splitMode, splits: personal.value && !editing.value?.groupId ? undefined : canonicalSplits() }
+    if (!editingId.value && pendingFiles.value.length) { if (!workspace.online) { formError.value = tr('offlineActionDisabled'); return }; const id = await workspace.addIncomeForAttachments(input, personal.value); if (!id) { formError.value = workspace.localizedError || tr('requestFailed'); return }; editingId.value = id; await reloadCurrentPage(page); if (workspace.localizedError) formError.value = workspace.localizedError; return }
     const ok = editingId.value ? personal.value ? await workspace.updateIncome(editingId.value, input) : await workspace.updateGroupIncome(editingId.value, input) : personal.value ? await workspace.addIncome(input) : await workspace.addGroupIncome(input)
     if (!ok) { formError.value = workspace.localizedError || tr('requestFailed'); return }
     await reloadCurrentPage(page)
@@ -150,7 +153,7 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                             v-if="item.baseCurrency && item.baseCurrency !== item.currency">{{ tr('reportingAmount') }}:
                             <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency" />
                         </small><small v-if="item.exchangeRate">{{ tr('exchangeRate') }} {{ item.exchangeRate }}</small>
-                    </span><span class="row-actions"><button v-if="canEditItem(item)" class="icon-button"
+                    </span><span class="row-actions"><AttachmentEntry target-type="income" :target-id="item.id" :online="workspace.online" :disabled="!!item.pendingSync||!!item.syncError"/><button v-if="canEditItem(item)" class="icon-button"
                             :aria-label="tr('edit')" @click="edit(item)">✎</button><button v-if="canDeleteItem(item)"
                             class="icon-button" :aria-label="tr('remove')"
                             @click="pendingDelete = item">×</button></span>
@@ -228,8 +231,8 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                         </p>
                     </fieldset>
                 </section>
-                <section class="ledger-form-section"><label>{{ tr('notes') }}<textarea v-model="form.notes"
-                            rows="3"></textarea></label></section>
+                <section v-if="!editingId" class="ledger-form-section"><label>{{tr('attachments')}}<input type="file" multiple :disabled="!workspace.online" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" @change="pendingFiles=Array.from(($event.target as HTMLInputElement).files||[])"></label><small v-if="!workspace.online" class="field-help">{{tr('offlineActionDisabled')}}</small><small v-else-if="pendingFiles.length" class="field-help">{{tr('attachmentSelected',{count:pendingFiles.length})}}</small></section><section class="ledger-form-section"><label>{{ tr('notes') }}<textarea v-model="form.notes"
+                            rows="3"></textarea></label></section><section v-if="editingId" class="ledger-form-section"><AttachmentPanel target-type="income" :target-id="editingId" :online="workspace.online" :initial-files="pendingFiles" @initial-files-handled="pendingFiles=[]"/></section>
                 <div class="form-actions ledger-form-actions"><button type="button" class="ghost"
                         @click="open = false">{{ tr('cancel') }}</button><button class="primary"
                         :disabled="workspace.loading || !splitValid || !rateValid">{{ tr(editingId ? 'saveChanges' :

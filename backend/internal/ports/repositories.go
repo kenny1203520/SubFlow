@@ -211,6 +211,20 @@ type SettlementRepository interface {
 	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
+type AttachmentRepository interface {
+	Create(context.Context, *domain.Attachment, []byte) error
+	Get(context.Context, string) (*domain.Attachment, error)
+	FindByRequest(context.Context, string, string) (*domain.Attachment, error)
+	List(context.Context, string, string, time.Time) ([]domain.Attachment, error)
+	ListGroup(context.Context, string) ([]domain.Attachment, error)
+	Read(context.Context, string) ([]byte, error)
+	Delete(context.Context, string) error
+	DeleteTarget(context.Context, string, string) error
+	DeletePeriod(context.Context, string, string, time.Time) error
+	ReassignTarget(context.Context, string, string, string, string) error
+	ReassignPeriod(context.Context, string, string, time.Time, string, string) error
+}
+
 type CategoryRepository interface {
 	Create(context.Context, *domain.Category) error
 	Get(context.Context, string) (*domain.Category, error)

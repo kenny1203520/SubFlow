@@ -167,6 +167,21 @@ func (s *Service) DeleteIncome(ctx context.Context, userID, id string) error {
 		_ = s.audit(ctx, userID, "", "income.deleted", "income", id, "failure", encodeAuditSummary(map[string]any{"reason": "forbidden"}, nil))
 		return domain.ErrForbidden
 	}
+	items, e := s.Stores.Attachments.List(ctx, "income", id, time.Time{})
+	if e != nil {
+		return e
+	}
+	if len(items) > 0 {
+		return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+			if err := s.Stores.Attachments.DeleteTarget(tx, "income", id); err != nil {
+				return err
+			}
+			if err := s.Stores.Incomes.Delete(tx, id); err != nil {
+				return err
+			}
+			return s.audit(tx, userID, "", "income.deleted", "income", id, "success", incomeAuditSummary(v))
+		})
+	}
 	if e = s.Stores.Incomes.Delete(ctx, id); e != nil {
 		return e
 	}

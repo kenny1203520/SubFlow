@@ -1,5 +1,11 @@
 # SubFlow
 
+## File attachments
+
+Uploaded attachments are stored in PocketBase's protected file storage under `pb_data`. Backups and restores must include the complete `pb_data` volume so attachment files stay consistent with their database records.
+
+The default attachment size limit is 20 MiB. System administrators can raise the configured maximum up to 1 GiB; the reverse proxy must allow a multipart request slightly larger than that setting and use an upload timeout appropriate for the configured maximum. For Nginx, configure `client_max_body_size` above the maximum file size (for example, `1026m` for a 1 GiB maximum) and set `client_body_timeout`, `proxy_read_timeout`, and `proxy_send_timeout` for the expected upload duration.
+
 SubFlow 以單一 Go 程序提供 Vue SPA、PocketBase users 驗證、管理台、檔案、SubFlow domain API 與 SSE。正式部署只有一個 `subflow` image/container；Node 與 Go image 僅用於 Docker multi-stage build，不會成為額外的 runtime service。
 
 ## 單一 Image 啟動

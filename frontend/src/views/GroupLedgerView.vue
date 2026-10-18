@@ -5,6 +5,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
 import LedgerQuickAddDrawer from '../components/LedgerQuickAddDrawer.vue'
+import AttachmentEntry from '../components/AttachmentEntry.vue'
 import type { Currency, Expense, Income, LedgerItem, LedgerKind, Subscription } from '../api/types'
 
 const route = useRoute()
@@ -132,7 +133,7 @@ watch([groupId, date], () => { if (groupId.value) void load() })
         </div>
         <div class="item-side">
           <strong :class="item.kind === 'income' ? 'income' : 'expense'">{{ item.kind === 'income' ? '+' : '-' }}{{ money(item.amountMinor, item.currency) }}</strong>
-          <time>{{ new Date(item.occurredAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}</time><span class="row-actions"><button v-if="canEdit(item)" class="text-button" :aria-label="tr('edit')" @click="editItem(item)">{{ tr('edit') }}</button><button v-if="canDelete(item)" class="text-button danger-text" :aria-label="tr('remove')" @click="pendingDelete=item">{{ tr('remove') }}</button></span>
+          <time>{{ new Date(item.occurredAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}</time><span class="row-actions"><AttachmentEntry v-if="item.kind!=='subscription'||item.subscriptionId" :target-type="item.kind==='income'?'income':item.kind==='subscription'?'subscription_period':'expense'" :target-id="item.kind==='subscription'?(item.subscriptionId||item.recordId||''):(item.recordId||'')" :billing-at="item.kind==='subscription'?item.occurredAt:undefined" :online="workspace.online" :disabled="!item.recordId&&item.kind!=='subscription'"/><button v-if="canEdit(item)" class="text-button" :aria-label="tr('edit')" @click="editItem(item)">{{ tr('edit') }}</button><button v-if="canDelete(item)" class="text-button danger-text" :aria-label="tr('remove')" @click="pendingDelete=item">{{ tr('remove') }}</button></span>
         </div>
       </article>
     </section>

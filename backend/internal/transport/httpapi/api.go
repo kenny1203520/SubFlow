@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"io"
+	"mime"
 	"net/http"
 	"os"
 	"strconv"
@@ -155,8 +157,95 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/settlements", a.createSettlement).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/settlements/{id}", a.updateSettlement).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/settlements/{id}", a.deleteSettlement).Bind(bind)
+	e.Router.GET("/api/subflow/v1/attachments", a.listAttachments).Bind(bind)
+	e.Router.POST("/api/subflow/v1/attachments", a.uploadAttachment).Bind(bind)
+	e.Router.GET("/api/subflow/v1/attachments/{id}/content", a.readAttachment).Bind(bind)
+	e.Router.DELETE("/api/subflow/v1/attachments/{id}", a.deleteAttachment).Bind(bind)
 	e.Router.GET("/api/subflow/v1/export/personal", a.exportPersonalLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/export", a.exportGroupLedger).Bind(bind)
+}
+
+func attachmentTargetFromRequest(e *core.RequestEvent) (application.AttachmentTarget, error) {
+	t := application.AttachmentTarget{Type: e.Request.URL.Query().Get("targetType"), ID: e.Request.URL.Query().Get("targetId"), RequestID: e.Request.URL.Query().Get("requestId")}
+	if raw := e.Request.URL.Query().Get("billingAt"); raw != "" {
+		value, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return t, domain.ErrInvalid
+		}
+		t.BillingAt = value
+	}
+	return t, nil
+}
+func (a *API) listAttachments(e *core.RequestEvent) error {
+	target, err := attachmentTargetFromRequest(e)
+	if err != nil {
+		return fail(e, err)
+	}
+	result, err := a.Service.ListAttachments(e.Request.Context(), authID(e), target)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, result, nil)
+}
+func (a *API) uploadAttachment(e *core.RequestEvent) error {
+	auditFailure := func(reason string) error {
+		if auditErr := a.Service.RecordAttachmentFailure(e.Request.Context(), authID(e), "attachment.uploaded", reason); auditErr != nil {
+			return fail(e, auditErr)
+		}
+		return fail(e, domain.ErrInvalid)
+	}
+	const maxMultipartBytes = 1024*1024*1024 + 2*1024*1024
+	e.Request.Body = http.MaxBytesReader(e.Response, e.Request.Body, maxMultipartBytes)
+	if err := e.Request.ParseMultipartForm(8 * 1024 * 1024); err != nil {
+		return auditFailure("invalid_multipart")
+	}
+	var target application.AttachmentTarget
+	target.Type = e.Request.FormValue("targetType")
+	target.ID = e.Request.FormValue("targetId")
+	target.RequestID = e.Request.FormValue("requestId")
+	if raw := e.Request.FormValue("billingAt"); raw != "" {
+		value, err := time.Parse(time.RFC3339Nano, raw)
+		if err != nil {
+			return auditFailure("invalid_billing_time")
+		}
+		target.BillingAt = value
+	}
+	file, header, err := e.Request.FormFile("file")
+	if err != nil {
+		return auditFailure("missing_file")
+	}
+	defer file.Close()
+	data, err := io.ReadAll(io.LimitReader(file, 1024*1024*1024+1))
+	if err != nil || len(data) > 1024*1024*1024 {
+		return auditFailure("request_too_large")
+	}
+	created, err := a.Service.UploadAttachment(e.Request.Context(), authID(e), target, header.Filename, data)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, created, nil)
+}
+func (a *API) readAttachment(e *core.RequestEvent) error {
+	content, err := a.Service.ReadAttachment(e.Request.Context(), authID(e), e.Request.PathValue("id"))
+	if err != nil {
+		return fail(e, err)
+	}
+	e.Response.Header().Set("Content-Type", content.MediaType)
+	disposition := "attachment"
+	if strings.HasPrefix(content.MediaType, "image/") || content.MediaType == "application/pdf" {
+		disposition = "inline"
+	}
+	e.Response.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": content.FileName}))
+	e.Response.Header().Set("Cache-Control", "private, no-store")
+	e.Response.Header().Set("X-Content-Type-Options", "nosniff")
+	_, err = e.Response.Write(content.Data)
+	return err
+}
+func (a *API) deleteAttachment(e *core.RequestEvent) error {
+	if err := a.Service.DeleteAttachment(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
 }
 
 func authID(e *core.RequestEvent) string {

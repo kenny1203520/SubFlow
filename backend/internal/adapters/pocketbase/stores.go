@@ -19,6 +19,7 @@ type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
 type IncomeRepo struct{ *Repository }
 type SettlementRepo struct{ *Repository }
+type AttachmentRepo struct{ *Repository }
 type CategoryRepo struct{ *Repository }
 type ExchangeRateRepo struct{ *Repository }
 type RoleRepo struct{ *Repository }
@@ -39,6 +40,7 @@ type Stores struct {
 	Expenses           *ExpenseRepo
 	Incomes            *IncomeRepo
 	Settlements        *SettlementRepo
+	Attachments        *AttachmentRepo
 	Categories         *CategoryRepo
 	ExchangeRates      *ExchangeRateRepo
 	Roles              *RoleRepo
@@ -52,7 +54,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, Settlements: &SettlementRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
+	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, Settlements: &SettlementRepo{base}, Attachments: &AttachmentRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {

@@ -11,7 +11,7 @@ import type { OutboxEntry, OutboxKind, OutboxScope } from '../offline/outbox'
 import * as snapshotStore from '../offline/snapshot'
 import { defaultPageSize } from '../pageSize'
 
-type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'>
+type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'> & Partial<Pick<Group, 'attachmentMaxSize'|'attachmentMaxCount'|'attachmentLimitsInherited'>>
 // startsOn is optional so an update can omit it when the user did not touch
 // the date input: the backend then keeps the exact stored instant instead of
 // a same-day reconstruction from the viewer's timezone, which would shift it
@@ -763,6 +763,17 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
   }
 
+  async function addExpenseForAttachments(input: ExpenseInput, personal: boolean): Promise<string> {
+    let id = ''
+    if (!online.value) { error.value = tr('offlineActionDisabled'); return id }
+    await run(async () => {
+      const response = await api.post<Expense>(personal ? '/expenses' : `/groups/${currentGroupId.value}/expenses`, input)
+      id = response.data.id
+      if (personal) await refreshPersonal(); else await refreshGroup()
+    })
+    return id
+  }
+
   async function addPersonalExpense(input: ExpenseInput) {
     return run(async () => {
       await withOfflineFallback(
@@ -776,6 +787,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         },
       )
     })
+  }
+  async function addIncomeForAttachments(input: IncomeInput, personal: boolean): Promise<string> {
+    let id = ''
+    if (!online.value) { error.value = tr('offlineActionDisabled'); return id }
+    await run(async () => {
+      const response = await api.post<Income>(personal ? '/incomes' : `/groups/${currentGroupId.value}/incomes`, input)
+      id = response.data.id
+      if (personal) await refreshPersonalLedger(input.receivedOn || ''); else await refreshGroup()
+    }, 'incomes')
+    return id
   }
   async function addIncome(input: IncomeInput) { return run(async () => { await withOfflineFallback(async () => { await api.post<Income>('/incomes', input); }, async () => { const id = outbox.localId(); personalIncomes.value = [localIncome(id, input), ...personalIncomes.value]; if (personalLedger.value) personalLedger.value = { ...personalLedger.value, items: [{ id, kind: "income", recordId: id, occurredAt: input.receivedOn || new Date().toISOString(), title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, status: "pending" }, ...personalLedger.value.items] as any }; const userId = auth.record?.id; if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input }); }); await refreshPersonalLedger(input.receivedOn || '') }) }
   async function addGroupIncome(input: IncomeInput) {
@@ -858,6 +879,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         },
       )
     }, 'settlements')
+  }
+  async function addSettlementForAttachments(input: SettlementInput): Promise<string> {
+    let id = ''
+    if (!online.value) { error.value = tr('offlineActionDisabled'); return id }
+    await run(async () => {
+      const response = await api.post<Settlement>(`/groups/${currentGroupId.value}/settlements`, input)
+      id = response.data.id
+      await refreshGroup()
+    }, 'settlements')
+    return id
   }
   async function updateSettlement(id: string, input: SettlementInput) {
     return run(async () => {
@@ -966,7 +997,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, updateExpense, deleteExpense, addIncome, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
+    addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
     loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,

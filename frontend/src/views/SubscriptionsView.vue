@@ -10,6 +10,7 @@ import ConfirmDialog from '../components/ConfirmDialog.vue'
 import PersonalLedgerNav from '../components/PersonalLedgerNav.vue'
 import CurrencySelect from '../components/CurrencySelect.vue'
 import CategorySelect from '../components/CategorySelect.vue'
+import AttachmentPanel from '../components/AttachmentPanel.vue'
 import PayerSelect from '../components/PayerSelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
@@ -230,6 +231,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
     </form></AppDrawer>
     <AppDrawer :open="!!periodsFor" :title="tr('periodHistory')" @close="periodsFor=undefined">
       <p class="field-help">{{tr('periodHistoryDesc')}}</p>
+      <section v-if="periodsFor" class="card form-card"><h3>{{tr('subscriptionSharedAttachments')}}</h3><AttachmentPanel target-type="subscription" :target-id="periodsFor.id" :online="workspace.online"/></section>
       <div v-if="periodsError" class="notice danger inline">{{periodsError}}</div>
       <button v-if="backfillablePeriods>0&&(personal||canWrite&&canEditHistory)" type="button" class="ghost wide" :disabled="backfilling" @click="runBackfill">{{tr('subscriptionBackfillButton',{count:backfillablePeriods})}}</button>
       <div v-if="periods.length" class="data-list">
@@ -238,6 +240,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
             <strong>{{viewerDate(period.billingAt)}}</strong>
             <small>{{periodStatusLabel(period.status)}}<template v-if="period.status==='failed'&&period.error"> · {{period.error}}</template></small>
             <small v-if="period.splits?.length" class="period-splits"><span v-for="split in period.splits" :key="split.userId">{{memberName(split.userId)}} <MoneyValue :amount="split.amountMinor" :currency="period.currency"/></span></small>
+            <AttachmentPanel v-if="periodsFor" target-type="subscription_period" :target-id="periodsFor.id" :billing-at="period.billingAt" :online="workspace.online"/>
           </div>
           <MoneyValue :amount="period.amountMinor" :currency="period.currency"/>
         </article>
@@ -246,7 +249,7 @@ onMounted(() => { if(personal.value) void workspace.refreshPersonal() })
       <button v-if="periodsCursor" type="button" class="ghost wide" :disabled="periodsLoading" @click="loadPeriods(true)">{{tr('loadMorePeriods')}}</button>
     </AppDrawer>
     <Teleport to="body"><div v-if="stopping" class="modal-backdrop" @click.self="stopping=undefined"><section class="billing-dialog" role="dialog" aria-modal="true" :aria-label="tr('stopSubscription')"><header><div><h2>{{tr('stopSubscription')}}</h2><p>{{stopping.name}} · {{tr('chooseFinalBilling')}}</p></div><button class="icon-button" :aria-label="tr('close')" @click="stopping=undefined">×</button></header><div v-if="dates.length" class="billing-dates"><label v-for="date in dates" :key="date" :class="{selected:chosenDate===date}"><input v-model="chosenDate" type="radio" :value="date"><span><strong>{{viewerDate(date)}}</strong><small>{{pastStopDate(date)?tr('subscriptionPastPeriod'):tr('finalBilling')}}</small><small v-if="stopping.groupId">{{originalTime(stopping,date)}}</small></span></label></div><EmptyState v-else :title="tr('noBillingDates')" :description="tr('subscriptionDesc')"/><button v-if="cursor" class="ghost wide" :disabled="datesLoading" @click="loadDates(true)">{{tr('loadMore')}}</button><div class="form-actions"><button class="ghost" @click="stopping=undefined">{{tr('cancel')}}</button><button class="primary" :disabled="!chosenDate" @click="confirmStop">{{tr('confirm')}}</button></div></section></div></Teleport>
-    <SourceDialog :open="!!sourceItem" kind="subscriptions" :group="sourceItem?itemGroup(sourceItem):undefined" :currency="sourceItem?.currency||'TWD'" @close="sourceItem=undefined"/><ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('deleteSubscriptionConfirm',{name:pendingDelete.name}):''" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
+    <SourceDialog :open="!!sourceItem" kind="subscriptions" :group="sourceItem?itemGroup(sourceItem):undefined" :currency="sourceItem?.currency||'TWD'" @close="sourceItem=undefined"/><ConfirmDialog :open="!!pendingDelete" :title="pendingDelete?tr('deleteSubscriptionConfirm',{name:pendingDelete.name}):''" :description="tr('deleteSubscriptionAttachmentsWarning')" danger @cancel="pendingDelete=undefined" @confirm="remove"/>
   </section>
 </template>
 <style scoped>

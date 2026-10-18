@@ -179,16 +179,41 @@ func (s *Service) UpdateGroup(ctx context.Context, userID string, group domain.G
 	if _, err = time.LoadLocation(group.Timezone); err != nil {
 		return nil, domain.ErrInvalid
 	}
-	group.OwnerID = current.OwnerID
-	if err = s.Stores.Groups.Update(ctx, &group); err != nil {
+	if group.AttachmentLimitsInherited {
+		group.AttachmentMaxSize, group.AttachmentMaxCount = 0, 0
+	} else if group.AttachmentMaxSize == 0 && group.AttachmentMaxCount == 0 {
+		group.AttachmentMaxSize, group.AttachmentMaxCount = current.AttachmentMaxSize, current.AttachmentMaxCount
+	}
+	settings, err := s.Stores.Settings.Get(ctx)
+	if err != nil {
 		return nil, err
 	}
+	maxSize, maxCount := settings.AttachmentLimitMaxSize, settings.AttachmentLimitMaxCount
+	if maxSize <= 0 {
+		maxSize = 20 * 1024 * 1024
+	}
+	if maxCount <= 0 {
+		maxCount = 10
+	}
+	if group.AttachmentMaxSize < 0 || group.AttachmentMaxCount < 0 || group.AttachmentMaxSize > maxSize || group.AttachmentMaxCount > maxCount {
+		return nil, domain.ErrInvalid
+	}
+	group.OwnerID = current.OwnerID
 	var groupChanges changeSet
 	groupChanges.addString("name", current.Name, group.Name)
 	groupChanges.addString("description", current.Description, group.Description)
 	groupChanges.addString("timezone", current.Timezone, group.Timezone)
 	groupChanges.addString("color", current.Color, group.Color)
-	s.audit(ctx, userID, group.ID, "group.updated", "group", group.ID, "success", encodeAuditSummary(nil, groupChanges))
+	groupChanges.addInt64("attachment_max_size", current.AttachmentMaxSize, group.AttachmentMaxSize)
+	groupChanges.addInt("attachment_max_count", current.AttachmentMaxCount, group.AttachmentMaxCount)
+	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if updateErr := s.Stores.Groups.Update(tx, &group); updateErr != nil {
+			return updateErr
+		}
+		return s.audit(tx, userID, group.ID, "group.updated", "group", group.ID, "success", encodeAuditSummary(nil, groupChanges))
+	}); err != nil {
+		return nil, err
+	}
 	return &group, nil
 }
 
@@ -196,8 +221,22 @@ func (s *Service) DeleteGroup(ctx context.Context, userID, id string) error {
 	if err := s.role(ctx, id, userID, true); err != nil {
 		return err
 	}
+	attachments, err := s.Stores.Attachments.ListGroup(ctx, id)
+	if err != nil {
+		return err
+	}
+	if len(attachments) > 0 {
+		for _, permission := range []string{"ledger.attachments.read", "ledger.attachments.delete"} {
+			if err = s.groupPermission(ctx, userID, id, permission); err != nil {
+				if auditErr := s.audit(ctx, userID, id, "group.deleted", "group", id, "failure", encodeAuditSummary(map[string]any{"reason": "attachment_permission_denied"}, nil)); auditErr != nil {
+					return auditErr
+				}
+				return err
+			}
+		}
+	}
 	deleted, deletedErr := s.Stores.Groups.Get(ctx, id)
-	err := s.Stores.Groups.Delete(ctx, id)
+	err = s.Stores.Groups.Delete(ctx, id)
 	if err == nil {
 		details := map[string]any(nil)
 		if deletedErr == nil {
@@ -811,11 +850,52 @@ func (s *Service) DeleteSubscription(ctx context.Context, userID, id string) err
 	} else if err = s.groupPermission(ctx, userID, v.GroupID, "ledger.subscriptions.delete"); err != nil {
 		return err
 	}
-	err = s.Stores.Subscriptions.Delete(ctx, id)
-	if err == nil {
-		s.audit(ctx, userID, v.GroupID, "subscription.deleted", "subscription", id, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency)}, nil))
+	occurrences, err := s.Stores.Subscriptions.ListOccurrences(ctx, id)
+	if err != nil {
+		return err
 	}
-	return err
+	shared, err := s.Stores.Attachments.List(ctx, "subscription", id, time.Time{})
+	if err != nil {
+		return err
+	}
+	hasFiles := len(shared) > 0
+	for _, occurrence := range occurrences {
+		items, listErr := s.Stores.Attachments.List(ctx, "subscription_period", id, occurrence.BillingAt)
+		if listErr != nil {
+			return listErr
+		}
+		if len(items) > 0 {
+			hasFiles = true
+		}
+	}
+	if hasFiles && v.GroupID != "" {
+		for _, permission := range []string{"ledger.attachments.read", "ledger.attachments.delete"} {
+			if err = s.groupPermission(ctx, userID, v.GroupID, permission); err != nil {
+				if auditErr := s.audit(ctx, userID, v.GroupID, "subscription.deleted", "subscription", id, "failure", encodeAuditSummary(map[string]any{"reason": "attachment_permission_denied"}, nil)); auditErr != nil {
+					return auditErr
+				}
+				return err
+			}
+		}
+	}
+	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		for _, occurrence := range occurrences {
+			if occurrence.Status == "posted" && occurrence.ExpenseID != "" {
+				if err = s.Stores.Attachments.ReassignPeriod(tx, "subscription_period", id, occurrence.BillingAt, "expense", occurrence.ExpenseID); err != nil {
+					return err
+				}
+			} else if err = s.Stores.Attachments.DeletePeriod(tx, "subscription_period", id, occurrence.BillingAt); err != nil {
+				return err
+			}
+		}
+		if err = s.Stores.Attachments.DeleteTarget(tx, "subscription", id); err != nil {
+			return err
+		}
+		if err = s.Stores.Subscriptions.Delete(tx, id); err != nil {
+			return err
+		}
+		return s.audit(tx, userID, v.GroupID, "subscription.deleted", "subscription", id, "success", encodeAuditSummary(map[string]any{"name": v.Name, "amount_minor": v.AmountMinor, "currency": string(v.Currency), "posted_period_attachments_preserved": true}, nil))
+	})
 }
 
 func validExpense(v *domain.Expense) bool {
@@ -1072,11 +1152,38 @@ func (s *Service) DeleteExpense(ctx context.Context, userID, id string) error {
 			return err
 		}
 	}
-	err = s.Stores.Expenses.Delete(ctx, id)
-	if err == nil {
-		s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "success", encodeAuditSummary(historicalExpenseDetails(v), nil))
+	typ, targetID, billing := "expense", id, time.Time{}
+	if v.SubscriptionID != "" {
+		typ, targetID, billing = "subscription_period", v.SubscriptionID, v.IncurredOn
 	}
-	return err
+	items, err := s.Stores.Attachments.List(ctx, typ, targetID, billing)
+	if err != nil {
+		return err
+	}
+	if len(items) > 0 && v.GroupID != "" {
+		for _, permission := range []string{"ledger.attachments.read", "ledger.attachments.delete"} {
+			if err = s.groupPermission(ctx, userID, v.GroupID, permission); err != nil {
+				if auditErr := s.audit(ctx, userID, v.GroupID, "expense.deleted", "expense", id, "failure", encodeAuditSummary(map[string]any{"reason": "attachment_permission_denied"}, nil)); auditErr != nil {
+					return auditErr
+				}
+				return err
+			}
+		}
+	}
+	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if typ == "subscription_period" {
+			err = s.Stores.Attachments.DeletePeriod(tx, typ, targetID, billing)
+		} else {
+			err = s.Stores.Attachments.DeleteTarget(tx, typ, targetID)
+		}
+		if err != nil {
+			return err
+		}
+		if err = s.Stores.Expenses.Delete(tx, id); err != nil {
+			return err
+		}
+		return s.audit(tx, userID, v.GroupID, "expense.deleted", "expense", id, "success", encodeAuditSummary(historicalExpenseDetails(v), nil))
+	})
 }
 
 func (s *Service) Dashboard(ctx context.Context, userID, groupID string) (domain.DashboardSummary, error) {

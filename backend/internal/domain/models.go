@@ -209,6 +209,10 @@ type SystemSettings struct {
 	CaptchaConfigured         bool                `json:"captchaConfigured"`
 	CaptchaFlows              CaptchaFlowSettings `json:"captchaFlows"`
 	CaptchaSecretCiphertext   string              `json:"-"`
+	AttachmentDefaultMaxSize  int64               `json:"attachmentDefaultMaxSize"`
+	AttachmentDefaultMaxCount int                 `json:"attachmentDefaultMaxCount"`
+	AttachmentLimitMaxSize    int64               `json:"attachmentLimitMaxSize"`
+	AttachmentLimitMaxCount   int                 `json:"attachmentLimitMaxCount"`
 	SetupTokenHash            string              `json:"-"`
 	SetupTokenIssued          bool                `json:"-"`
 }
@@ -319,15 +323,50 @@ type SharePage struct {
 }
 
 type Group struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	Description string    `json:"description"`
-	Currency    Currency  `json:"currency"`
-	Timezone    string    `json:"timezone"`
-	Color       string    `json:"color"`
-	OwnerID     string    `json:"ownerId"`
-	CreatedAt   time.Time `json:"createdAt"`
-	UpdatedAt   time.Time `json:"updatedAt"`
+	ID                        string    `json:"id"`
+	Name                      string    `json:"name"`
+	Description               string    `json:"description"`
+	Currency                  Currency  `json:"currency"`
+	Timezone                  string    `json:"timezone"`
+	Color                     string    `json:"color"`
+	AttachmentMaxSize         int64     `json:"attachmentMaxSize,omitempty"`
+	AttachmentMaxCount        int       `json:"attachmentMaxCount,omitempty"`
+	AttachmentLimitsInherited bool      `json:"attachmentLimitsInherited,omitempty"`
+	OwnerID                   string    `json:"ownerId"`
+	CreatedAt                 time.Time `json:"createdAt"`
+	UpdatedAt                 time.Time `json:"updatedAt"`
+}
+
+type Attachment struct {
+	ID         string    `json:"id"`
+	GroupID    string    `json:"groupId,omitempty"`
+	OwnerID    string    `json:"ownerId,omitempty"`
+	TargetType string    `json:"targetType"`
+	TargetID   string    `json:"targetId"`
+	BillingAt  time.Time `json:"billingAt,omitempty"`
+	UploadedBy string    `json:"uploadedBy"`
+	FileName   string    `json:"fileName"`
+	MediaType  string    `json:"mediaType"`
+	Size       int64     `json:"size"`
+	CreatedAt  time.Time `json:"createdAt"`
+	RequestID  string    `json:"-"`
+}
+
+type AttachmentLimits struct {
+	MaxSize  int64 `json:"maxSize"`
+	MaxCount int   `json:"maxCount"`
+}
+
+type AttachmentAccess struct {
+	CanRead   bool `json:"canRead"`
+	CanUpload bool `json:"canUpload"`
+	CanDelete bool `json:"canDelete"`
+}
+
+type AttachmentPage struct {
+	Items  []Attachment     `json:"items"`
+	Limits AttachmentLimits `json:"limits"`
+	Access AttachmentAccess `json:"access"`
 }
 
 type Membership struct {
