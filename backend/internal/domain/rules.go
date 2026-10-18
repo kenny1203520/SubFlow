@@ -457,13 +457,15 @@ func MemberBalancesWithIncomes(expenses []Expense, incomes []Income, settlements
 		if amount == 0 {
 			amount = income.AmountMinor
 		}
-		totals[income.EarnedBy] += amount
+		// The recipient holds money belonging to the beneficiaries. Unlike
+		// an expense payer, they owe the distributed amount to the others.
+		totals[income.EarnedBy] -= amount
 		for _, split := range income.Splits {
 			share := split.BaseAmountMinor
 			if share == 0 {
 				share = split.AmountMinor
 			}
-			totals[split.UserID] -= share
+			totals[split.UserID] += share
 		}
 	}
 	for _, settlement := range settlements {
