@@ -1829,6 +1829,10 @@ func userFrom(r *core.Record) *domain.User {
 }
 
 func writeCategory(r *core.Record, v *domain.Category) {
+	if v.Kind == "" {
+		v.Kind = "expense"
+	}
+	r.Set("kind", v.Kind)
 	r.Set("scope", v.Scope)
 	r.Set("owner", v.OwnerID)
 	r.Set("group", v.GroupID)
@@ -1840,6 +1844,11 @@ func writeCategory(r *core.Record, v *domain.Category) {
 }
 func categoryFrom(r *core.Record) *domain.Category {
 	v := &domain.Category{ID: r.Id, Scope: r.GetString("scope"), OwnerID: r.GetString("owner"), GroupID: r.GetString("group"), SystemKey: r.GetString("system_key"), CustomName: r.GetString("custom_name"), IconKey: r.GetString("icon_key"), CreatedBy: r.GetString("created_by"), Archived: r.GetBool("archived")}
+	v.Kind = r.GetString("kind")
+	if v.Kind == "" {
+		v.Kind = "expense"
+	}
+	v.IncomeCategoryID = r.GetString("income_category_id")
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
 }

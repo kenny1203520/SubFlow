@@ -1,7 +1,7 @@
 export type Currency = string
 export type RateMode = 'automatic'|'manual'
 export interface CurrencyInfo { code:Currency;digits:number }
-export interface Category { id:string;scope:'system'|'personal'|'group';ownerId?:string;groupId?:string;systemKey?:string;customName?:string;iconKey?:string;createdBy?:string;archived:boolean;createdAt:string;updatedAt:string }
+export interface Category { id:string;kind?:'income'|'expense';scope:'system'|'personal'|'group';ownerId?:string;groupId?:string;systemKey?:string;customName?:string;iconKey?:string;createdBy?:string;archived:boolean;createdAt:string;updatedAt:string }
 export interface ExchangeRate { baseCurrency:Currency;quoteCurrency:Currency;rate:string;effectiveDate:string;provider:string;fetchedAt:string;stale?:boolean }
 export interface CurrencyChangePreview { from:Currency;to:Currency;affected:number;missing:{resource:string;id:string;from:Currency;to:Currency;date:string}[] }
 export type Role = 'owner' | 'member'

@@ -40,6 +40,22 @@ function failure(status: number, code: string) { return new Response(JSON.string
 
 const group = { id: 'g1', name: 'Home', description: '', currency: 'TWD', timezone: 'UTC', color: '#000', ownerId: 'u1', createdAt: '', updatedAt: '' }
 
+describe('income category isolation', () => {
+  it('requests the chosen kind and includes it when creating a category', async () => {
+    const income = { id: 'income-category', scope: 'personal', kind: 'income', customName: 'Salary' }
+    const fetchMock = mockFetch([
+      ['/categories?scope=personal&kind=income', () => envelope([income])],
+      ['/categories', () => envelope(income), 'POST'],
+    ])
+    const workspace = useWorkspaceStore()
+    await workspace.loadCategories('personal', '', 'income')
+    expect(workspace.categories.map(item => item.id)).toEqual(['income-category'])
+    await workspace.createCategory('personal', 'Salary', '', 'tag', 'income')
+    const request = fetchMock.mock.calls.find(call => call[1]?.method === 'POST')
+    expect(JSON.parse(request?.[1]?.body as string)).toMatchObject({kind: 'income'})
+  })
+})
+
 // Covers the full fan-out selectGroup/refreshGroup trigger for group "g1".
 // Individual tests layer a specific url(+method) => Response override on top
 // (checked first) for the one request they're actually exercising. Method is

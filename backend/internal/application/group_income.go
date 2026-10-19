@@ -121,8 +121,12 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 	if err != nil {
 		return err
 	}
-	if _, err = s.validateCategory(ctx, userID, v.GroupID, v.CategoryID); err != nil {
+	category, err := s.validateCategory(ctx, userID, v.GroupID, v.CategoryID, "income")
+	if err != nil {
 		return err
+	}
+	if category != nil {
+		v.CategoryID = category.ID
 	}
 	if v.CategoryID != "" && v.Category == "" {
 		if category := s.hydrateCategory(ctx, v.CategoryID); category != nil {

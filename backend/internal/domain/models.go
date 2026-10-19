@@ -68,17 +68,19 @@ const (
 )
 
 type Category struct {
-	ID         string    `json:"id"`
-	Scope      string    `json:"scope"`
-	OwnerID    string    `json:"ownerId,omitempty"`
-	GroupID    string    `json:"groupId,omitempty"`
-	SystemKey  string    `json:"systemKey,omitempty"`
-	CustomName string    `json:"customName,omitempty"`
-	IconKey    string    `json:"iconKey,omitempty"`
-	CreatedBy  string    `json:"createdBy,omitempty"`
-	Archived   bool      `json:"archived"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
+	ID               string    `json:"id"`
+	Kind             string    `json:"kind"`
+	IncomeCategoryID string    `json:"-"`
+	Scope            string    `json:"scope"`
+	OwnerID          string    `json:"ownerId,omitempty"`
+	GroupID          string    `json:"groupId,omitempty"`
+	SystemKey        string    `json:"systemKey,omitempty"`
+	CustomName       string    `json:"customName,omitempty"`
+	IconKey          string    `json:"iconKey,omitempty"`
+	CreatedBy        string    `json:"createdBy,omitempty"`
+	Archived         bool      `json:"archived"`
+	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"`
 }
 
 type CurrencyInfo struct {

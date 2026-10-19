@@ -601,7 +601,7 @@ func (a *API) deletePersonalContact(e *core.RequestEvent) error {
 }
 func (a *API) listCategories(e *core.RequestEvent) error {
 	q := e.Request.URL.Query()
-	values, err := a.Service.ListCategories(e.Request.Context(), authID(e), q.Get("scope"), q.Get("groupId"), q.Get("archived") == "true")
+	values, err := a.Service.ListCategories(e.Request.Context(), authID(e), q.Get("scope"), q.Get("groupId"), q.Get("archived") == "true", q.Get("kind"))
 	if err != nil {
 		return fail(e, err)
 	}
@@ -610,7 +610,7 @@ func (a *API) listCategories(e *core.RequestEvent) error {
 func (a *API) createCategory(e *core.RequestEvent) error {
 	var value domain.Category
 	if e.BindBody(&value) != nil {
-		return fail(e, domain.ErrInvalid)
+		return fail(e, a.Service.CategoryRequestFailure(e.Request.Context(), authID(e), "category.created", "", domain.ErrInvalid))
 	}
 	created, err := a.Service.CreateCategory(e.Request.Context(), authID(e), value)
 	if err != nil {
@@ -621,7 +621,7 @@ func (a *API) createCategory(e *core.RequestEvent) error {
 func (a *API) updateCategory(e *core.RequestEvent) error {
 	var value domain.Category
 	if e.BindBody(&value) != nil {
-		return fail(e, domain.ErrInvalid)
+		return fail(e, a.Service.CategoryRequestFailure(e.Request.Context(), authID(e), "category.updated", e.Request.PathValue("id"), domain.ErrInvalid))
 	}
 	value.ID = e.Request.PathValue("id")
 	updated, err := a.Service.UpdateCategory(e.Request.Context(), authID(e), value)

@@ -423,7 +423,14 @@ func (s *Service) conversion(ctx context.Context, currency, base domain.Currency
 	return converted, quote.RateScaled, domain.FormatRate(quote.RateScaled), quote.EffectiveDate, err
 }
 
-func (s *Service) ListCategories(ctx context.Context, userID, scope, groupID string, archived bool) ([]domain.Category, error) {
+func (s *Service) ListCategories(ctx context.Context, userID, scope, groupID string, archived bool, kinds ...string) ([]domain.Category, error) {
+	kind := "expense"
+	if len(kinds) > 0 && kinds[0] != "" {
+		kind = kinds[0]
+	}
+	if kind != "income" && kind != "expense" {
+		return nil, domain.ErrInvalid
+	}
 	if scope != "personal" && scope != "group" {
 		return nil, domain.ErrInvalid
 	}
@@ -434,10 +441,26 @@ func (s *Service) ListCategories(ctx context.Context, userID, scope, groupID str
 	} else {
 		groupID = ""
 	}
-	return s.Stores.Categories.List(ctx, userID, groupID, archived)
+	values, err := s.Stores.Categories.List(ctx, userID, groupID, archived)
+	if err != nil {
+		return nil, err
+	}
+	filtered := make([]domain.Category, 0, len(values))
+	for _, value := range values {
+		if value.Kind == kind || value.Kind == "" && kind == "expense" {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered, nil
 }
 
-func (s *Service) CreateCategory(ctx context.Context, userID string, value domain.Category) (*domain.Category, error) {
+func (s *Service) createCategory(ctx context.Context, userID string, value domain.Category) (*domain.Category, error) {
+	if value.Kind == "" {
+		value.Kind = "expense"
+	}
+	if value.Kind != "income" && value.Kind != "expense" {
+		return nil, domain.ErrInvalid
+	}
 	value.CustomName = strings.TrimSpace(value.CustomName)
 	value.SystemKey = ""
 	value.CreatedBy = userID
@@ -457,24 +480,29 @@ func (s *Service) CreateCategory(ctx context.Context, userID string, value domai
 		return nil, err
 	}
 	for _, current := range values {
-		if current.Scope == value.Scope && strings.EqualFold(strings.TrimSpace(current.CustomName), value.CustomName) {
+		if current.Scope == value.Scope && current.Kind == value.Kind && strings.EqualFold(strings.TrimSpace(current.CustomName), value.CustomName) {
 			return nil, domain.ErrConflict
 		}
 	}
 	if err = s.Stores.Categories.Create(ctx, &value); err != nil {
 		return nil, err
 	}
-	s.audit(ctx, userID, value.GroupID, "category.created", "category", value.ID, "success", encodeAuditSummary(map[string]any{"name": value.CustomName, "scope": value.Scope, "icon": value.IconKey}, nil))
+	if err = s.audit(ctx, userID, value.GroupID, "category.created", "category", value.ID, "success", encodeAuditSummary(map[string]any{"name": value.CustomName, "scope": value.Scope, "kind": value.Kind, "icon": value.IconKey}, nil)); err != nil {
+		return nil, err
+	}
 	return &value, nil
 }
 
-func (s *Service) UpdateCategory(ctx context.Context, userID string, value domain.Category) (*domain.Category, error) {
+func (s *Service) updateCategory(ctx context.Context, userID string, value domain.Category) (*domain.Category, error) {
 	current, err := s.Stores.Categories.Get(ctx, value.ID)
 	if err != nil {
 		return nil, err
 	}
 	if current.Scope == "system" {
 		return nil, domain.ErrForbidden
+	}
+	if value.Kind != "" && value.Kind != current.Kind {
+		return nil, domain.ErrInvalid
 	}
 	if current.Scope == "personal" {
 		if current.OwnerID != userID {
@@ -487,6 +515,15 @@ func (s *Service) UpdateCategory(ctx context.Context, userID string, value domai
 	}
 	before := *current
 	if name := strings.TrimSpace(value.CustomName); name != "" {
+		values, listErr := s.Stores.Categories.List(ctx, userID, current.GroupID, true)
+		if listErr != nil {
+			return nil, listErr
+		}
+		for _, other := range values {
+			if other.ID != current.ID && other.Scope == current.Scope && other.Kind == current.Kind && strings.EqualFold(strings.TrimSpace(other.CustomName), name) {
+				return nil, domain.ErrConflict
+			}
+		}
 		current.CustomName = name
 	}
 	current.Archived = value.Archived
@@ -500,17 +537,33 @@ func (s *Service) UpdateCategory(ctx context.Context, userID string, value domai
 	categoryChanges.addString("name", before.CustomName, current.CustomName)
 	categoryChanges.addBool("archived", before.Archived, current.Archived)
 	categoryChanges.addString("icon", before.IconKey, current.IconKey)
-	s.audit(ctx, userID, current.GroupID, "category.updated", "category", current.ID, "success", encodeAuditSummary(nil, categoryChanges))
+	if err = s.audit(ctx, userID, current.GroupID, "category.updated", "category", current.ID, "success", encodeAuditSummary(nil, categoryChanges)); err != nil {
+		return nil, err
+	}
 	return current, nil
 }
 
-func (s *Service) validateCategory(ctx context.Context, userID, groupID, id string) (*domain.Category, error) {
+func (s *Service) validateCategory(ctx context.Context, userID, groupID, id string, kinds ...string) (*domain.Category, error) {
 	if id == "" {
 		return nil, nil
 	}
 	category, err := s.Stores.Categories.Get(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	kind := "expense"
+	if len(kinds) > 0 {
+		kind = kinds[0]
+	}
+	// Upgrade compatibility for an income queued before category splitting.
+	if kind == "income" && category.Kind == "expense" && category.IncomeCategoryID != "" {
+		category, err = s.Stores.Categories.Get(ctx, category.IncomeCategoryID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if category.Kind != kind && !(category.Kind == "" && kind == "expense") {
+		return nil, domain.ErrInvalid
 	}
 	if category.Archived {
 		return nil, domain.ErrInvalid

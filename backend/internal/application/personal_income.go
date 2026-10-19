@@ -36,12 +36,15 @@ func (s *Service) preparePersonalIncome(ctx context.Context, actor string, v *do
 	if v.ReceivedOn.IsZero() {
 		v.ReceivedOn = s.Now().UTC()
 	}
-	c, err := s.validateCategory(ctx, actor, "", v.CategoryID)
+	c, err := s.validateCategory(ctx, actor, "", v.CategoryID, "income")
 	if err != nil {
 		return err
 	}
-	if c != nil && v.Category == "" {
-		v.Category = c.CustomName
+	if c != nil {
+		v.CategoryID = c.ID
+		if v.Category == "" {
+			v.Category = c.CustomName
+		}
 	}
 	if v.Title == "" || v.AmountMinor < 0 || !domain.IsCurrency(v.Currency) || !domain.IsCurrency(v.BaseCurrency) {
 		return domain.ErrInvalid

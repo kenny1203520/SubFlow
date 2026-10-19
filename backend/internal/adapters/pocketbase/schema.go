@@ -268,6 +268,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	categories, err := ensureCollection(app, CollectionCategories, func(c *core.Collection) {
 		c.Fields.Add(&core.SelectField{Name: "scope", Required: true, Values: []string{"system", "personal", "group"}, MaxSelect: 1}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "system_key", Max: 80}, &core.TextField{Name: "custom_name", Max: 120}, &core.TextField{Name: "icon_key", Max: 80}, &core.RelationField{Name: "created_by", CollectionId: users.Id, MaxSelect: 1}, &core.BoolField{Name: "archived"})
 		c.AddIndex("idx_categories_scope", false, "scope, owner, `group`, archived", "")
+		c.Fields.Add(&core.SelectField{Name: "kind", Values: []string{"income", "expense"}, MaxSelect: 1}, &core.TextField{Name: "income_category_id", Max: 15, Hidden: true})
 	})
 	if err != nil {
 		return "", err
@@ -339,7 +340,10 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return setupLink, backfillFinance(app)
+	if err = backfillFinance(app); err != nil {
+		return "", err
+	}
+	return setupLink, ensureIncomeCategoryKinds(app)
 }
 
 func mustCollectionID(app core.App, name string) string {

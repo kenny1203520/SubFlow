@@ -215,8 +215,14 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }, 'groups', false)
   }
 
-  async function loadCategories(scope:'personal'|'group',groupId='') { categories.value=(await api.get<Category[]>(`/categories?scope=${scope}${groupId?`&groupId=${encodeURIComponent(groupId)}`:''}`)).data }
-  async function createCategory(scope:'personal'|'group',customName:string,groupId='',iconKey='tag'){const value=(await api.post<Category>('/categories',{scope,customName,groupId,iconKey})).data;categories.value.push(value);return value}
+  let categoryRequest = 0
+  async function loadCategories(scope:'personal'|'group',groupId='',kind:'income'|'expense'='expense') {
+    const request = ++categoryRequest
+    const values = (await api.get<Category[]>(`/categories?scope=${scope}${groupId?`&groupId=${encodeURIComponent(groupId)}`:''}&kind=${kind}`)).data
+    if (request === categoryRequest) categories.value = values
+    return values
+  }
+  async function createCategory(scope:'personal'|'group',customName:string,groupId='',iconKey='tag',kind:'income'|'expense'='expense'){const value=(await api.post<Category>('/categories',{scope,customName,groupId,iconKey,kind})).data;categories.value.push(value);return value}
   async function updateCategory(id:string, value:Pick<Category,'customName'|'iconKey'>){const updated=(await api.patch<Category>(`/categories/${id}`,value)).data;categories.value=categories.value.map(item=>item.id===id?updated:item);return updated}
   async function archiveCategory(id:string){await api.delete(`/categories/${id}`);categories.value=categories.value.filter(v=>v.id!==id)}
   async function quoteRate(from:Currency,to:Currency,date:string){return (await api.get<ExchangeRate>(`/exchange-rates/quote?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&date=${encodeURIComponent(date)}`)).data}

@@ -1,6 +1,7 @@
 import type { MessageKey } from './zh-TW'
 
 export const en: Record<MessageKey, string> = {
+  category_income_salary:'Salary',category_income_bonus:'Bonus',category_income_freelance:'Freelance',category_income_investment:'Investment',category_income_rental:'Rent',category_income_gifts:'Gifts',category_income_other:'Other income',categoryKind:'Category type',
   deleteSubscriptionAttachmentsWarning:'Attachments for posted periods stay with their expenses. Shared and unposted period attachments are deleted.',deleteGroupAttachmentsWarning:'Deleting this group permanently deletes its transaction and subscription attachments.',
   attachmentSelected:'{count} files selected. They will upload after the record is saved.',
   subscriptionSharedAttachments:'Subscription shared attachments',

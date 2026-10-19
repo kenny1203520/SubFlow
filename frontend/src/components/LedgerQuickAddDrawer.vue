@@ -86,15 +86,21 @@ function reset() {
 
 watch(() => props.open, async open => {
   if (!open) return
-  if (!personal.value) { if (workspace.currentGroupId !== props.groupId && props.groupId) await workspace.selectGroup(props.groupId); await workspace.loadCategories('group', props.groupId) } else await workspace.loadCategories('personal')
+  if (!personal.value && workspace.currentGroupId !== props.groupId && props.groupId) await workspace.selectGroup(props.groupId)
   if (props.editRecord) loadRecord(props.editRecord)
   else {
     if (!canExpense.value && canIncome.value) mode.value = 'income'
     reset()
   }
+  await loadCategories()
 })
 
-async function addCategory(name: string, icon = 'tag') { try { const value = await workspace.createCategory(personal.value ? 'personal' : 'group', name, personal.value ? '' : props.groupId, icon); form.categoryId = value.id } catch { error.value = workspace.localizedError || tr('requestFailed') } }
+async function loadCategories() {
+  try { await workspace.loadCategories(personal.value ? 'personal' : 'group', personal.value ? '' : props.groupId, mode.value === 'income' ? 'income' : 'expense') }
+  catch { error.value = workspace.localizedError || tr('requestFailed') }
+}
+watch(mode, () => { if (props.open && !editing.value) { form.categoryId = ''; form.category = ''; void loadCategories() } })
+async function addCategory(name: string, icon = 'tag') { try { const value = await workspace.createCategory(personal.value ? 'personal' : 'group', name, personal.value ? '' : props.groupId, icon, mode.value === 'income' ? 'income' : 'expense'); form.categoryId = value.id } catch { error.value = workspace.localizedError || tr('requestFailed') } }
 
 function loadRecord(record: Expense | Income | Subscription) {
   reset()
@@ -138,7 +144,7 @@ function incomeSplits(): IncomeSplit[] {
 }
 
 async function submit() {
-  if (!form.title.trim() || amountMinor.value <= 0 || !form.payer || !splitValid.value || !rateValid.value) {
+  if (!form.title.trim() || !form.amount.trim() || (mode.value === 'income' ? amountMinor.value < 0 : amountMinor.value <= 0) || !form.payer || !splitValid.value || !rateValid.value) {
     error.value = tr('invalidRequest')
     return
   }
