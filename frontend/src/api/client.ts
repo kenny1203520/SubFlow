@@ -18,6 +18,27 @@ export class ApiClient {
     return body as Envelope<T>
   }
   get<T>(path:string){return this.request<T>(path)}
+  upload<T>(path:string, body:FormData, onProgress:(percent:number)=>void):Promise<Envelope<T>> {
+    return new Promise((resolve,reject)=>{
+      const xhr=new XMLHttpRequest()
+      xhr.open('POST',`/api/subflow/v1${path}`)
+      const token=this.token();if(token)xhr.setRequestHeader('Authorization',bearer(token))
+      xhr.setRequestHeader('Accept','application/json')
+      xhr.upload.onprogress=event=>{if(event.lengthComputable)onProgress(Math.round(event.loaded*100/event.total))}
+      xhr.onerror=()=>reject(new ApiError(0,'network_error','Network request failed'))
+      xhr.onabort=()=>reject(new ApiError(0,'upload_cancelled','Upload cancelled'))
+      xhr.onload=()=>{
+        if(xhr.status===401)this.unauthorized()
+        let body:Envelope<T>|ApiFailure
+        try{body=JSON.parse(xhr.responseText)}catch{reject(new ApiError(xhr.status,'invalid_response','Invalid server response'));return}
+        if(xhr.status>=200&&xhr.status<300){resolve(body as Envelope<T>);return}
+        const failure=body as ApiFailure
+        const fallbackCode=xhr.status===401?'unauthorized':xhr.status===403?'forbidden':'request_failed'
+        reject(new ApiError(xhr.status,failure.error?.code??fallbackCode,failure.error?.message??'Request failed'))
+      }
+      xhr.send(body)
+    })
+  }
   async getBlob(path:string):Promise<{blob:Blob;filename:string}>{
     const headers=new Headers();headers.set('Accept','*/*');const token=this.token();if(token)headers.set('Authorization',bearer(token))
     let response:Response

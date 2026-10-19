@@ -41,6 +41,15 @@ describe('visibleAuditFields', () => {
 })
 
 describe('auditPresentation', () => {
+  it('localizes attachment failures and resolves the income recipient',()=>{
+    expect(auditFieldValue('reason','unsupported_format',{},'zh-TW',id=>id)).toBe('不支援的檔案格式或內容')
+    expect(auditFieldValue('earned_by','receiver',{},'en',id=>`Name (${id})`)).toBe('Name (receiver)')
+    expect(auditFieldValue('target_type','income',{},'zh-TW',id=>id)).toBe('收入')
+  })
+  it('localizes historical recurring failures with a duplicated prefix',()=>{
+    const view=auditPresentation({id:'1',actorId:'',groupId:'',scope:'system',action:'recurring_income.income_occurrence.confirmed',resource:'recurring_income',resourceId:'',outcome:'failure',createdAt:''},'zh-TW')
+    expect(view.action).toBe('確認週期收入入帳')
+  })
   it('translates every action introduced alongside the currency/detail fixes', () => {
     const regenerated = auditPresentation({ id: '1', actorId: '', groupId: '', scope: 'group', action: 'subscription.occurrence_regenerated', resource: 'expense', resourceId: '', outcome: 'success', createdAt: '' }, 'zh-TW')
     const tempMember = auditPresentation({ id: '2', actorId: '', groupId: '', scope: 'group', action: 'temp_member.created', resource: 'membership', resourceId: '', outcome: 'success', createdAt: '' }, 'zh-TW')

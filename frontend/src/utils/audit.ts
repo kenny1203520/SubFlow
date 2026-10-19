@@ -1,17 +1,23 @@
 import type { AuditLog } from '../api/types'
 import { auditText } from '../locales/audit'
+import { incomeAttachmentAudit } from '../locales/incomeAttachments'
 import { formatMoney } from '../api/money'
 
 type Locale = 'zh-TW' | 'en'
 
 // Fields whose value is a PocketBase user ID rather than plain data --
 // resolved to "Name (id)" via a caller-supplied lookup instead of shown raw.
-const userIDFields = new Set(['from_user_id', 'to_user_id', 'paid_by'])
+const userIDFields = new Set(['from_user_id', 'to_user_id', 'paid_by', 'earned_by'])
 
 const fallback = (value: string) => value.replace(/[._-]+/g, ' ').replace(/\b\w/g, char => char.toUpperCase())
 export function auditPresentation(log: AuditLog, locale: Locale) {
   const text = auditText[locale]
-  return { action: text.action[log.action] || fallback(log.action), resource: text.resource[log.resource] || fallback(log.resource), outcome: log.outcome === 'success' ? text.success : log.outcome === 'failure' ? text.failure : fallback(log.outcome), actor: log.actorName || text.system }
+  const extra = incomeAttachmentAudit[locale]
+  // Read older malformed event names without rewriting the audit trail.
+  let action=log.action
+  while(action.startsWith('recurring_income.recurring_income.')||action.startsWith('recurring_income.income_occurrence.'))action=action.slice('recurring_income.'.length)
+  if(action.startsWith('recurring_income.ledger.'))action='recurring_income.access_denied'
+  return { action: extra.action[action] || text.action[action] || fallback(action), resource: extra.resource[log.resource] || text.resource[log.resource] || fallback(log.resource), outcome: log.outcome === 'success' ? text.success : log.outcome === 'failure' ? text.failure : fallback(log.outcome), actor: log.actorName || text.system }
 }
 
 export interface AuditChange { field: string; before?: unknown; after?: unknown }
@@ -30,7 +36,7 @@ export function parseAuditSummary(raw?: string): AuditSummary | null {
 }
 
 export function auditFieldLabel(field: string, locale: Locale) {
-  return auditText[locale].field[field as keyof typeof auditText[Locale]['field']] || fallback(field)
+  return incomeAttachmentAudit[locale].field[field] || auditText[locale].field[field as keyof typeof auditText[Locale]['field']] || fallback(field)
 }
 
 export function auditValueLabel(value: unknown, locale: Locale): string {
@@ -53,6 +59,8 @@ export function auditFieldValue(field: string, value: unknown, siblingFields: Re
   if (value === null || value === undefined || value === '') return auditText[locale].empty
   if (field === 'amount_minor' && typeof value === 'number') return formatMoney(value, String(siblingFields?.currency ?? 'TWD'), locale)
   if (userIDFields.has(field) && typeof value === 'string') return resolveUser(value)
+  if(field==='reason' && typeof value==='string')return incomeAttachmentAudit[locale].reason[value] || value
+  if(field==='target_type' && typeof value==='string')return incomeAttachmentAudit[locale].resource[value] || auditText[locale].resource[value] || fallback(value)
   return auditValueLabel(value, locale)
 }
 

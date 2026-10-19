@@ -1,4 +1,6 @@
+import { incomeAttachmentMessages } from './incomeAttachments'
 export const zhTW = {
+  ...incomeAttachmentMessages['zh-TW'],
   incomeCurrencyRepair:'有收入的統計幣別需要修復；修復前暫不顯示收入合計與結算餘額。請至群組設定預覽重算。',previewCurrencyRepair:'預覽幣別重算／修復',
   beneficialIncome:'我的受益收入',receivedIncome:'我實際收款',shareIncomes:'收入',shareIncomeDesc:'已收款收入明細與合計',shareForecastDesc:'週期收入計畫與預計收款日期',sharePendingIncomeDesc:'等待確認的收入期數',exportSourcesHelp:'選擇要匯出的個人帳簿與群組；伺服器會逐一檢查群組存取權限。',exportForecastIncome:'包含週期收入預計與待確認期數（不列入實收）',
   incomeViews:'收入檢視',incomeDetails:'收入明細',recurringIncome:'週期收入',pendingIncome:'待確認',createRecurringIncome:'新增週期收入',recurringIncomeDescription:'設定固定週期的收入計畫。',recurringIncomeOnlyPostsWhenReceived:'只有實際收款後才列入收入',incomeBackfill:'補登漏掉的期數',incomeBackfillDescription:'先檢視漏掉的期數，再確認補登；已存在的期數會保留。',backfillThrough:'補登至',previewBackfill:'預覽期數',applyBackfill:'補登期數',backfillPeriods:'將檢查 {count} 期',endDate:'結束日期',postingMode:'入帳方式',automaticPosting:'自動入帳',manualConfirmation:'人工確認',nextReceipt:'下次收款',actualAmount:'實際金額',confirmReceived:'確認收款',skipReason:'略過原因',skipOccurrence:'略過本期',incomePeriods:'期數紀錄',noRecurringIncome:'尚無週期收入',noIncomePeriods:'尚無期數紀錄',
