@@ -8,6 +8,7 @@ import (
 	"github.com/pocketbase/dbx"
 	"github.com/pocketbase/pocketbase/core"
 	"github.com/pocketbase/pocketbase/tools/filesystem"
+	"github.com/pocketbase/pocketbase/tools/types"
 	"subflow/internal/domain"
 )
 
@@ -64,8 +65,12 @@ func (r *AttachmentRepo) List(ctx context.Context, typ, id string, billing time.
 	params := dbx.Params{"type": typ, "target": id}
 	filter := "target_type={:type} && target_id={:target}"
 	if !billing.IsZero() {
+		date, err := types.ParseDateTime(billing)
+		if err != nil {
+			return nil, err
+		}
 		filter += " && billing_at={:billing}"
-		params["billing"] = billing
+		params["billing"] = date
 	}
 	records, err := r.app(ctx).FindRecordsByFilter(CollectionAttachments, filter, "created", 0, 0, params)
 	if err != nil {
@@ -125,7 +130,11 @@ func (r *AttachmentRepo) DeleteTarget(ctx context.Context, typ, id string) error
 	return nil
 }
 func (r *AttachmentRepo) DeletePeriod(ctx context.Context, typ, id string, billing time.Time) error {
-	records, err := r.app(ctx).FindRecordsByFilter(CollectionAttachments, "target_type={:type} && target_id={:target} && billing_at={:billing}", "", 0, 0, dbx.Params{"type": typ, "target": id, "billing": billing})
+	date, err := types.ParseDateTime(billing)
+	if err != nil {
+		return err
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionAttachments, "target_type={:type} && target_id={:target} && billing_at={:billing}", "", 0, 0, dbx.Params{"type": typ, "target": id, "billing": date})
 	if err != nil {
 		return err
 	}
@@ -151,7 +160,11 @@ func (r *AttachmentRepo) ReassignTarget(ctx context.Context, fromType, fromID, t
 	return nil
 }
 func (r *AttachmentRepo) ReassignPeriod(ctx context.Context, fromType, fromID string, billing time.Time, toType, toID string) error {
-	records, err := r.app(ctx).FindRecordsByFilter(CollectionAttachments, "target_type={:type} && target_id={:target} && billing_at={:billing}", "", 0, 0, dbx.Params{"type": fromType, "target": fromID, "billing": billing})
+	date, err := types.ParseDateTime(billing)
+	if err != nil {
+		return err
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionAttachments, "target_type={:type} && target_id={:target} && billing_at={:billing}", "", 0, 0, dbx.Params{"type": fromType, "target": fromID, "billing": date})
 	if err != nil {
 		return err
 	}
