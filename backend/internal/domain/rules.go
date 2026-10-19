@@ -18,15 +18,19 @@ import (
 )
 
 var (
-	ErrNotFound         = errors.New("not found")
-	ErrForbidden        = errors.New("forbidden")
-	ErrConflict         = errors.New("conflict")
-	ErrInvalid          = errors.New("invalid input")
-	ErrRateUnavailable  = errors.New("exchange rate unavailable")
-	ErrSetupDisabled    = errors.New("setup disabled")
-	ErrSetupToken       = errors.New("setup token invalid")
-	ErrConfiguration    = errors.New("configuration unavailable")
-	ErrAuditUnavailable = errors.New("audit unavailable")
+	ErrNotFound          = errors.New("not found")
+	ErrForbidden         = errors.New("forbidden")
+	ErrConflict          = errors.New("conflict")
+	ErrInvalid           = errors.New("invalid input")
+	ErrRateUnavailable   = errors.New("exchange rate unavailable")
+	ErrSetupDisabled     = errors.New("setup disabled")
+	ErrSetupToken        = errors.New("setup token invalid")
+	ErrConfiguration     = errors.New("configuration unavailable")
+	ErrAuditUnavailable  = errors.New("audit unavailable")
+	ErrAttachmentFormat  = errors.New("unsupported attachment format")
+	ErrAttachmentSize    = errors.New("attachment size exceeded")
+	ErrAttachmentCount   = errors.New("attachment count exceeded")
+	ErrAttachmentStorage = errors.New("attachment storage unavailable")
 )
 
 func NormalizeEmail(value string) string {

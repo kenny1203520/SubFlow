@@ -199,6 +199,9 @@ func attachmentTargetFromRequest(e *core.RequestEvent) (application.AttachmentTa
 func (a *API) listAttachments(e *core.RequestEvent) error {
 	target, err := attachmentTargetFromRequest(e)
 	if err != nil {
+		if auditErr := a.Service.RecordAttachmentFailure(e.Request.Context(), authID(e), "attachment.listed", "invalid_billing_time"); auditErr != nil {
+			return fail(e, auditErr)
+		}
 		return fail(e, err)
 	}
 	result, err := a.Service.ListAttachments(e.Request.Context(), authID(e), target)
@@ -219,6 +222,7 @@ func (a *API) uploadAttachment(e *core.RequestEvent) error {
 	if err := e.Request.ParseMultipartForm(8 * 1024 * 1024); err != nil {
 		return auditFailure("invalid_multipart")
 	}
+	defer e.Request.MultipartForm.RemoveAll()
 	var target application.AttachmentTarget
 	target.Type = e.Request.FormValue("targetType")
 	target.ID = e.Request.FormValue("targetId")
@@ -290,6 +294,14 @@ func fail(e *core.RequestEvent, err error) error {
 		status = http.StatusServiceUnavailable
 		code = "audit_unavailable"
 		message = "稽核紀錄暫時無法寫入，操作未完成"
+	case errors.Is(err, domain.ErrAttachmentFormat):
+		status, code = http.StatusUnprocessableEntity, "attachment_format"
+	case errors.Is(err, domain.ErrAttachmentSize):
+		status, code = http.StatusRequestEntityTooLarge, "attachment_size"
+	case errors.Is(err, domain.ErrAttachmentCount):
+		status, code = http.StatusConflict, "attachment_count"
+	case errors.Is(err, domain.ErrAttachmentStorage):
+		status, code = http.StatusServiceUnavailable, "attachment_storage"
 	case errors.Is(err, domain.ErrConfiguration):
 		status = http.StatusServiceUnavailable
 		code = "configuration_error"

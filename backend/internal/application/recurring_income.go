@@ -17,7 +17,13 @@ func (s *Service) AuthorizeRecurringIncome(ctx context.Context, actor string, v 
 	return s.recurringPermission(ctx, actor, v, action)
 }
 func (s *Service) RecurringIncomeRequestFailure(ctx context.Context, actor string, v *domain.RecurringIncome, action string, cause error) error {
-	return s.recurringIncomeFailure(ctx, actor, v, "recurring_income."+action, cause)
+	if strings.HasPrefix(action, "ledger.") {
+		action = "recurring_income.access_denied"
+	}
+	if !strings.HasPrefix(action, "recurring_income.") && !strings.HasPrefix(action, "income_occurrence.") {
+		action = "recurring_income." + action
+	}
+	return s.recurringIncomeFailure(ctx, actor, v, action, cause)
 }
 
 func (s *Service) recurringPermission(ctx context.Context, actor string, v *domain.RecurringIncome, action string) error {

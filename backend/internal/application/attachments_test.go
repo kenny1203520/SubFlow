@@ -18,6 +18,8 @@ func TestAttachmentMediaValidatesExtensionAndContent(t *testing.T) {
 		{"fake.png", []byte("%PDF-1.7 document"), ""},
 		{"empty.pdf", nil, ""},
 		{"payload.exe", []byte("MZ executable"), ""},
+		{"short.heic", []byte("0000ftypheic"), ""},
+		{"short.heif", []byte("0000ftypmif1abcdefghijklmnopqrs"), ""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

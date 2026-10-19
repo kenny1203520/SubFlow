@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -141,6 +143,8 @@ func attachmentLimits(ctx context.Context, s *Service, groupID string) (domain.A
 			if g.AttachmentMaxCount > 0 {
 				count = g.AttachmentMaxCount
 			}
+		} else {
+			return domain.AttachmentLimits{}, err
 		}
 	}
 	if size > maxSize {
@@ -153,11 +157,23 @@ func attachmentLimits(ctx context.Context, s *Service, groupID string) (domain.A
 }
 
 func (s *Service) attachmentFailure(ctx context.Context, userID, groupID, action, id, reason string) error {
-	return s.audit(ctx, userID, groupID, action, "attachment", id, "failure", encodeAuditSummary(map[string]any{"reason": reason}, nil))
+	if err := s.audit(ctx, userID, groupID, action, "attachment", id, "failure", encodeAuditSummary(map[string]any{"reason": reason}, nil)); err != nil {
+		slog.ErrorContext(ctx, "attachment failure audit unavailable", "action", action, "reason", reason)
+		return errors.Join(domain.ErrAuditUnavailable, err)
+	}
+	return nil
 }
 
 func (s *Service) RecordAttachmentFailure(ctx context.Context, userID, action, reason string) error {
 	return s.attachmentFailure(ctx, userID, "", action, "", reason)
+}
+
+func (s *Service) attachmentSuccess(ctx context.Context, actor, group, action, id, summary string) error {
+	if err := s.audit(ctx, actor, group, action, "attachment", id, "success", summary); err != nil {
+		slog.ErrorContext(ctx, "attachment success audit unavailable", "action", action)
+		return errors.Join(domain.ErrAuditUnavailable, err)
+	}
+	return nil
 }
 
 func (s *Service) ListAttachments(ctx context.Context, userID string, target AttachmentTarget) (domain.AttachmentPage, error) {
@@ -171,6 +187,9 @@ func (s *Service) ListAttachments(ctx context.Context, userID string, target Att
 	page := domain.AttachmentPage{}
 	page.Limits, e = attachmentLimits(ctx, s, a.GroupID)
 	if e != nil {
+		if err := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.listed", target.ID, "limits_unavailable"); err != nil {
+			return page, err
+		}
 		return page, e
 	}
 	if a.GroupID == "" {
@@ -178,6 +197,9 @@ func (s *Service) ListAttachments(ctx context.Context, userID string, target Att
 	} else {
 		perms, err := s.GroupPermissions(ctx, userID, a.GroupID)
 		if err != nil {
+			if auditErr := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.listed", target.ID, "permission_unavailable"); auditErr != nil {
+				return page, auditErr
+			}
 			return page, err
 		}
 		has := func(want string) bool {
@@ -189,6 +211,17 @@ func (s *Service) ListAttachments(ctx context.Context, userID string, target Att
 			return false
 		}
 		page.Access = domain.AttachmentAccess{CanRead: has("ledger.attachments.read"), CanUpload: has("ledger.attachments.upload"), CanDelete: has("ledger.attachments.delete")}
+		if page.Access.CanUpload || page.Access.CanDelete {
+			if err := s.attachmentHistoricalWrite(ctx, userID, a); errors.Is(err, domain.ErrForbidden) {
+				page.Access.CanUpload = false
+				page.Access.CanDelete = false
+			} else if err != nil {
+				if auditErr := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.listed", target.ID, "permission_unavailable"); auditErr != nil {
+					return page, auditErr
+				}
+				return page, err
+			}
+		}
 	}
 	if !page.Access.CanRead {
 		if auditErr := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.listed", a.TargetID, "permission_denied"); auditErr != nil {
@@ -198,9 +231,12 @@ func (s *Service) ListAttachments(ctx context.Context, userID string, target Att
 	}
 	page.Items, e = s.Stores.Attachments.List(ctx, a.TargetType, a.TargetID, a.BillingAt)
 	if e != nil {
+		if err := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.listed", target.ID, "storage_list_failed"); err != nil {
+			return page, err
+		}
 		return page, e
 	}
-	if e = s.audit(ctx, userID, a.GroupID, "attachment.listed", "attachment", a.TargetID, "success", encodeAuditSummary(map[string]any{"target_type": a.TargetType, "count": len(page.Items)}, nil)); e != nil {
+	if e = s.attachmentSuccess(ctx, userID, a.GroupID, "attachment.listed", a.TargetID, encodeAuditSummary(map[string]any{"target_type": a.TargetType, "count": len(page.Items)}, nil)); e != nil {
 		return domain.AttachmentPage{}, e
 	}
 	return page, nil
@@ -225,7 +261,7 @@ func attachmentMedia(name string, data []byte) (string, bool) {
 			return "image/webp", true
 		}
 	case ".heic", ".heif":
-		if len(data) >= 12 && string(data[4:8]) == "ftyp" && (bytes.Contains(data[:32], []byte("heic")) || bytes.Contains(data[:32], []byte("heix")) || bytes.Contains(data[:32], []byte("mif1"))) {
+		if len(data) >= 32 && string(data[4:8]) == "ftyp" && (bytes.Contains(data[:32], []byte("heic")) || bytes.Contains(data[:32], []byte("heix")) || bytes.Contains(data[:32], []byte("mif1"))) {
 			return "image/heic", true
 		}
 	case ".pdf":
@@ -299,14 +335,32 @@ func (s *Service) UploadAttachment(ctx context.Context, userID string, target At
 		}
 		return nil, e
 	}
-	if target.RequestID == "" || len(target.RequestID) > 64 {
-		return nil, domain.ErrInvalid
-	}
 	fail := func(err error) (*domain.Attachment, error) {
-		if auditErr := s.audit(ctx, userID, a.GroupID, "attachment.uploaded", "attachment", a.TargetID, "failure", encodeAuditSummary(map[string]any{"reason": "upload_rejected", "target_type": a.TargetType}, nil)); auditErr != nil {
-			return nil, auditErr
+		reason := "storage_write_failed"
+		switch {
+		case errors.Is(err, domain.ErrInvalid):
+			reason = "invalid_request"
+		case errors.Is(err, domain.ErrForbidden):
+			reason = "permission_denied"
+		case errors.Is(err, domain.ErrAttachmentFormat):
+			reason = "unsupported_format"
+		case errors.Is(err, domain.ErrAttachmentSize):
+			reason = "file_too_large"
+		case errors.Is(err, domain.ErrAttachmentCount):
+			reason = "count_limit"
+		case errors.Is(err, domain.ErrConflict):
+			reason = "request_conflict"
+		case errors.Is(err, domain.ErrAuditUnavailable):
+			reason = "audit_unavailable"
+		}
+		if auditErr := s.audit(ctx, userID, a.GroupID, "attachment.uploaded", "attachment", a.TargetID, "failure", encodeAuditSummary(map[string]any{"reason": reason, "target_type": a.TargetType}, nil)); auditErr != nil {
+			slog.ErrorContext(ctx, "attachment failure audit unavailable", "action", "attachment.uploaded", "reason", reason)
+			return nil, errors.Join(domain.ErrAuditUnavailable, err, auditErr)
 		}
 		return nil, err
+	}
+	if target.RequestID == "" || len(target.RequestID) > 64 {
+		return fail(domain.ErrInvalid)
 	}
 	if a.GroupID != "" {
 		if e = s.groupPermission(ctx, userID, a.GroupID, "ledger.attachments.read"); e != nil {
@@ -315,10 +369,16 @@ func (s *Service) UploadAttachment(ctx context.Context, userID string, target At
 		if e = s.groupPermission(ctx, userID, a.GroupID, "ledger.attachments.upload"); e != nil {
 			return fail(e)
 		}
+		if e = s.attachmentHistoricalWrite(ctx, userID, a); e != nil {
+			return fail(e)
+		}
 	}
 	if old, err := s.Stores.Attachments.FindByRequest(ctx, userID, target.RequestID); err == nil {
 		if old.TargetType != a.TargetType || old.TargetID != a.TargetID || !old.BillingAt.Equal(a.BillingAt) {
 			return fail(domain.ErrConflict)
+		}
+		if err := s.attachmentSuccess(ctx, userID, a.GroupID, "attachment.uploaded", a.TargetID, encodeAuditSummary(map[string]any{"target_type": a.TargetType, "replayed": true}, nil)); err != nil {
+			return nil, err
 		}
 		return old, nil
 	} else if !errors.Is(err, domain.ErrNotFound) {
@@ -329,8 +389,11 @@ func (s *Service) UploadAttachment(ctx context.Context, userID string, target At
 		return fail(e)
 	}
 	media, ok := attachmentMedia(name, data)
-	if !ok || int64(len(data)) > limits.MaxSize {
-		return fail(domain.ErrInvalid)
+	if int64(len(data)) > limits.MaxSize {
+		return fail(domain.ErrAttachmentSize)
+	}
+	if !ok {
+		return fail(domain.ErrAttachmentFormat)
 	}
 	name = strings.ReplaceAll(name, "\\", "/")
 	a.FileName = filepath.Base(name)
@@ -338,15 +401,15 @@ func (s *Service) UploadAttachment(ctx context.Context, userID string, target At
 	e = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		items, listErr := s.Stores.Attachments.List(tx, a.TargetType, a.TargetID, a.BillingAt)
 		if listErr != nil {
-			return listErr
+			return fmt.Errorf("%w: %w", domain.ErrAttachmentStorage, listErr)
 		}
 		if len(items) >= limits.MaxCount {
-			return domain.ErrConflict
+			return domain.ErrAttachmentCount
 		}
 		if err := s.Stores.Attachments.Create(tx, &a, data); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", domain.ErrAttachmentStorage, err)
 		}
-		return s.audit(tx, userID, a.GroupID, "attachment.uploaded", "attachment", a.TargetID, "success", encodeAuditSummary(map[string]any{"target_type": a.TargetType, "size": len(data)}, nil))
+		return s.attachmentSuccess(tx, userID, a.GroupID, "attachment.uploaded", a.TargetID, encodeAuditSummary(map[string]any{"target_type": a.TargetType, "size": len(data)}, nil))
 	})
 	if e != nil {
 		return fail(e)
@@ -404,7 +467,7 @@ func (s *Service) ReadAttachment(ctx context.Context, userID, id string) (Attach
 		}
 		return AttachmentContent{}, e
 	}
-	if e = s.audit(ctx, userID, a.GroupID, "attachment.downloaded", "attachment", id, "success", encodeAuditSummary(map[string]any{"target_type": a.TargetType, "size": a.Size}, nil)); e != nil {
+	if e = s.attachmentSuccess(ctx, userID, a.GroupID, "attachment.downloaded", id, encodeAuditSummary(map[string]any{"target_type": a.TargetType, "size": a.Size}, nil)); e != nil {
 		return AttachmentContent{}, e
 	}
 	return AttachmentContent{Data: data, FileName: a.FileName, MediaType: a.MediaType}, nil
@@ -415,6 +478,12 @@ func (s *Service) DeleteAttachment(ctx context.Context, userID, id string) error
 		return e
 	}
 	if a.GroupID != "" {
+		if e = s.attachmentHistoricalWrite(ctx, userID, *a); e != nil {
+			if auditErr := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.deleted", id, "permission_denied"); auditErr != nil {
+				return auditErr
+			}
+			return e
+		}
 		if e = s.groupPermission(ctx, userID, a.GroupID, "ledger.attachments.delete"); e != nil {
 			if auditErr := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.deleted", id, "permission_denied"); auditErr != nil {
 				return auditErr
@@ -426,7 +495,7 @@ func (s *Service) DeleteAttachment(ctx context.Context, userID, id string) error
 		if err := s.Stores.Attachments.Delete(tx, id); err != nil {
 			return err
 		}
-		return s.audit(tx, userID, a.GroupID, "attachment.deleted", "attachment", id, "success", encodeAuditSummary(map[string]any{"target_type": a.TargetType, "size": a.Size}, nil))
+		return s.attachmentSuccess(tx, userID, a.GroupID, "attachment.deleted", id, encodeAuditSummary(map[string]any{"target_type": a.TargetType, "size": a.Size}, nil))
 	})
 	if e != nil {
 		if auditErr := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.deleted", id, "storage_delete_failed"); auditErr != nil {
@@ -434,4 +503,44 @@ func (s *Service) DeleteAttachment(ctx context.Context, userID, id string) error
 		}
 	}
 	return e
+}
+
+// Changing evidence attached to a historical record uses the same group cutoff.
+func (s *Service) attachmentHistoricalWrite(ctx context.Context, actor string, a domain.Attachment) error {
+	if a.GroupID == "" {
+		return nil
+	}
+	var at time.Time
+	switch a.TargetType {
+	case "expense":
+		v, err := s.Stores.Expenses.Get(ctx, a.TargetID)
+		if err != nil {
+			return err
+		}
+		at = v.IncurredOn
+	case "income":
+		v, err := s.Stores.Incomes.Get(ctx, a.TargetID)
+		if err != nil {
+			return err
+		}
+		at = v.ReceivedOn
+	case "settlement":
+		v, err := s.Stores.Settlements.Get(ctx, a.TargetID)
+		if err != nil {
+			return err
+		}
+		at = v.SettledOn
+	case "subscription_period":
+		at = a.BillingAt
+	default:
+		return nil
+	}
+	start, _, err := s.monthRange(ctx, actor, a.GroupID, "")
+	if err != nil {
+		return err
+	}
+	if at.Before(start) {
+		return s.groupPermission(ctx, actor, a.GroupID, "ledger.records.historical_write")
+	}
+	return nil
 }
