@@ -304,6 +304,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "earned_by", CollectionId: users.Id, MaxSelect: 1}, &core.TextField{Name: "title", Required: true, Max: 160}, &core.TextField{Name: "category", Max: 120}, &core.RelationField{Name: "category_ref", CollectionId: categories.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.SelectField{Name: "rate_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.DateField{Name: "received_on", Required: true}, &core.SelectField{Name: "split_mode", Values: []string{"equal", "amount", "percentage"}, MaxSelect: 1}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_incomes_owner_date", false, "owner, received_on", "")
 		c.AddIndex("idx_incomes_group_date", false, "group, received_on", "")
+		c.Fields.GetByName("amount_minor").(*core.NumberField).Required = false
 	})
 	if err != nil {
 		return "", err
@@ -325,6 +326,8 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	_, err = ensureCollection(app, CollectionIncomeSplits, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "income", Required: true, CollectionId: mustCollectionID(app, CollectionIncomes), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "percentage_bp", OnlyInt: true})
 		c.AddIndex("idx_splits_income_user", true, "income, user", "")
+		// PocketBase treats numeric zero as blank for Required fields.
+		c.Fields.GetByName("amount_minor").(*core.NumberField).Required = false
 	})
 	if err != nil {
 		return "", err
@@ -391,6 +394,11 @@ func containsIndex(values []string, target string) bool {
 }
 func syncField(current, desired core.Field) bool {
 	switch want := desired.(type) {
+	case *core.NumberField:
+		if value, ok := current.(*core.NumberField); ok && value.Required != want.Required {
+			value.Required = want.Required
+			return true
+		}
 	case *core.RelationField:
 		if value, ok := current.(*core.RelationField); ok && value.Required != want.Required {
 			value.Required = want.Required

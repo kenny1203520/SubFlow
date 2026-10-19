@@ -18,14 +18,15 @@ import (
 )
 
 var (
-	ErrNotFound        = errors.New("not found")
-	ErrForbidden       = errors.New("forbidden")
-	ErrConflict        = errors.New("conflict")
-	ErrInvalid         = errors.New("invalid input")
-	ErrRateUnavailable = errors.New("exchange rate unavailable")
-	ErrSetupDisabled   = errors.New("setup disabled")
-	ErrSetupToken      = errors.New("setup token invalid")
-	ErrConfiguration   = errors.New("configuration unavailable")
+	ErrNotFound         = errors.New("not found")
+	ErrForbidden        = errors.New("forbidden")
+	ErrConflict         = errors.New("conflict")
+	ErrInvalid          = errors.New("invalid input")
+	ErrRateUnavailable  = errors.New("exchange rate unavailable")
+	ErrSetupDisabled    = errors.New("setup disabled")
+	ErrSetupToken       = errors.New("setup token invalid")
+	ErrConfiguration    = errors.New("configuration unavailable")
+	ErrAuditUnavailable = errors.New("audit unavailable")
 )
 
 func NormalizeEmail(value string) string {

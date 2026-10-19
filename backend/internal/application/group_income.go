@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -49,7 +51,8 @@ func validGroupIncome(v *domain.Income) bool {
 
 func (s *Service) groupIncomeFailure(ctx context.Context, userID, groupID, action, id, reason string, cause error) error {
 	if auditErr := s.audit(ctx, userID, groupID, action, "income", id, "failure", encodeAuditSummary(map[string]any{"reason": reason}, nil)); auditErr != nil {
-		return auditErr
+		slog.Error("income failure audit could not be persisted", "action", action, "resource_id", id, "audit_error", auditErr)
+		return errors.Join(domain.ErrAuditUnavailable, auditErr, cause)
 	}
 	return cause
 }
@@ -63,17 +66,8 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 		} else {
 			v.Title = strings.TrimSpace(v.Title)
 		}
-		if v.AmountMinor == 0 && current.AmountMinor != 0 {
-			v.AmountMinor = current.AmountMinor
-		}
 		if v.Currency == "" {
 			v.Currency = current.Currency
-		}
-		if v.CategoryID == "" {
-			v.CategoryID = current.CategoryID
-		}
-		if v.Category == "" {
-			v.Category = current.Category
 		}
 		if v.EarnedBy == "" {
 			v.EarnedBy = current.EarnedBy
@@ -83,9 +77,6 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 		}
 		if v.RateMode == "" {
 			v.RateMode = current.RateMode
-		}
-		if v.Notes == "" {
-			v.Notes = current.Notes
 		}
 		if v.SplitMode == "" {
 			v.SplitMode = current.SplitMode
@@ -99,6 +90,13 @@ func (s *Service) prepareGroupIncome(ctx context.Context, userID string, v *doma
 	}
 	if v.RateMode == "" {
 		v.RateMode = domain.RateAutomatic
+	}
+	v.Title = strings.TrimSpace(v.Title)
+	if v.ReceivedOn.IsZero() {
+		v.ReceivedOn = s.Now().UTC()
+	}
+	if err := s.incomeHistoryPermission(ctx, userID, current, v); err != nil {
+		return err
 	}
 	group, err := s.Stores.Groups.Get(ctx, v.GroupID)
 	if err != nil {
@@ -158,15 +156,7 @@ func (s *Service) CreateGroupIncome(ctx context.Context, userID string, v domain
 	if err := s.prepareGroupIncome(ctx, userID, &v, nil); err != nil {
 		return nil, s.groupIncomeFailure(ctx, userID, v.GroupID, "income.created", "", "invalid_or_write_failed", err)
 	}
-	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
-		if createErr := s.Stores.Incomes.Create(tx, &v); createErr != nil {
-			return createErr
-		}
-		return s.Stores.Incomes.ReplaceSplits(tx, v.ID, v.Splits)
-	}); err != nil {
-		return nil, s.groupIncomeFailure(ctx, userID, v.GroupID, "income.created", "", "write_failed", err)
-	}
-	if err := s.audit(ctx, userID, v.GroupID, "income.created", "income", v.ID, "success", incomeAuditSummary(&v)); err != nil {
+	if err := s.persistIncome(ctx, userID, &v, true); err != nil {
 		return nil, err
 	}
 	return &v, nil
@@ -188,7 +178,7 @@ func (s *Service) ListGroupIncomes(ctx context.Context, userID, groupID string, 
 func (s *Service) UpdateGroupIncome(ctx context.Context, userID string, v domain.Income) (*domain.Income, error) {
 	current, err := s.Stores.Incomes.Get(ctx, v.ID)
 	if err != nil {
-		return nil, err
+		return nil, s.groupIncomeFailure(ctx, userID, "", "income.updated", v.ID, "not_found", err)
 	}
 	if current.GroupID == "" {
 		return nil, s.groupIncomeFailure(ctx, userID, "", "income.updated", v.ID, "not_group_income", domain.ErrInvalid)
@@ -200,15 +190,7 @@ func (s *Service) UpdateGroupIncome(ctx context.Context, userID string, v domain
 		return nil, s.groupIncomeFailure(ctx, userID, current.GroupID, "income.updated", v.ID, "invalid_or_write_failed", err)
 	}
 	v.ID, v.OwnerID = current.ID, ""
-	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
-		if updateErr := s.Stores.Incomes.Update(tx, &v); updateErr != nil {
-			return updateErr
-		}
-		return s.Stores.Incomes.ReplaceSplits(tx, v.ID, v.Splits)
-	}); err != nil {
-		return nil, s.groupIncomeFailure(ctx, userID, current.GroupID, "income.updated", v.ID, "write_failed", err)
-	}
-	if err = s.audit(ctx, userID, current.GroupID, "income.updated", "income", v.ID, "success", incomeAuditSummary(&v)); err != nil {
+	if err = s.persistIncome(ctx, userID, &v, false); err != nil {
 		return nil, err
 	}
 	return &v, nil
@@ -216,7 +198,7 @@ func (s *Service) UpdateGroupIncome(ctx context.Context, userID string, v domain
 func (s *Service) DeleteGroupIncome(ctx context.Context, userID, id string) error {
 	current, err := s.Stores.Incomes.Get(ctx, id)
 	if err != nil {
-		return err
+		return s.groupIncomeFailure(ctx, userID, "", "income.deleted", id, "not_found", err)
 	}
 	if current.GroupID == "" {
 		return s.groupIncomeFailure(ctx, userID, "", "income.deleted", id, "not_group_income", domain.ErrInvalid)
@@ -224,9 +206,12 @@ func (s *Service) DeleteGroupIncome(ctx context.Context, userID, id string) erro
 	if err = s.groupPermission(ctx, userID, current.GroupID, "ledger.incomes.delete"); err != nil {
 		return s.groupIncomeFailure(ctx, userID, current.GroupID, "income.deleted", id, "forbidden", err)
 	}
+	if err = s.incomeHistoryPermission(ctx, userID, current); err != nil {
+		return s.groupIncomeFailure(ctx, userID, current.GroupID, "income.deleted", id, "historical_forbidden", err)
+	}
 	items, err := s.Stores.Attachments.List(ctx, "income", id, time.Time{})
 	if err != nil {
-		return err
+		return s.groupIncomeFailure(ctx, userID, current.GroupID, "income.deleted", id, "attachments_failed", err)
 	}
 	if len(items) > 0 {
 		for _, permission := range []string{"ledger.attachments.read", "ledger.attachments.delete"} {

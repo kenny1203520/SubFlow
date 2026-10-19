@@ -266,6 +266,10 @@ func fail(e *core.RequestEvent, err error) error {
 	code := "internal_error"
 	message := "服務暫時無法處理請求"
 	switch {
+	case errors.Is(err, domain.ErrAuditUnavailable):
+		status = http.StatusServiceUnavailable
+		code = "audit_unavailable"
+		message = "稽核紀錄暫時無法寫入，操作未完成"
 	case errors.Is(err, domain.ErrConfiguration):
 		status = http.StatusServiceUnavailable
 		code = "configuration_error"
@@ -1222,7 +1226,7 @@ func (a *API) listPersonalIncomes(e *core.RequestEvent) error {
 func (a *API) createPersonalIncome(e *core.RequestEvent) error {
 	var v domain.Income
 	if err := e.BindBody(&v); err != nil {
-		return fail(e, domain.ErrInvalid)
+		return fail(e, a.Service.IncomeRequestFailure(e.Request.Context(), authID(e), "", "income.created", "", domain.ErrInvalid))
 	}
 	created, err := a.Service.CreateIncome(e.Request.Context(), authID(e), v)
 	if err != nil {
@@ -1261,7 +1265,7 @@ func (a *API) personalLedger(e *core.RequestEvent) error {
 }
 
 func (a *API) listGroupIncomes(e *core.RequestEvent) error {
-	p, err := pageRequest(e, "-received_on")
+	p, err := pageRequest(e, "incomes")
 	if err != nil {
 		return fail(e, err)
 	}
@@ -1274,7 +1278,7 @@ func (a *API) listGroupIncomes(e *core.RequestEvent) error {
 func (a *API) createGroupIncome(e *core.RequestEvent) error {
 	var v domain.Income
 	if err := e.BindBody(&v); err != nil {
-		return fail(e, domain.ErrInvalid)
+		return fail(e, a.Service.IncomeRequestFailure(e.Request.Context(), authID(e), groupID(e), "income.created", "", domain.ErrInvalid))
 	}
 	v.GroupID = groupID(e)
 	if v.EarnedBy == "" {
@@ -1285,45 +1289,6 @@ func (a *API) createGroupIncome(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusCreated, created, nil)
-}
-func (a *API) updateGroupOrPersonalIncome(e *core.RequestEvent) error {
-	var v domain.Income
-	if err := e.BindBody(&v); err != nil {
-		return fail(e, domain.ErrInvalid)
-	}
-	v.ID = e.Request.PathValue("id")
-	current, err := a.Service.Stores.Incomes.Get(e.Request.Context(), v.ID)
-	if err != nil {
-		return fail(e, err)
-	}
-	if current.GroupID != "" {
-		updated, updateErr := a.Service.UpdateGroupIncome(e.Request.Context(), authID(e), v)
-		if updateErr != nil {
-			return fail(e, updateErr)
-		}
-		return ok(e, http.StatusOK, updated, nil)
-	}
-	updated, err := a.Service.UpdateIncome(e.Request.Context(), authID(e), v)
-	if err != nil {
-		return fail(e, err)
-	}
-	return ok(e, http.StatusOK, updated, nil)
-}
-func (a *API) deleteGroupOrPersonalIncome(e *core.RequestEvent) error {
-	id := e.Request.PathValue("id")
-	current, err := a.Service.Stores.Incomes.Get(e.Request.Context(), id)
-	if err != nil {
-		return fail(e, err)
-	}
-	if current.GroupID != "" {
-		err = a.Service.DeleteGroupIncome(e.Request.Context(), authID(e), id)
-	} else {
-		err = a.Service.DeleteIncome(e.Request.Context(), authID(e), id)
-	}
-	if err != nil {
-		return fail(e, err)
-	}
-	return noContent(e)
 }
 func (a *API) groupLedger(e *core.RequestEvent) error {
 	v, err := a.Service.GroupLedger(e.Request.Context(), authID(e), groupID(e), e.Request.URL.Query().Get("date"))
