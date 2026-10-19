@@ -213,6 +213,7 @@ type SettlementRepository interface {
 
 type AttachmentRepository interface {
 	Create(context.Context, *domain.Attachment, []byte) error
+	Rename(context.Context, string, string) error
 	Get(context.Context, string) (*domain.Attachment, error)
 	FindByRequest(context.Context, string, string) (*domain.Attachment, error)
 	List(context.Context, string, string, time.Time) ([]domain.Attachment, error)

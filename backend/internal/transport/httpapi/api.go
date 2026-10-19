@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"io"
 	"mime"
@@ -181,6 +182,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/attachments", a.uploadAttachment).Bind(bind)
 	e.Router.GET("/api/subflow/v1/attachments/{id}/content", a.readAttachment).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/attachments/{id}", a.deleteAttachment).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/attachments/{id}", a.renameAttachment).Bind(bind)
 	e.Router.GET("/api/subflow/v1/export/personal", a.exportPersonalLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/export", a.exportGroupLedger).Bind(bind)
 }
@@ -271,6 +273,25 @@ func (a *API) deleteAttachment(e *core.RequestEvent) error {
 	}
 	return noContent(e)
 }
+func (a *API) renameAttachment(e *core.RequestEvent) error {
+	var input struct {
+		FileName *string `json:"fileName"`
+	}
+	e.Request.Body = http.MaxBytesReader(e.Response, e.Request.Body, 16*1024)
+	decoder := json.NewDecoder(e.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&input); err != nil || input.FileName == nil {
+		return fail(e, a.Service.AttachmentRenameRequestFailure(e.Request.Context(), authID(e), e.Request.PathValue("id")))
+	}
+	if err := decoder.Decode(new(any)); err != io.EOF {
+		return fail(e, a.Service.AttachmentRenameRequestFailure(e.Request.Context(), authID(e), e.Request.PathValue("id")))
+	}
+	attachment, err := a.Service.RenameAttachment(e.Request.Context(), authID(e), e.Request.PathValue("id"), *input.FileName)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, attachment, nil)
+}
 
 func authID(e *core.RequestEvent) string {
 	if e.Auth == nil {
@@ -296,6 +317,8 @@ func fail(e *core.RequestEvent, err error) error {
 		message = "稽核紀錄暫時無法寫入，操作未完成"
 	case errors.Is(err, domain.ErrAttachmentFormat):
 		status, code = http.StatusUnprocessableEntity, "attachment_format"
+	case errors.Is(err, domain.ErrAttachmentName):
+		status, code, message = http.StatusBadRequest, "attachment_name", "附件名稱無效"
 	case errors.Is(err, domain.ErrAttachmentSize):
 		status, code = http.StatusRequestEntityTooLarge, "attachment_size"
 	case errors.Is(err, domain.ErrAttachmentCount):

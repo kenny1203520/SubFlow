@@ -31,6 +31,7 @@ var (
 	ErrAttachmentSize    = errors.New("attachment size exceeded")
 	ErrAttachmentCount   = errors.New("attachment count exceeded")
 	ErrAttachmentStorage = errors.New("attachment storage unavailable")
+	ErrAttachmentName    = errors.New("invalid attachment name")
 )
 
 func NormalizeEmail(value string) string {

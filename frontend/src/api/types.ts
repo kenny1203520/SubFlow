@@ -62,7 +62,7 @@ export interface BillingDates { dates:string[];nextCursor?:string }
 export interface SubscriptionPeriod { billingAt:string;amountMinor:number;currency:Currency;baseAmountMinor:number;baseCurrency:Currency;paidBy:string;splits?:ExpenseSplit[];status:'pending'|'posted'|'failed';expenseId?:string;error?:string }
 export interface SubscriptionPeriods { periods:SubscriptionPeriod[];nextCursor?:string }
 export interface Attachment { id:string;groupId?:string;ownerId?:string;targetType:string;targetId:string;billingAt?:string;uploadedBy:string;fileName:string;mediaType:string;size:number;createdAt:string }
-export interface AttachmentAccess { canRead:boolean;canUpload:boolean;canDelete:boolean }
+export interface AttachmentAccess { canRead:boolean;canUpload:boolean;canDelete:boolean;canRename:boolean }
 export interface AttachmentLimits { maxSize:number;maxCount:number }
 export interface AttachmentPage { items:Attachment[];access:AttachmentAccess;limits:AttachmentLimits }
 export interface SubFlowEvent { type:string;groupId:string;resource:string;resourceId:string;occurredAt:string }

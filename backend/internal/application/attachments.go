@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"subflow/internal/domain"
 )
@@ -46,6 +48,14 @@ func (s *Service) attachmentTarget(ctx context.Context, userID string, target At
 		permission = "ledger.expenses.read"
 		if v.SubscriptionID != "" {
 			if _, subErr := s.Stores.Subscriptions.Get(ctx, v.SubscriptionID); subErr == nil {
+				// The canonical period target must have the same read boundary
+				// in list/upload as in download/rename/delete.
+				if a.GroupID != "" {
+					if err := s.groupPermission(ctx, userID, a.GroupID, "ledger.expenses.read"); err != nil {
+						return a, "", err
+					}
+					permission = "ledger.subscriptions.read"
+				}
 				a.TargetType = "subscription_period"
 				a.TargetID = v.SubscriptionID
 				a.BillingAt = v.IncurredOn
@@ -229,6 +239,7 @@ func (s *Service) ListAttachments(ctx context.Context, userID string, target Att
 		}
 		return page, domain.ErrForbidden
 	}
+	page.Access.CanRename = page.Access.CanUpload
 	page.Items, e = s.Stores.Attachments.List(ctx, a.TargetType, a.TargetID, a.BillingAt)
 	if e != nil {
 		if err := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.listed", target.ID, "storage_list_failed"); err != nil {
@@ -503,6 +514,74 @@ func (s *Service) DeleteAttachment(ctx context.Context, userID, id string) error
 		}
 	}
 	return e
+}
+
+func (s *Service) AttachmentRenameRequestFailure(ctx context.Context, actor, id string) error {
+	a, err := s.attachmentFor(ctx, actor, id, "attachment.renamed")
+	if err != nil {
+		return err
+	}
+	if err = s.attachmentFailure(ctx, actor, a.GroupID, "attachment.renamed", id, "invalid_request"); err != nil {
+		return err
+	}
+	return domain.ErrInvalid
+}
+
+func validAttachmentName(name, original string) bool {
+	ext := filepath.Ext(original)
+	if name == "" || utf8.RuneCountInString(name) > 255 || strings.ContainsAny(name, "/\\") || strings.IndexFunc(name, unicode.IsControl) >= 0 || filepath.Ext(name) != ext {
+		return false
+	}
+	return strings.TrimSpace(strings.TrimSuffix(name, ext)) != ""
+}
+
+func (s *Service) RenameAttachment(ctx context.Context, actor, id, name string) (*domain.Attachment, error) {
+	a, err := s.attachmentFor(ctx, actor, id, "attachment.renamed")
+	if err != nil {
+		return nil, err
+	}
+	fail := func(cause error, reason string) (*domain.Attachment, error) {
+		if auditErr := s.attachmentFailure(ctx, actor, a.GroupID, "attachment.renamed", id, reason); auditErr != nil {
+			return nil, errors.Join(cause, auditErr)
+		}
+		return nil, cause
+	}
+	if a.GroupID != "" {
+		if err = s.groupPermission(ctx, actor, a.GroupID, "ledger.attachments.upload"); err != nil {
+			return fail(err, "permission_denied")
+		}
+		if err = s.attachmentHistoricalWrite(ctx, actor, *a); err != nil {
+			return fail(err, "permission_denied")
+		}
+	}
+	// Reject controls before trimming so a newline cannot be hidden by normalization.
+	if strings.IndexFunc(name, unicode.IsControl) >= 0 {
+		return fail(domain.ErrAttachmentName, "invalid_name")
+	}
+	name = strings.TrimSpace(name)
+	if !validAttachmentName(name, a.FileName) {
+		return fail(domain.ErrAttachmentName, "invalid_name")
+	}
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		current, readErr := s.Stores.Attachments.Get(tx, id)
+		if readErr != nil {
+			return readErr
+		}
+		if !validAttachmentName(name, current.FileName) {
+			return domain.ErrAttachmentName
+		}
+		if writeErr := s.Stores.Attachments.Rename(tx, id, name); writeErr != nil {
+			return fmt.Errorf("%w: %w", domain.ErrAttachmentStorage, writeErr)
+		}
+		var changes changeSet
+		changes.addString("file_name", current.FileName, name)
+		return s.attachmentSuccess(tx, actor, a.GroupID, "attachment.renamed", id, encodeAuditSummary(map[string]any{"target_type": a.TargetType}, changes))
+	})
+	if err != nil {
+		return fail(err, "rename_write_failed")
+	}
+	a.FileName = name
+	return a, nil
 }
 
 // Changing evidence attached to a historical record uses the same group cutoff.

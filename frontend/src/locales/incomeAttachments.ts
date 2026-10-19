@@ -1,10 +1,12 @@
 export const incomeAttachmentMessages = {
  'zh-TW': {
+  attachmentRename:'重新命名',attachmentFileName:'檔案名稱',attachmentRenamed:'已重新命名為「{name}」。',attachmentRenameFailed:'無法重新命名附件，請重試。',attachmentNameInvalid:'請輸入有效的檔案名稱：含副檔名最多 255 字元，不可含路徑或控制字元，也不能更改副檔名。',
   permission_ledger_incomes_read:'檢視收入',permission_ledger_incomes_write:'新增及修改收入',permission_ledger_incomes_delete:'刪除收入',
   permissionDesc_ledger_incomes_read:'檢視群組收入、週期收入及受益分配。',permissionDesc_ledger_incomes_write:'新增及修改收入、管理週期與確認入帳；歷史操作另需歷史修改權限。',permissionDesc_ledger_incomes_delete:'刪除群組收入；歷史操作另需歷史修改權限。',
   attachmentUploadSuccess:'已上傳 {count} 個附件。',attachmentRefreshFailed:'無法更新附件清單。已完成的上傳仍保留，請重試更新清單。',attachmentPermissionDenied:'沒有權限操作此紀錄的附件。',attachmentSessionExpired:'登入已失效，請重新登入。',attachmentFormatInvalid:'檔案格式或內容不符，請使用支援的附件格式。',attachmentStorageFailed:'附件暫時無法儲存，請稍後重試。',attachmentAuditUnavailable:'稽核暫時無法寫入，附件操作未完成。',attachmentNetworkFailed:'連線中斷，請重試上傳。',attachmentTargetUnavailable:'找不到附件所屬紀錄，請重新開啟帳本確認。',attachmentConflict:'附件請求狀態衝突，請重新開啟後重試。',attachmentInvalidRequest:'附件請求無效，請重新選擇檔案。',
  },
  en: {
+  attachmentRename:'Rename',attachmentFileName:'File name',attachmentRenamed:'Attachment renamed to “{name}”.',attachmentRenameFailed:'Could not rename the attachment. Try again.',attachmentNameInvalid:'Enter a valid file name: up to 255 characters including the extension, no paths or control characters, and keep the original extension.',
   permission_ledger_incomes_read:'View income',permission_ledger_incomes_write:'Create and edit income',permission_ledger_incomes_delete:'Delete income',
   permissionDesc_ledger_incomes_read:'View group income, recurring income, and beneficiary shares.',permissionDesc_ledger_incomes_write:'Create and edit income, manage recurring plans, and confirm receipts. Historical changes require historical write permission.',permissionDesc_ledger_incomes_delete:'Delete group income. Historical changes require historical write permission.',
   attachmentUploadSuccess:'Uploaded {count} attachment(s).',attachmentRefreshFailed:'Could not refresh the attachment list. Completed uploads are preserved; retry refreshing the list.',attachmentPermissionDenied:'You do not have permission to manage attachments on this record.',attachmentSessionExpired:'Your session expired. Sign in again.',attachmentFormatInvalid:'The file format or content is unsupported.',attachmentStorageFailed:'Attachment storage is unavailable. Try again later.',attachmentAuditUnavailable:'The audit log is unavailable. The attachment operation was not completed.',attachmentNetworkFailed:'Connection interrupted. Retry uploading.',attachmentTargetUnavailable:'The record is unavailable. Reopen the ledger to check it.',attachmentConflict:'The attachment request conflicts with its current state. Reopen and retry.',attachmentInvalidRequest:'Invalid attachment request. Select the file again.',
@@ -42,3 +44,11 @@ incomeAttachmentAudit['zh-TW'].reason.recurring_income_operation_failed='週期�
 incomeAttachmentAudit.en.reason.recurring_income_operation_failed='Recurring income operation failed'
 incomeAttachmentAudit['zh-TW'].reason.audit_unavailable='稽核紀錄無法寫入'
 incomeAttachmentAudit.en.reason.audit_unavailable='Audit log unavailable'
+incomeAttachmentAudit['zh-TW'].action['attachment.renamed']='重新命名附件'
+incomeAttachmentAudit.en.action['attachment.renamed']='Renamed attachment'
+incomeAttachmentAudit['zh-TW'].field.file_name='檔案名稱'
+incomeAttachmentAudit.en.field.file_name='File name'
+incomeAttachmentAudit['zh-TW'].reason.invalid_name='檔案名稱無效'
+incomeAttachmentAudit.en.reason.invalid_name='Invalid file name'
+incomeAttachmentAudit['zh-TW'].reason.rename_write_failed='附件重新命名未完成'
+incomeAttachmentAudit.en.reason.rename_write_failed='Attachment rename was not completed'

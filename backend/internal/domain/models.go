@@ -367,6 +367,7 @@ type AttachmentAccess struct {
 	CanRead   bool `json:"canRead"`
 	CanUpload bool `json:"canUpload"`
 	CanDelete bool `json:"canDelete"`
+	CanRename bool `json:"canRename"`
 }
 
 type AttachmentPage struct {

@@ -107,6 +107,8 @@ func TestAttachmentPeriodHTTPListsPostedExpenseAndEnforcesCount(t *testing.T) {
 			if err != nil || len(items) != 1 {
 				t.Fatalf("period items: %v %v", items, err)
 			}
+			request(http.MethodPatch, "/attachments/"+items[0].ID, bytes.NewBufferString(`{"fileName":"August invoice.pdf"}`), "application/json", 200, `"fileName":"August invoice.pdf"`)
+			request(http.MethodGet, "/attachments?"+query.Encode(), nil, "", 200, `"fileName":"August invoice.pdf"`)
 			request(http.MethodGet, "/attachments/"+items[0].ID+"/content", nil, "", 200, "%PDF-1.7 period")
 		})
 	}

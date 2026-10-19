@@ -53,6 +53,14 @@ func (r *AttachmentRepo) Get(ctx context.Context, id string) (*domain.Attachment
 	v := attachmentFrom(rec)
 	return &v, nil
 }
+func (r *AttachmentRepo) Rename(ctx context.Context, id, name string) error {
+	record, err := r.app(ctx).FindRecordById(CollectionAttachments, id)
+	if err != nil {
+		return mapError(err)
+	}
+	record.Set("file_name", name)
+	return r.app(ctx).Save(record)
+}
 func (r *AttachmentRepo) FindByRequest(ctx context.Context, userID, requestID string) (*domain.Attachment, error) {
 	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionAttachments, "uploaded_by={:user} && request_id={:request}", dbx.Params{"user": userID, "request": requestID})
 	if err != nil {
