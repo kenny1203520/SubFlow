@@ -1,4 +1,5 @@
 export const zhTW = {
+  beneficialIncome:'我的受益收入',receivedIncome:'我實際收款',
   category_income_salary:'薪資',category_income_bonus:'獎金',category_income_freelance:'接案',category_income_investment:'投資',category_income_rental:'租金',category_income_gifts:'贈與',category_income_other:'其他收入',categoryKind:'分類用途',
   deleteSubscriptionAttachmentsWarning:'已入帳期數的附件會保留在對應支出；共用附件及未入帳期數附件會刪除。',deleteGroupAttachmentsWarning:'刪除群組會一併永久刪除群組交易與訂閱附件。',
   attachmentSelected:'已選取 {count} 個檔案，儲存交易後開始上傳。',

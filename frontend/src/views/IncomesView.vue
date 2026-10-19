@@ -94,6 +94,7 @@ async function submit() {
 }
 async function remove() { if (!pendingDelete.value || !canDelete.value) return; const page = listMeta.value.page; if (personal.value) await workspace.deleteIncome(pendingDelete.value.id); else await workspace.deleteGroupIncome(pendingDelete.value.id); await reloadCurrentPage(page); pendingDelete.value = undefined }
 async function exportLedger() { exportError.value = ''; exporting.value = true; try { await workspace.exportLedger(personal.value ? undefined : workspace.currentGroupId) } catch { exportError.value = tr('exportFailed') } finally { exporting.value = false } }
+function personalIncome(item: Income) { return item.groupId ? (item.splits || []).filter(split => split.userId === auth.record?.id).reduce((sum, split) => sum + split.amountMinor, 0) : item.amountMinor }
 function recordCurrency(item: Income) { return item.currency || workspace.groups.find(group => group.id === item.groupId)?.currency || 'TWD' }
 function recordCategory(item: Income) { return `${categoryGlyph(item.categoryInfo)} ${categoryLabel(item.categoryInfo, item.category, tr)}` }
 function itemGroup(item: Income) { return workspace.groups.find(group => group.id === item.groupId) }
@@ -149,7 +150,7 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                                 (item.earnedBy === auth.record?.id ? tr('myself') : '—')}}</span><span
                         class="timezone-date"><strong>{{ viewerDate(item.receivedOn) }}</strong><small
                             v-if="item.groupId">{{ originalTime(item) }}</small></span><span class="money-stack">
-                        <MoneyValue :amount="item.amountMinor" :currency="recordCurrency(item)" /><small
+                        <MoneyValue :amount="item.amountMinor" :currency="recordCurrency(item)" /><small>{{ tr('beneficialIncome') }}: <MoneyValue :amount="personalIncome(item)" :currency="recordCurrency(item)" /></small><small
                             v-if="item.baseCurrency && item.baseCurrency !== item.currency">{{ tr('reportingAmount') }}:
                             <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency" />
                         </small><small v-if="item.exchangeRate">{{ tr('exchangeRate') }} {{ item.exchangeRate }}</small>

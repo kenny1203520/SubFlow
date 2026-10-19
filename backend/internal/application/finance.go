@@ -422,8 +422,18 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		if query.Scope == "group" {
 			displayCurrency, displayAmount = income.BaseCurrency, income.BaseAmountMinor
 		}
-		bucket(displayCurrency).CashInflowMinor += displayAmount
-		result.MonthIncomeMinor += displayAmount
+		share, received := domain.IncomeAmounts(income, userID, query.Scope == "group")
+		item := bucket(displayCurrency)
+		item.BeneficialIncomeMinor += share
+		item.ReceivedIncomeMinor += received
+		result.MonthReceivedIncomeMinor += received
+		if query.Scope == "group" {
+			item.CashInflowMinor += displayAmount
+			result.MonthIncomeMinor += displayAmount
+		} else {
+			item.CashInflowMinor += received
+			result.MonthIncomeMinor += share
+		}
 	}
 	now := s.Now()
 	monthSubscriptionExpenses := make([]domain.Expense, 0)

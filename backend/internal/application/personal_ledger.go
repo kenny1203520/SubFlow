@@ -90,7 +90,8 @@ func (s *Service) PersonalLedger(ctx context.Context, userID, requested string, 
 	}
 	for i := range ins {
 		x := ins[i]
-		items = append(items, domain.LedgerItem{ID: x.ID, Kind: "income", RecordID: x.ID, GroupID: x.GroupID, OccurredAt: x.ReceivedOn, Title: x.Title, Category: x.Category, CategoryID: x.CategoryID, AmountMinor: x.AmountMinor, Currency: x.Currency, BaseCurrency: x.BaseCurrency, BaseAmountMinor: x.BaseAmountMinor, Notes: x.Notes, Status: "recorded"})
+		share, received := domain.IncomeAmounts(x, userID, false)
+		items = append(items, domain.LedgerItem{EarnedBy: x.EarnedBy, PersonalIncomeMinor: share, ReceivedIncomeMinor: received, ID: x.ID, Kind: "income", RecordID: x.ID, GroupID: x.GroupID, OccurredAt: x.ReceivedOn, Title: x.Title, Category: x.Category, CategoryID: x.CategoryID, AmountMinor: x.AmountMinor, Currency: x.Currency, BaseCurrency: x.BaseCurrency, BaseAmountMinor: x.BaseAmountMinor, Notes: x.Notes, Status: "recorded"})
 	}
 	subs, e := listAllPersonalSubscriptions(ctx, s, userID)
 	if e != nil {
@@ -143,8 +144,8 @@ func (s *Service) PersonalLedger(ctx context.Context, userID, requested string, 
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].OccurredAt.Before(items[j].OccurredAt) })
 	type agg struct {
-		in, ex, sub int64
-		count       int
+		in, received, ex, sub int64
+		count                 int
 	}
 	m := map[domain.Currency]*agg{}
 	for _, x := range items {
@@ -155,7 +156,8 @@ func (s *Service) PersonalLedger(ctx context.Context, userID, requested string, 
 		}
 		a.count++
 		if x.Kind == "income" {
-			a.in += x.AmountMinor
+			a.in += x.PersonalIncomeMinor
+			a.received += x.ReceivedIncomeMinor
 		} else {
 			a.ex += x.AmountMinor
 			if x.Kind == "subscription" {
@@ -171,7 +173,7 @@ func (s *Service) PersonalLedger(ctx context.Context, userID, requested string, 
 	ss := make([]domain.DailyLedgerCurrencySummary, 0, len(cs))
 	for _, c := range cs {
 		a := m[c]
-		ss = append(ss, domain.DailyLedgerCurrencySummary{Currency: c, IncomeMinor: a.in, ExpenseMinor: a.ex, SubscriptionMinor: a.sub, NetMinor: a.in - a.ex, Count: a.count})
+		ss = append(ss, domain.DailyLedgerCurrencySummary{Currency: c, IncomeMinor: a.in, BeneficialIncomeMinor: a.in, ReceivedIncomeMinor: a.received, ExpenseMinor: a.ex, SubscriptionMinor: a.sub, NetMinor: a.in - a.ex, Count: a.count})
 	}
 	return domain.DailyLedger{Date: d, Timezone: tz, Summaries: ss, Items: items}, nil
 }

@@ -280,7 +280,8 @@ func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested st
 	}
 	for i := range incomes {
 		income := incomes[i]
-		items = append(items, domain.LedgerItem{ID: income.ID, Kind: "income", RecordID: income.ID, GroupID: income.GroupID, OccurredAt: income.ReceivedOn, Title: income.Title, Category: income.Category, CategoryID: income.CategoryID, AmountMinor: income.AmountMinor, Currency: income.Currency, BaseCurrency: income.BaseCurrency, BaseAmountMinor: income.BaseAmountMinor, Notes: income.Notes, Status: "recorded"})
+		share, received := domain.IncomeAmounts(income, userID, false)
+		items = append(items, domain.LedgerItem{EarnedBy: income.EarnedBy, PersonalIncomeMinor: share, ReceivedIncomeMinor: received, ID: income.ID, Kind: "income", RecordID: income.ID, GroupID: income.GroupID, OccurredAt: income.ReceivedOn, Title: income.Title, Category: income.Category, CategoryID: income.CategoryID, AmountMinor: income.AmountMinor, Currency: income.Currency, BaseCurrency: income.BaseCurrency, BaseAmountMinor: income.BaseAmountMinor, Notes: income.Notes, Status: "recorded"})
 	}
 	var subscriptions []domain.Subscription
 	for page := 1; ; page++ {
@@ -322,8 +323,8 @@ func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested st
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].OccurredAt.Before(items[j].OccurredAt) })
 	type aggregate struct {
-		income, expense, subscription int64
-		count                         int
+		income, share, received, expense, subscription int64
+		count                                          int
 	}
 	totals := map[domain.Currency]*aggregate{}
 	for _, item := range items {
@@ -335,6 +336,8 @@ func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested st
 		bucket.count++
 		if item.Kind == "income" {
 			bucket.income += item.AmountMinor
+			bucket.share += item.PersonalIncomeMinor
+			bucket.received += item.ReceivedIncomeMinor
 		} else {
 			bucket.expense += item.AmountMinor
 			if item.Kind == "subscription" {
@@ -350,7 +353,7 @@ func (s *Service) GroupLedger(ctx context.Context, userID, groupID, requested st
 	summaries := make([]domain.DailyLedgerCurrencySummary, 0, len(currencies))
 	for _, currency := range currencies {
 		bucket := totals[currency]
-		summaries = append(summaries, domain.DailyLedgerCurrencySummary{Currency: currency, IncomeMinor: bucket.income, ExpenseMinor: bucket.expense, SubscriptionMinor: bucket.subscription, NetMinor: bucket.income - bucket.expense, Count: bucket.count})
+		summaries = append(summaries, domain.DailyLedgerCurrencySummary{Currency: currency, IncomeMinor: bucket.income, BeneficialIncomeMinor: bucket.share, ReceivedIncomeMinor: bucket.received, ExpenseMinor: bucket.expense, SubscriptionMinor: bucket.subscription, NetMinor: bucket.income - bucket.expense, Count: bucket.count})
 	}
 	return domain.DailyLedger{Date: date, Timezone: timezone, Summaries: summaries, Items: items}, nil
 }

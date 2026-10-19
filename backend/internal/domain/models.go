@@ -607,29 +607,34 @@ type DailyLedger struct {
 	Items     []LedgerItem                 `json:"items"`
 }
 type DailyLedgerCurrencySummary struct {
-	Currency          Currency `json:"currency"`
-	IncomeMinor       int64    `json:"incomeMinor"`
-	ExpenseMinor      int64    `json:"expenseMinor"`
-	SubscriptionMinor int64    `json:"subscriptionMinor"`
-	NetMinor          int64    `json:"netMinor"`
-	Count             int      `json:"count"`
+	BeneficialIncomeMinor int64    `json:"beneficialIncomeMinor"`
+	ReceivedIncomeMinor   int64    `json:"receivedIncomeMinor"`
+	Currency              Currency `json:"currency"`
+	IncomeMinor           int64    `json:"incomeMinor"`
+	ExpenseMinor          int64    `json:"expenseMinor"`
+	SubscriptionMinor     int64    `json:"subscriptionMinor"`
+	NetMinor              int64    `json:"netMinor"`
+	Count                 int      `json:"count"`
 }
 type LedgerItem struct {
-	ID              string    `json:"id"`
-	Kind            string    `json:"kind"`
-	RecordID        string    `json:"recordId,omitempty"`
-	SubscriptionID  string    `json:"subscriptionId,omitempty"`
-	GroupID         string    `json:"groupId,omitempty"`
-	OccurredAt      time.Time `json:"occurredAt"`
-	Title           string    `json:"title"`
-	Category        string    `json:"category,omitempty"`
-	CategoryID      string    `json:"categoryId,omitempty"`
-	AmountMinor     int64     `json:"amountMinor"`
-	Currency        Currency  `json:"currency"`
-	BaseCurrency    Currency  `json:"baseCurrency,omitempty"`
-	BaseAmountMinor int64     `json:"baseAmountMinor,omitempty"`
-	Notes           string    `json:"notes,omitempty"`
-	Status          string    `json:"status"`
+	EarnedBy            string    `json:"earnedBy,omitempty"`
+	PersonalIncomeMinor int64     `json:"personalIncomeMinor"`
+	ReceivedIncomeMinor int64     `json:"receivedIncomeMinor"`
+	ID                  string    `json:"id"`
+	Kind                string    `json:"kind"`
+	RecordID            string    `json:"recordId,omitempty"`
+	SubscriptionID      string    `json:"subscriptionId,omitempty"`
+	GroupID             string    `json:"groupId,omitempty"`
+	OccurredAt          time.Time `json:"occurredAt"`
+	Title               string    `json:"title"`
+	Category            string    `json:"category,omitempty"`
+	CategoryID          string    `json:"categoryId,omitempty"`
+	AmountMinor         int64     `json:"amountMinor"`
+	Currency            Currency  `json:"currency"`
+	BaseCurrency        Currency  `json:"baseCurrency,omitempty"`
+	BaseAmountMinor     int64     `json:"baseAmountMinor,omitempty"`
+	Notes               string    `json:"notes,omitempty"`
+	Status              string    `json:"status"`
 }
 
 type BaseSplit struct {
@@ -679,6 +684,8 @@ type Settlement struct {
 }
 
 type CurrencyDashboard struct {
+	BeneficialIncomeMinor            int64    `json:"beneficialIncomeMinor"`
+	ReceivedIncomeMinor              int64    `json:"receivedIncomeMinor"`
 	Currency                         Currency `json:"currency"`
 	CashInflowMinor                  int64    `json:"cashInflowMinor"`
 	CashOutflowMinor                 int64    `json:"cashOutflowMinor"`
@@ -696,6 +703,7 @@ type MemberBalance struct {
 }
 
 type DashboardSummary struct {
+	MonthReceivedIncomeMinor         int64               `json:"monthReceivedIncomeMinor"`
 	Month                            string              `json:"month,omitempty"`
 	MonthlySubscriptionMinor         int64               `json:"monthlySubscriptionMinor"`
 	PersonalMonthlySubscriptionMinor int64               `json:"personalMonthlySubscriptionMinor"`
