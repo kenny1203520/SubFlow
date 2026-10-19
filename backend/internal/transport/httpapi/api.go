@@ -1439,7 +1439,7 @@ func (a *API) exportPersonalLedger(e *core.RequestEvent) error {
 			}
 		}
 	}
-	data, filename, err := a.Service.ExportLedgerSources(e.Request.Context(), authID(e), includePersonal, groupIDs, query.Get("locale"))
+	data, filename, err := a.Service.ExportLedgerSources(e.Request.Context(), authID(e), includePersonal, groupIDs, query.Get("includeForecast") == "true", query.Get("locale"))
 	if err != nil {
 		return fail(e, err)
 	}
@@ -1447,7 +1447,8 @@ func (a *API) exportPersonalLedger(e *core.RequestEvent) error {
 	return e.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
 }
 func (a *API) exportGroupLedger(e *core.RequestEvent) error {
-	data, filename, err := a.Service.ExportLedgerSources(e.Request.Context(), authID(e), false, []string{groupID(e)}, e.Request.URL.Query().Get("locale"))
+	query := e.Request.URL.Query()
+	data, filename, err := a.Service.ExportLedgerSources(e.Request.Context(), authID(e), false, []string{groupID(e)}, query.Get("includeForecast") == "true", query.Get("locale"))
 	if err != nil {
 		return fail(e, err)
 	}

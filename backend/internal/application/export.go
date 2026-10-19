@@ -140,13 +140,13 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID, locale stri
 
 // ExportLedgerSources combines the private ledger and explicitly selected
 // groups into one CSV. Each group is independently authorized by ExportLedger.
-func (s *Service) ExportLedgerSources(ctx context.Context, userID string, includePersonal bool, groupIDs []string, locale string) (data []byte, filename string, resultErr error) {
+func (s *Service) ExportLedgerSources(ctx context.Context, userID string, includePersonal bool, groupIDs []string, includeForecast bool, locale string) (data []byte, filename string, resultErr error) {
 	defer func() {
 		outcome, reason := "success", ""
 		if resultErr != nil {
 			outcome, reason = "failure", "export_failed"
 		}
-		auditErr := s.audit(ctx, userID, "", "ledger.exported", "ledger_export", "", outcome, encodeAuditSummary(map[string]any{"include_personal": includePersonal, "group_count": len(groupIDs), "reason": reason}, nil))
+		auditErr := s.audit(ctx, userID, "", "ledger.exported", "ledger_export", "", outcome, encodeAuditSummary(map[string]any{"include_personal": includePersonal, "group_count": len(groupIDs), "include_forecast": includeForecast, "reason": reason}, nil))
 		if auditErr != nil {
 			data = nil
 			filename = ""
@@ -167,8 +167,9 @@ func (s *Service) ExportLedgerSources(ctx context.Context, userID string, includ
 		return nil, "", domain.ErrInvalid
 	}
 	type sourceFile struct {
-		data   []byte
-		source string
+		data      []byte
+		source    string
+		forecasts [][]string
 	}
 	items := make([]sourceFile, 0, len(groupIDs)+1)
 	msgs := exportMessagesFor(locale)
@@ -177,7 +178,14 @@ func (s *Service) ExportLedgerSources(ctx context.Context, userID string, includ
 		if err != nil {
 			return nil, "", err
 		}
-		items = append(items, sourceFile{data, msgs.sourcePersonal})
+		var forecasts [][]string
+		if includeForecast {
+			forecasts, err = s.exportIncomeForecastRows(ctx, userID, "", locale)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+		items = append(items, sourceFile{data, msgs.sourcePersonal, forecasts})
 	}
 	for _, id := range groupIDs {
 		group, err := s.Stores.Groups.Get(ctx, id)
@@ -188,7 +196,14 @@ func (s *Service) ExportLedgerSources(ctx context.Context, userID string, includ
 		if err != nil {
 			return nil, "", err
 		}
-		items = append(items, sourceFile{data, group.Name})
+		var forecasts [][]string
+		if includeForecast {
+			forecasts, err = s.exportIncomeForecastRows(ctx, userID, id, locale)
+			if err != nil {
+				return nil, "", err
+			}
+		}
+		items = append(items, sourceFile{data, group.Name, forecasts})
 	}
 	var output bytes.Buffer
 	output.WriteString("\xEF\xBB\xBF")
@@ -213,12 +228,99 @@ func (s *Service) ExportLedgerSources(ctx context.Context, userID string, includ
 				return nil, "", err
 			}
 		}
+		for _, row := range item.forecasts {
+			row = append(row, item.source)
+			if err := w.Write(row); err != nil {
+				return nil, "", err
+			}
+		}
 	}
 	w.Flush()
 	if err := w.Error(); err != nil {
 		return nil, "", err
 	}
 	return output.Bytes(), s.exportFilename(ctx, userID, ""), nil
+}
+
+func (s *Service) exportIncomeForecastRows(ctx context.Context, userID, groupID, locale string) ([][]string, error) {
+	if groupID != "" {
+		if err := s.groupPermission(ctx, userID, groupID, "ledger.incomes.read"); err != nil {
+			return nil, err
+		}
+	}
+	ownerID := userID
+	if groupID != "" {
+		ownerID = ""
+	}
+	msgs := exportMessagesFor(locale)
+	loc := s.exportLocation(ctx, userID, groupID)
+	names := map[string]string{}
+	lookupName := func(id string) string {
+		if id == "" {
+			return ""
+		}
+		if name, ok := names[id]; ok {
+			return name
+		}
+		name := id
+		if user, err := s.Stores.Users.Get(ctx, id); err == nil {
+			name = user.Name
+		}
+		names[id] = name
+		return name
+	}
+	categoryNames := map[string]*domain.Category{}
+	lookupCategory := func(id string) *domain.Category {
+		if id == "" {
+			return nil
+		}
+		if category, ok := categoryNames[id]; ok {
+			return category
+		}
+		category, _ := s.Stores.Categories.Get(ctx, id)
+		categoryNames[id] = category
+		return category
+	}
+	rows := make([][]string, 0)
+	for pageNumber := 1; ; pageNumber++ {
+		page, err := s.Stores.RecurringIncomes.List(ctx, ownerID, groupID, ports.PageRequest{Page: pageNumber, PerPage: exportPageSize, Sort: "next_on"})
+		if err != nil {
+			return nil, err
+		}
+		for _, series := range page.Items {
+			periods := make([]domain.IncomeOccurrence, 0)
+			for occurrencePage := 1; ; occurrencePage++ {
+				occurrencePageResult, listErr := s.Stores.RecurringIncomes.ListOccurrences(ctx, series.ID, ports.PageRequest{Page: occurrencePage, PerPage: exportPageSize, Sort: "scheduled_on"})
+				if listErr != nil {
+					return nil, listErr
+				}
+				periods = append(periods, occurrencePageResult.Items...)
+				if occurrencePageResult.TotalPages == 0 || occurrencePage >= occurrencePageResult.TotalPages {
+					break
+				}
+			}
+			knownDates := make(map[string]bool, len(periods))
+			for _, period := range periods {
+				knownDates[period.ScheduledOn.UTC().Format(time.RFC3339Nano)] = true
+				if period.Status != "pending" && period.Status != "failed" {
+					continue
+				}
+				income := period.Template
+				rows = append(rows, forecastIncomeRow(income, period.ScheduledOn, msgs.statusPending, loc, lookupName, lookupCategory, msgs))
+			}
+			if series.Status == "active" && !knownDates[series.NextOn.UTC().Format(time.RFC3339Nano)] {
+				rows = append(rows, forecastIncomeRow(series.Template, series.NextOn, msgs.statusForecast, loc, lookupName, lookupCategory, msgs))
+			}
+		}
+		if page.TotalPages == 0 || pageNumber >= page.TotalPages {
+			break
+		}
+	}
+	return rows, nil
+}
+
+func forecastIncomeRow(v domain.Income, scheduledOn time.Time, status string, loc *time.Location, lookupName func(string) string, lookupCategory func(string) *domain.Category, msgs exportMessages) []string {
+	return []string{msgs.typeForecastIncome, formatDate(scheduledOn, loc), v.Title, formatAmount(v.AmountMinor), string(v.Currency), msgs.categoryLabel(lookupCategory(v.CategoryID), v.Category), lookupName(v.EarnedBy), status, splitDetail(v.Splits, lookupName), v.Notes}
 }
 
 // exportLocation resolves which timezone dates should be shown in: the
@@ -453,8 +555,9 @@ func settlementRow(v domain.Settlement, loc *time.Location, lookupName func(stri
 // writes raw literals directly into the file.
 type exportMessages struct {
 	headers                                                                                  []string
-	typeExpense, typeIncome, typeSubscription, typeSettlement                                string
+	typeExpense, typeIncome, typeForecastIncome, typeSubscription, typeSettlement            string
 	statusActive, statusPaused, statusCancelled, statusPending, statusFailed, statusReceived string
+	statusForecast                                                                           string
 	uncategorized                                                                            string
 	category                                                                                 map[string]string
 	tzNoteGroup, tzNotePersonal                                                              string
@@ -510,20 +613,22 @@ func (m exportMessages) occurrenceStatusLabel(status string) string {
 func exportMessagesFor(locale string) exportMessages {
 	if locale == "en" {
 		return exportMessages{
-			headers:          []string{"Type", "Date", "Name", "Amount", "Currency", "Category", "Payer / Receiver", "Status", "Split detail", "Notes"},
-			typeExpense:      "Expense",
-			typeIncome:       "Income",
-			typeSubscription: "Subscription",
-			typeSettlement:   "Settlement",
-			statusActive:     "Active",
-			statusPaused:     "Paused",
-			statusCancelled:  "Cancelled",
-			statusPending:    "Not yet billed",
-			statusFailed:     "Posting failed",
-			statusReceived:   "Received",
-			sourceHeader:     "Source",
-			sourcePersonal:   "Personal",
-			uncategorized:    "Uncategorized",
+			headers:            []string{"Type", "Date", "Name", "Amount", "Currency", "Category", "Payer / Receiver", "Status", "Split detail", "Notes"},
+			typeExpense:        "Expense",
+			typeIncome:         "Income",
+			typeForecastIncome: "Forecast income",
+			typeSubscription:   "Subscription",
+			typeSettlement:     "Settlement",
+			statusActive:       "Active",
+			statusPaused:       "Paused",
+			statusCancelled:    "Cancelled",
+			statusPending:      "Not yet billed",
+			statusFailed:       "Posting failed",
+			statusReceived:     "Received",
+			statusForecast:     "Expected",
+			sourceHeader:       "Source",
+			sourcePersonal:     "Personal",
+			uncategorized:      "Uncategorized",
 			category: map[string]string{
 				"food_dining": "Food & dining", "transport": "Transport", "housing": "Housing", "utilities": "Utilities & bills",
 				"shopping": "Shopping", "entertainment": "Entertainment", "health": "Health", "education": "Education",
@@ -535,20 +640,22 @@ func exportMessagesFor(locale string) exportMessages {
 		}
 	}
 	return exportMessages{
-		headers:          []string{"類型", "日期", "名稱", "金額", "幣別", "分類", "付款人/收款人", "狀態", "分帳明細", "備註"},
-		typeExpense:      "支出",
-		typeIncome:       "收入",
-		typeSubscription: "訂閱",
-		typeSettlement:   "還款",
-		statusActive:     "啟用",
-		statusPaused:     "暫停",
-		statusCancelled:  "已取消",
-		statusPending:    "尚未入帳",
-		statusFailed:     "入帳失敗",
-		statusReceived:   "已收款",
-		sourceHeader:     "來源",
-		sourcePersonal:   "個人",
-		uncategorized:    "未分類",
+		headers:            []string{"類型", "日期", "名稱", "金額", "幣別", "分類", "付款人/收款人", "狀態", "分帳明細", "備註"},
+		typeExpense:        "支出",
+		typeIncome:         "收入",
+		typeForecastIncome: "預計收入",
+		typeSubscription:   "訂閱",
+		typeSettlement:     "還款",
+		statusActive:       "啟用",
+		statusPaused:       "暫停",
+		statusCancelled:    "已取消",
+		statusPending:      "尚未入帳",
+		statusFailed:       "入帳失敗",
+		statusReceived:     "已收款",
+		statusForecast:     "預計",
+		sourceHeader:       "來源",
+		sourcePersonal:     "個人",
+		uncategorized:      "未分類",
 		category: map[string]string{
 			"food_dining": "餐飲", "transport": "交通", "housing": "住家", "utilities": "水電與帳單",
 			"shopping": "購物", "entertainment": "娛樂", "health": "健康", "education": "教育",

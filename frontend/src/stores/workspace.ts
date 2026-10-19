@@ -1016,8 +1016,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     anchor.remove()
     URL.revokeObjectURL(url)
   }
-  async function exportLedgerSources(includePersonal:boolean,groupIds:string[]) {
+  async function exportLedgerSources(includePersonal:boolean,groupIds:string[],includeForecast=false) {
     const params=new URLSearchParams({locale:locale.value,includePersonal:String(includePersonal)})
+    if(includeForecast)params.set('includeForecast','true')
     if(groupIds.length)params.set('groupIds',groupIds.join(','))
     const {blob,filename}=await api.getBlob(`/export/personal?${params.toString()}`)
     const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)

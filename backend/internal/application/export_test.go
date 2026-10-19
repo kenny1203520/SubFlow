@@ -180,7 +180,7 @@ func TestExportLedgerIncludesReceivedIncomeForPersonalAndGroupScopes(t *testing.
 	if !found {
 		t.Fatalf("group CSV should include received income: %v", rows)
 	}
-	combined, _, err := service.ExportLedgerSources(ctx, userID, true, []string{groupID}, "en")
+	combined, _, err := service.ExportLedgerSources(ctx, userID, true, []string{groupID}, false, "en")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,6 +196,59 @@ func TestExportLedgerIncludesReceivedIncomeForPersonalAndGroupScopes(t *testing.
 	}
 	if !seenSources["Personal"] || !seenSources["Export Group"] {
 		t.Fatalf("combined CSV should include both selected sources, got %v", seenSources)
+	}
+}
+
+func TestExportLedgerSourcesIncludesForecastOnlyWhenRequested(t *testing.T) {
+	service, userID, groupID := newExportFixture(t)
+	ctx := context.Background()
+	now := time.Date(2026, time.October, 19, 12, 0, 0, 0, time.UTC)
+	service.Now = func() time.Time { return now }
+	upcoming := now.AddDate(0, 1, 0)
+	if _, err := service.CreateRecurringIncome(ctx, userID, domain.RecurringIncome{
+		OwnerID:  userID,
+		Template: domain.Income{Title: "Upcoming grant", AmountMinor: 12000, Currency: domain.CurrencyTWD, EarnedBy: userID},
+		Timezone: "UTC", Cycle: domain.BillingMonthly, Interval: 1, StartsOn: upcoming, NextOn: upcoming, PostingMode: "automatic",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	manualStart := now.AddDate(0, -1, 0)
+	if _, err := service.CreateRecurringIncome(ctx, userID, domain.RecurringIncome{
+		OwnerID:  userID,
+		Template: domain.Income{Title: "Awaiting confirmation", AmountMinor: 5000, Currency: domain.CurrencyTWD, EarnedBy: userID},
+		Timezone: "UTC", Cycle: domain.BillingMonthly, Interval: 1, StartsOn: manualStart, NextOn: manualStart, PostingMode: "manual",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.PostDueRecurringIncomes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	withoutForecast, _, err := service.ExportLedgerSources(ctx, userID, true, []string{groupID}, false, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, rows := exportRows(t, withoutForecast)
+	for _, row := range rows {
+		if row[0] == "Forecast income" {
+			t.Fatal("default export unexpectedly included forecast data")
+		}
+	}
+	withForecast, _, err := service.ExportLedgerSources(ctx, userID, true, []string{groupID}, true, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, header, rows := exportRows(t, withForecast)
+	foundUpcoming, foundPending := false, false
+	for _, row := range rows {
+		if row[0] == "Forecast income" && row[2] == "Upcoming grant" && row[7] == "Expected" {
+			foundUpcoming = true
+		}
+		if row[0] == "Forecast income" && row[2] == "Awaiting confirmation" && row[7] == "Not yet billed" {
+			foundPending = true
+		}
+	}
+	if header[len(header)-1] != "Source" || !foundUpcoming || !foundPending {
+		t.Fatalf("forecast export should label upcoming and pending periods separately: header=%v rows=%v", header, rows)
 	}
 }
 
