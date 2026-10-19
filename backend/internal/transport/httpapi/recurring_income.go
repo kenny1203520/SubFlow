@@ -186,3 +186,36 @@ func (a *API) retryIncomeOccurrence(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusOK, map[string]bool{"ok": true}, nil)
 }
+func (a *API) previewRecurringIncomeBackfill(e *core.RequestEvent) error {
+	if err := a.authorizeRecurringRoute(e, "ledger.incomes.write"); err != nil {
+		return fail(e, err)
+	}
+	through, err := recurringDate(e.Request.URL.Query().Get("through"))
+	if err != nil {
+		return fail(e, a.recurringRequestFailure(e, "recurring_income.backfill_previewed", err))
+	}
+	preview, err := a.Service.PreviewRecurringIncomeBackfill(e.Request.Context(), authID(e), e.Request.PathValue("id"), through)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, preview, nil)
+}
+func (a *API) backfillRecurringIncome(e *core.RequestEvent) error {
+	if err := a.authorizeRecurringRoute(e, "ledger.incomes.write"); err != nil {
+		return fail(e, err)
+	}
+	var body struct {
+		Through string `json:"through"`
+	}
+	if e.BindBody(&body) != nil {
+		return fail(e, a.recurringRequestFailure(e, "recurring_income.backfilled", domain.ErrInvalid))
+	}
+	through, err := recurringDate(body.Through)
+	if err != nil {
+		return fail(e, a.recurringRequestFailure(e, "recurring_income.backfilled", err))
+	}
+	if err = a.Service.BackfillRecurringIncome(e.Request.Context(), authID(e), e.Request.PathValue("id"), through); err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]bool{"ok": true}, nil)
+}

@@ -123,3 +123,34 @@ func TestRecurringIncomeScheduleUsesSavedTimezoneAndEndDate(t *testing.T) {
 		t.Fatalf("local billing time drifted: %#v", got)
 	}
 }
+
+func TestRecurringIncomeBackfillPreviewsCapsAndIsIdempotent(t *testing.T) {
+	f := newMemberTransferFixture(t)
+	ctx := context.Background()
+	start := time.Date(f.service.Now().Year(), f.service.Now().Month()-3, 19, 9, 0, 0, 0, time.UTC)
+	through := start.AddDate(0, 2, 0)
+	series, err := f.service.CreateRecurringIncome(ctx, f.ownerID, domain.RecurringIncome{Template: domain.Income{Title: "Grant", AmountMinor: 5000, Currency: domain.CurrencyTWD, EarnedBy: f.ownerID}, Timezone: "UTC", Cycle: domain.BillingMonthly, Interval: 1, StartsOn: start, NextOn: start, PostingMode: "manual"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := f.service.PreviewRecurringIncomeBackfill(ctx, f.ownerID, series.ID, through)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.Total != 3 || len(preview.Periods) != 3 {
+		t.Fatalf("expected three previewed periods, got %#v", preview)
+	}
+	if err = f.service.BackfillRecurringIncome(ctx, f.ownerID, series.ID, through); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.BackfillRecurringIncome(ctx, f.ownerID, series.ID, through); err != nil {
+		t.Fatal(err)
+	}
+	page, err := f.stores.RecurringIncomes.ListOccurrences(ctx, series.ID, ports.PageRequest{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 3 {
+		t.Fatalf("backfill should create each pending period exactly once, got %d", len(page.Items))
+	}
+}

@@ -59,7 +59,7 @@ async function reloadCurrentPage(page: number) {
         else await workspace.loadGroupIncomesPage(listMeta.value.totalPages, perPage.value)
     }
 }
-const open = ref(false), editingId = ref(''), pendingDelete = ref<Income>(), sourceItem = ref<Income>(), formError = ref(''), rateValid = ref(true), exportError = ref(''), exporting = ref(false), pendingFiles = ref<File[]>([])
+const open = ref(false), exportDialogOpen=ref(false), exportPersonalIncluded=ref(true), exportGroupIds=ref<string[]>([]), editingId = ref(''), pendingDelete = ref<Income>(), sourceItem = ref<Income>(), formError = ref(''), rateValid = ref(true), exportError = ref(''), exporting = ref(false), pendingFiles = ref<File[]>([])
 const form = reactive({ title: '', category: '', categoryId: '', amount: '', currency: 'TWD' as Currency, rateMode: 'automatic' as 'automatic' | 'manual', exchangeRate: '', earnedBy: '', receivedOn: todayInput(viewerTimezone()), notes: '', splitMode: 'equal' as SplitMode, participants: {} as Record<string, boolean>, values: {} as Record<string, string> })
 // See SubscriptionsView.vue: only send receivedOn back when the user actually
 // touched the date input, so an untouched value keeps its exact stored
@@ -99,7 +99,8 @@ async function submit() {
     reset()
 }
 async function remove() { if (!pendingDelete.value || !canDelete.value) return; const page = listMeta.value.page; if (personal.value) await workspace.deleteIncome(pendingDelete.value.id); else await workspace.deleteGroupIncome(pendingDelete.value.id); await reloadCurrentPage(page); pendingDelete.value = undefined }
-async function exportLedger() { exportError.value = ''; exporting.value = true; try { await workspace.exportLedger(personal.value ? undefined : workspace.currentGroupId) } catch { exportError.value = tr('exportFailed') } finally { exporting.value = false } }
+function openExportDialog(){exportPersonalIncluded.value=personal.value;exportGroupIds.value=personal.value?[]:(workspace.currentGroupId?[workspace.currentGroupId]:[]);exportDialogOpen.value=true}
+async function exportLedger() { exportError.value = ''; exporting.value = true; try { if(!exportPersonalIncluded.value&&!exportGroupIds.value.length)return; await workspace.exportLedgerSources(exportPersonalIncluded.value,exportGroupIds.value) ; exportDialogOpen.value=false } catch { exportError.value = tr('exportFailed') } finally { exporting.value = false } }
 function personalIncome(item: Income) { return item.groupId ? (item.splits || []).filter(split => split.userId === auth.record?.id).reduce((sum, split) => sum + split.amountMinor, 0) : item.amountMinor }
 function recordCurrency(item: Income) { return item.currency || workspace.groups.find(group => group.id === item.groupId)?.currency || 'TWD' }
 function recordCategory(item: Income) { return `${categoryGlyph(item.categoryInfo)} ${categoryLabel(item.categoryInfo, item.category, tr)}` }
@@ -120,7 +121,7 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
             </div>
             <div class="page-heading-actions"><button v-if="canExport && activeTab==='details'" class="ghost"
                     :disabled="exporting || !workspace.online"
-                    :title="workspace.online ? '' : tr('offlineActionDisabled')" @click="exportLedger">{{
+                    :title="workspace.online ? '' : tr('offlineActionDisabled')" @click="openExportDialog">{{
                         tr('exportLedger') }}</button><button v-if="canWrite && activeTab==='details'" class="primary" @click="create">{{
                         tr('createIncome') }}</button></div>
         </div>
@@ -242,6 +243,14 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                         :disabled="workspace.loading || !splitValid || !rateValid">{{ tr(editingId ? 'saveChanges' :
                         'createIncome') }}</button>
                 </div>
+            </form>
+        </AppDrawer>
+        <AppDrawer :open="exportDialogOpen" :title="tr('exportLedger')" @close="exportDialogOpen=false">
+            <form class="form-card ledger-form" @submit.prevent="exportLedger">
+                <p class="field-help">{{tr('exportSourcesHelp')}}</p>
+                <label class="toggle-line"><input v-model="exportPersonalIncluded" type="checkbox"><span class="toggle-control"></span><span><strong>{{tr('shareLedgerPersonal')}}</strong></span></label>
+                <div class="export-group-list"><button type="button" class="ghost" @click="exportGroupIds=workspace.groups.map(group=>group.id)">{{tr('exportAllGroups')}}</button><label v-for="group in workspace.groups" :key="group.id" class="toggle-line"><input v-model="exportGroupIds" type="checkbox" :value="group.id"><span class="toggle-control"></span><span><strong>{{group.name}}</strong></span></label></div>
+                <div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="exportDialogOpen=false">{{tr('cancel')}}</button><button class="primary" :disabled="exporting||!workspace.online||(!exportPersonalIncluded&&!exportGroupIds.length)">{{tr('exportLedger')}}</button></div>
             </form>
         </AppDrawer>
         <ConfirmDialog :open="!!pendingDelete"

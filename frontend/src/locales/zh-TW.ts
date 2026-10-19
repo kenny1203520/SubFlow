@@ -1,7 +1,7 @@
 export const zhTW = {
   incomeCurrencyRepair:'有收入的統計幣別需要修復；修復前暫不顯示收入合計與結算餘額。請至群組設定預覽重算。',previewCurrencyRepair:'預覽幣別重算／修復',
-  beneficialIncome:'我的受益收入',receivedIncome:'我實際收款',shareIncomes:'收入',shareIncomeDesc:'已收款收入明細與合計',
-  incomeViews:'收入檢視',incomeDetails:'收入明細',recurringIncome:'週期收入',pendingIncome:'待確認',createRecurringIncome:'新增週期收入',recurringIncomeDescription:'設定固定週期的收入計畫。',recurringIncomeOnlyPostsWhenReceived:'只有實際收款後才列入收入',endDate:'結束日期',postingMode:'入帳方式',automaticPosting:'自動入帳',manualConfirmation:'人工確認',nextReceipt:'下次收款',actualAmount:'實際金額',confirmReceived:'確認收款',skipReason:'略過原因',skipOccurrence:'略過本期',incomePeriods:'期數紀錄',noRecurringIncome:'尚無週期收入',noIncomePeriods:'尚無期數紀錄',
+  beneficialIncome:'我的受益收入',receivedIncome:'我實際收款',shareIncomes:'收入',shareIncomeDesc:'已收款收入明細與合計',shareForecastDesc:'週期收入計畫與預計收款日期',sharePendingIncomeDesc:'等待確認的收入期數',exportSourcesHelp:'選擇要匯出的個人帳簿與群組；伺服器會逐一檢查群組存取權限。',
+  incomeViews:'收入檢視',incomeDetails:'收入明細',recurringIncome:'週期收入',pendingIncome:'待確認',createRecurringIncome:'新增週期收入',recurringIncomeDescription:'設定固定週期的收入計畫。',recurringIncomeOnlyPostsWhenReceived:'只有實際收款後才列入收入',incomeBackfill:'補登漏掉的期數',incomeBackfillDescription:'先檢視漏掉的期數，再確認補登；已存在的期數會保留。',backfillThrough:'補登至',previewBackfill:'預覽期數',applyBackfill:'補登期數',backfillPeriods:'將檢查 {count} 期',endDate:'結束日期',postingMode:'入帳方式',automaticPosting:'自動入帳',manualConfirmation:'人工確認',nextReceipt:'下次收款',actualAmount:'實際金額',confirmReceived:'確認收款',skipReason:'略過原因',skipOccurrence:'略過本期',incomePeriods:'期數紀錄',noRecurringIncome:'尚無週期收入',noIncomePeriods:'尚無期數紀錄',
   category_income_salary:'薪資',category_income_bonus:'獎金',category_income_freelance:'接案',category_income_investment:'投資',category_income_rental:'租金',category_income_gifts:'贈與',category_income_other:'其他收入',categoryKind:'分類用途',
   deleteSubscriptionAttachmentsWarning:'已入帳期數的附件會保留在對應支出；共用附件及未入帳期數附件會刪除。',deleteGroupAttachmentsWarning:'刪除群組會一併永久刪除群組交易與訂閱附件。',
   attachmentSelected:'已選取 {count} 個檔案，儲存交易後開始上傳。',
@@ -42,7 +42,7 @@ export const zhTW = {
   permission_ledger_settlements_create:'新增還款',permission_ledger_settlements_update:'編輯自己建立的還款',permission_ledger_settlements_manage:'管理所有還款',permissionDesc_ledger_settlements_create:'可新增付款人為自己的還款。',permissionDesc_ledger_settlements_update:'可編輯自己建立的還款。',permissionDesc_ledger_settlements_manage:'可代他人新增還款並管理所有還款。',
   permission_ledger_share_manage: '管理分享頁面',
   permissionDesc_ledger_share_manage: '可建立與管理唯讀分享連結。',
-  shareLedgerGroup: '群組帳本', shareLedgerPersonal: '個人帳本', sharePages: '分享頁面', sharePagesDesc: '建立私密、密碼保護或限指定帳號檢視的唯讀帳本連結。',
+  shareLedgerGroup: '群組帳本', shareLedgerPersonal: '個人帳本', exportAllGroups:'選取所有群組', sharePages: '分享頁面', sharePagesDesc: '建立私密、密碼保護或限指定帳號檢視的唯讀帳本連結。',
   createShare: '建立分享', newShare: '建立分享頁', editShare: '編輯分享頁', shareName: '名稱', shareNamePlaceholder: '例如：旅行支出', shareAccess: '檢視權限', shareAccessLink: '私密連結', shareAccessPassword: '連結＋密碼', shareAccessAccounts: '指定 SubFlow 帳號', sharePassword: '密碼', sharePasswordNew: '新密碼（留白則保持不變）', shareViewerEmails: '可檢視帳號 Email', shareViewerPlaceholder: 'reader@example.com',
   shareEnabled: '啟用', shareExpires: '到期日（選填）', shareRange: '資料期間', shareRangeAll: '全部歷史', shareRangeRolling: '最近期間', shareRangeFixed: '固定日期', shareRecentDays: '最近天數', shareFrom: '起始日期', shareTo: '結束日期', shareContent: '分享內容', shareSummary: '摘要', shareExpenses: '支出', shareSubscriptions: '訂閱', shareSettlements: '結算與成員欠款', shareIdentities: '成員與付款人姓名', shareNotes: '備註',
   shareLinkCopied: '分享連結已複製：{url}', shareEdit: '編輯', shareRegenerate: '重建連結', shareDelete: '刪除', shareDeleteConfirm: '確定要刪除「{name}」嗎？', noShares: '尚未建立分享頁面。', shareLoading: '載入中…', shareStatusEnabled: '已啟用', shareStatusDisabled: '已停用',

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/pocketbase/pocketbase/tests"
 	"subflow/internal/application"
@@ -97,5 +98,53 @@ func TestShareURLPersistsAcrossManagementOperations(t *testing.T) {
 	}
 	if _, err = f.service.FindAvailableShare(ctx, strings.TrimPrefix(rotated.URL, "/share/")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestShareCanExposeRecurringAndPendingIncomeIndependently(t *testing.T) {
+	f := newAPITestApp(t)
+	owner := f.createUser(t, "income-share@example.com")
+	ctx := context.Background()
+	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	f.service.Now = func() time.Time { return now }
+	start := now.AddDate(0, 0, -1)
+	_, err := f.service.CreateRecurringIncome(ctx, owner.Id, domain.RecurringIncome{
+		OwnerID:  owner.Id,
+		Template: domain.Income{Title: "Private plan", AmountMinor: 120000, Currency: domain.CurrencyTWD, EarnedBy: owner.Id},
+		Timezone: "UTC", Cycle: domain.BillingMonthly, Interval: 1, StartsOn: start, NextOn: start, PostingMode: "manual",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.service.PostDueRecurringIncomes(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.service.CreateIncome(ctx, owner.Id, domain.Income{Title: "Hidden actual income", AmountMinor: 5000, Currency: domain.CurrencyTWD, EarnedBy: owner.Id, ReceivedOn: now}); err != nil {
+		t.Fatal(err)
+	}
+	created, err := f.service.CreateShare(ctx, owner.Id, "", application.ShareInput{Share: domain.Share{
+		Name: "Income plan", AccessMode: "link", RangeMode: "all", ShowSummary: true,
+		ShowRecurringIncome: true, ShowPendingIncome: true,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := f.service.SharePageWithOptions(ctx, created.Share, application.SharePageOptions{Page: 1, PerPage: 25})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.TotalItems != 2 || page.RecordCounts["recurring_income"] != 1 || page.RecordCounts["pending_income"] != 1 {
+		t.Fatalf("share should include only the selected plan and pending period: %#v", page.RecordCounts)
+	}
+	if _, ok := page.Summary["incomeCount"]; ok {
+		t.Fatal("summary leaked a disabled actual-income total")
+	}
+	if page.Summary["recurringIncomeCount"] != 1 || page.Summary["pendingIncomeCount"] != 1 {
+		t.Fatalf("share summary should describe selected forecast content: %#v", page.Summary)
+	}
+	for _, record := range page.Records {
+		if record["type"] == "income" || record["title"] == "Hidden actual income" {
+			t.Fatalf("share leaked actual income while disabled: %#v", record)
+		}
 	}
 }

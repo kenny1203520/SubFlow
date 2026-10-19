@@ -151,6 +151,90 @@ func (s *Service) ListIncomeOccurrences(ctx context.Context, actor, id string, p
 	}
 	return s.Stores.RecurringIncomes.ListOccurrences(ctx, id, p)
 }
+func (s *Service) PreviewRecurringIncomeBackfill(ctx context.Context, actor, id string, through time.Time) (*domain.IncomePeriodPreview, error) {
+	series, err := s.Stores.RecurringIncomes.Get(ctx, id)
+	if err != nil {
+		return nil, s.recurringIncomeFailure(ctx, actor, nil, "recurring_income.backfill_previewed", err)
+	}
+	if err = s.recurringPermission(ctx, actor, series, "ledger.incomes.write"); err != nil {
+		return nil, s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfill_previewed", err)
+	}
+	if through.IsZero() || through.After(s.Now()) {
+		return nil, s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfill_previewed", domain.ErrInvalid)
+	}
+	from := series.NextOn
+	if from.Before(series.StartsOn) {
+		from = series.StartsOn
+	}
+	if series.GroupID != "" {
+		monthStart, _, rangeErr := s.monthRange(ctx, actor, series.GroupID, "")
+		if rangeErr != nil {
+			return nil, s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfill_previewed", rangeErr)
+		}
+		if from.Before(monthStart) {
+			if err = s.groupPermission(ctx, actor, series.GroupID, "ledger.records.historical_write"); err != nil {
+				return nil, s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfill_previewed", err)
+			}
+		}
+	}
+	loc, _ := time.LoadLocation(series.Timezone)
+	dates, err := billingDatesBetween(series.StartsOn.In(loc), series.Cycle, series.Interval, from.In(loc), through.In(loc).Add(time.Nanosecond))
+	if err != nil {
+		return nil, s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfill_previewed", err)
+	}
+	if len(dates) > maxIncomeBackfillPeriods {
+		dates = dates[:maxIncomeBackfillPeriods]
+	}
+	revisions, err := s.Stores.RecurringIncomes.ListRevisions(ctx, id)
+	if err != nil {
+		return nil, s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfill_previewed", err)
+	}
+	sort.Slice(revisions, func(i, j int) bool { return revisions[i].EffectiveOn.Before(revisions[j].EffectiveOn) })
+	preview := &domain.IncomePeriodPreview{Periods: make([]domain.IncomeOccurrence, 0, len(dates)), Token: id + ":" + through.UTC().Format(time.RFC3339), Total: len(dates)}
+	for _, date := range dates {
+		if series.EndsOn != nil && date.After(*series.EndsOn) {
+			continue
+		}
+		existing, findErr := s.Stores.RecurringIncomes.GetOccurrence(ctx, id, date)
+		if findErr == nil && existing != nil {
+			preview.Periods = append(preview.Periods, *existing)
+			continue
+		}
+		if findErr != nil && !errors.Is(findErr, domain.ErrNotFound) {
+			return nil, s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfill_previewed", findErr)
+		}
+		template, posting, revisionID := series.Template, series.PostingMode, ""
+		for _, revision := range revisions {
+			if !date.Before(revision.EffectiveOn) && (revision.Through == nil || !date.After(*revision.Through)) {
+				template, posting, revisionID = revision.Template, revision.PostingMode, revision.ID
+			}
+		}
+		preview.Periods = append(preview.Periods, domain.IncomeOccurrence{RecurringIncomeID: id, RevisionID: revisionID, ScheduledOn: date, Status: "pending", PostingMode: posting, Template: template})
+	}
+	preview.Total = len(preview.Periods)
+	if err = s.audit(ctx, actor, series.GroupID, "recurring_income.backfill_previewed", "recurring_income", id, "success", encodeAuditSummary(map[string]any{"period_count": preview.Total, "through": through.Format(time.RFC3339)}, nil)); err != nil {
+		return nil, errors.Join(domain.ErrAuditUnavailable, err)
+	}
+	return preview, nil
+}
+func (s *Service) BackfillRecurringIncome(ctx context.Context, actor, id string, through time.Time) error {
+	preview, err := s.PreviewRecurringIncomeBackfill(ctx, actor, id, through)
+	if err != nil {
+		return err
+	}
+	series, err := s.Stores.RecurringIncomes.Get(ctx, id)
+	if err != nil {
+		return s.recurringIncomeFailure(ctx, actor, nil, "recurring_income.backfilled", err)
+	}
+	err = s.postRecurringSeries(ctx, series, through)
+	if err != nil {
+		return s.recurringIncomeFailure(ctx, actor, series, "recurring_income.backfilled", err)
+	}
+	if err = s.audit(ctx, actor, series.GroupID, "recurring_income.backfilled", "recurring_income", id, "success", encodeAuditSummary(map[string]any{"period_count": preview.Total, "through": through.Format(time.RFC3339)}, nil)); err != nil {
+		return errors.Join(domain.ErrAuditUnavailable, err)
+	}
+	return nil
+}
 func (s *Service) SetRecurringIncomeStatus(ctx context.Context, actor, id, status string, end *time.Time) error {
 	v, err := s.Stores.RecurringIncomes.Get(ctx, id)
 	if err != nil {
@@ -305,13 +389,25 @@ func (s *Service) RetryIncomeOccurrence(ctx context.Context, actor, id string, o
 	next := nextIncomeOccurrence(series, on, func() *time.Location { loc, _ := time.LoadLocation(series.Timezone); return loc }())
 	occ.Status = "pending"
 	occ.Reason = ""
-	if err = s.Stores.RecurringIncomes.SaveOccurrence(ctx, occ); err != nil {
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if err := s.Stores.RecurringIncomes.SaveOccurrence(tx, occ); err != nil {
+			return err
+		}
+		return s.audit(tx, actor, series.GroupID, "income_occurrence.retried", "income_occurrence", occ.ID, "success", encodeAuditSummary(map[string]any{"scheduled_on": on.Format(time.RFC3339)}, nil))
+	})
+	if err != nil {
 		return s.recurringIncomeFailure(ctx, actor, series, "income_occurrence.retried", err)
 	}
 	if series.PostingMode == "manual" {
 		return nil
 	}
-	return s.postAutomaticIncomeOccurrence(ctx, series, occ, on, next)
+	if err := s.postAutomaticIncomeOccurrence(ctx, series, occ, on, next); err != nil {
+		if markErr := s.markIncomeOccurrenceFailed(ctx, actor, series, occ, err); markErr != nil {
+			return errors.Join(err, markErr)
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) PostDueRecurringIncomes(ctx context.Context) error {
@@ -349,11 +445,21 @@ func (s *Service) postRecurringSeries(ctx context.Context, v *domain.RecurringIn
 			v.Status = "ended"
 			break
 		}
-		existing, _ := s.Stores.RecurringIncomes.GetOccurrence(ctx, v.ID, date)
-		if existing != nil {
+		existing, findErr := s.Stores.RecurringIncomes.GetOccurrence(ctx, v.ID, date)
+		if findErr == nil && existing != nil {
 			v.NextOn = nextIncomeOccurrence(v, date, loc)
-			_ = s.Stores.RecurringIncomes.Update(ctx, v)
+			if updateErr := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+				if err := s.Stores.RecurringIncomes.Update(tx, v); err != nil {
+					return err
+				}
+				return s.audit(tx, recurringActor(v), v.GroupID, "income_occurrence.reconciled", "income_occurrence", existing.ID, "success", encodeAuditSummary(map[string]any{"scheduled_on": date.Format(time.RFC3339)}, nil))
+			}); updateErr != nil {
+				return s.recurringIncomeFailure(ctx, recurringActor(v), v, "income_occurrence.reconciled", updateErr)
+			}
 			continue
+		}
+		if findErr != nil && !errors.Is(findErr, domain.ErrNotFound) {
+			return s.recurringIncomeFailure(ctx, recurringActor(v), v, "income_occurrence.posted", findErr)
 		}
 		template := v.Template
 		posting := v.PostingMode
@@ -365,7 +471,7 @@ func (s *Service) postRecurringSeries(ctx context.Context, v *domain.RecurringIn
 				revisionID = revision.ID
 			}
 		}
-		occ := domain.IncomeOccurrence{RecurringIncomeID: v.ID, RevisionID: revisionID, ScheduledOn: date, Template: template, Status: "pending", PostingMode:posting}
+		occ := domain.IncomeOccurrence{RecurringIncomeID: v.ID, RevisionID: revisionID, ScheduledOn: date, Template: template, Status: "pending", PostingMode: posting}
 		next := nextIncomeOccurrence(v, date, loc)
 		if next.After(until) {
 			v.NextOn = next
@@ -378,7 +484,7 @@ func (s *Service) postRecurringSeries(ctx context.Context, v *domain.RecurringIn
 				if err := s.Stores.RecurringIncomes.Update(tx, v); err != nil {
 					return err
 				}
-				return s.audit(tx, "", v.GroupID, "income_occurrence.pending", "income_occurrence", occ.ID, "success", encodeAuditSummary(map[string]any{"scheduled_on": date.Format(time.RFC3339)}, nil))
+				return s.audit(tx, recurringActor(v), v.GroupID, "income_occurrence.pending", "income_occurrence", occ.ID, "success", encodeAuditSummary(map[string]any{"scheduled_on": date.Format(time.RFC3339)}, nil))
 			}); err != nil {
 				return err
 			}
@@ -386,8 +492,31 @@ func (s *Service) postRecurringSeries(ctx context.Context, v *domain.RecurringIn
 		}
 		err = s.postAutomaticIncomeOccurrence(ctx, v, &occ, date, next)
 		if err != nil {
+			if markErr := s.markIncomeOccurrenceFailed(ctx, recurringActor(v), v, &occ, err); markErr != nil {
+				return errors.Join(err, markErr)
+			}
 			return err
 		}
+	}
+	return nil
+}
+func recurringActor(v *domain.RecurringIncome) string {
+	if v.OwnerID != "" {
+		return v.OwnerID
+	}
+	return v.Template.EarnedBy
+}
+func (s *Service) markIncomeOccurrenceFailed(ctx context.Context, actor string, series *domain.RecurringIncome, occurrence *domain.IncomeOccurrence, cause error) error {
+	occurrence.Status = "failed"
+	occurrence.Reason = "posting_failed"
+	err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if saveErr := s.Stores.RecurringIncomes.SaveOccurrence(tx, occurrence); saveErr != nil {
+			return saveErr
+		}
+		return s.audit(tx, actor, series.GroupID, "income_occurrence.post_failed", "income_occurrence", occurrence.ID, "failure", encodeAuditSummary(map[string]any{"scheduled_on": occurrence.ScheduledOn.Format(time.RFC3339), "reason": "posting_failed"}, nil))
+	})
+	if err != nil {
+		return s.recurringIncomeFailure(ctx, actor, series, "income_occurrence.post_failed", errors.Join(err, cause))
 	}
 	return nil
 }

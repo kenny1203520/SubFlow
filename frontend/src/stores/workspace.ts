@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, IncomeOccurrence, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, RecurringIncome, RecurringIncomeInput, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, IncomeOccurrence, IncomePeriodPreview, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, RecurringIncome, RecurringIncomeInput, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import { useI18n } from '../i18n'
@@ -889,6 +889,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/occurrences/retry`:`/recurring-incomes/${id}/occurrences/retry`
     return run(async()=>{await api.post(path,{scheduledOn});await loadIncomeOccurrences(id,groupId)},'income-occurrences')
   }
+  async function previewRecurringIncomeBackfill(id:string,through:string,groupId='') {
+    if(!online.value){error.value=tr('offlineActionDisabled');return undefined}
+    const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/backfill/preview`:`/recurring-incomes/${id}/backfill/preview`
+    try{return (await api.get<IncomePeriodPreview>(`${path}?through=${encodeURIComponent(through)}`)).data}catch(reason){error.value=reason instanceof Error?reason.message:tr('requestFailed');return undefined}
+  }
+  async function backfillRecurringIncome(id:string,through:string,groupId='') {
+    if(!online.value){error.value=tr('offlineActionDisabled');return false}
+    const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/backfill`:`/recurring-incomes/${id}/backfill`
+    return run(async()=>{await api.post(path,{through});await loadIncomeOccurrences(id,groupId);if(groupId)await refreshGroup();else await refreshPersonal()},'income-occurrences')
+  }
 
   async function addPersonalSubscription(input: SubscriptionInput, backfill = false) {
     let createdId = ''
@@ -1006,6 +1016,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     anchor.remove()
     URL.revokeObjectURL(url)
   }
+  async function exportLedgerSources(includePersonal:boolean,groupIds:string[]) {
+    const params=new URLSearchParams({locale:locale.value,includePersonal:String(includePersonal)})
+    if(groupIds.length)params.set('groupIds',groupIds.join(','))
+    const {blob,filename}=await api.getBlob(`/export/personal?${params.toString()}`)
+    const url=URL.createObjectURL(blob),anchor=document.createElement('a');anchor.href=url;anchor.download=filename;document.body.appendChild(anchor);anchor.click();anchor.remove();URL.revokeObjectURL(url)
+  }
 
   function clear() {
     sse?.stop()
@@ -1048,7 +1064,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,loadRecurringIncomes,loadIncomeOccurrences,createRecurringIncome,updateRecurringIncome,setRecurringIncomeStatus,confirmIncomeOccurrence,skipIncomeOccurrence,retryIncomeOccurrence,
+    addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,exportLedgerSources,loadRecurringIncomes,loadIncomeOccurrences,createRecurringIncome,updateRecurringIncome,setRecurringIncomeStatus,confirmIncomeOccurrence,skipIncomeOccurrence,retryIncomeOccurrence,previewRecurringIncomeBackfill,backfillRecurringIncome,
     loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,

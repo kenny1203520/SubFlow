@@ -17,7 +17,7 @@ const password = ref('')
 const loading = ref(true)
 const error = ref('')
 const accountAccess = ref(false)
-const activeSection = ref<'all' | 'expenses' | 'incomes' | 'subscriptions' | 'settlements'>('all')
+const activeSection = ref<'all' | 'expenses' | 'incomes' | 'recurring_income' | 'pending_income' | 'subscriptions' | 'settlements'>('all')
 const search = ref('')
 const sortNewest = ref(true)
 const pageNumber = ref(1)
@@ -32,11 +32,13 @@ const hasRecords = computed(() => (page.value?.totalItems || records.value.lengt
 const totals = computed(() => Object.entries(page.value?.summary?.expenseTotals || {}).map(([currency, amount]) => ({ currency, amount, label:tr('shareExpenses') })))
 const incomeTotals = computed(() => Object.entries(page.value?.summary?.incomeTotals || {}).map(([currency, amount]) => ({ currency, amount, label:tr('shareIncomes') })))
 const sectionTabs = computed(() => {
-  const counts = page.value?.recordCounts || { all: 0, expenses: 0, incomes: 0, subscriptions: 0, settlements: 0 }
+  const counts = page.value?.recordCounts || { all: 0, expenses: 0, incomes: 0, recurring_income:0, pending_income:0, subscriptions: 0, settlements: 0 }
   return [
     { key: 'all' as const, label: tr('shareAllRecords'), count: counts.all || 0 },
     { key: 'expenses' as const, label: tr('shareExpenses'), count: counts.expenses || 0 },
     { key: 'incomes' as const, label: tr('shareIncomes'), count: counts.incomes || 0 },
+    { key: 'recurring_income' as const, label: tr('recurringIncome'), count: counts.recurring_income || 0 },
+    { key: 'pending_income' as const, label: tr('pendingIncome'), count: counts.pending_income || 0 },
     { key: 'subscriptions' as const, label: tr('shareSubscriptions'), count: counts.subscriptions || 0 },
     { key: 'settlements' as const, label: tr('shareSettlements'), count: counts.settlements || 0 },
   ].filter(tab => tab.key === 'all' || tab.count > 0)
@@ -56,26 +58,30 @@ function rangeLabel(value: unknown) {
 }
 function cycleLabel(value: unknown) {
   const key = text(value)
-  return ({ monthly: tr('monthly'), quarterly: tr('quarterly'), yearly: tr('yearly') } as Record<string, string>)[key] || key
+  return ({ daily:tr('daily'),every_n_days:tr('everyNDays'),weekly:tr('weekly'),every_n_weeks:tr('everyNWeeks'),every_n_hours:tr('everyNHours'),monthly: tr('monthly'), quarterly: tr('quarterly'), yearly: tr('yearly') } as Record<string, string>)[key] || key
 }
 function statusLabel(value: unknown) {
   const key = text(value)
-  return ({ active: tr('active'), paused: tr('paused'), cancelled: tr('cancelled'), ending: tr('ending'), ended: tr('ended') } as Record<string, string>)[key] || key
+  return ({ active: tr('active'), paused: tr('paused'), cancelled: tr('cancelled'), ending: tr('ending'), ended: tr('ended'), pending:tr('pending'), failed:tr('failed') } as Record<string, string>)[key] || key
 }
 function recordTitle(record: ShareRecord) {
   if (record.type === 'expense') return text(record.title) || tr('shareExpenses')
   if (record.type === 'income') return text(record.title) || tr('shareIncomes')
+  if (record.type === 'recurring_income') return text(record.title) || tr('recurringIncome')
+  if (record.type === 'pending_income') return text(record.title) || tr('pendingIncome')
   if (record.type === 'subscription') return text(record.name) || tr('shareSubscriptions')
   if (record.from || record.to) return tr('sharePublicFromTo', { from: text(record.from), to: text(record.to) })
   return tr('shareSettlements')
 }
 function recordTypeLabel(type: unknown) {
-  return ({ expense: tr('shareExpenses'), income: tr('shareIncomes'), subscription: tr('shareSubscriptions'), settlement: tr('shareSettlements') } as Record<string, string>)[text(type)] || tr('sharePublicRecords')
+  return ({ expense: tr('shareExpenses'), income: tr('shareIncomes'), recurring_income:tr('recurringIncome'), pending_income:tr('pendingIncome'), subscription: tr('shareSubscriptions'), settlement: tr('shareSettlements') } as Record<string, string>)[text(type)] || tr('sharePublicRecords')
 }
 function recordDate(record: ShareRecord) { return record.occurredOn || record.incurredOn || record.receivedOn || record.nextBilling || record.settledOn }
 function recordMeta(record: ShareRecord) {
   if (record.type === 'expense') return [record.category, date(recordDate(record)), record.paidBy ? tr('sharePublicPaidBy', { value: text(record.paidBy) }) : ''].filter(Boolean)
   if (record.type === 'income') return [record.category, date(recordDate(record)), record.earnedBy ? tr('receivedBy') + ': ' + text(record.earnedBy) : ''].filter(Boolean)
+  if (record.type === 'recurring_income') return [record.category, cycleLabel(record.cycle), statusLabel(record.status), date(recordDate(record))].filter(Boolean)
+  if (record.type === 'pending_income') return [statusLabel(record.status), date(recordDate(record))].filter(Boolean)
   if (record.type === 'subscription') return [record.category, cycleLabel(record.billingCycle), statusLabel(record.status), date(recordDate(record)), record.paidBy ? tr('sharePublicPaidBy', { value: text(record.paidBy) }) : ''].filter(Boolean)
   return [date(recordDate(record))]
 }

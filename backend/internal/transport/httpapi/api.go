@@ -89,6 +89,8 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/recurring-incomes/{id}/occurrences/confirm", a.confirmIncomeOccurrence).Bind(bind)
 	e.Router.POST("/api/subflow/v1/recurring-incomes/{id}/occurrences/skip", a.skipIncomeOccurrence).Bind(bind)
 	e.Router.POST("/api/subflow/v1/recurring-incomes/{id}/occurrences/retry", a.retryIncomeOccurrence).Bind(bind)
+	e.Router.GET("/api/subflow/v1/recurring-incomes/{id}/backfill/preview", a.previewRecurringIncomeBackfill).Bind(bind)
+	e.Router.POST("/api/subflow/v1/recurring-incomes/{id}/backfill", a.backfillRecurringIncome).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/incomes/{id}", a.updateGroupOrPersonalIncome).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/incomes/{id}", a.deleteGroupOrPersonalIncome).Bind(bind)
 	e.Router.GET("/api/subflow/v1/personal/ledger", a.personalLedger).Bind(bind)
@@ -120,6 +122,8 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/occurrences/confirm", a.confirmIncomeOccurrence).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/occurrences/skip", a.skipIncomeOccurrence).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/occurrences/retry", a.retryIncomeOccurrence).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/backfill/preview", a.previewRecurringIncomeBackfill).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/backfill", a.backfillRecurringIncome).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/incomes/{id}", a.updateGroupOrPersonalIncome).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/incomes/{id}", a.deleteGroupOrPersonalIncome).Bind(bind)
 
@@ -1425,7 +1429,17 @@ func (a *API) deleteSettlement(e *core.RequestEvent) error {
 	return noContent(e)
 }
 func (a *API) exportPersonalLedger(e *core.RequestEvent) error {
-	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), "", e.Request.URL.Query().Get("locale"))
+	query := e.Request.URL.Query()
+	includePersonal := query.Get("includePersonal") != "false"
+	groupIDs := make([]string, 0)
+	for _, value := range query["groupIds"] {
+		for _, id := range strings.Split(value, ",") {
+			if id = strings.TrimSpace(id); id != "" {
+				groupIDs = append(groupIDs, id)
+			}
+		}
+	}
+	data, filename, err := a.Service.ExportLedgerSources(e.Request.Context(), authID(e), includePersonal, groupIDs, query.Get("locale"))
 	if err != nil {
 		return fail(e, err)
 	}
@@ -1433,7 +1447,7 @@ func (a *API) exportPersonalLedger(e *core.RequestEvent) error {
 	return e.Blob(http.StatusOK, "text/csv; charset=utf-8", data)
 }
 func (a *API) exportGroupLedger(e *core.RequestEvent) error {
-	data, filename, err := a.Service.ExportLedger(e.Request.Context(), authID(e), groupID(e), e.Request.URL.Query().Get("locale"))
+	data, filename, err := a.Service.ExportLedgerSources(e.Request.Context(), authID(e), false, []string{groupID(e)}, e.Request.URL.Query().Get("locale"))
 	if err != nil {
 		return fail(e, err)
 	}

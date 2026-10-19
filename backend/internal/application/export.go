@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -135,6 +136,89 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID, locale stri
 	}
 
 	return buf.Bytes(), s.exportFilename(ctx, userID, groupID), nil
+}
+
+// ExportLedgerSources combines the private ledger and explicitly selected
+// groups into one CSV. Each group is independently authorized by ExportLedger.
+func (s *Service) ExportLedgerSources(ctx context.Context, userID string, includePersonal bool, groupIDs []string, locale string) (data []byte, filename string, resultErr error) {
+	defer func() {
+		outcome, reason := "success", ""
+		if resultErr != nil {
+			outcome, reason = "failure", "export_failed"
+		}
+		auditErr := s.audit(ctx, userID, "", "ledger.exported", "ledger_export", "", outcome, encodeAuditSummary(map[string]any{"include_personal": includePersonal, "group_count": len(groupIDs), "reason": reason}, nil))
+		if auditErr != nil {
+			data = nil
+			filename = ""
+			resultErr = errors.Join(domain.ErrAuditUnavailable, auditErr, resultErr)
+		}
+	}()
+	if !includePersonal && len(groupIDs) == 0 {
+		return nil, "", domain.ErrInvalid
+	}
+	seen := map[string]bool{}
+	for _, id := range groupIDs {
+		if strings.TrimSpace(id) == "" || seen[id] {
+			return nil, "", domain.ErrInvalid
+		}
+		seen[id] = true
+	}
+	if len(groupIDs) > 100 {
+		return nil, "", domain.ErrInvalid
+	}
+	type sourceFile struct {
+		data   []byte
+		source string
+	}
+	items := make([]sourceFile, 0, len(groupIDs)+1)
+	msgs := exportMessagesFor(locale)
+	if includePersonal {
+		data, _, err := s.ExportLedger(ctx, userID, "", locale)
+		if err != nil {
+			return nil, "", err
+		}
+		items = append(items, sourceFile{data, msgs.sourcePersonal})
+	}
+	for _, id := range groupIDs {
+		group, err := s.Stores.Groups.Get(ctx, id)
+		if err != nil {
+			return nil, "", err
+		}
+		data, _, err := s.ExportLedger(ctx, userID, id, locale)
+		if err != nil {
+			return nil, "", err
+		}
+		items = append(items, sourceFile{data, group.Name})
+	}
+	var output bytes.Buffer
+	output.WriteString("\xEF\xBB\xBF")
+	w := csv.NewWriter(&output)
+	for index, item := range items {
+		rows, err := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(item.data, []byte("\xEF\xBB\xBF")))).ReadAll()
+		if err != nil {
+			return nil, "", err
+		}
+		if len(rows) < 2 {
+			return nil, "", domain.ErrInvalid
+		}
+		if index == 0 {
+			rows[0] = append(rows[0], "")
+			rows[1] = append(rows[1], msgs.sourceHeader)
+			_ = w.Write(rows[0])
+			_ = w.Write(rows[1])
+		}
+		for _, row := range rows[2:] {
+			row = append(row, item.source)
+			if err := w.Write(row); err != nil {
+				return nil, "", err
+			}
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, "", err
+	}
+	return output.Bytes(), s.exportFilename(ctx, userID, ""), nil
 }
 
 // exportLocation resolves which timezone dates should be shown in: the
@@ -374,6 +458,8 @@ type exportMessages struct {
 	uncategorized                                                                            string
 	category                                                                                 map[string]string
 	tzNoteGroup, tzNotePersonal                                                              string
+	sourceHeader                                                                             string
+	sourcePersonal                                                                           string
 }
 
 func (m exportMessages) categoryLabel(info *domain.Category, legacy string) string {
@@ -435,6 +521,8 @@ func exportMessagesFor(locale string) exportMessages {
 			statusPending:    "Not yet billed",
 			statusFailed:     "Posting failed",
 			statusReceived:   "Received",
+			sourceHeader:     "Source",
+			sourcePersonal:   "Personal",
 			uncategorized:    "Uncategorized",
 			category: map[string]string{
 				"food_dining": "Food & dining", "transport": "Transport", "housing": "Housing", "utilities": "Utilities & bills",
@@ -458,6 +546,8 @@ func exportMessagesFor(locale string) exportMessages {
 		statusPending:    "尚未入帳",
 		statusFailed:     "入帳失敗",
 		statusReceived:   "已收款",
+		sourceHeader:     "來源",
+		sourcePersonal:   "個人",
 		uncategorized:    "未分類",
 		category: map[string]string{
 			"food_dining": "餐飲", "transport": "交通", "housing": "住家", "utilities": "水電與帳單",

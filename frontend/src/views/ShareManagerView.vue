@@ -112,6 +112,8 @@ const accessOptions = computed(() => [
 ])
 const contentOptions = computed(() => [
   { key: 'showIncomes' as const, label: tr('shareIncomes'), description: tr('shareIncomeDesc'), marker: '+' },
+  { key: 'showRecurringIncome' as const, label: tr('recurringIncome'), description: tr('shareForecastDesc'), marker: '↻' },
+  { key: 'showPendingIncome' as const, label: tr('pendingIncome'), description: tr('sharePendingIncomeDesc'), marker: '…' },
   { key: 'showSummary' as const, label: tr('shareSummary'), description: tr('shareContentSummaryDesc'), marker: '▦' },
   { key: 'showExpenses' as const, label: tr('shareExpenses'), description: tr('shareContentExpensesDesc'), marker: '↙' },
   { key: 'showSubscriptions' as const, label: tr('shareSubscriptions'), description: tr('shareContentSubscriptionsDesc'), marker: '⟳' },

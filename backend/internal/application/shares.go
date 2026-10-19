@@ -403,7 +403,7 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		perPage = 25
 	}
 	section := options.Section
-	if section != "expenses" && section != "incomes" && section != "subscriptions" && section != "settlements" {
+	if section != "expenses" && section != "incomes" && section != "recurring_income" && section != "pending_income" && section != "subscriptions" && section != "settlements" {
 		section = "all"
 	}
 	sortNewest := options.Sort != "oldest"
@@ -450,6 +450,36 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 			}
 		}
 	}
+	recurringPlans := make([]domain.RecurringIncome, 0)
+	if value.ShowRecurringIncome {
+		plans, planErr := s.allShareRecurringIncomes(ctx, value)
+		if planErr != nil {
+			return nil, planErr
+		}
+		for _, plan := range plans {
+			if inRange(plan.NextOn, start, end) {
+				recurringPlans = append(recurringPlans, plan)
+			}
+		}
+	}
+	pendingPeriods := make([]domain.IncomeOccurrence, 0)
+	if value.ShowPendingIncome {
+		plans, planErr := s.allShareRecurringIncomes(ctx, value)
+		if planErr != nil {
+			return nil, planErr
+		}
+		for _, plan := range plans {
+			periods, periodErr := s.allShareIncomeOccurrences(ctx, plan.ID)
+			if periodErr != nil {
+				return nil, periodErr
+			}
+			for _, period := range periods {
+				if (period.Status == "pending" || period.Status == "failed") && inRange(period.ScheduledOn, start, end) {
+					pendingPeriods = append(pendingPeriods, period)
+				}
+			}
+		}
+	}
 	filteredSubs := make([]domain.Subscription, 0)
 	if value.ShowSubscriptions {
 		subs, err := s.allShareSubscriptions(ctx, value)
@@ -489,13 +519,19 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		if value.ShowSubscriptions {
 			summary["subscriptionCount"] = len(filteredSubs)
 		}
+		if value.ShowRecurringIncome {
+			summary["recurringIncomeCount"] = len(recurringPlans)
+		}
+		if value.ShowPendingIncome {
+			summary["pendingIncomeCount"] = len(pendingPeriods)
+		}
 		if value.ShowSettlements {
 			summary["settlementCount"] = len(settlements)
 		}
 		page.Summary = summary
 	}
 
-	records := make([]shareRecord, 0, len(filteredExpenses)+len(filteredIncomes)+len(filteredSubs)+len(settlements))
+	records := make([]shareRecord, 0, len(filteredExpenses)+len(filteredIncomes)+len(recurringPlans)+len(pendingPeriods)+len(filteredSubs)+len(settlements))
 	if value.ShowExpenses {
 		for _, item := range filteredExpenses {
 			row := s.shareExpenseRow(ctx, value, item)
@@ -510,6 +546,22 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 			row["type"] = "income"
 			row["occurredOn"] = item.ReceivedOn
 			records = append(records, shareRecord{kind: "incomes", occurredOn: item.ReceivedOn, row: row})
+		}
+	}
+	if value.ShowRecurringIncome {
+		for _, item := range recurringPlans {
+			row := s.shareRecurringIncomeRow(ctx, value, item)
+			row["type"] = "recurring_income"
+			row["occurredOn"] = item.NextOn
+			records = append(records, shareRecord{kind: "recurring_income", occurredOn: item.NextOn, row: row})
+		}
+	}
+	if value.ShowPendingIncome {
+		for _, item := range pendingPeriods {
+			row := s.sharePendingIncomeRow(ctx, value, item)
+			row["type"] = "pending_income"
+			row["occurredOn"] = item.ScheduledOn
+			records = append(records, shareRecord{kind: "pending_income", occurredOn: item.ScheduledOn, row: row})
 		}
 	}
 	if value.ShowSubscriptions {
@@ -553,7 +605,7 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		return records[i].occurredOn.Before(records[j].occurredOn)
 	})
 
-	counts := map[string]int{"all": len(records), "expenses": 0, "incomes": 0, "subscriptions": 0, "settlements": 0}
+	counts := map[string]int{"all": len(records), "expenses": 0, "incomes": 0, "recurring_income": 0, "pending_income": 0, "subscriptions": 0, "settlements": 0}
 	for _, item := range records {
 		counts[item.kind]++
 	}
@@ -752,6 +804,32 @@ func (s *Service) allShareIncomes(ctx context.Context, value *domain.Share) ([]d
 		}
 	}
 }
+func (s *Service) allShareRecurringIncomes(ctx context.Context, value *domain.Share) ([]domain.RecurringIncome, error) {
+	result := []domain.RecurringIncome{}
+	for p := 1; ; p++ {
+		page, err := s.Stores.RecurringIncomes.List(ctx, value.OwnerID, value.GroupID, ports.PageRequest{Page: p, PerPage: 100, Sort: "next_on"})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, page.Items...)
+		if page.TotalPages == 0 || p >= page.TotalPages {
+			return result, nil
+		}
+	}
+}
+func (s *Service) allShareIncomeOccurrences(ctx context.Context, id string) ([]domain.IncomeOccurrence, error) {
+	result := []domain.IncomeOccurrence{}
+	for p := 1; ; p++ {
+		page, err := s.Stores.RecurringIncomes.ListOccurrences(ctx, id, ports.PageRequest{Page: p, PerPage: 100, Sort: "scheduled_on"})
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, page.Items...)
+		if page.TotalPages == 0 || p >= page.TotalPages {
+			return result, nil
+		}
+	}
+}
 func (s *Service) allShareSubscriptions(ctx context.Context, value *domain.Share) ([]domain.Subscription, error) {
 	result := []domain.Subscription{}
 	for p := 1; ; p++ {
@@ -809,6 +887,23 @@ func (s *Service) shareIncomeRow(ctx context.Context, share *domain.Share, v dom
 	}
 	if share.ShowNotes {
 		row["notes"] = v.Notes
+	}
+	return row
+}
+func (s *Service) shareRecurringIncomeRow(ctx context.Context, share *domain.Share, v domain.RecurringIncome) map[string]any {
+	row := map[string]any{"title": v.Template.Title, "category": v.Template.Category, "amountMinor": v.Template.AmountMinor, "currency": v.Template.Currency, "nextOn": v.NextOn, "cycle": v.Cycle, "status": v.Status, "forecast": true}
+	if share.ShowIdentities {
+		row["earnedBy"] = s.displayName(ctx, v.Template.EarnedBy)
+	}
+	if share.ShowNotes {
+		row["notes"] = v.Template.Notes
+	}
+	return row
+}
+func (s *Service) sharePendingIncomeRow(ctx context.Context, share *domain.Share, v domain.IncomeOccurrence) map[string]any {
+	row := map[string]any{"title": v.Template.Title, "amountMinor": v.Template.AmountMinor, "currency": v.Template.Currency, "scheduledOn": v.ScheduledOn, "status": v.Status, "forecast": true}
+	if share.ShowNotes {
+		row["notes"] = v.Template.Notes
 	}
 	return row
 }

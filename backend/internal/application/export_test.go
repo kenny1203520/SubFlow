@@ -180,6 +180,23 @@ func TestExportLedgerIncludesReceivedIncomeForPersonalAndGroupScopes(t *testing.
 	if !found {
 		t.Fatalf("group CSV should include received income: %v", rows)
 	}
+	combined, _, err := service.ExportLedgerSources(ctx, userID, true, []string{groupID}, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, header, rows = exportRows(t, combined)
+	if header[len(header)-1] != "Source" {
+		t.Fatalf("combined CSV should identify its source: %v", header)
+	}
+	seenSources := map[string]bool{}
+	for _, row := range rows {
+		if len(row) > len(header)-1 {
+			seenSources[row[len(row)-1]] = true
+		}
+	}
+	if !seenSources["Personal"] || !seenSources["Export Group"] {
+		t.Fatalf("combined CSV should include both selected sources, got %v", seenSources)
+	}
 }
 
 func TestExportLedgerPersonalIncludesOwnedAndPaidRecords(t *testing.T) {
