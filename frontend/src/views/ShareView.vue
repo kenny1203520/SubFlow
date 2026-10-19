@@ -17,7 +17,7 @@ const password = ref('')
 const loading = ref(true)
 const error = ref('')
 const accountAccess = ref(false)
-const activeSection = ref<'all' | 'expenses' | 'subscriptions' | 'settlements'>('all')
+const activeSection = ref<'all' | 'expenses' | 'incomes' | 'subscriptions' | 'settlements'>('all')
 const search = ref('')
 const sortNewest = ref(true)
 const pageNumber = ref(1)
@@ -29,12 +29,14 @@ let filterTimer: ReturnType<typeof setTimeout> | undefined
 const records = computed(() => page.value?.records || [])
 const balances = computed(() => page.value?.balances || [])
 const hasRecords = computed(() => (page.value?.totalItems || records.value.length) > 0)
-const totals = computed(() => Object.entries(page.value?.summary?.expenseTotals || {}).map(([currency, amount]) => ({ currency, amount })))
+const totals = computed(() => Object.entries(page.value?.summary?.expenseTotals || {}).map(([currency, amount]) => ({ currency, amount, label:tr('shareExpenses') })))
+const incomeTotals = computed(() => Object.entries(page.value?.summary?.incomeTotals || {}).map(([currency, amount]) => ({ currency, amount, label:tr('shareIncomes') })))
 const sectionTabs = computed(() => {
-  const counts = page.value?.recordCounts || { all: 0, expenses: 0, subscriptions: 0, settlements: 0 }
+  const counts = page.value?.recordCounts || { all: 0, expenses: 0, incomes: 0, subscriptions: 0, settlements: 0 }
   return [
     { key: 'all' as const, label: tr('shareAllRecords'), count: counts.all || 0 },
     { key: 'expenses' as const, label: tr('shareExpenses'), count: counts.expenses || 0 },
+    { key: 'incomes' as const, label: tr('shareIncomes'), count: counts.incomes || 0 },
     { key: 'subscriptions' as const, label: tr('shareSubscriptions'), count: counts.subscriptions || 0 },
     { key: 'settlements' as const, label: tr('shareSettlements'), count: counts.settlements || 0 },
   ].filter(tab => tab.key === 'all' || tab.count > 0)
@@ -62,16 +64,18 @@ function statusLabel(value: unknown) {
 }
 function recordTitle(record: ShareRecord) {
   if (record.type === 'expense') return text(record.title) || tr('shareExpenses')
+  if (record.type === 'income') return text(record.title) || tr('shareIncomes')
   if (record.type === 'subscription') return text(record.name) || tr('shareSubscriptions')
   if (record.from || record.to) return tr('sharePublicFromTo', { from: text(record.from), to: text(record.to) })
   return tr('shareSettlements')
 }
 function recordTypeLabel(type: unknown) {
-  return ({ expense: tr('shareExpenses'), subscription: tr('shareSubscriptions'), settlement: tr('shareSettlements') } as Record<string, string>)[text(type)] || tr('sharePublicRecords')
+  return ({ expense: tr('shareExpenses'), income: tr('shareIncomes'), subscription: tr('shareSubscriptions'), settlement: tr('shareSettlements') } as Record<string, string>)[text(type)] || tr('sharePublicRecords')
 }
-function recordDate(record: ShareRecord) { return record.occurredOn || record.incurredOn || record.nextBilling || record.settledOn }
+function recordDate(record: ShareRecord) { return record.occurredOn || record.incurredOn || record.receivedOn || record.nextBilling || record.settledOn }
 function recordMeta(record: ShareRecord) {
   if (record.type === 'expense') return [record.category, date(recordDate(record)), record.paidBy ? tr('sharePublicPaidBy', { value: text(record.paidBy) }) : ''].filter(Boolean)
+  if (record.type === 'income') return [record.category, date(recordDate(record)), record.earnedBy ? tr('receivedBy') + ': ' + text(record.earnedBy) : ''].filter(Boolean)
   if (record.type === 'subscription') return [record.category, cycleLabel(record.billingCycle), statusLabel(record.status), date(recordDate(record)), record.paidBy ? tr('sharePublicPaidBy', { value: text(record.paidBy) }) : ''].filter(Boolean)
   return [date(recordDate(record))]
 }
@@ -181,7 +185,7 @@ onUnmounted(() => { if (filterTimer) clearTimeout(filterTimer) })
 
     <template v-else-if="page">
       <header class="share-hero"><button class="share-brand share-brand-button" type="button" :aria-label="tr('shareHome')" @click="goHome"><Logo variant="lockup" size="sm" /></button><div class="hero-content"><p class="eyebrow">{{ tr('sharePublicLedger') }}</p><h1>{{ page.name }}</h1><div class="hero-meta"><span>{{ rangeLabel(page.rangeLabel) }}</span><span>{{ tr('sharePublicReadOnly') }}</span></div></div><div class="hero-seal"><ShareIcon name="arrow-up-right" :size="22" /></div></header>
-      <section v-if="page.showSummary && page.summary" class="summary-section" aria-labelledby="share-summary-title"><div class="section-title"><div><p class="eyebrow">{{ tr('sharePublicSummary') }}</p><h2 id="share-summary-title">{{ tr('sharePublicSummary') }}</h2></div><div v-if="totals.length" class="total-stack"><span>{{ tr('sharePublicTotal') }}</span><strong v-for="total in totals" :key="total.currency">{{ money(total.amount, total.currency) }}</strong></div></div><div class="summary-grid"><article class="summary-card"><span class="summary-mark expenses"><ShareIcon name="expense" :size="17" /></span><strong>{{ page.summary.expenseCount }}</strong><span>{{ tr('shareExpenses') }}</span></article><article class="summary-card"><span class="summary-mark subscriptions"><ShareIcon name="subscription" :size="17" /></span><strong>{{ page.summary.subscriptionCount }}</strong><span>{{ tr('shareSubscriptions') }}</span></article><article v-if="page.summary.settlementCount" class="summary-card"><span class="summary-mark settlements"><ShareIcon name="settlement" :size="17" /></span><strong>{{ page.summary.settlementCount }}</strong><span>{{ tr('shareSettlements') }}</span></article></div></section>
+      <section v-if="page.showSummary && page.summary" class="summary-section" aria-labelledby="share-summary-title"><div class="section-title"><div><p class="eyebrow">{{ tr('sharePublicSummary') }}</p><h2 id="share-summary-title">{{ tr('sharePublicSummary') }}</h2></div><div v-if="totals.length||incomeTotals.length" class="total-stack"><template v-for="total in [...totals,...incomeTotals]" :key="total.label+total.currency"><span>{{ total.label }}</span><strong>{{ money(total.amount, total.currency) }}</strong></template></div></div><div class="summary-grid"><article v-if="page.summary.expenseCount!==undefined" class="summary-card"><span class="summary-mark expenses"><ShareIcon name="expense" :size="17" /></span><strong>{{ page.summary.expenseCount }}</strong><span>{{ tr('shareExpenses') }}</span></article><article v-if="page.summary.incomeCount!==undefined" class="summary-card"><span class="summary-mark expenses"><ShareIcon name="expense" :size="17" /></span><strong>{{ page.summary.incomeCount }}</strong><span>{{ tr('shareIncomes') }}</span></article><article v-if="page.summary.subscriptionCount!==undefined" class="summary-card"><span class="summary-mark subscriptions"><ShareIcon name="subscription" :size="17" /></span><strong>{{ page.summary.subscriptionCount }}</strong><span>{{ tr('shareSubscriptions') }}</span></article><article v-if="page.summary.settlementCount" class="summary-card"><span class="summary-mark settlements"><ShareIcon name="settlement" :size="17" /></span><strong>{{ page.summary.settlementCount }}</strong><span>{{ tr('shareSettlements') }}</span></article></div></section>
       <section v-if="balances.length" class="balance-summary card" aria-labelledby="share-balances-title"><div class="section-title"><div><p class="eyebrow">{{ tr('shareBalances') }}</p><h2 id="share-balances-title">{{ tr('shareCurrentBalances') }}</h2><p class="section-help">{{ tr('shareCurrentBalancesDesc') }}</p></div></div><div class="balance-list"><article v-for="(item, index) in balances" :key="'balance-' + index + text(item.member)" class="balance-row"><span class="balance-avatar" aria-hidden="true">{{ text(item.member).slice(0, 1).toUpperCase() || '?' }}</span><div class="balance-person"><strong>{{ item.member }}</strong><span>{{ Number(item.amountMinor) >= 0 ? tr('shareBalanceReceivable') : tr('shareBalancePayable') }}</span></div><strong class="balance-amount" :class="{ negative: Number(item.amountMinor) < 0 }">{{ money(item.amountMinor, item.currency || page.currency) }}</strong></article></div></section>
       <section class="records-section card" aria-labelledby="share-records-title"><div class="section-title"><div><p class="eyebrow">{{ tr('sharePublicRecords') }}</p><h2 id="share-records-title">{{ tr('sharePublicRecords') }}</h2><p class="section-help">{{ tr('shareRecordsHelp') }}</p></div></div><div v-if="hasRecords" class="record-toolbar"><div class="section-tabs" role="tablist" :aria-label="tr('shareRecordFilter')"><button v-for="tab in sectionTabs" :key="tab.key" type="button" class="section-tab" :class="{ active: activeSection === tab.key }" @click="changeSection(tab.key)">{{ tab.label }} <span>{{ tab.count }}</span></button></div><div class="record-tools"><input v-model="search" type="search" :placeholder="tr('shareSearchRecords')" :aria-label="tr('shareSearchRecords')" @input="scheduleFilterReload"><button type="button" class="sort-button" @click="changeSort">{{ sortNewest ? tr('shareSortNewest') : tr('shareSortOldest') }}</button></div></div><SharePagination v-if="hasRecords" :page="page.page || pageNumber" :total-pages="page.totalPages || 1" :page-size="pageSize" :page-sizes="pageSizes" :loading="loading" @page="loadPage" @update:page-size="changePageSize" /><div v-if="records.length" class="record-feed"><article v-for="(item, index) in records" :key="recordKey(item, index)" class="record"><div class="record-primary"><div class="record-heading"><span class="record-type" :class="'type-' + item.type"><ShareIcon :name="item.type === 'expense' ? 'expense' : item.type === 'subscription' ? 'subscription' : 'settlement'" :size="14" />{{ recordTypeLabel(item.type) }}</span><strong>{{ recordTitle(item) }}</strong></div><span class="record-meta"><b v-if="item.category" class="category-chip">{{ item.category }}</b><i v-for="metaIndex in recordMeta(item).length" :key="metaIndex" aria-hidden="true"></i><span v-for="(meta, metaIndex) in recordMeta(item)" :key="'meta-' + metaIndex">{{ meta }}</span></span><small v-if="item.notes">{{ item.notes }}</small></div><strong class="record-amount">{{ money(item.amountMinor, item.currency || page.currency) }}</strong></article></div><div v-else-if="hasRecords" class="record-no-match">{{ tr('shareNoMatches') }}</div><div v-else class="record-empty"><div class="empty-mark"><ShareIcon name="empty" :size="20" /></div><p>{{ tr('sharePublicNoRecords') }}</p></div><SharePagination v-if="hasRecords" :page="page.page || pageNumber" :total-pages="page.totalPages || 1" :page-size="pageSize" :page-sizes="pageSizes" :loading="loading" @page="loadPage" @update:page-size="changePageSize" /></section>
       <footer class="share-footer"><button class="share-brand share-brand-button" type="button" :aria-label="tr('shareHome')" @click="goHome"><Logo variant="lockup" size="sm" /></button><span>{{ tr('sharePublicReadOnly') }}</span></footer>

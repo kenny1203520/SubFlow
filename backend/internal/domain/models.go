@@ -268,31 +268,34 @@ type AuditLog struct {
 // personal ledger or a group ledger. TokenHash and PasswordHash are never
 // returned by management APIs.
 type Share struct {
-	ID                string        `json:"id"`
-	GroupID           string        `json:"groupId,omitempty"`
-	OwnerID           string        `json:"ownerId,omitempty"`
-	Name              string        `json:"name"`
-	TokenHash         string        `json:"-"`
-	TokenCiphertext   string        `json:"-"`
-	URL               string        `json:"url,omitempty"`
-	AccessMode        string        `json:"accessMode"`
-	PasswordHash      string        `json:"-"`
-	Enabled           bool          `json:"enabled"`
-	ExpiresAt         time.Time     `json:"expiresAt,omitempty"`
-	RangeMode         string        `json:"rangeMode"`
-	RollingDays       int           `json:"rollingDays,omitempty"`
-	StartsOn          time.Time     `json:"startsOn,omitempty"`
-	EndsOn            time.Time     `json:"endsOn,omitempty"`
-	ShowSummary       bool          `json:"showSummary"`
-	ShowExpenses      bool          `json:"showExpenses"`
-	ShowSubscriptions bool          `json:"showSubscriptions"`
-	ShowSettlements   bool          `json:"showSettlements"`
-	ShowIdentities    bool          `json:"showIdentities"`
-	ShowNotes         bool          `json:"showNotes"`
-	AccessVersion     int           `json:"-"`
-	Viewers           []ShareViewer `json:"viewers,omitempty"`
-	CreatedAt         time.Time     `json:"createdAt"`
-	UpdatedAt         time.Time     `json:"updatedAt"`
+	ID                  string        `json:"id"`
+	GroupID             string        `json:"groupId,omitempty"`
+	OwnerID             string        `json:"ownerId,omitempty"`
+	Name                string        `json:"name"`
+	TokenHash           string        `json:"-"`
+	TokenCiphertext     string        `json:"-"`
+	URL                 string        `json:"url,omitempty"`
+	AccessMode          string        `json:"accessMode"`
+	PasswordHash        string        `json:"-"`
+	Enabled             bool          `json:"enabled"`
+	ExpiresAt           time.Time     `json:"expiresAt,omitempty"`
+	RangeMode           string        `json:"rangeMode"`
+	RollingDays         int           `json:"rollingDays,omitempty"`
+	StartsOn            time.Time     `json:"startsOn,omitempty"`
+	EndsOn              time.Time     `json:"endsOn,omitempty"`
+	ShowSummary         bool          `json:"showSummary"`
+	ShowIncomes         bool          `json:"showIncomes"`
+	ShowRecurringIncome bool          `json:"showRecurringIncome"`
+	ShowPendingIncome   bool          `json:"showPendingIncome"`
+	ShowExpenses        bool          `json:"showExpenses"`
+	ShowSubscriptions   bool          `json:"showSubscriptions"`
+	ShowSettlements     bool          `json:"showSettlements"`
+	ShowIdentities      bool          `json:"showIdentities"`
+	ShowNotes           bool          `json:"showNotes"`
+	AccessVersion       int           `json:"-"`
+	Viewers             []ShareViewer `json:"viewers,omitempty"`
+	CreatedAt           time.Time     `json:"createdAt"`
+	UpdatedAt           time.Time     `json:"updatedAt"`
 }
 
 type ShareViewer struct {
@@ -312,6 +315,7 @@ type SharePage struct {
 	ShowSummary   bool             `json:"showSummary"`
 	Summary       map[string]any   `json:"summary,omitempty"`
 	Records       []map[string]any `json:"records,omitempty"`
+	Incomes       []map[string]any `json:"incomes,omitempty"`
 	RecordCounts  map[string]int   `json:"recordCounts,omitempty"`
 	Expenses      []map[string]any `json:"expenses,omitempty"`
 	Subscriptions []map[string]any `json:"subscriptions,omitempty"`
@@ -703,6 +707,7 @@ type MemberBalance struct {
 }
 
 type DashboardSummary struct {
+	IncomeCurrencyRepairIDs          []string            `json:"incomeCurrencyRepairIds,omitempty"`
 	MonthReceivedIncomeMinor         int64               `json:"monthReceivedIncomeMinor"`
 	Month                            string              `json:"month,omitempty"`
 	MonthlySubscriptionMinor         int64               `json:"monthlySubscriptionMinor"`
@@ -726,10 +731,11 @@ type CurrencyChangeMissing struct {
 }
 
 type CurrencyChangePreview struct {
-	From     Currency                `json:"from"`
-	To       Currency                `json:"to"`
-	Affected int                     `json:"affected"`
-	Missing  []CurrencyChangeMissing `json:"missing"`
+	IncomeCurrencyRepairIDs []string                `json:"incomeCurrencyRepairIds,omitempty"`
+	From                    Currency                `json:"from"`
+	To                      Currency                `json:"to"`
+	Affected                int                     `json:"affected"`
+	Missing                 []CurrencyChangeMissing `json:"missing"`
 }
 
 type Event struct {

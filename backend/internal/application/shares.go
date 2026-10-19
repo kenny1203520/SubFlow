@@ -91,9 +91,9 @@ func validShare(value domain.Share) bool {
 		return false
 	}
 	if value.OwnerID != "" {
-		return value.ShowSummary || value.ShowExpenses || value.ShowSubscriptions
+		return value.ShowSummary || value.ShowIncomes || value.ShowRecurringIncome || value.ShowPendingIncome || value.ShowExpenses || value.ShowSubscriptions
 	}
-	return value.ShowSummary || value.ShowExpenses || value.ShowSubscriptions || value.ShowSettlements
+	return value.ShowSummary || value.ShowIncomes || value.ShowRecurringIncome || value.ShowPendingIncome || value.ShowExpenses || value.ShowSubscriptions || value.ShowSettlements
 }
 
 func (s *Service) resolveShareViewers(ctx context.Context, emails []string) ([]domain.ShareViewer, error) {
@@ -403,7 +403,7 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		perPage = 25
 	}
 	section := options.Section
-	if section != "expenses" && section != "subscriptions" && section != "settlements" {
+	if section != "expenses" && section != "incomes" && section != "subscriptions" && section != "settlements" {
 		section = "all"
 	}
 	sortNewest := options.Sort != "oldest"
@@ -427,7 +427,7 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 	}
 
 	filteredExpenses := make([]domain.Expense, 0)
-	if value.ShowExpenses || value.ShowSummary {
+	if value.ShowExpenses {
 		expenses, err := s.allShareExpenses(ctx, value)
 		if err != nil {
 			return nil, err
@@ -438,8 +438,20 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 			}
 		}
 	}
+	filteredIncomes := make([]domain.Income, 0)
+	if value.ShowIncomes {
+		incomes, err := s.allShareIncomes(ctx, value)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range incomes {
+			if inRange(item.ReceivedOn, start, end) {
+				filteredIncomes = append(filteredIncomes, item)
+			}
+		}
+	}
 	filteredSubs := make([]domain.Subscription, 0)
-	if value.ShowSubscriptions || value.ShowSummary {
+	if value.ShowSubscriptions {
 		subs, err := s.allShareSubscriptions(ctx, value)
 		if err != nil {
 			return nil, err
@@ -451,7 +463,7 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		}
 	}
 	settlements := []domain.Settlement{}
-	if value.GroupID != "" && (value.ShowSettlements || value.ShowSummary) {
+	if value.GroupID != "" && value.ShowSettlements {
 		settlements, err = s.allShareSettlements(ctx, value.GroupID)
 		if err != nil {
 			return nil, err
@@ -463,21 +475,41 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		for _, item := range filteredExpenses {
 			totals[string(item.Currency)] += item.AmountMinor
 		}
-		page.Summary = map[string]any{
-			"expenseCount":      len(filteredExpenses),
-			"subscriptionCount": len(filteredSubs),
-			"settlementCount":   len(settlements),
-			"expenseTotals":     totals,
+		summary := map[string]any{}
+		if value.ShowExpenses {
+			summary["expenseCount"], summary["expenseTotals"] = len(filteredExpenses), totals
 		}
+		if value.ShowIncomes {
+			incomeTotals := map[string]int64{}
+			for _, item := range filteredIncomes {
+				incomeTotals[string(item.Currency)] += item.AmountMinor
+			}
+			summary["incomeCount"], summary["incomeTotals"] = len(filteredIncomes), incomeTotals
+		}
+		if value.ShowSubscriptions {
+			summary["subscriptionCount"] = len(filteredSubs)
+		}
+		if value.ShowSettlements {
+			summary["settlementCount"] = len(settlements)
+		}
+		page.Summary = summary
 	}
 
-	records := make([]shareRecord, 0, len(filteredExpenses)+len(filteredSubs)+len(settlements))
+	records := make([]shareRecord, 0, len(filteredExpenses)+len(filteredIncomes)+len(filteredSubs)+len(settlements))
 	if value.ShowExpenses {
 		for _, item := range filteredExpenses {
 			row := s.shareExpenseRow(ctx, value, item)
 			row["type"] = "expense"
 			row["occurredOn"] = item.IncurredOn
 			records = append(records, shareRecord{kind: "expenses", occurredOn: item.IncurredOn, row: row})
+		}
+	}
+	if value.ShowIncomes {
+		for _, item := range filteredIncomes {
+			row := s.shareIncomeRow(ctx, value, item)
+			row["type"] = "income"
+			row["occurredOn"] = item.ReceivedOn
+			records = append(records, shareRecord{kind: "incomes", occurredOn: item.ReceivedOn, row: row})
 		}
 	}
 	if value.ShowSubscriptions {
@@ -521,7 +553,7 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		return records[i].occurredOn.Before(records[j].occurredOn)
 	})
 
-	counts := map[string]int{"all": len(records), "expenses": 0, "subscriptions": 0, "settlements": 0}
+	counts := map[string]int{"all": len(records), "expenses": 0, "incomes": 0, "subscriptions": 0, "settlements": 0}
 	for _, item := range records {
 		counts[item.kind]++
 	}
@@ -538,6 +570,8 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 			page.Expenses = append(page.Expenses, item.row)
 		case "subscriptions":
 			page.Subscriptions = append(page.Subscriptions, item.row)
+		case "incomes":
+			page.Incomes = append(page.Incomes, item.row)
 		case "settlements":
 			page.Settlements = append(page.Settlements, item.row)
 		}
@@ -555,7 +589,15 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 			}
 			balanceExpenses[i].Splits = splits
 		}
-		for index, balance := range domain.MemberBalances(balanceExpenses, settlements) {
+		balanceIncomes := append([]domain.Income(nil), filteredIncomes...)
+		for i := range balanceIncomes {
+			splits, splitErr := s.Stores.Incomes.ListSplits(ctx, balanceIncomes[i].ID)
+			if splitErr != nil {
+				return nil, splitErr
+			}
+			balanceIncomes[i].Splits = splits
+		}
+		for index, balance := range domain.MemberBalancesWithIncomes(balanceExpenses, balanceIncomes, settlements) {
 			if balance.AmountMinor == 0 {
 				continue
 			}
@@ -691,6 +733,25 @@ func (s *Service) allShareExpenses(ctx context.Context, value *domain.Share) ([]
 		}
 	}
 }
+func (s *Service) allShareIncomes(ctx context.Context, value *domain.Share) ([]domain.Income, error) {
+	result := []domain.Income{}
+	for p := 1; ; p++ {
+		var page ports.Page[domain.Income]
+		var err error
+		if value.GroupID != "" {
+			page, err = s.Stores.Incomes.List(ctx, value.GroupID, ports.PageRequest{Page: p, PerPage: 100, Sort: "-received_on"})
+		} else {
+			page, err = s.Stores.Incomes.ListPersonal(ctx, value.OwnerID, ports.PageRequest{Page: p, PerPage: 100, Sort: "-received_on"})
+		}
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, page.Items...)
+		if page.TotalPages == 0 || p >= page.TotalPages {
+			return result, nil
+		}
+	}
+}
 func (s *Service) allShareSubscriptions(ctx context.Context, value *domain.Share) ([]domain.Subscription, error) {
 	result := []domain.Subscription{}
 	for p := 1; ; p++ {
@@ -735,6 +796,16 @@ func (s *Service) shareExpenseRow(ctx context.Context, share *domain.Share, v do
 	row := map[string]any{"title": v.Title, "category": v.Category, "amountMinor": v.AmountMinor, "currency": v.Currency, "incurredOn": v.IncurredOn}
 	if share.ShowIdentities {
 		row["paidBy"] = s.displayName(ctx, v.PaidBy)
+	}
+	if share.ShowNotes {
+		row["notes"] = v.Notes
+	}
+	return row
+}
+func (s *Service) shareIncomeRow(ctx context.Context, share *domain.Share, v domain.Income) map[string]any {
+	row := map[string]any{"title": v.Title, "category": v.Category, "amountMinor": v.AmountMinor, "currency": v.Currency, "receivedOn": v.ReceivedOn, "status": "received"}
+	if share.ShowIdentities {
+		row["earnedBy"] = s.displayName(ctx, v.EarnedBy)
 	}
 	if share.ShowNotes {
 		row["notes"] = v.Notes

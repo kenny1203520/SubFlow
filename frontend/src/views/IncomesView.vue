@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
 import MoneyValue from '../components/MoneyValue.vue'
@@ -16,6 +16,7 @@ import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
 import AttachmentPanel from '../components/AttachmentPanel.vue'
 import AttachmentEntry from '../components/AttachmentEntry.vue'
+import RecurringIncomePanel from '../components/RecurringIncomePanel.vue'
 import Pagination from '../components/Pagination.vue'
 import PageSizeSelect from '../components/PageSizeSelect.vue'
 import type { Currency, Income, IncomeSplit, SplitMode } from '../api/types'
@@ -29,7 +30,12 @@ import { defaultPageSize } from '../pageSize'
 const workspace = useWorkspaceStore()
 const auth = useAuthStore()
 const route = useRoute()
+const router = useRouter()
 const { tr, formatDate } = useI18n()
+type IncomeTab='details'|'recurring'|'pending'
+const activeTab=ref<IncomeTab>(route.query.tab==='recurring'||route.query.tab==='pending'?route.query.tab:'details')
+watch(()=>route.query.tab,value=>{activeTab.value=value==='recurring'||value==='pending'?value:'details'})
+function setTab(tab:IncomeTab){activeTab.value=tab;void router.replace({query:{...route.query,tab:tab==='details'?undefined:tab}})}
 
 const selectableMembers = computed(() => workspace.members.filter(m => !(m.user?.placeholder && m.user?.linkedUserId)))
 function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }
@@ -100,14 +106,7 @@ function recordCategory(item: Income) { return `${categoryGlyph(item.categoryInf
 function itemGroup(item: Income) { return workspace.groups.find(group => group.id === item.groupId) }
 function viewerDate(value: string) { return formatDate(value, { dateStyle: 'medium', timeZone: viewerTimezone() }) }
 function originalTime(item: Income) { const group = itemGroup(item); return group ? tr('originalTimezone', { date: formatDate(item.receivedOn, { dateStyle: 'medium', timeZone: group.timezone }), timezone: timezoneLabel(group.timezone, item.receivedOn) }) : '' }
-function openSourceFromBadge(event: MouseEvent) {
-    const badge = (event.target as HTMLElement).closest('.source-badge')
-    if (!badge) return
-    const name = badge.textContent?.trim() || ''
-    sourceItem.value = list.value.find(item => (itemGroup(item)?.name || tr('privateRecord')) === name)
-}
-onMounted(() => { if (personal.value) void workspace.refreshPersonal(); document.addEventListener('click', openSourceFromBadge) })
-onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge))
+onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
 </script>
 
 <template>
@@ -119,12 +118,15 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                 <h1>{{ tr(personal ? 'incomePersonal' : 'groupIncomes') }}</h1>
                 <p>{{ tr('incomeDesc') }}</p>
             </div>
-            <div class="page-heading-actions"><button v-if="canExport" class="ghost"
+            <div class="page-heading-actions"><button v-if="canExport && activeTab==='details'" class="ghost"
                     :disabled="exporting || !workspace.online"
                     :title="workspace.online ? '' : tr('offlineActionDisabled')" @click="exportLedger">{{
-                        tr('exportLedger') }}</button><button v-if="canWrite" class="primary" @click="create">{{
+                        tr('exportLedger') }}</button><button v-if="canWrite && activeTab==='details'" class="primary" @click="create">{{
                         tr('createIncome') }}</button></div>
         </div>
+        <nav class="segmented income-tabs" :aria-label="tr('incomeViews')"><button :class="{active:activeTab==='details'}" @click="setTab('details')">{{tr('incomeDetails')}}</button><button :class="{active:activeTab==='recurring'}" @click="setTab('recurring')">{{tr('recurringIncome')}}</button><button :class="{active:activeTab==='pending'}" @click="setTab('pending')">{{tr('pendingIncome')}} <span v-if="workspace.incomeOccurrences.filter(item=>item.status==='pending').length">({{workspace.incomeOccurrences.filter(item=>item.status==='pending').length}})</span></button></nav>
+        <RecurringIncomePanel v-if="activeTab==='recurring'||activeTab==='pending'" :personal="personal" :group-id="personal?'':workspace.currentGroupId" :can-write="canWrite" :pending-only="activeTab==='pending'" />
+        <template v-if="activeTab==='details'">
         <div v-if="exportError" class="notice danger inline">{{ exportError }}</div>
         <section class="card data-card">
             <div class="card-title">
@@ -144,9 +146,9 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                     <div class="item-cell"><span class="service-icon income">{{ item.title.slice(0, 1)
                             }}</span><span><strong>{{ item.title }}</strong><small>{{ recordCategory(item) }}</small>
                             <SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError" />
-                        </span></div><span><span class="source-badge" :class="{ shared: item.groupId }">{{
+                        </span></div><span><button class="source-badge" :class="{ shared: item.groupId }" @click="sourceItem=item">{{
                             itemGroup(item)?.name || tr('privateRecord')
-                            }}</span></span><span>{{workspace.members.find(m => m.userId === item.earnedBy)?.user?.name ||
+                            }}</button></span><span>{{workspace.members.find(m => m.userId === item.earnedBy)?.user?.name ||
                                 (item.earnedBy === auth.record?.id ? tr('myself') : '—')}}</span><span
                         class="timezone-date"><strong>{{ viewerDate(item.receivedOn) }}</strong><small
                             v-if="item.groupId">{{ originalTime(item) }}</small></span><span class="money-stack">
@@ -165,6 +167,7 @@ onBeforeUnmount(() => document.removeEventListener('click', openSourceFromBadge)
                 {{ tr('syncLegendPending') }} · ⚠ {{ tr('syncLegendError') }}</p>
             <Pagination :meta="listMeta" @page="goToPage" />
         </section>
+        </template>
         <AppDrawer :open="open" :title="tr(editingId ? 'editIncome' : 'createIncome')" @close="open = false">
             <form class="form-card ledger-form" @submit.prevent="submit">
                 <div v-if="formError" class="notice danger inline">{{ formError }}</div>

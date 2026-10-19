@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, IncomeOccurrence, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, RecurringIncome, RecurringIncomeInput, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import { useI18n } from '../i18n'
@@ -58,6 +58,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const personalExpenses = ref<Expense[]>([])
   const personalIncomes = ref<Income[]>([])
   const groupIncomes = ref<Income[]>([])
+  const recurringIncomes = ref<RecurringIncome[]>([])
+  const incomeOccurrences = ref<IncomeOccurrence[]>([])
   const groupLedger = ref<DailyLedger | null>(null)
   const personalLedger = ref<DailyLedger | null>(null)
   const personalSummary = ref<DashboardSummary | null>(null)
@@ -428,15 +430,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   function markOfflineSyncError(entry: OutboxEntry, message: string) {
     if (entry.kind === 'expense') { const list = entry.scope === 'group' ? expenses : personalExpenses; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) } else if (entry.kind === 'income') { const list = entry.scope === 'group' ? groupIncomes : personalIncomes; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) }
     else if (entry.kind === 'subscription') { const list = entry.scope === 'group' ? subscriptions : personalSubscriptions; list.value = list.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item) }
+    else if (entry.kind === 'recurring-income') recurringIncomes.value = recurringIncomes.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item)
     else settlements.value = settlements.value.map(item => item.id === entry.targetId ? { ...item, syncError: message } : item)
   }
   function offlinePath(kind: OutboxKind, id: string, scope: OutboxScope = 'personal', groupId = '') {
-    const base = kind === 'expense' ? 'expenses' : kind === 'income' ? 'incomes' : kind === 'subscription' ? 'subscriptions' : 'settlements'
+    const base = kind === 'expense' ? 'expenses' : kind === 'income' ? 'incomes' : kind === 'subscription' ? 'subscriptions' : kind === 'recurring-income' ? 'recurring-incomes' : 'settlements'
     return scope === 'group' ? `/groups/${groupId}/${base}/${id}` : `/${base}/${id}`
   }
   function offlineCreatePath(entry: OutboxEntry) {
     if (entry.kind === 'settlement') return `/groups/${entry.groupId}/settlements`
-    const base = entry.kind === 'expense' ? 'expenses' : entry.kind === 'income' ? 'incomes' : 'subscriptions'
+    const base = entry.kind === 'expense' ? 'expenses' : entry.kind === 'income' ? 'incomes' : entry.kind === 'subscription' ? 'subscriptions' : 'recurring-incomes'
     return entry.scope === 'group' ? `/groups/${entry.groupId}/${base}` : `/${base}`
   }
 
@@ -477,8 +480,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         }
       }
       if (touchedPersonal) await refreshPersonal()
+      if (touchedPersonal) { try { await loadRecurringIncomes('personal') } catch { } }
       if (touchedPersonal) { try { await refreshPersonalLedger() } catch { } }
       if (touchedGroupId && touchedGroupId === currentGroupId.value) await refreshGroup()
+      if (touchedGroupId && touchedGroupId === currentGroupId.value) { try { await loadRecurringIncomes('group') } catch { } }
       await refreshOutboxPending()
     } finally {
       syncing = false
@@ -845,6 +850,46 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }, 'incomes')
   }
 
+  async function loadRecurringIncomes(scope:'personal'|'group' = currentGroupId.value ? 'group' : 'personal') {
+    const path=scope==='group'&&currentGroupId.value?`/groups/${currentGroupId.value}/recurring-incomes`:'/recurring-incomes'
+    const values=(await api.get<RecurringIncome[]>(`${path}?perPage=100`)).data
+    recurringIncomes.value=values
+    return values
+  }
+  async function loadIncomeOccurrences(id:string,groupId='') {
+    const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/occurrences`:`/recurring-incomes/${id}/occurrences`
+    incomeOccurrences.value=(await api.get<IncomeOccurrence[]>(`${path}?perPage=100`)).data
+    return incomeOccurrences.value
+  }
+  async function createRecurringIncome(input:RecurringIncomeInput,groupId='') {
+    const scope=groupId?'group':'personal',path=groupId?`/groups/${groupId}/recurring-incomes`:'/recurring-incomes'
+    return run(async()=>{await withOfflineFallback(async()=>{await api.post<RecurringIncome>(path,input);await loadRecurringIncomes(scope)},async()=>{const id=outbox.localId(),userId=auth.record?.id;if(!userId)throw new ApiError(401,'forbidden','unauthorized');const now=new Date().toISOString();const template={...input.template,id:`${id}-template`,createdAt:now,updatedAt:now};recurringIncomes.value=[{...input,template,id,groupId:groupId||undefined,pendingSync:true,createdAt:now,updatedAt:now},...recurringIncomes.value];await outbox.enqueue({userId,kind:'recurring-income',op:'create',scope,groupId,targetId:id,payload:input})})},'recurring-incomes')
+  }
+  async function updateRecurringIncome(id:string,input:RecurringIncomeInput,groupId='') {
+    const scope=groupId?'group':'personal',path=groupId?`/groups/${groupId}/recurring-incomes/${id}`:`/recurring-incomes/${id}`
+    return run(async()=>{await withOfflineFallback(async()=>{await api.patch<RecurringIncome>(path,input);await loadRecurringIncomes(scope)},async()=>{recurringIncomes.value=recurringIncomes.value.map(v=>v.id===id?{...v,...input,template:{...v.template,...input.template},pendingSync:true}:v);const userId=auth.record?.id;if(userId)await outbox.enqueue({userId,kind:'recurring-income',op:'update',scope,groupId,targetId:id,payload:input})})},'recurring-incomes')
+  }
+  async function setRecurringIncomeStatus(id:string,status:'active'|'paused'|'ended',groupId='',endsOn?:string) {
+    if(!online.value){error.value=tr('offlineActionDisabled');return false}
+    const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/status`:`/recurring-incomes/${id}/status`
+    return run(async()=>{await api.patch(path,{status,endsOn});await loadRecurringIncomes(groupId?'group':'personal')},'recurring-incomes')
+  }
+  async function confirmIncomeOccurrence(id:string,scheduledOn:string,income:Partial<Income>,groupId='') {
+    if(!online.value){error.value=tr('offlineActionDisabled');return false}
+    const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/occurrences/confirm`:`/recurring-incomes/${id}/occurrences/confirm`
+    return run(async()=>{await api.post(path,{scheduledOn,income});await loadIncomeOccurrences(id,groupId);if(groupId)await refreshGroup();else await refreshPersonal()},'income-occurrences')
+  }
+  async function skipIncomeOccurrence(id:string,scheduledOn:string,reason:string,groupId='') {
+    if(!online.value){error.value=tr('offlineActionDisabled');return false}
+    const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/occurrences/skip`:`/recurring-incomes/${id}/occurrences/skip`
+    return run(async()=>{await api.post(path,{scheduledOn,reason});await loadIncomeOccurrences(id,groupId)},'income-occurrences')
+  }
+  async function retryIncomeOccurrence(id:string,scheduledOn:string,groupId='') {
+    if(!online.value){error.value=tr('offlineActionDisabled');return false}
+    const path=groupId?`/groups/${groupId}/recurring-incomes/${id}/occurrences/retry`:`/recurring-incomes/${id}/occurrences/retry`
+    return run(async()=>{await api.post(path,{scheduledOn});await loadIncomeOccurrences(id,groupId)},'income-occurrences')
+  }
+
   async function addPersonalSubscription(input: SubscriptionInput, backfill = false) {
     let createdId = ''
     const ok = await run(async () => {
@@ -999,11 +1044,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   return {
-    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,
+    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,recurringIncomes,incomeOccurrences,
     subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
-    addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,
+    addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,loadRecurringIncomes,loadIncomeOccurrences,createRecurringIncome,updateRecurringIncome,setRecurringIncomeStatus,confirmIncomeOccurrence,skipIncomeOccurrence,retryIncomeOccurrence,
     loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,
     onEvent,

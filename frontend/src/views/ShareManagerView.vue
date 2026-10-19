@@ -20,7 +20,7 @@ const error = ref('')
 const copied = ref('')
 const knownUrls = ref<Record<string, string>>({})
 const editing = ref<Share | null | undefined>(undefined)
-const form = reactive({ name: '', accessMode: 'link' as ShareAccessMode, password: '', viewerEmails: '', enabled: true, expiresAt: '', rangeMode: 'all' as ShareRangeMode, rollingDays: 30, startsOn: '', endsOn: '', showSummary: true, showExpenses: true, showSubscriptions: true, showSettlements: true, showIdentities: false, showNotes: false })
+const form = reactive({ name: '', accessMode: 'link' as ShareAccessMode, password: '', viewerEmails: '', enabled: true, expiresAt: '', rangeMode: 'all' as ShareRangeMode, rollingDays: 30, startsOn: '', endsOn: '', showSummary: true, showIncomes: false, showRecurringIncome: false, showPendingIncome: false, showExpenses: true, showSubscriptions: true, showSettlements: true, showIdentities: false, showNotes: false })
 const contacts = ref<Contact[]>([])
 const memberships = ref<Membership[]>([])
 const readerQuery = ref('')
@@ -111,6 +111,7 @@ const accessOptions = computed(() => [
   { value: 'accounts' as const, label: tr('shareAccessAccounts'), description: tr('shareAccessDescAccounts'), marker: '◎' },
 ])
 const contentOptions = computed(() => [
+  { key: 'showIncomes' as const, label: tr('shareIncomes'), description: tr('shareIncomeDesc'), marker: '+' },
   { key: 'showSummary' as const, label: tr('shareSummary'), description: tr('shareContentSummaryDesc'), marker: '▦' },
   { key: 'showExpenses' as const, label: tr('shareExpenses'), description: tr('shareContentExpensesDesc'), marker: '↙' },
   { key: 'showSubscriptions' as const, label: tr('shareSubscriptions'), description: tr('shareContentSubscriptionsDesc'), marker: '⟳' },
@@ -123,7 +124,7 @@ function meaningfulDate(value?: string) {
 function reset(value?: Share) {
   editing.value = value ?? null
   readerError.value = ''
-  Object.assign(form, { name: value?.name || '', accessMode: value?.accessMode || 'link', password: '', viewerEmails: value?.viewers?.map(item => item.email).join(',') || '', enabled: value?.enabled ?? true, expiresAt: meaningfulDate(value?.expiresAt) ? value!.expiresAt!.slice(0, 10) : '', rangeMode: value?.rangeMode || 'all', rollingDays: value?.rollingDays || 30, startsOn: meaningfulDate(value?.startsOn) ? value!.startsOn!.slice(0, 10) : '', endsOn: meaningfulDate(value?.endsOn) ? value!.endsOn!.slice(0, 10) : '', showSummary: value?.showSummary ?? true, showExpenses: value?.showExpenses ?? true, showSubscriptions: value?.showSubscriptions ?? true, showSettlements: value?.showSettlements ?? true, showIdentities: value?.showIdentities ?? false, showNotes: value?.showNotes ?? false })
+  Object.assign(form, { name: value?.name || '', accessMode: value?.accessMode || 'link', password: '', viewerEmails: value?.viewers?.map(item => item.email).join(',') || '', enabled: value?.enabled ?? true, expiresAt: meaningfulDate(value?.expiresAt) ? value!.expiresAt!.slice(0, 10) : '', rangeMode: value?.rangeMode || 'all', rollingDays: value?.rollingDays || 30, startsOn: meaningfulDate(value?.startsOn) ? value!.startsOn!.slice(0, 10) : '', endsOn: meaningfulDate(value?.endsOn) ? value!.endsOn!.slice(0, 10) : '', showSummary: value?.showSummary ?? true, showIncomes: value?.showIncomes ?? false, showRecurringIncome: value?.showRecurringIncome ?? false, showPendingIncome: value?.showPendingIncome ?? false, showExpenses: value?.showExpenses ?? true, showSubscriptions: value?.showSubscriptions ?? true, showSettlements: value?.showSettlements ?? true, showIdentities: value?.showIdentities ?? false, showNotes: value?.showNotes ?? false })
 }
 function payload() { return serializeShareForm(form) }
 async function load() {

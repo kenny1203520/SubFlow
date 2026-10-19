@@ -588,7 +588,7 @@ func (s *Service) hydrateCategory(ctx context.Context, id string) *domain.Catego
 	return value
 }
 
-func (s *Service) PreviewGroupCurrency(ctx context.Context, userID, groupID string, target domain.Currency) (*domain.CurrencyChangePreview, error) {
+func (s *Service) previewGroupCurrency(ctx context.Context, userID, groupID string, target domain.Currency) (*domain.CurrencyChangePreview, error) {
 	if err := s.groupPermission(ctx, userID, groupID, "group.settings.manage"); err != nil {
 		return nil, err
 	}
@@ -599,20 +599,32 @@ func (s *Service) PreviewGroupCurrency(ctx context.Context, userID, groupID stri
 	if !domain.IsCurrency(target) {
 		return nil, domain.ErrInvalid
 	}
-	preview := &domain.CurrencyChangePreview{From: group.Currency, To: target}
-	expenses, err := s.Stores.Expenses.List(ctx, groupID, pageAll("incurred_on"))
+	preview := &domain.CurrencyChangePreview{From: group.Currency, To: target, Missing: []domain.CurrencyChangeMissing{}}
+	expenses, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Expense], error) {
+		return s.Stores.Expenses.List(ctx, groupID, p)
+	}, "incurred_on")
 	if err != nil {
 		return nil, err
 	}
-	subs, err := s.Stores.Subscriptions.List(ctx, groupID, pageAll("next_billing"))
+	subs, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Subscription], error) {
+		return s.Stores.Subscriptions.List(ctx, groupID, p)
+	}, "next_billing")
 	if err != nil {
 		return nil, err
 	}
-	settlements, err := s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: pageAll("settled_on")})
+	incomes, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Income], error) {
+		return s.Stores.Incomes.List(ctx, groupID, p)
+	}, "received_on")
 	if err != nil {
 		return nil, err
 	}
-	preview.Affected = len(expenses.Items) + len(subs.Items) + len(settlements.Items)
+	settlements, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Settlement], error) {
+		return s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: p})
+	}, "settled_on")
+	if err != nil {
+		return nil, err
+	}
+	preview.Affected = len(expenses.Items) + len(subs.Items) + len(settlements.Items) + len(incomes.Items)
 	check := func(resource, id string, from domain.Currency, date time.Time) {
 		if from == target {
 			return
@@ -627,6 +639,12 @@ func (s *Service) PreviewGroupCurrency(ctx context.Context, userID, groupID stri
 	for _, v := range subs.Items {
 		check("subscription", v.ID, v.Currency, v.StartsOn)
 	}
+	for _, v := range incomes.Items {
+		if v.BaseCurrency != group.Currency {
+			preview.IncomeCurrencyRepairIDs = append(preview.IncomeCurrencyRepairIDs, v.ID)
+		}
+		check("income", v.ID, v.Currency, v.ReceivedOn)
+	}
 	for _, v := range settlements.Items {
 		check("settlement", v.ID, v.Currency, v.SettledOn)
 	}
@@ -634,8 +652,8 @@ func (s *Service) PreviewGroupCurrency(ctx context.Context, userID, groupID stri
 	return preview, nil
 }
 
-func (s *Service) ChangeGroupCurrency(ctx context.Context, userID, groupID string, target domain.Currency) (*domain.Group, error) {
-	preview, err := s.PreviewGroupCurrency(ctx, userID, groupID, target)
+func (s *Service) changeGroupCurrency(ctx context.Context, userID, groupID string, target domain.Currency) (*domain.Group, error) {
+	preview, err := s.previewGroupCurrency(ctx, userID, groupID, target)
 	if err != nil {
 		return nil, err
 	}
@@ -646,15 +664,27 @@ func (s *Service) ChangeGroupCurrency(ctx context.Context, userID, groupID strin
 	if err != nil {
 		return nil, err
 	}
-	expenses, err := s.Stores.Expenses.List(ctx, groupID, pageAll("incurred_on"))
+	expenses, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Expense], error) {
+		return s.Stores.Expenses.List(ctx, groupID, p)
+	}, "incurred_on")
 	if err != nil {
 		return nil, err
 	}
-	subs, err := s.Stores.Subscriptions.List(ctx, groupID, pageAll("next_billing"))
+	subs, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Subscription], error) {
+		return s.Stores.Subscriptions.List(ctx, groupID, p)
+	}, "next_billing")
 	if err != nil {
 		return nil, err
 	}
-	settlements, err := s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: pageAll("settled_on")})
+	incomes, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Income], error) {
+		return s.Stores.Incomes.List(ctx, groupID, p)
+	}, "received_on")
+	if err != nil {
+		return nil, err
+	}
+	settlements, err := readAllRecords(func(p ports.PageRequest) (ports.Page[domain.Settlement], error) {
+		return s.Stores.Settlements.List(ctx, groupID, ports.SettlementQuery{PageRequest: p})
+	}, "settled_on")
 	if err != nil {
 		return nil, err
 	}
@@ -685,6 +715,32 @@ func (s *Service) ChangeGroupCurrency(ctx context.Context, userID, groupID strin
 			}
 			if quoteErr = s.Stores.Expenses.ReplaceSplits(tx, v.ID, v.Splits); quoteErr != nil {
 				return quoteErr
+			}
+		}
+
+		for i := range incomes.Items {
+			v := &incomes.Items[i]
+			quote, err := s.QuoteRate(tx, v.Currency, target, v.ReceivedOn)
+			if err != nil {
+				return err
+			}
+			v.BaseCurrency, v.RateScaled, v.ExchangeRate, v.ExchangeRateDate = target, quote.RateScaled, domain.FormatRate(quote.RateScaled), quote.EffectiveDate
+			v.BaseAmountMinor, err = domain.ConvertMinor(v.AmountMinor, v.Currency, target, quote.RateScaled)
+			if err != nil {
+				return err
+			}
+			for _, split := range v.Splits {
+				split.BaseAmountMinor, err = domain.ConvertMinor(split.AmountMinor, v.Currency, target, quote.RateScaled)
+				if err != nil {
+					return err
+				}
+			}
+			v.Splits = domain.CanonicalBaseSplits(v.BaseAmountMinor, v.EarnedBy, v.Splits)
+			if err = s.Stores.Incomes.Update(tx, v); err != nil {
+				return err
+			}
+			if err = s.Stores.Incomes.ReplaceSplits(tx, v.ID, v.Splits); err != nil {
+				return err
 			}
 		}
 		for i := range subs.Items {

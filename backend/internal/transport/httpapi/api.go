@@ -81,6 +81,14 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/expenses", a.createPersonalExpense).Bind(bind)
 	e.Router.GET("/api/subflow/v1/incomes", a.listPersonalIncomes).Bind(bind)
 	e.Router.POST("/api/subflow/v1/incomes", a.createPersonalIncome).Bind(bind)
+	e.Router.GET("/api/subflow/v1/recurring-incomes", a.listRecurringIncomes).Bind(bind)
+	e.Router.POST("/api/subflow/v1/recurring-incomes", a.createRecurringIncome).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/recurring-incomes/{id}", a.updateRecurringIncome).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/recurring-incomes/{id}/status", a.changeRecurringIncomeStatus).Bind(bind)
+	e.Router.GET("/api/subflow/v1/recurring-incomes/{id}/occurrences", a.listIncomeOccurrences).Bind(bind)
+	e.Router.POST("/api/subflow/v1/recurring-incomes/{id}/occurrences/confirm", a.confirmIncomeOccurrence).Bind(bind)
+	e.Router.POST("/api/subflow/v1/recurring-incomes/{id}/occurrences/skip", a.skipIncomeOccurrence).Bind(bind)
+	e.Router.POST("/api/subflow/v1/recurring-incomes/{id}/occurrences/retry", a.retryIncomeOccurrence).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/incomes/{id}", a.updateGroupOrPersonalIncome).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/incomes/{id}", a.deleteGroupOrPersonalIncome).Bind(bind)
 	e.Router.GET("/api/subflow/v1/personal/ledger", a.personalLedger).Bind(bind)
@@ -104,6 +112,14 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/ledger", a.groupLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/incomes", a.listGroupIncomes).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/incomes", a.createGroupIncome).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/recurring-incomes", a.listRecurringIncomes).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes", a.createRecurringIncome).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}", a.updateRecurringIncome).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/status", a.changeRecurringIncomeStatus).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/occurrences", a.listIncomeOccurrences).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/occurrences/confirm", a.confirmIncomeOccurrence).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/occurrences/skip", a.skipIncomeOccurrence).Bind(bind)
+	e.Router.POST("/api/subflow/v1/groups/{groupId}/recurring-incomes/{id}/occurrences/retry", a.retryIncomeOccurrence).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/groups/{groupId}/incomes/{id}", a.updateGroupOrPersonalIncome).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/groups/{groupId}/incomes/{id}", a.deleteGroupOrPersonalIncome).Bind(bind)
 
@@ -661,7 +677,7 @@ func currencyBody(e *core.RequestEvent) (domain.Currency, error) {
 func (a *API) previewCurrencyChange(e *core.RequestEvent) error {
 	currency, err := currencyBody(e)
 	if err != nil {
-		return fail(e, err)
+		return fail(e, a.Service.CurrencyRequestFailure(e.Request.Context(), authID(e), groupID(e), "group.currency_previewed", err))
 	}
 	value, err := a.Service.PreviewGroupCurrency(e.Request.Context(), authID(e), groupID(e), currency)
 	if err != nil {
@@ -672,7 +688,7 @@ func (a *API) previewCurrencyChange(e *core.RequestEvent) error {
 func (a *API) changeCurrency(e *core.RequestEvent) error {
 	currency, err := currencyBody(e)
 	if err != nil {
-		return fail(e, err)
+		return fail(e, a.Service.CurrencyRequestFailure(e.Request.Context(), authID(e), groupID(e), "group.currency_changed", err))
 	}
 	value, err := a.Service.ChangeGroupCurrency(e.Request.Context(), authID(e), groupID(e), currency)
 	if err != nil {

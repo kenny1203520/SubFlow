@@ -12,6 +12,9 @@ export interface ShareFormState {
   startsOn: string
   endsOn: string
   showSummary: boolean
+  showIncomes: boolean
+  showRecurringIncome: boolean
+  showPendingIncome: boolean
   showExpenses: boolean
   showSubscriptions: boolean
   showSettlements: boolean

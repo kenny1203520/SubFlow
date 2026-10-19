@@ -14,30 +14,33 @@ import (
 )
 
 const (
-	CollectionGroups                  = "groups"
-	CollectionMembers                 = "group_members"
-	CollectionInvitations             = "group_invitations"
-	CollectionOwnershipTransfers      = "group_ownership_transfers"
-	CollectionMemberTransfers         = "group_member_transfers"
-	CollectionNotifications           = "notifications"
-	CollectionSubscriptions           = "subscriptions"
-	CollectionSubscriptionRevisions   = "subscription_revisions"
-	CollectionSubscriptionOccurrences = "subscription_occurrences"
-	CollectionExpenses                = "expenses"
-	CollectionIncomes                 = "incomes"
-	CollectionExpenseSplits           = "expense_splits"
-	CollectionIncomeSplits            = "income_splits"
-	CollectionSettlements             = "settlements"
-	CollectionAttachments             = "attachments"
-	CollectionCategories              = "categories"
-	CollectionExchangeRates           = "exchange_rates"
-	CollectionSystemRoles             = "system_roles"
-	CollectionGroupRoles              = "group_roles"
-	CollectionAuditLogs               = "audit_logs"
-	CollectionShares                  = "shares"
-	CollectionShareViewers            = "share_viewers"
-	CollectionContacts                = "contacts"
-	CollectionSystemSettings          = "system_settings"
+	CollectionGroups                   = "groups"
+	CollectionMembers                  = "group_members"
+	CollectionInvitations              = "group_invitations"
+	CollectionOwnershipTransfers       = "group_ownership_transfers"
+	CollectionMemberTransfers          = "group_member_transfers"
+	CollectionNotifications            = "notifications"
+	CollectionSubscriptions            = "subscriptions"
+	CollectionSubscriptionRevisions    = "subscription_revisions"
+	CollectionSubscriptionOccurrences  = "subscription_occurrences"
+	CollectionExpenses                 = "expenses"
+	CollectionIncomes                  = "incomes"
+	CollectionExpenseSplits            = "expense_splits"
+	CollectionIncomeSplits             = "income_splits"
+	CollectionRecurringIncomes         = "recurring_incomes"
+	CollectionRecurringIncomeRevisions = "recurring_income_revisions"
+	CollectionIncomeOccurrences        = "income_occurrences"
+	CollectionSettlements              = "settlements"
+	CollectionAttachments              = "attachments"
+	CollectionCategories               = "categories"
+	CollectionExchangeRates            = "exchange_rates"
+	CollectionSystemRoles              = "system_roles"
+	CollectionGroupRoles               = "group_roles"
+	CollectionAuditLogs                = "audit_logs"
+	CollectionShares                   = "shares"
+	CollectionShareViewers             = "share_viewers"
+	CollectionContacts                 = "contacts"
+	CollectionSystemSettings           = "system_settings"
 )
 
 var systemCategoryKeys = []string{"food_dining", "transport", "housing", "utilities", "shopping", "entertainment", "health", "education", "travel", "insurance", "software_digital", "memberships", "taxes_fees", "gifts_donations", "other"}
@@ -211,7 +214,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	shares, err := ensureCollection(app, CollectionShares, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.TextField{Name: "token_ciphertext", Hidden: true, Max: 1024}, &core.SelectField{Name: "access_mode", Required: true, Values: []string{"link", "password", "accounts"}, MaxSelect: 1}, &core.TextField{Name: "password_hash", Hidden: true, Max: 256}, &core.BoolField{Name: "enabled"}, &core.DateField{Name: "expires_at"}, &core.SelectField{Name: "range_mode", Required: true, Values: []string{"all", "rolling", "fixed"}, MaxSelect: 1}, &core.NumberField{Name: "rolling_days", OnlyInt: true}, &core.DateField{Name: "starts_on"}, &core.DateField{Name: "ends_on"}, &core.BoolField{Name: "show_summary"}, &core.BoolField{Name: "show_expenses"}, &core.BoolField{Name: "show_subscriptions"}, &core.BoolField{Name: "show_settlements"}, &core.BoolField{Name: "show_identities"}, &core.BoolField{Name: "show_notes"}, &core.NumberField{Name: "access_version", OnlyInt: true})
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "token_hash", Required: true, Hidden: true, Max: 128}, &core.TextField{Name: "token_ciphertext", Hidden: true, Max: 1024}, &core.SelectField{Name: "access_mode", Required: true, Values: []string{"link", "password", "accounts"}, MaxSelect: 1}, &core.TextField{Name: "password_hash", Hidden: true, Max: 256}, &core.BoolField{Name: "enabled"}, &core.DateField{Name: "expires_at"}, &core.SelectField{Name: "range_mode", Required: true, Values: []string{"all", "rolling", "fixed"}, MaxSelect: 1}, &core.NumberField{Name: "rolling_days", OnlyInt: true}, &core.DateField{Name: "starts_on"}, &core.DateField{Name: "ends_on"}, &core.BoolField{Name: "show_summary"}, &core.BoolField{Name: "show_incomes"}, &core.BoolField{Name: "show_recurring_income"}, &core.BoolField{Name: "show_pending_income"}, &core.BoolField{Name: "show_expenses"}, &core.BoolField{Name: "show_subscriptions"}, &core.BoolField{Name: "show_settlements"}, &core.BoolField{Name: "show_identities"}, &core.BoolField{Name: "show_notes"}, &core.NumberField{Name: "access_version", OnlyInt: true})
 		c.AddIndex("idx_shares_token", true, "token_hash", "")
 		c.AddIndex("idx_shares_group", false, "group, created", "")
 		c.AddIndex("idx_shares_owner", false, "owner, created", "")
@@ -306,6 +309,28 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		c.AddIndex("idx_incomes_owner_date", false, "owner, received_on", "")
 		c.AddIndex("idx_incomes_group_date", false, "group, received_on", "")
 		c.Fields.GetByName("amount_minor").(*core.NumberField).Required = false
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionRecurringIncomes, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", CollectionId: mustCollectionID(app, CollectionGroups), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "owner", CollectionId: mustCollectionID(app, "users"), MaxSelect: 1, CascadeDelete: true}, &core.JSONField{Name: "template", Required: true, MaxSize: 1024 * 128}, &core.TextField{Name: "timezone", Required: true, Max: 64}, &core.SelectField{Name: "cycle", Required: true, Values: []string{"daily", "every_n_days", "weekly", "every_n_weeks", "every_n_hours", "monthly", "quarterly", "yearly"}, MaxSelect: 1}, &core.NumberField{Name: "interval", Required: true, OnlyInt: true}, &core.DateField{Name: "starts_on", Required: true}, &core.DateField{Name: "ends_on"}, &core.DateField{Name: "next_on", Required: true}, &core.SelectField{Name: "posting_mode", Required: true, Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"active", "paused", "ended"}, MaxSelect: 1})
+		c.AddIndex("idx_recurring_incomes_due", false, "status, next_on", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionRecurringIncomeRevisions, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "recurring_income", Required: true, CollectionId: mustCollectionID(app, CollectionRecurringIncomes), MaxSelect: 1, CascadeDelete: true}, &core.JSONField{Name: "snapshot", Required: true, MaxSize: 1024 * 128}, &core.DateField{Name: "effective_on", Required: true}, &core.DateField{Name: "through"}, &core.SelectField{Name: "scope", Required: true, Values: []string{"future", "one_off", "period"}, MaxSelect: 1})
+		c.AddIndex("idx_recurring_income_revisions", false, "recurring_income, effective_on", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionIncomeOccurrences, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "recurring_income", Required: true, CollectionId: mustCollectionID(app, CollectionRecurringIncomes), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "revision", CollectionId: mustCollectionID(app, CollectionRecurringIncomeRevisions), MaxSelect: 1}, &core.RelationField{Name: "income", CollectionId: mustCollectionID(app, CollectionIncomes), MaxSelect: 1}, &core.DateField{Name: "scheduled_on", Required: true}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "posted", "skipped", "failed", "deleted"}, MaxSelect: 1}, &core.SelectField{Name: "posting_mode", Values: []string{"automatic", "manual"}, MaxSelect: 1}, &core.JSONField{Name: "snapshot", MaxSize: 1024 * 128}, &core.BoolField{Name: "manual_override"}, &core.TextField{Name: "reason", Max: 500})
+		c.AddIndex("idx_income_occurrences_unique", true, "recurring_income, scheduled_on", "")
+		c.AddIndex("idx_income_occurrences_income", false, "income", "")
 	})
 	if err != nil {
 		return "", err

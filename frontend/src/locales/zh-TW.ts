@@ -1,5 +1,7 @@
 export const zhTW = {
-  beneficialIncome:'我的受益收入',receivedIncome:'我實際收款',
+  incomeCurrencyRepair:'有收入的統計幣別需要修復；修復前暫不顯示收入合計與結算餘額。請至群組設定預覽重算。',previewCurrencyRepair:'預覽幣別重算／修復',
+  beneficialIncome:'我的受益收入',receivedIncome:'我實際收款',shareIncomes:'收入',shareIncomeDesc:'已收款收入明細與合計',
+  incomeViews:'收入檢視',incomeDetails:'收入明細',recurringIncome:'週期收入',pendingIncome:'待確認',createRecurringIncome:'新增週期收入',recurringIncomeDescription:'設定固定週期的收入計畫。',recurringIncomeOnlyPostsWhenReceived:'只有實際收款後才列入收入',endDate:'結束日期',postingMode:'入帳方式',automaticPosting:'自動入帳',manualConfirmation:'人工確認',nextReceipt:'下次收款',actualAmount:'實際金額',confirmReceived:'確認收款',skipReason:'略過原因',skipOccurrence:'略過本期',incomePeriods:'期數紀錄',noRecurringIncome:'尚無週期收入',noIncomePeriods:'尚無期數紀錄',
   category_income_salary:'薪資',category_income_bonus:'獎金',category_income_freelance:'接案',category_income_investment:'投資',category_income_rental:'租金',category_income_gifts:'贈與',category_income_other:'其他收入',categoryKind:'分類用途',
   deleteSubscriptionAttachmentsWarning:'已入帳期數的附件會保留在對應支出；共用附件及未入帳期數附件會刪除。',deleteGroupAttachmentsWarning:'刪除群組會一併永久刪除群組交易與訂閱附件。',
   attachmentSelected:'已選取 {count} 個檔案，儲存交易後開始上傳。',

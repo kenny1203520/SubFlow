@@ -142,6 +142,46 @@ func TestExportLedgerGroupIncludesExpenseAndSubscription(t *testing.T) {
 // ListPersonalExpenses/ListPersonalSubscriptions (the same records the app's
 // personal ledger view already shows), so a group record the user paid for
 // appears here too alongside their true personal (groupless) records.
+func TestExportLedgerIncludesReceivedIncomeForPersonalAndGroupScopes(t *testing.T) {
+	service, _, userID, groupID := newExportFixtureTZ(t, "UTC")
+	ctx := context.Background()
+	when := time.Date(2026, time.August, 8, 9, 0, 0, 0, time.UTC)
+	if _, err := service.CreateIncome(ctx, userID, domain.Income{Title: "Consulting", AmountMinor: 45000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, EarnedBy: userID, ReceivedOn: when}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.CreateGroupIncome(ctx, userID, domain.Income{GroupID: groupID, Title: "Rebate", AmountMinor: 2000, Currency: domain.CurrencyTWD, BaseCurrency: domain.CurrencyTWD, EarnedBy: userID, ReceivedOn: when}); err != nil {
+		t.Fatal(err)
+	}
+	personal, _, err := service.ExportLedger(ctx, userID, "", "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, header, rows := exportRows(t, personal)
+	found := false
+	for _, row := range rows {
+		if row[0] == "Income" && row[2] == "Consulting" {
+			found = true
+		}
+	}
+	if header[0] != "Type" || !found {
+		t.Fatalf("personal CSV should include received income: header=%v rows=%v", header, rows)
+	}
+	group, _, err := service.ExportLedger(ctx, userID, groupID, "en")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, rows = exportRows(t, group)
+	found = false
+	for _, row := range rows {
+		if row[0] == "Income" && row[2] == "Rebate" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("group CSV should include received income: %v", rows)
+	}
+}
+
 func TestExportLedgerPersonalIncludesOwnedAndPaidRecords(t *testing.T) {
 	service, userID, _ := newExportFixture(t)
 	data, _, err := service.ExportLedger(context.Background(), userID, "", "zh-TW")

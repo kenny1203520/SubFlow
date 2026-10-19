@@ -1,7 +1,9 @@
 import type { MessageKey } from './zh-TW'
 
 export const en: Record<MessageKey, string> = {
-  beneficialIncome:'My income share',receivedIncome:'Received by me',
+  incomeCurrencyRepair:'Some income reporting currencies need repair. Income totals and balances are withheld until repaired. Preview recalculation in group settings.',previewCurrencyRepair:'Preview currency recalculation / repair',
+  beneficialIncome:'My income share',receivedIncome:'Received by me',shareIncomes:'Income',shareIncomeDesc:'Received income records and totals',
+  incomeViews:'Income views',incomeDetails:'Income details',recurringIncome:'Recurring income',pendingIncome:'Pending confirmation',createRecurringIncome:'Add recurring income',recurringIncomeDescription:'Set up an income plan that repeats on a schedule.',recurringIncomeOnlyPostsWhenReceived:'Only received amounts are recorded as income',endDate:'End date',postingMode:'Posting mode',automaticPosting:'Automatic posting',manualConfirmation:'Manual confirmation',nextReceipt:'Next receipt',actualAmount:'Actual amount',confirmReceived:'Confirm received',skipReason:'Skip reason',skipOccurrence:'Skip this period',incomePeriods:'Period history',noRecurringIncome:'No recurring income yet',noIncomePeriods:'No periods to show yet',
   category_income_salary:'Salary',category_income_bonus:'Bonus',category_income_freelance:'Freelance',category_income_investment:'Investment',category_income_rental:'Rent',category_income_gifts:'Gifts',category_income_other:'Other income',categoryKind:'Category type',
   deleteSubscriptionAttachmentsWarning:'Attachments for posted periods stay with their expenses. Shared and unposted period attachments are deleted.',deleteGroupAttachmentsWarning:'Deleting this group permanently deletes its transaction and subscription attachments.',
   attachmentSelected:'{count} files selected. They will upload after the record is saved.',

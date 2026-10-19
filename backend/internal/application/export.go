@@ -77,6 +77,13 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID, locale stri
 		for _, v := range expenses {
 			_ = w.Write(expenseRow(v, loc, lookupName, msgs))
 		}
+		incomes, err := listAllPersonalIncomes(ctx, s, userID)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, v := range incomes {
+			_ = w.Write(incomeRow(v, loc, lookupName, lookupCategory, msgs))
+		}
 		subs, err := listAllPersonalSubscriptions(ctx, s, userID)
 		if err != nil {
 			return nil, "", err
@@ -96,6 +103,13 @@ func (s *Service) ExportLedger(ctx context.Context, userID, groupID, locale stri
 		}
 		for _, v := range expenses {
 			_ = w.Write(expenseRow(v, loc, lookupName, msgs))
+		}
+		incomes, err := listAllGroupIncomes(ctx, s, userID, groupID)
+		if err != nil {
+			return nil, "", err
+		}
+		for _, v := range incomes {
+			_ = w.Write(incomeRow(v, loc, lookupName, lookupCategory, msgs))
 		}
 		subs, err := listAllSubscriptions(ctx, s, userID, groupID)
 		if err != nil {
@@ -290,6 +304,10 @@ func expenseRow(v domain.Expense, loc *time.Location, lookupName func(string) st
 	return []string{msgs.typeExpense, formatDate(v.IncurredOn, loc), v.Title, formatAmount(v.AmountMinor), string(v.Currency), msgs.categoryLabel(v.CategoryInfo, v.Category), lookupName(v.PaidBy), "", splitDetail(v.Splits, lookupName), v.Notes}
 }
 
+func incomeRow(v domain.Income, loc *time.Location, lookupName func(string) string, lookupCategory func(string) *domain.Category, msgs exportMessages) []string {
+	return []string{msgs.typeIncome, formatDate(v.ReceivedOn, loc), v.Title, formatAmount(v.AmountMinor), string(v.Currency), msgs.categoryLabel(lookupCategory(v.CategoryID), v.Category), lookupName(v.EarnedBy), msgs.statusReceived, splitDetail(v.Splits, lookupName), v.Notes}
+}
+
 // splitDetail renders every participant's share as "姓名:金額" pairs so the
 // export fully reflects how an expense was divided, not just its total.
 func splitDetail[T domain.Split](splits []T, lookupName func(string) string) string {
@@ -350,12 +368,12 @@ func settlementRow(v domain.Settlement, loc *time.Location, lookupName func(stri
 // translated up front for the requested locale so row-building code never
 // writes raw literals directly into the file.
 type exportMessages struct {
-	headers                                                                  []string
-	typeExpense, typeSubscription, typeSettlement                            string
-	statusActive, statusPaused, statusCancelled, statusPending, statusFailed string
-	uncategorized                                                            string
-	category                                                                 map[string]string
-	tzNoteGroup, tzNotePersonal                                              string
+	headers                                                                                  []string
+	typeExpense, typeIncome, typeSubscription, typeSettlement                                string
+	statusActive, statusPaused, statusCancelled, statusPending, statusFailed, statusReceived string
+	uncategorized                                                                            string
+	category                                                                                 map[string]string
+	tzNoteGroup, tzNotePersonal                                                              string
 }
 
 func (m exportMessages) categoryLabel(info *domain.Category, legacy string) string {
@@ -406,8 +424,9 @@ func (m exportMessages) occurrenceStatusLabel(status string) string {
 func exportMessagesFor(locale string) exportMessages {
 	if locale == "en" {
 		return exportMessages{
-			headers:          []string{"Type", "Date", "Name", "Amount", "Currency", "Category", "Payer / Counterparty", "Status", "Split detail", "Notes"},
+			headers:          []string{"Type", "Date", "Name", "Amount", "Currency", "Category", "Payer / Receiver", "Status", "Split detail", "Notes"},
 			typeExpense:      "Expense",
+			typeIncome:       "Income",
 			typeSubscription: "Subscription",
 			typeSettlement:   "Settlement",
 			statusActive:     "Active",
@@ -415,6 +434,7 @@ func exportMessagesFor(locale string) exportMessages {
 			statusCancelled:  "Cancelled",
 			statusPending:    "Not yet billed",
 			statusFailed:     "Posting failed",
+			statusReceived:   "Received",
 			uncategorized:    "Uncategorized",
 			category: map[string]string{
 				"food_dining": "Food & dining", "transport": "Transport", "housing": "Housing", "utilities": "Utilities & bills",
@@ -427,8 +447,9 @@ func exportMessagesFor(locale string) exportMessages {
 		}
 	}
 	return exportMessages{
-		headers:          []string{"類型", "日期", "名稱", "金額", "幣別", "分類", "付款人/對象", "狀態", "分帳明細", "備註"},
+		headers:          []string{"類型", "日期", "名稱", "金額", "幣別", "分類", "付款人/收款人", "狀態", "分帳明細", "備註"},
 		typeExpense:      "支出",
+		typeIncome:       "收入",
 		typeSubscription: "訂閱",
 		typeSettlement:   "還款",
 		statusActive:     "啟用",
@@ -436,6 +457,7 @@ func exportMessagesFor(locale string) exportMessages {
 		statusCancelled:  "已取消",
 		statusPending:    "尚未入帳",
 		statusFailed:     "入帳失敗",
+		statusReceived:   "已收款",
 		uncategorized:    "未分類",
 		category: map[string]string{
 			"food_dining": "餐飲", "transport": "交通", "housing": "住家", "utilities": "水電與帳單",

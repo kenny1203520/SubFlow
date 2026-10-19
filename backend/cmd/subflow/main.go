@@ -127,6 +127,9 @@ func main() {
 			if postErr := base.PostDueSubscriptions(context.Background()); postErr != nil {
 				app.Logger().Warn("subscription posting failed", "operation", "post_due_subscriptions", "error", postErr)
 			}
+			if postErr := base.PostDueRecurringIncomes(context.Background()); postErr != nil {
+				app.Logger().Warn("recurring income posting failed", "operation", "post_due_recurring_incomes", "error", postErr)
+			}
 		})
 		go func() {
 			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {

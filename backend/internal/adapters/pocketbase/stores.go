@@ -18,6 +18,7 @@ type NotificationRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
 type IncomeRepo struct{ *Repository }
+type RecurringIncomeRepo struct{ *Repository }
 type SettlementRepo struct{ *Repository }
 type AttachmentRepo struct{ *Repository }
 type CategoryRepo struct{ *Repository }
@@ -39,6 +40,7 @@ type Stores struct {
 	Subscriptions      *SubscriptionRepo
 	Expenses           *ExpenseRepo
 	Incomes            *IncomeRepo
+	RecurringIncomes   *RecurringIncomeRepo
 	Settlements        *SettlementRepo
 	Attachments        *AttachmentRepo
 	Categories         *CategoryRepo
@@ -54,7 +56,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, Settlements: &SettlementRepo{base}, Attachments: &AttachmentRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
+	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, RecurringIncomes: &RecurringIncomeRepo{base}, Settlements: &SettlementRepo{base}, Attachments: &AttachmentRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -373,4 +375,41 @@ func (r *IncomeRepo) ListSplits(ctx context.Context, incomeID string) ([]*domain
 }
 func (r *IncomeRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
 	return r.ReassignIncomeUser(ctx, groupID, fromUserID, toUserID)
+}
+
+func (r *RecurringIncomeRepo) Create(ctx context.Context, v *domain.RecurringIncome) error {
+	return r.CreateRecurringIncome(ctx, v)
+}
+func (r *RecurringIncomeRepo) Get(ctx context.Context, id string) (*domain.RecurringIncome, error) {
+	return r.GetRecurringIncome(ctx, id)
+}
+func (r *RecurringIncomeRepo) Update(ctx context.Context, v *domain.RecurringIncome) error {
+	return r.UpdateRecurringIncome(ctx, v)
+}
+func (r *RecurringIncomeRepo) List(ctx context.Context, owner, group string, p ports.PageRequest) (ports.Page[domain.RecurringIncome], error) {
+	return r.ListRecurringIncomes(ctx, owner, group, p)
+}
+func (r *RecurringIncomeRepo) ListDue(ctx context.Context, before time.Time) ([]domain.RecurringIncome, error) {
+	return r.ListDueRecurringIncomes(ctx, before)
+}
+func (r *RecurringIncomeRepo) CreateRevision(ctx context.Context, v *domain.RecurringIncomeRevision) error {
+	return r.CreateRecurringIncomeRevision(ctx, v)
+}
+func (r *RecurringIncomeRepo) ListRevisions(ctx context.Context, id string) ([]domain.RecurringIncomeRevision, error) {
+	return r.ListRecurringIncomeRevisions(ctx, id)
+}
+func (r *RecurringIncomeRepo) SaveOccurrence(ctx context.Context, v *domain.IncomeOccurrence) error {
+	return r.SaveIncomeOccurrence(ctx, v)
+}
+func (r *RecurringIncomeRepo) GetOccurrence(ctx context.Context, id string, on time.Time) (*domain.IncomeOccurrence, error) {
+	return r.GetIncomeOccurrence(ctx, id, on)
+}
+func (r *RecurringIncomeRepo) FindOccurrenceByIncome(ctx context.Context, id string) (*domain.IncomeOccurrence, error) {
+	return r.FindIncomeOccurrenceByIncome(ctx, id)
+}
+func (r *RecurringIncomeRepo) ListOccurrences(ctx context.Context, id string, p ports.PageRequest) (ports.Page[domain.IncomeOccurrence], error) {
+	return r.ListIncomeOccurrences(ctx, id, p)
+}
+func (r *RecurringIncomeRepo) ReassignUser(ctx context.Context, g, f, t string) error {
+	return r.ReassignRecurringIncomeUser(ctx, g, f, t)
 }

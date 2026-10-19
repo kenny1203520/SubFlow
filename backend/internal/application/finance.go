@@ -311,6 +311,13 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			return loadErr
 		}
 		groupTimezone[groupID] = group.Timezone
+		if query.Scope == "group" {
+			for _, income := range groupIncomes {
+				if income.BaseCurrency != group.Currency {
+					result.IncomeCurrencyRepairIDs = append(result.IncomeCurrencyRepairIDs, income.ID)
+				}
+			}
+		}
 		expenses = append(expenses, groupExpenses...)
 		subscriptions = append(subscriptions, groupSubscriptions...)
 		incomes = append(incomes, groupIncomes...)
@@ -414,6 +421,10 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		consumeExpense(expense)
 	}
 	for _, income := range incomes {
+		if query.Scope == "group" && len(result.IncomeCurrencyRepairIDs) > 0 {
+			// Do not publish partially converted income totals as complete totals.
+			continue
+		}
 		recordStart, recordEnd := recordRange(income.GroupID)
 		if income.ReceivedOn.Before(recordStart) || !income.ReceivedOn.Before(recordEnd) {
 			continue
@@ -540,7 +551,9 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 			}
 		}
 		resolvedExpenses, resolvedSettlements := s.resolvePlaceholderAliases(ctx, filteredExpenses, filteredSettlements)
-		result.Balances = domain.MemberBalancesWithIncomes(resolvedExpenses, filteredIncomes, resolvedSettlements)
+		if len(result.IncomeCurrencyRepairIDs) == 0 {
+			result.Balances = domain.MemberBalancesWithIncomes(resolvedExpenses, filteredIncomes, resolvedSettlements)
+		}
 	}
 	return result, nil
 }
