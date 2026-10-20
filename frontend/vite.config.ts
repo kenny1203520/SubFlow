@@ -44,6 +44,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
+      exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
       coverage: {
         provider: 'v8',
         reporter: ['text', 'lcov'],

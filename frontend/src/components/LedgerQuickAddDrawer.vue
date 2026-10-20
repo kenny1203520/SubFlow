@@ -12,7 +12,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import type { BillingCycle, Currency, Expense, ExpenseSplit, Income, IncomeSplit, LedgerKind, SplitMode, Subscription, SubscriptionStatus } from '../api/types'
 import { amountStep, majorToMinor, minorToInput } from '../api/money'
 
-import { fromDateInput, fromDateTimeInput } from '../dateInput'
+import { fromDateInput, fromDateTimeInput, toDateInput, toDateTimeInput } from '../dateInput'
 import { useI18n } from '../i18n'
 
 const props = defineProps<{ open: boolean; groupId?: string; date: string; personal?: boolean; editRecord?: Expense | Income | Subscription; editKind?: LedgerKind }>()
@@ -21,6 +21,7 @@ const emit = defineEmits<{ close: []; saved: [] }>()
 const workspace = useWorkspaceStore()
 const auth = useAuthStore()
 const { tr } = useI18n()
+function viewerTimezone() { return auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC' }
 const mode = ref<'expense' | 'income' | 'subscription'>('expense')
 const saving = ref(false)
 const error = ref('')
@@ -51,6 +52,8 @@ const form = reactive({
 })
 const reportingCurrency = computed(() => personal.value ? (auth.record?.defaultCurrency || form.currency) : (group.value?.currency || form.currency))
 const rateValid = ref(true)
+// Keep the original instant when an existing record is saved without an explicit date change.
+const dateTouched = ref(false)
 const rateOptions = computed(() => [{ value: 'automatic', label: tr('automaticRate') }, { value: 'manual', label: tr('manualRate') }])
 const splitOptions = computed(() => [{ value: 'equal', label: tr('splitEqual') }, { value: 'amount', label: tr('splitAmount') }, { value: 'percentage', label: tr('splitPercentage') }])
 const cycleOptions = computed(() => [{ value: 'daily', label: tr('daily') }, { value: 'every_n_days', label: tr('everyNDays') }, { value: 'weekly', label: tr('weekly') }, { value: 'every_n_weeks', label: tr('everyNWeeks') }, { value: 'every_n_hours', label: tr('everyNHours') }, { value: 'monthly', label: tr('monthly') }, { value: 'quarterly', label: tr('quarterly') }, { value: 'yearly', label: tr('yearly') }])
@@ -68,6 +71,7 @@ const splitValid = computed(() => {
 
 function reset() {
   error.value = ''
+  dateTouched.value = false
   form.title = ''
   form.amount = ''
   form.currency = personal.value ? (auth.record?.defaultCurrency || 'TWD') : (group.value?.currency || auth.record?.defaultCurrency || 'TWD')
@@ -107,7 +111,7 @@ function loadRecord(record: Expense | Income | Subscription) {
   if (props.editKind === 'income' || ('receivedOn' in record)) {
     const value = record as Income
     mode.value = 'income'
-    Object.assign(form, { title: value.title, amount: minorToInput(value.amountMinor, value.currency), currency: value.currency, category: value.category, categoryId: value.categoryId || '', date: value.receivedOn.slice(0, 10), notes: value.notes, payer: value.earnedBy || auth.record?.id || '', rateMode: value.rateMode || 'automatic', exchangeRate: value.exchangeRate || '', splitMode: value.splitMode || 'equal' })
+    Object.assign(form, { title: value.title, amount: minorToInput(value.amountMinor, value.currency), currency: value.currency, category: value.category, categoryId: value.categoryId || '', date: toDateInput(value.receivedOn, viewerTimezone()), notes: value.notes, payer: value.earnedBy || auth.record?.id || '', rateMode: value.rateMode || 'automatic', exchangeRate: value.exchangeRate || '', splitMode: value.splitMode || 'equal' })
     form.participants = Object.fromEntries((value.splits || members.value.map(member => ({ userId: member.userId }))).map(split => [split.userId, true]))
     form.values = Object.fromEntries((value.splits || []).map(split => [split.userId, value.splitMode === 'percentage' ? String((split.percentageBasisPoints || 0) / 100) : minorToInput(split.amountMinor, value.currency)]))
     return
@@ -115,14 +119,14 @@ function loadRecord(record: Expense | Income | Subscription) {
   if (props.editKind === 'subscription' || ('name' in record)) {
     const value = record as Subscription
     mode.value = 'subscription'
-    Object.assign(form, { title: value.name, amount: minorToInput(value.amountMinor, value.currency), currency: value.currency, category: value.category, categoryId: value.categoryId || '', date: value.billingCycle === 'every_n_hours' ? (value.startsOn || value.nextBilling).slice(0, 16) : (value.startsOn || value.nextBilling).slice(0, 10), notes: value.notes, payer: value.paidBy || auth.record?.id || '', rateMode: value.rateMode || 'automatic', exchangeRate: value.exchangeRate || '', splitMode: value.splitMode || 'equal', billingCycle: value.billingCycle, billingInterval: String(value.billingInterval || 1), status: value.status, revisionScope: value.revisionScope || 'future', effectiveBillingAt: value.effectiveBillingAt || value.nextBilling, endBillingAt: value.endBillingAt || '' })
+    Object.assign(form, { title: value.name, amount: minorToInput(value.amountMinor, value.currency), currency: value.currency, category: value.category, categoryId: value.categoryId || '', date: value.billingCycle === 'every_n_hours' ? toDateTimeInput(value.startsOn || value.nextBilling, viewerTimezone()) : toDateInput(value.startsOn || value.nextBilling, viewerTimezone()), notes: value.notes, payer: value.paidBy || auth.record?.id || '', rateMode: value.rateMode || 'automatic', exchangeRate: value.exchangeRate || '', splitMode: value.splitMode || 'equal', billingCycle: value.billingCycle, billingInterval: String(value.billingInterval || 1), status: value.status, revisionScope: value.revisionScope || 'future', effectiveBillingAt: value.effectiveBillingAt || value.nextBilling, endBillingAt: value.endBillingAt || '' })
     form.participants = Object.fromEntries((value.splits || members.value.map(member => ({ userId: member.userId }))).map(split => [split.userId, true]))
     form.values = Object.fromEntries((value.splits || []).map(split => [split.userId, value.splitMode === 'percentage' ? String((split.percentageBasisPoints || 0) / 100) : minorToInput(split.amountMinor, value.currency)]))
     return
   }
   const value = record as Expense
   mode.value = 'expense'
-  Object.assign(form, { title: value.title, amount: minorToInput(value.amountMinor, value.currency), currency: value.currency, category: value.category, categoryId: value.categoryId || '', date: value.incurredOn.slice(0, 10), notes: value.notes, payer: value.paidBy || auth.record?.id || '', rateMode: value.rateMode || 'automatic', exchangeRate: value.exchangeRate || '', splitMode: value.splitMode || 'equal' })
+  Object.assign(form, { title: value.title, amount: minorToInput(value.amountMinor, value.currency), currency: value.currency, category: value.category, categoryId: value.categoryId || '', date: toDateInput(value.incurredOn, viewerTimezone()), notes: value.notes, payer: value.paidBy || auth.record?.id || '', rateMode: value.rateMode || 'automatic', exchangeRate: value.exchangeRate || '', splitMode: value.splitMode || 'equal' })
   form.participants = Object.fromEntries((value.splits || members.value.map(member => ({ userId: member.userId }))).map(split => [split.userId, true]))
   form.values = Object.fromEntries((value.splits || []).map(split => [split.userId, value.splitMode === 'percentage' ? String((split.percentageBasisPoints || 0) / 100) : minorToInput(split.amountMinor, value.currency)]))
 }
@@ -150,7 +154,7 @@ async function submit() {
   }
   saving.value = true
   error.value = ''
-  const occurred = form.billingCycle === 'every_n_hours' ? fromDateTimeInput(form.date, personal.value ? (auth.record?.timezone || 'UTC') : (group.value?.timezone || 'UTC')) : fromDateInput(form.date, personal.value ? (auth.record?.timezone || 'UTC') : (group.value?.timezone || 'UTC'))
+  const occurred = form.billingCycle === 'every_n_hours' ? fromDateTimeInput(form.date, viewerTimezone()) : fromDateInput(form.date, viewerTimezone())
   const common = {
     title: form.title.trim(),
     category: form.category,
@@ -165,13 +169,13 @@ async function submit() {
   const record = props.editRecord
   let ok = false
   if (mode.value === 'expense') {
-    const input = { ...common, paidBy: form.payer, incurredOn: occurred, ...(personal.value ? {} : { splits: expenseSplits() }) }
+    const input = { ...common, paidBy: form.payer, ...(!record || dateTouched.value ? { incurredOn: occurred } : {}), ...(personal.value ? {} : { splits: expenseSplits() }) }
     ok = personal.value ? (record && props.editKind === 'expense' ? await workspace.updateExpense(record.id, input) : await workspace.addPersonalExpense(input)) : (record && props.editKind === 'expense' ? await workspace.updateExpense(record.id, input) : await workspace.addExpense(input))
   } else if (mode.value === 'income') {
-    const input = { ...common, earnedBy: form.payer, receivedOn: occurred, ...(personal.value ? {} : { splits: incomeSplits() }) }
+    const input = { ...common, earnedBy: form.payer, ...(!record || dateTouched.value ? { receivedOn: occurred } : {}), ...(personal.value ? {} : { splits: incomeSplits() }) }
     ok = personal.value ? (record && props.editKind === 'income' ? await workspace.updateIncome(record.id, input) : await workspace.addIncome(input)) : (record && props.editKind === 'income' ? await workspace.updateGroupIncome(record.id, input) : await workspace.addGroupIncome(input))
   } else {
-    const input = { name: common.title, category: common.category, categoryId: common.categoryId, amountMinor: common.amountMinor, currency: common.currency, rateMode: common.rateMode, exchangeRate: common.exchangeRate, paidBy: form.payer, splitMode: common.splitMode, ...(personal.value ? {} : { splits: expenseSplits() }), billingCycle: form.billingCycle, billingInterval: Number(form.billingInterval), startsOn: occurred, nextBilling: occurred, status: form.status, notes: common.notes, revisionScope: form.revisionScope, effectiveBillingAt: form.effectiveBillingAt || occurred, endBillingAt: form.endBillingAt || undefined }
+    const input = { name: common.title, category: common.category, categoryId: common.categoryId, amountMinor: common.amountMinor, currency: common.currency, rateMode: common.rateMode, exchangeRate: common.exchangeRate, paidBy: form.payer, splitMode: common.splitMode, ...(personal.value ? {} : { splits: expenseSplits() }), billingCycle: form.billingCycle, billingInterval: Number(form.billingInterval), ...(!record || dateTouched.value ? { startsOn: occurred } : {}), ...(!record ? { nextBilling: occurred } : {}), status: form.status, notes: common.notes, revisionScope: form.revisionScope, effectiveBillingAt: dateTouched.value ? occurred : (form.effectiveBillingAt || occurred), endBillingAt: form.endBillingAt || undefined }
     ok = record && props.editKind === 'subscription' ? await workspace.updateSubscription(record.id, input) : personal.value ? await workspace.addPersonalSubscription(input) : await workspace.addSubscription(input)
   }
   saving.value = false
@@ -182,6 +186,10 @@ async function submit() {
   emit('saved')
   emit('close')
 }
+watch(() => form.billingCycle, cycle => {
+  if (cycle === 'every_n_hours' && form.date.length === 10) { form.date = `${form.date}T00:00`; dateTouched.value = true }
+  if (cycle !== 'every_n_hours' && form.date.length > 10) { form.date = form.date.slice(0, 10); dateTouched.value = true }
+})
 </script>
 
 <template>
@@ -206,7 +214,7 @@ async function submit() {
           <BaseInput v-model="form.amount" :label="tr('amount')" type="number" inputmode="decimal" min="0" :step="amountStep(form.currency)" required />
           <div class="ledger-field"><span>{{ tr('currency') }}</span><CurrencySelect v-model="form.currency" :currencies="workspace.currencies" /></div>
           <div v-if="!personal" class="ledger-field"><span>{{ mode==='income' ? tr('receivedBy') : tr('payer') }}</span><PayerSelect v-model="form.payer" :members="members" :self-id="auth.record?.id" /></div>
-          <BaseInput v-if="mode!=='subscription'" v-model="form.date" :label="tr('date')" type="date" required />
+          <BaseInput v-if="mode!=='subscription'" v-model="form.date" :label="tr('date')" type="date" required @update:model-value="dateTouched = true" />
         </div>
       </section>
       <section class="ledger-form-section">
@@ -214,7 +222,7 @@ async function submit() {
         <div class="ledger-form-grid">
           <BaseCombobox v-model="form.rateMode" :options="rateOptions" :label="tr('exchangeRate')" :allow-create="false" />
           <BaseInput v-if="form.rateMode==='manual' && form.currency!==reportingCurrency" v-model="form.exchangeRate" :label="tr('manualRate')" inputmode="decimal" required />
-          <ConversionPreview class="ledger-wide" :from="form.currency" :to="reportingCurrency" :amount="form.amount" :date="form.date" :mode="form.rateMode" :manual-rate="form.exchangeRate" @validity="rateValid=$event" />
+          <ConversionPreview class="ledger-wide" :from="form.currency" :to="reportingCurrency" :amount="form.amount" :date="form.date.slice(0, 10)" :mode="form.rateMode" :manual-rate="form.exchangeRate" @validity="rateValid=$event" />
         </div>
       </section>
       <section v-if="!personal" class="ledger-form-section"><div class="ledger-section-heading"><strong>{{ tr('splitMode') }}</strong></div>
@@ -234,7 +242,7 @@ async function submit() {
         <div class="ledger-form-grid">
           <BaseCombobox v-model="form.billingCycle" :options="cycleOptions" :label="tr('cycle')" :allow-create="false" />
           <BaseInput v-if="['every_n_days','every_n_weeks','every_n_hours'].includes(form.billingCycle)" v-model="form.billingInterval" :label="tr('billingInterval')" type="number" min="1" max="8760" required />
-          <BaseInput v-model="form.date" class="ledger-wide" :label="tr('firstBilling')" :type="form.billingCycle === 'every_n_hours' ? 'datetime-local' : 'date'" required />
+          <BaseInput v-model="form.date" class="ledger-wide" :label="tr('firstBilling')" :type="form.billingCycle === 'every_n_hours' ? 'datetime-local' : 'date'" required @update:model-value="dateTouched = true" />
           <BaseCombobox v-model="form.status" :options="[{value:'active',label:tr('active')},{value:'paused',label:tr('paused')},{value:'cancelled',label:tr('cancelled')}]" :label="tr('status')" :allow-create="false" />
         </div>
       </section>      <section class="ledger-form-section">

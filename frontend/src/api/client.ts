@@ -1,8 +1,8 @@
 ﻿import type { ApiFailure, Envelope } from './types'
 
 export class ApiError extends Error {
-  status:number;code:string;fields?:Record<string,string>
-  constructor(status:number,code:string,message:string,fields?:Record<string,string>){super(message);this.status=status;this.code=code;this.fields=fields}
+  status:number;code:string;fields?:Record<string,string>;details?:string
+  constructor(status:number,code:string,message:string,fields?:Record<string,string>,details?:string){super(message);this.status=status;this.code=code;this.fields=fields;this.details=details}
 }
 export function bearer(token:string){return token&& !token.toLowerCase().startsWith('bearer ')?`Bearer ${token}`:token}
 export class ApiClient {
@@ -14,7 +14,7 @@ export class ApiClient {
     try{response=await fetch(`/api/subflow/v1${path}`,{...options,headers})}catch{throw new ApiError(0,'network_error','Network request failed')}
     if(response.status===401)this.unauthorized()
     const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as Envelope<T>|ApiFailure
-    if(!response.ok){const failure=body as ApiFailure;throw new ApiError(response.status,failure.error?.code??'request_failed',failure.error?.message??'Request failed',failure.error?.fields)}
+    if(!response.ok){const failure=body as ApiFailure;throw new ApiError(response.status,failure.error?.code??'request_failed',failure.error?.message??'Request failed',failure.error?.fields,failure.error?.details)}
     return body as Envelope<T>
   }
   get<T>(path:string){return this.request<T>(path)}

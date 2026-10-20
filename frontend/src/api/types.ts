@@ -13,9 +13,9 @@ export type ShareAccessMode='link'|'password'|'accounts'
 export type ShareRangeMode='all'|'rolling'|'fixed'
 export interface ShareViewer { id?:string;shareId?:string;userId:string;email:string;name:string }
 export interface Contact { id:string;ownerId:string;name:string;email:string;createdAt:string;updatedAt:string }
-export interface Share { id:string;groupId?:string;ownerId?:string;name:string;accessMode:ShareAccessMode;enabled:boolean;expiresAt?:string;rangeMode:ShareRangeMode;rollingDays?:number;startsOn?:string;endsOn?:string;showSummary:boolean;showIncomes:boolean;showRecurringIncome:boolean;showPendingIncome:boolean;showExpenses:boolean;showSubscriptions:boolean;showSettlements:boolean;showIdentities:boolean;showNotes:boolean;viewers?:ShareViewer[];url?:string;createdAt:string;updatedAt:string }
+export interface Share { id:string;groupId?:string;ownerId?:string;name:string;accessMode:ShareAccessMode;enabled:boolean;expiresAt?:string;rangeMode:ShareRangeMode;rollingDays?:number;startsOn?:string;endsOn?:string;showSummary:boolean;showIncomes:boolean;showRecurringIncome:boolean;showPendingIncome:boolean;showExpenses:boolean;showSubscriptions:boolean;showSettlements:boolean;showIdentities:boolean;showNotes:boolean;showAttachments:boolean;viewers?:ShareViewer[];url?:string;createdAt:string;updatedAt:string }
 export type ShareRecordType = 'expense'|'income'|'recurring_income'|'pending_income'|'subscription'|'settlement'
-export interface ShareRecord extends Record<string, unknown> { type:ShareRecordType; occurredOn?:string }
+export interface ShareRecord extends Record<string, unknown> { type:ShareRecordType; occurredOn?:string; attachmentReference?:string; attachmentCount?:number }
 export interface SharePage { name:string;currency:Currency;rangeLabel:string;showSummary:boolean;summary?:{expenseCount?:number;incomeCount?:number;recurringIncomeCount?:number;pendingIncomeCount?:number;subscriptionCount?:number;settlementCount?:number;expenseTotals?:Record<string,number>;incomeTotals?:Record<string,number>};records?:ShareRecord[];recordCounts?:Record<'all'|'expenses'|'incomes'|'recurring_income'|'pending_income'|'subscriptions'|'settlements',number>;expenses?:Array<Record<string,unknown>>;incomes?:Array<Record<string,unknown>>;subscriptions?:Array<Record<string,unknown>>;settlements?:Array<Record<string,unknown>>;balances?:Array<Record<string,unknown>>;page?:number;perPage?:number;totalItems?:number;totalPages?:number;nextPage?:number;requiresPassword?:boolean;requiresLogin?:boolean }
 export interface User { id:string;email:string;name:string;avatar?:string;timezone:string;defaultCurrency?:Currency;systemRoleId?:string;placeholder?:boolean;linkedUserId?:string }
 export interface SystemAccess { permissions:string[] }
@@ -68,5 +68,5 @@ export interface AttachmentPage { items:Attachment[];access:AttachmentAccess;lim
 export interface SubFlowEvent { type:string;groupId:string;resource:string;resourceId:string;occurredAt:string }
 export interface Meta { page:number;perPage:number;totalItems:number;totalPages:number }
 export interface Envelope<T> { data:T;meta?:Meta }
-export interface ApiFailure { error:{code:string;message:string;fields?:Record<string,string>} }
+export interface ApiFailure { error:{code:string;message:string;fields?:Record<string,string>;details?:string} }
 

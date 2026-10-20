@@ -1,4 +1,6 @@
 import type { ShareAccessMode, ShareRangeMode } from '../api/types'
+import { fromDateInput, toDateInput } from '../dateInput'
+import { browserTimezone } from '../timezone'
 
 export interface ShareFormState {
   name: string
@@ -20,12 +22,19 @@ export interface ShareFormState {
   showSettlements: boolean
   showIdentities: boolean
   showNotes: boolean
+  showAttachments: boolean
 }
 
 function dateValue(value: string, endOfDay = false): string | undefined {
   if (!value) return undefined
-  return new Date(`${value}T${endOfDay ? '23:59:59' : '00:00:00'}`).toISOString()
+  if (!endOfDay) return fromDateInput(value, browserTimezone())
+  const date = new Date(`${value}T00:00:00Z`)
+  date.setUTCDate(date.getUTCDate() + 1)
+  const nextDay = date.toISOString().slice(0, 10)
+  return new Date(new Date(fromDateInput(nextDay, browserTimezone())).getTime() - 1000).toISOString()
 }
+
+export function shareDateInput(value?: string): string { return value ? toDateInput(value, browserTimezone()) : '' }
 
 export function serializeShareForm(form: ShareFormState) {
   const payload: Record<string, unknown> = {

@@ -54,10 +54,10 @@ Backend：
 
 ```bash
 cd backend
-go run ./cmd/subflow serve
+go run ./cmd/subflow serve --env-file ../.env
 ```
 
-預設監聽 `http://localhost:8080`。repository 內含一個 development placeholder，因此不需要先 build frontend；正式 Docker build 會以真正的 Vue `dist` 覆蓋它。
+預設監聽 `http://localhost:8080`。`--env-file` 會載入指定設定檔，已存在的程序環境變數優先。分享 URL 與加密 CAPTCHA 設定都使用 `SUBFLOW_SETTINGS_ENCRYPTION_KEY`；請保留同一把金鑰，遺失或更換後既有密文無法還原。repository 內含一個 development placeholder，因此不需要先 build frontend；正式 Docker build 會以真正的 Vue `dist` 覆蓋它。
 
 Frontend：
 

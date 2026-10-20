@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { pb } from '../pocketbase'
@@ -7,6 +7,8 @@ import type { Share, ShareAccessMode, ShareRangeMode } from '../api/types'
 import type { Contact, Membership } from '../api/types'
 import PasswordField from '../components/PasswordField.vue'
 import { serializeShareForm } from './shareForm'
+import { shareDateInput } from './shareForm'
+import { ApiError } from '../api/client'
 import { useI18n } from '../i18n'
 
 const route = useRoute()
@@ -17,14 +19,16 @@ const isGroup = computed(() => !!groupId.value)
 const shares = ref<Share[]>([])
 const busy = ref(false)
 const error = ref('')
+const loadError = ref('')
 const copied = ref('')
 const knownUrls = ref<Record<string, string>>({})
 const editing = ref<Share | null | undefined>(undefined)
-const form = reactive({ name: '', accessMode: 'link' as ShareAccessMode, password: '', viewerEmails: '', enabled: true, expiresAt: '', rangeMode: 'all' as ShareRangeMode, rollingDays: 30, startsOn: '', endsOn: '', showSummary: true, showIncomes: false, showRecurringIncome: false, showPendingIncome: false, showExpenses: true, showSubscriptions: true, showSettlements: true, showIdentities: false, showNotes: false })
+const form = reactive({ name: '', accessMode: 'link' as ShareAccessMode, password: '', viewerEmails: '', enabled: true, expiresAt: '', rangeMode: 'all' as ShareRangeMode, rollingDays: 30, startsOn: '', endsOn: '', showSummary: true, showIncomes: false, showRecurringIncome: false, showPendingIncome: false, showExpenses: true, showSubscriptions: true, showSettlements: true, showIdentities: false, showNotes: false, showAttachments: false })
 const contacts = ref<Contact[]>([])
 const memberships = ref<Membership[]>([])
 const readerQuery = ref('')
 const readerError = ref('')
+const fieldErrors = ref<Record<string, string>>({})
 const showContactForm = ref(false)
 const contactBusy = ref(false)
 const newContact = reactive({ name: '', email: '' })
@@ -126,22 +130,39 @@ function meaningfulDate(value?: string) {
 function reset(value?: Share) {
   editing.value = value ?? null
   readerError.value = ''
-  Object.assign(form, { name: value?.name || '', accessMode: value?.accessMode || 'link', password: '', viewerEmails: value?.viewers?.map(item => item.email).join(',') || '', enabled: value?.enabled ?? true, expiresAt: meaningfulDate(value?.expiresAt) ? value!.expiresAt!.slice(0, 10) : '', rangeMode: value?.rangeMode || 'all', rollingDays: value?.rollingDays || 30, startsOn: meaningfulDate(value?.startsOn) ? value!.startsOn!.slice(0, 10) : '', endsOn: meaningfulDate(value?.endsOn) ? value!.endsOn!.slice(0, 10) : '', showSummary: value?.showSummary ?? true, showIncomes: value?.showIncomes ?? false, showRecurringIncome: value?.showRecurringIncome ?? false, showPendingIncome: value?.showPendingIncome ?? false, showExpenses: value?.showExpenses ?? true, showSubscriptions: value?.showSubscriptions ?? true, showSettlements: value?.showSettlements ?? true, showIdentities: value?.showIdentities ?? false, showNotes: value?.showNotes ?? false })
+  fieldErrors.value = {}
+  Object.assign(form, { name: value?.name || '', accessMode: value?.accessMode || 'link', password: '', viewerEmails: value?.viewers?.map(item => item.email).join(',') || '', enabled: value?.enabled ?? true, expiresAt: meaningfulDate(value?.expiresAt) ? shareDateInput(value!.expiresAt) : '', rangeMode: value?.rangeMode || 'all', rollingDays: value?.rollingDays || 30, startsOn: meaningfulDate(value?.startsOn) ? shareDateInput(value!.startsOn) : '', endsOn: meaningfulDate(value?.endsOn) ? shareDateInput(value!.endsOn) : '', showSummary: value?.showSummary ?? true, showIncomes: value?.showIncomes ?? false, showRecurringIncome: value?.showRecurringIncome ?? false, showPendingIncome: value?.showPendingIncome ?? false, showExpenses: value?.showExpenses ?? true, showSubscriptions: value?.showSubscriptions ?? true, showSettlements: value?.showSettlements ?? true, showIdentities: value?.showIdentities ?? false, showNotes: value?.showNotes ?? false, showAttachments: value?.showAttachments ?? false })
 }
 function payload() { return serializeShareForm(form) }
 async function load() {
   busy.value = true
   error.value = ''
+  loadError.value = ''
   try {
     const result = await client.get<Share[]>(base.value)
     shares.value = result.data
     result.data.forEach(share => { if (share.url) rememberUrl(share.id, share.url) })
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : tr('requestFailed') }
+  } catch (reason) {
+    if (reason instanceof ApiError && reason.code === 'configuration_error') {
+      loadError.value = tr(reason.details === 'share_url_unreadable' ? 'shareUrlUnreadable' : 'shareKeyMissing')
+    } else {
+      loadError.value = tr('shareLoadFailed')
+    }
+  }
   finally { busy.value = false }
 }
 async function save() {
   error.value = ''
   readerError.value = ''
+  fieldErrors.value = {}
+  if (form.rangeMode === 'fixed' && !form.startsOn) fieldErrors.value.startsOn = tr('shareStartRequired')
+  if (form.rangeMode === 'fixed' && !form.endsOn) fieldErrors.value.endsOn = tr('shareEndRequired')
+  if (form.rangeMode === 'fixed' && form.startsOn && form.endsOn && form.startsOn > form.endsOn) fieldErrors.value.endsOn = tr('shareEndBeforeStart')
+  if (Object.keys(fieldErrors.value).length) {
+    const first = fieldErrors.value.startsOn ? '[name="startsOn"]' : '[name="endsOn"]'
+    document.querySelector<HTMLInputElement>(first)?.focus()
+    return
+  }
   if (form.accessMode === 'accounts' && selectedReaders.value.length === 0) {
     readerError.value = tr('shareReaderRequired')
     return
@@ -156,11 +177,18 @@ async function save() {
     editing.value = undefined
     await load()
   } catch (reason) {
-    if (form.accessMode === 'accounts') readerError.value = tr('shareReaderValidation')
+    if (reason instanceof ApiError && reason.fields) {
+      for (const [field, code] of Object.entries(reason.fields)) {
+        if (field === 'startsOn') fieldErrors.value.startsOn = tr('shareStartRequired')
+        else if (field === 'endsOn') fieldErrors.value.endsOn = code === 'before_start' ? tr('shareEndBeforeStart') : tr('shareEndRequired')
+        else if (field === 'viewerEmails') readerError.value = tr('shareReaderValidation')
+        else fieldErrors.value[field] = tr('shareValidationError')
+      }
+    }
     error.value = reason instanceof Error ? reason.message : tr('requestFailed')
   } finally { busy.value = false }
 }
-async function remove(value: Share) { if (!confirm(tr('shareDeleteConfirm', { name: value.name }))) return; await client.delete(base.value + '/' + value.id); await load() }
+async function remove(value: Share) { if (!confirm(tr('shareDeleteConfirm', { name: value.name }))) return; busy.value = true; error.value = ''; try { await client.delete(base.value + '/' + value.id); await load() } catch (reason) { error.value = reason instanceof Error ? reason.message : tr('requestFailed') } finally { busy.value = false } }
 async function rotate(value: Share) {
   if (!confirm(tr('shareRegenerateConfirm'))) return
   busy.value = true
@@ -190,7 +218,7 @@ async function remember(value: Share) {
   } catch (reason) { error.value = reason instanceof Error ? reason.message : tr('requestFailed') }
   finally { busy.value = false }
 }
-async function copy(value: string) { const url = new URL(value, window.location.origin).toString(); await navigator.clipboard?.writeText(url); copied.value = tr('shareLinkCopied', { url }); setTimeout(() => { copied.value = '' }, 3000) }
+async function copy(value: string) { const url = new URL(value, window.location.origin).toString(); try { if (!navigator.clipboard) throw new Error('clipboard unavailable'); await navigator.clipboard.writeText(url); copied.value = tr('shareLinkCopied', { url }) } catch { copied.value = tr('shareLinkCopyManual', { url }) } setTimeout(() => { copied.value = '' }, 10000) }
 function status(value: Share) { return tr(value.enabled ? 'shareStatusEnabled' : 'shareStatusDisabled') }
 function range(value: Share) { if (value.rangeMode === 'all') return tr('shareRangeAll'); if (value.rangeMode === 'rolling') return tr('shareRangeRollingValue', { days: value.rollingDays || 30 }); return value.startsOn && value.endsOn ? tr('shareRangeFixedValue', { from: formatDate(value.startsOn), to: formatDate(value.endsOn) }) : tr('shareRangeFixed') }
 function expiry(value: Share) { return meaningfulDate(value.expiresAt) ? tr('shareExpiryValue', { date: formatDate(value.expiresAt!) }) : tr('shareNoExpiry') }
@@ -209,13 +237,15 @@ watch(groupId, () => { loadKnownUrls(); void load() })
       <form @submit.prevent="save">
         <section class="editor-section identity-section"><label class="share-name-field"><span>{{ tr('shareName') }}</span><input v-model="form.name" required maxlength="120" :placeholder="tr('shareNamePlaceholder')"></label></section>
         <section class="editor-section"><div class="section-heading"><div><h3>{{ tr('shareAccess') }}</h3><p>{{ tr('shareAccessDesc') }}</p></div></div><div class="access-options"><label v-for="option in accessOptions" :key="option.value" class="access-option" :class="{ selected: form.accessMode === option.value }"><input v-model="form.accessMode" type="radio" :value="option.value"><span class="option-mark" aria-hidden="true">{{ option.marker }}</span><span><strong>{{ option.label }}</strong><small>{{ option.description }}</small></span><span class="radio-indicator" aria-hidden="true"></span></label></div><div v-if="form.accessMode === 'password'" class="access-detail"><PasswordField v-model="form.password" :label="editing?.id ? tr('sharePasswordNew') : tr('sharePassword')" :required="!editing?.id" :minlength="8" autocomplete="new-password" :help="tr('sharePasswordHelp')" /></div><div v-if="form.accessMode === 'accounts'" class="access-detail reader-picker"><label><span>{{ tr('shareReaders') }}</span><div class="reader-chips"><span v-for="email in selectedReaders" :key="email" class="reader-chip">{{ email }}<button type="button" @click="removeReader(email)" :aria-label="tr('remove')">×</button></span><span v-if="!selectedReaders.length" class="reader-empty">{{ tr('shareNoReaders') }}</span></div></label><p v-if="readerError" class="field-error">{{ readerError }}</p><div class="reader-input-row"><input v-model="readerQuery" :placeholder="tr('shareReaderSearchPlaceholder')" @keydown.enter.prevent="addTypedReader"><button type="button" class="ghost" @click="addTypedReader">{{ tr('shareAddReader') }}</button></div><div v-if="readerCandidates.length" class="reader-candidates"><button v-for="candidate in readerCandidates" :key="candidate.email" type="button" class="reader-candidate" @click="addReader(candidate.email)"><strong>{{ candidate.name || candidate.email }}</strong><small>{{ candidate.email }}</small></button></div><p>{{ tr('shareAccessAccountsHelp') }}</p><div class="quick-contact"><button type="button" class="ghost" @click="showContactForm = !showContactForm">{{ tr('shareAddContact') }}</button><div v-if="showContactForm" class="quick-contact-form"><input v-model="newContact.name" :placeholder="tr('contactName')"><input v-model="newContact.email" :placeholder="tr('contactEmail')"><button type="button" class="primary" :disabled="contactBusy" @click="createContact">{{ tr('contactSave') }}</button></div></div></div></section>
-        <div class="editor-columns"><section class="editor-section"><div class="section-heading"><div><h3>{{ tr('shareRange') }}</h3><p>{{ tr('shareRangeDesc') }}</p></div></div><div class="range-options"><label v-for="mode in ['all', 'rolling', 'fixed'] as ShareRangeMode[]" :key="mode" :class="{ selected: form.rangeMode === mode }"><input v-model="form.rangeMode" type="radio" :value="mode"><span>{{ tr(mode === 'all' ? 'shareRangeAll' : mode === 'rolling' ? 'shareRangeRolling' : 'shareRangeFixed') }}</span></label></div><label v-if="form.rangeMode === 'rolling'" class="form-field"><span>{{ tr('shareRecentDays') }}</span><select v-model.number="form.rollingDays"><option :value="30">30</option><option :value="90">90</option><option :value="365">365</option></select></label><div v-if="form.rangeMode === 'fixed'" class="date-fields"><label><span>{{ tr('shareFrom') }}</span><input v-model="form.startsOn" type="date"></label><label><span>{{ tr('shareTo') }}</span><input v-model="form.endsOn" type="date"></label></div></section><section class="editor-section"><div class="section-heading"><div><h3>{{ tr('shareAvailability') }}</h3><p>{{ tr('shareAvailabilityDesc') }}</p></div></div><label class="toggle-line"><input v-model="form.enabled" type="checkbox"><span class="toggle-control" aria-hidden="true"></span><span><strong>{{ tr('shareEnabled') }}</strong><small>{{ form.enabled ? tr('shareStatusEnabled') : tr('shareStatusDisabled') }}</small></span></label><label class="form-field"><span>{{ tr('shareExpires') }}</span><input v-model="form.expiresAt" type="date"></label></section></div>
-        <section class="editor-section content-section"><div class="section-heading"><div><h3>{{ tr('shareContent') }}</h3><p>{{ tr('shareContentDesc') }}</p></div></div><div class="content-options"><label v-for="option in contentOptions" :key="option.key" class="content-option" :class="{ selected: form[option.key] }"><input v-model="form[option.key]" type="checkbox"><span class="option-mark" aria-hidden="true">{{ option.marker }}</span><span><strong>{{ option.label }}</strong><small>{{ option.description }}</small></span><span class="check-indicator" aria-hidden="true">✓</span></label></div><div class="privacy-options"><div><h4>{{ tr('sharePrivacy') }}</h4><p>{{ tr('sharePrivacyDesc') }}</p></div><label class="privacy-toggle"><input v-model="form.showIdentities" type="checkbox"><span><strong>{{ tr('shareIdentities') }}</strong><small>{{ tr('shareIdentitiesDesc') }}</small></span></label><label class="privacy-toggle"><input v-model="form.showNotes" type="checkbox"><span><strong>{{ tr('shareNotes') }}</strong><small>{{ tr('shareNotesDesc') }}</small></span></label></div></section>
+        <div class="editor-columns"><section class="editor-section"><div class="section-heading"><div><h3>{{ tr('shareRange') }}</h3><p>{{ tr('shareRangeDesc') }}</p></div></div><div class="range-options"><label v-for="mode in ['all', 'rolling', 'fixed'] as ShareRangeMode[]" :key="mode" :class="{ selected: form.rangeMode === mode }"><input v-model="form.rangeMode" type="radio" :value="mode"><span>{{ tr(mode === 'all' ? 'shareRangeAll' : mode === 'rolling' ? 'shareRangeRolling' : 'shareRangeFixed') }}</span></label></div><label v-if="form.rangeMode === 'rolling'" class="form-field"><span>{{ tr('shareRecentDays') }}</span><select v-model.number="form.rollingDays"><option :value="30">30</option><option :value="90">90</option><option :value="365">365</option></select></label><div v-if="form.rangeMode === 'fixed'" class="date-fields"><label><span>{{ tr('shareFrom') }}</span><input v-model="form.startsOn" name="startsOn" type="date" :aria-invalid="!!fieldErrors.startsOn" aria-describedby="share-start-error"><small v-if="fieldErrors.startsOn" id="share-start-error" class="field-error" role="alert">{{ fieldErrors.startsOn }}</small></label><label><span>{{ tr('shareTo') }}</span><input v-model="form.endsOn" name="endsOn" type="date" :aria-invalid="!!fieldErrors.endsOn" aria-describedby="share-end-error"><small v-if="fieldErrors.endsOn" id="share-end-error" class="field-error" role="alert">{{ fieldErrors.endsOn }}</small></label></div></section><section class="editor-section"><div class="section-heading"><div><h3>{{ tr('shareAvailability') }}</h3><p>{{ tr('shareAvailabilityDesc') }}</p></div></div><label class="toggle-line"><input v-model="form.enabled" type="checkbox"><span class="toggle-control" aria-hidden="true"></span><span><strong>{{ tr('shareEnabled') }}</strong><small>{{ form.enabled ? tr('shareStatusEnabled') : tr('shareStatusDisabled') }}</small></span></label><label class="form-field"><span>{{ tr('shareExpires') }}</span><input v-model="form.expiresAt" type="date"></label></section></div>
+        <section class="editor-section content-section"><div class="section-heading"><div><h3>{{ tr('shareContent') }}</h3><p>{{ tr('shareContentDesc') }}</p></div></div><div class="content-options"><label v-for="option in contentOptions" :key="option.key" class="content-option" :class="{ selected: form[option.key] }"><input v-model="form[option.key]" type="checkbox"><span class="option-mark" aria-hidden="true">{{ option.marker }}</span><span><strong>{{ option.label }}</strong><small>{{ option.description }}</small></span><span class="check-indicator" aria-hidden="true">✓</span></label></div><div class="privacy-options"><div><h4>{{ tr('sharePrivacy') }}</h4><p>{{ tr('sharePrivacyDesc') }}</p></div><label class="privacy-toggle"><input v-model="form.showIdentities" type="checkbox"><span><strong>{{ tr('shareIdentities') }}</strong><small>{{ tr('shareIdentitiesDesc') }}</small></span></label><label class="privacy-toggle"><input v-model="form.showNotes" type="checkbox"><span><strong>{{ tr('shareNotes') }}</strong><small>{{ tr('shareNotesDesc') }}</small></span></label><label class="privacy-toggle"><input v-model="form.showAttachments" type="checkbox"><span><strong>{{ tr('shareAttachments') }}</strong><small>{{ tr('shareAttachmentsDesc') }}</small></span></label></div></section>
         <div class="editor-actions"><button class="primary" :disabled="busy">{{ busy ? tr('shareSaving') : tr('save') }}</button><button class="ghost" type="button" @click="editing = undefined">{{ tr('cancel') }}</button></div>
       </form>
     </section>
 
-    <section class="shares-card card" aria-labelledby="shares-list-title"><div class="shares-heading"><div><p class="eyebrow">{{ tr('shareActiveLinks') }}</p><h2 id="shares-list-title">{{ tr('shareListTitle') }}</h2><p>{{ tr('shareListDesc') }}</p></div><span v-if="shares.length" class="shares-count">{{ shares.length }}</span></div><p v-if="busy && !shares.length" class="loading-state">{{ tr('shareLoading') }}</p><div v-else-if="shares.length" class="share-list"><article v-for="share in shares" :key="share.id" class="share-item"><div class="share-status" :class="{ inactive: !share.enabled }" aria-hidden="true"></div><div class="share-item-main"><div class="share-item-title"><h3>{{ share.name }}</h3><span class="status-pill" :class="{ inactive: !share.enabled }">{{ status(share) }}</span></div><div class="share-facts"><span>{{ accessLabel(share.accessMode) }}</span><span>{{ range(share) }}</span><span>{{ expiry(share) }}</span><span v-if="share.accessMode === 'accounts'">{{ tr('shareViewerCount', { count: share.viewers?.length || 0 }) }}</span></div></div><div class="share-actions"><button v-if="knownShareUrl(share)" class="ghost" @click="copy(knownShareUrl(share))">{{ tr('shareCopyLink') }}</button><button v-if="knownShareUrl(share)" class="ghost" @click="openShare(share)">{{ tr('shareOpenLink') }}</button><button v-if="!share.url" class="ghost" @click="remember(share)">{{ tr('shareRememberLink') }}</button><button class="ghost" @click="reset(share)">{{ tr('shareEdit') }}</button><button class="ghost" @click="rotate(share)">{{ tr('shareRegenerate') }}</button><button class="ghost danger-text" @click="remove(share)">{{ tr('shareDelete') }}</button></div></article></div><div v-else class="share-empty"><div class="empty-mark" aria-hidden="true">↗</div><h3>{{ tr('noShares') }}</h3><p>{{ tr('noSharesDesc') }}</p><button class="primary" @click="reset()">{{ tr('createFirstShare') }}</button></div></section>
+    <section class="shares-card card" aria-labelledby="shares-list-title">
+      <p v-if="loadError" class="notice danger inline" role="alert">{{ loadError }} <button class="ghost" :disabled="busy" @click="load">{{ tr('sharePublicRetry') }}</button></p>
+    <div class="shares-heading"><div><p class="eyebrow">{{ tr('shareActiveLinks') }}</p><h2 id="shares-list-title">{{ tr('shareListTitle') }}</h2><p>{{ tr('shareListDesc') }}</p></div><span v-if="shares.length" class="shares-count">{{ shares.length }}</span></div><p v-if="busy && !shares.length" class="loading-state">{{ tr('shareLoading') }}</p><div v-else-if="shares.length" class="share-list"><article v-for="share in shares" :key="share.id" class="share-item"><div class="share-status" :class="{ inactive: !share.enabled }" aria-hidden="true"></div><div class="share-item-main"><div class="share-item-title"><h3>{{ share.name }}</h3><span class="status-pill" :class="{ inactive: !share.enabled }">{{ status(share) }}</span></div><div class="share-facts"><span>{{ accessLabel(share.accessMode) }}</span><span>{{ range(share) }}</span><span>{{ expiry(share) }}</span><span v-if="share.accessMode === 'accounts'">{{ tr('shareViewerCount', { count: share.viewers?.length || 0 }) }}</span></div></div><div class="share-actions"><button v-if="knownShareUrl(share)" class="ghost" @click="copy(knownShareUrl(share))">{{ tr('shareCopyLink') }}</button><button v-if="knownShareUrl(share)" class="ghost" @click="openShare(share)">{{ tr('shareOpenLink') }}</button><button v-if="!share.url" class="ghost" @click="remember(share)">{{ tr('shareRememberLink') }}</button><button class="ghost" @click="reset(share)">{{ tr('shareEdit') }}</button><button class="ghost" @click="rotate(share)">{{ tr('shareRegenerate') }}</button><button class="ghost danger-text" @click="remove(share)">{{ tr('shareDelete') }}</button></div></article></div><div v-else-if="!loadError" class="share-empty"><div class="empty-mark" aria-hidden="true">↗</div><h3>{{ tr('noShares') }}</h3><p>{{ tr('noSharesDesc') }}</p><button class="primary" @click="reset()">{{ tr('createFirstShare') }}</button></div></section>
   </section>
 </template>
 
