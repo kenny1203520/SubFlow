@@ -1,11 +1,83 @@
 package application
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
 	"subflow/internal/domain"
+	"subflow/internal/security"
 )
+
+func TestShareInputDecodesEnabledFalse(t *testing.T) {
+	var input ShareInput
+	if err := json.Unmarshal([]byte(`{"name":"Disabled","enabled":false}`), &input); err != nil {
+		t.Fatal(err)
+	}
+	if input.EnabledInput == nil || *input.EnabledInput || input.Share.Enabled {
+		t.Fatalf("explicit disabled value was not preserved: enabled=%v input=%v", input.Share.Enabled, input.EnabledInput)
+	}
+}
+
+func TestShareInputPreservesOptionalAttachmentSettingPresence(t *testing.T) {
+	var omitted, enabled ShareInput
+	if err := json.Unmarshal([]byte(`{"name":"Legacy edit"}`), &omitted); err != nil {
+		t.Fatal(err)
+	}
+	if omitted.ShowAttachmentsInput != nil || !omitted.decodedJSON || omitted.ShowAttachments {
+		t.Fatalf("legacy request should leave attachments disabled and absent: %#v", omitted)
+	}
+	if err := json.Unmarshal([]byte(`{"name":"Attachment edit","showAttachments":true}`), &enabled); err != nil {
+		t.Fatal(err)
+	}
+	if enabled.ShowAttachmentsInput == nil || !*enabled.ShowAttachmentsInput || !enabled.ShowAttachments {
+		t.Fatalf("explicit attachment opt-in was not preserved: %#v", enabled)
+	}
+}
+
+func TestShareAttachmentReferencesAreEncryptedAndBoundToShare(t *testing.T) {
+	service := &Service{Cipher: security.NewSettingsCipher("share-attachment-test-key")}
+	share := &domain.Share{ID: "share-private-id"}
+	ref, err := service.makeShareAttachmentReference(share, shareAttachmentLocator{Type: "income", TargetID: "income-private-id"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(ref, share.ID) || strings.Contains(ref, "income-private-id") {
+		t.Fatalf("reference leaked an internal id: %q", ref)
+	}
+	locator, err := service.parseShareAttachmentReference(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if locator.ShareID != share.ID || locator.Type != "income" || locator.TargetID != "income-private-id" {
+		t.Fatalf("unexpected decoded locator: %#v", locator)
+	}
+	if ref[0] == 'A' {
+		ref = "B" + ref[1:]
+	} else {
+		ref = "A" + ref[1:]
+	}
+	if _, err = service.parseShareAttachmentReference(ref); err == nil {
+		t.Fatal("tampered locator should be rejected")
+	}
+}
+
+func TestShareInputDistinguishesOmittedEnabledFromExplicitFalse(t *testing.T) {
+	var omitted, disabled ShareInput
+	if err := json.Unmarshal([]byte(`{"name":"Keep state"}`), &omitted); err != nil {
+		t.Fatal(err)
+	}
+	if omitted.EnabledInput != nil {
+		t.Fatal("omitted enabled should remain distinguishable")
+	}
+	if err := json.Unmarshal([]byte(`{"name":"Disable","enabled":false}`), &disabled); err != nil {
+		t.Fatal(err)
+	}
+	if disabled.EnabledInput == nil || *disabled.EnabledInput {
+		t.Fatal("explicit false was not preserved")
+	}
+}
 
 func TestValidShareRequiresAUsableSourceAndContent(t *testing.T) {
 	base := domain.Share{Name: "Trip", OwnerID: "user", AccessMode: "link", RangeMode: "all", ShowExpenses: true}
@@ -36,6 +108,28 @@ func TestValidShareValidatesConfiguredRanges(t *testing.T) {
 	value.EndsOn = value.StartsOn.AddDate(0, 0, -1)
 	if validShare(value) {
 		t.Fatal("inverted fixed range accepted")
+	}
+}
+
+func TestValidateShareRequiresFixedDatesAndAllowsSameDay(t *testing.T) {
+	value := domain.Share{Name: "Fixed", OwnerID: "owner", AccessMode: "link", RangeMode: "fixed", ShowExpenses: true}
+	if fields := validateShare(value, "", true); fields["startsOn"] != "required" || fields["endsOn"] != "required" {
+		t.Fatalf("missing dates should report both fields, got %#v", fields)
+	}
+	day := time.Date(2026, time.August, 31, 16, 0, 0, 0, time.UTC)
+	value.StartsOn, value.EndsOn = day, day
+	if fields := validateShare(value, "", true); len(fields) != 0 {
+		t.Fatalf("same-day fixed range should be valid, got %#v", fields)
+	}
+}
+
+func TestValidateSharePasswordRulesOnCreateAndUpdate(t *testing.T) {
+	value := domain.Share{Name: "Locked", OwnerID: "owner", AccessMode: "password", RangeMode: "all", ShowExpenses: true}
+	if fields := validateShare(value, "short", true); fields["password"] != "min_length" {
+		t.Fatalf("short create password should be rejected, got %#v", fields)
+	}
+	if fields := validateShare(value, "", false); len(fields) != 0 {
+		t.Fatalf("blank update password should preserve the existing password, got %#v", fields)
 	}
 }
 func TestShareDateConfiguredTreatsLegacyZeroAsUnset(t *testing.T) {

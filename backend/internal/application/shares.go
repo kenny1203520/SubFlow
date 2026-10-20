@@ -5,6 +5,8 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -19,9 +21,41 @@ import (
 
 type ShareInput struct {
 	domain.Share
-	ViewerEmails []string `json:"viewerEmails"`
-	Password     string   `json:"password"`
+	ViewerEmails         []string `json:"viewerEmails"`
+	Password             string   `json:"password"`
+	EnabledInput         *bool    `json:"enabled"`
+	ShowAttachmentsInput *bool    `json:"-"`
+	decodedJSON          bool
 }
+
+func (input *ShareInput) UnmarshalJSON(data []byte) error {
+	var decoded struct {
+		domain.Share
+		ViewerEmails    []string `json:"viewerEmails"`
+		Password        string   `json:"password"`
+		Enabled         *bool    `json:"enabled"`
+		ShowAttachments *bool    `json:"showAttachments"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	input.Share = decoded.Share
+	input.ViewerEmails = decoded.ViewerEmails
+	input.Password = decoded.Password
+	input.EnabledInput = decoded.Enabled
+	input.ShowAttachmentsInput = decoded.ShowAttachments
+	input.decodedJSON = true
+	if decoded.ShowAttachments != nil {
+		input.Share.ShowAttachments = *decoded.ShowAttachments
+	}
+	return nil
+}
+
+type ShareValidationError struct{ Fields map[string]string }
+
+func (e *ShareValidationError) Error() string { return "invalid share" }
+
+func shareInvalid(fields map[string]string) error { return &ShareValidationError{Fields: fields} }
 
 type CreatedShare struct {
 	*domain.Share
@@ -46,11 +80,11 @@ func shareURL(token string) string {
 
 func (s *Service) encryptShareToken(token string) (string, error) {
 	if !s.Cipher.Available() {
-		return "", domain.ErrConfiguration
+		return "", errors.Join(domain.ErrConfiguration, domain.ErrShareKeyMissing)
 	}
 	ciphertext, err := s.Cipher.Encrypt(token)
 	if err != nil {
-		return "", domain.ErrConfiguration
+		return "", errors.Join(domain.ErrConfiguration, err)
 	}
 	return ciphertext, nil
 }
@@ -62,7 +96,10 @@ func (s *Service) shareURL(value *domain.Share) error {
 	}
 	token, err := s.Cipher.Decrypt(value.TokenCiphertext)
 	if err != nil {
-		return domain.ErrConfiguration
+		if !s.Cipher.Available() {
+			return errors.Join(domain.ErrConfiguration, domain.ErrShareKeyMissing)
+		}
+		return errors.Join(domain.ErrConfiguration, domain.ErrShareCiphertext)
 	}
 	value.URL = shareURL(token)
 	return nil
@@ -116,25 +153,61 @@ func (s *Service) resolveShareViewers(ctx context.Context, emails []string) ([]d
 
 func (s *Service) CreateShare(ctx context.Context, userID, groupID string, input ShareInput) (*CreatedShare, error) {
 	if err := s.sharePermission(ctx, userID, groupID); err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "permission_denied", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	value := input.Share
 	value.GroupID, value.OwnerID = groupID, ""
+	if value.ShowAttachments && groupID != "" {
+		if err := s.groupPermission(ctx, userID, groupID, "ledger.attachments.read"); err != nil {
+			if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "attachment_permission_denied", err); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, err
+		}
+		value.AttachmentOwnerID = userID
+	}
 	if groupID == "" {
 		value.OwnerID = userID
+		if value.ShowAttachments {
+			value.AttachmentOwnerID = userID
+		}
 	}
-	if !validShare(value) || (value.AccessMode == "password" && len(strings.TrimSpace(input.Password)) < 8) {
-		return nil, domain.ErrInvalid
+	if groupID == "" {
+		value.ShowSettlements = false
+	}
+	if input.EnabledInput == nil {
+		value.Enabled = true
+	} else {
+		value.Enabled = *input.EnabledInput
+	}
+	if fields := validateShare(value, input.Password, true); len(fields) > 0 {
+		if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "validation_failed", shareInvalid(fields)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, shareInvalid(fields)
 	}
 	viewers, err := s.resolveShareViewers(ctx, input.ViewerEmails)
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "invalid_viewers", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	if value.AccessMode == "accounts" && len(viewers) == 0 {
-		return nil, domain.ErrInvalid
+		invalid := shareInvalid(map[string]string{"viewerEmails": "required"})
+		if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "validation_failed", invalid); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, invalid
 	}
 	token, err := shareToken()
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "configuration", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	ciphertext, err := s.encryptShareToken(token)
@@ -144,14 +217,18 @@ func (s *Service) CreateShare(ctx context.Context, userID, groupID string, input
 		}
 		return nil, err
 	}
-	value.TokenHash, value.TokenCiphertext, value.Enabled, value.AccessVersion = shareTokenHash(token), ciphertext, true, 1
+	value.TokenHash, value.TokenCiphertext, value.AccessVersion = shareTokenHash(token), ciphertext, 1
 	if value.AccessMode == "password" {
 		hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if hashErr != nil {
+			if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "password_hash_failed", hashErr); auditErr != nil {
+				return nil, auditErr
+			}
 			return nil, hashErr
 		}
 		value.PasswordHash = string(hash)
 	}
+	auditAttempted := false
 	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if createErr := s.Stores.Shares.Create(tx, &value); createErr != nil {
 			return createErr
@@ -159,9 +236,16 @@ func (s *Service) CreateShare(ctx context.Context, userID, groupID string, input
 		if viewerErr := s.Stores.Shares.ReplaceViewers(tx, value.ID, viewers); viewerErr != nil {
 			return viewerErr
 		}
-		return s.audit(tx, userID, groupID, "share.created", "share", value.ID, "success", encodeAuditSummary(map[string]any{"mode": value.AccessMode}, nil))
+		auditAttempted = true
+		return s.audit(tx, userID, groupID, "share.created", "share", value.ID, "success", encodeAuditSummary(map[string]any{"mode": value.AccessMode, "attachments": value.ShowAttachments}, nil))
 	})
 	if err != nil {
+		if auditAttempted {
+			return nil, errors.Join(domain.ErrAuditUnavailable, err)
+		}
+		if auditErr := auditShareFailure(s, ctx, userID, groupID, "share.created", "", "storage_failed", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	value.Viewers = viewers
@@ -208,35 +292,87 @@ func (s *Service) managedShare(ctx context.Context, userID, id string) (*domain.
 func (s *Service) UpdateShare(ctx context.Context, userID, id string, input ShareInput) (*domain.Share, error) {
 	current, err := s.managedShare(ctx, userID, id)
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, "", "share.updated", id, "permission_denied", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	value := input.Share
-	value.ID, value.GroupID, value.OwnerID, value.TokenHash, value.CreatedAt = current.ID, current.GroupID, current.OwnerID, current.TokenHash, current.CreatedAt
+	value.ID, value.GroupID, value.OwnerID, value.TokenHash, value.TokenCiphertext, value.CreatedAt = current.ID, current.GroupID, current.OwnerID, current.TokenHash, current.TokenCiphertext, current.CreatedAt
+	if input.EnabledInput == nil {
+		value.Enabled = current.Enabled
+	} else {
+		value.Enabled = *input.EnabledInput
+	}
+	if value.OwnerID != "" {
+		value.ShowSettlements = false
+	}
+	requestedAttachments := current.ShowAttachments
+	if input.ShowAttachmentsInput != nil {
+		requestedAttachments = *input.ShowAttachmentsInput
+	}
+	if !input.decodedJSON && input.ShowAttachmentsInput == nil {
+		requestedAttachments = input.Share.ShowAttachments
+	}
+	value.ShowAttachments = requestedAttachments && current.ShowAttachments
+	value.AttachmentOwnerID = current.AttachmentOwnerID
+	if requestedAttachments && !current.ShowAttachments {
+		if value.GroupID != "" {
+			if err := s.groupPermission(ctx, userID, value.GroupID, "ledger.attachments.read"); err != nil {
+				if auditErr := auditShareFailure(s, ctx, userID, value.GroupID, "share.updated", id, "attachment_permission_denied", err); auditErr != nil {
+					return nil, auditErr
+				}
+				return nil, err
+			}
+		}
+		value.ShowAttachments, value.AttachmentOwnerID = true, userID
+	}
+	if !requestedAttachments {
+		value.ShowAttachments, value.AttachmentOwnerID = false, ""
+	}
 	value.PasswordHash, value.AccessVersion = current.PasswordHash, current.AccessVersion
-	if !validShare(value) {
-		return nil, domain.ErrInvalid
+	if fields := validateShare(value, input.Password, false); len(fields) > 0 {
+		if auditErr := auditShareFailure(s, ctx, userID, current.GroupID, "share.updated", id, "validation_failed", shareInvalid(fields)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, shareInvalid(fields)
 	}
 	if value.AccessMode == "password" {
 		if input.Password != "" {
 			hash, hashErr := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 			if hashErr != nil {
+				if auditErr := auditShareFailure(s, ctx, userID, current.GroupID, "share.updated", id, "password_hash_failed", hashErr); auditErr != nil {
+					return nil, auditErr
+				}
 				return nil, hashErr
 			}
 			value.PasswordHash, value.AccessVersion = string(hash), current.AccessVersion+1
 		}
 		if value.PasswordHash == "" {
-			return nil, domain.ErrInvalid
+			invalid := shareInvalid(map[string]string{"password": "required"})
+			if auditErr := auditShareFailure(s, ctx, userID, current.GroupID, "share.updated", id, "validation_failed", invalid); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, invalid
 		}
 	} else {
 		value.PasswordHash = ""
 	}
 	viewers, err := s.resolveShareViewers(ctx, input.ViewerEmails)
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, current.GroupID, "share.updated", id, "invalid_viewers", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	if value.AccessMode == "accounts" && len(viewers) == 0 {
-		return nil, domain.ErrInvalid
+		invalid := shareInvalid(map[string]string{"viewerEmails": "required"})
+		if auditErr := auditShareFailure(s, ctx, userID, current.GroupID, "share.updated", id, "validation_failed", invalid); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, invalid
 	}
+	auditAttempted := false
 	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if updateErr := s.Stores.Shares.Update(tx, &value); updateErr != nil {
 			return updateErr
@@ -244,9 +380,16 @@ func (s *Service) UpdateShare(ctx context.Context, userID, id string, input Shar
 		if viewerErr := s.Stores.Shares.ReplaceViewers(tx, value.ID, viewers); viewerErr != nil {
 			return viewerErr
 		}
-		return s.audit(tx, userID, value.GroupID, "share.updated", "share", value.ID, "success", encodeAuditSummary(map[string]any{"mode": value.AccessMode, "enabled": value.Enabled}, nil))
+		auditAttempted = true
+		return s.audit(tx, userID, value.GroupID, "share.updated", "share", value.ID, "success", encodeAuditSummary(map[string]any{"mode": value.AccessMode, "enabled": value.Enabled, "attachments": value.ShowAttachments}, nil))
 	})
 	if err != nil {
+		if auditAttempted {
+			return nil, errors.Join(domain.ErrAuditUnavailable, err)
+		}
+		if auditErr := auditShareFailure(s, ctx, userID, value.GroupID, "share.updated", id, "storage_failed", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	value.Viewers = viewers
@@ -259,10 +402,16 @@ func (s *Service) UpdateShare(ctx context.Context, userID, id string, input Shar
 func (s *Service) RotateShare(ctx context.Context, userID, id string) (*CreatedShare, error) {
 	value, err := s.managedShare(ctx, userID, id)
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, "", "share.rotated", id, "permission_denied", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	token, err := shareToken()
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, value.GroupID, "share.rotated", id, "token_generation_failed", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	ciphertext, err := s.encryptShareToken(token)
@@ -273,13 +422,21 @@ func (s *Service) RotateShare(ctx context.Context, userID, id string) (*CreatedS
 		return nil, err
 	}
 	value.TokenHash, value.TokenCiphertext, value.AccessVersion = shareTokenHash(token), ciphertext, value.AccessVersion+1
+	auditAttempted := false
 	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if updateErr := s.Stores.Shares.Update(tx, value); updateErr != nil {
 			return updateErr
 		}
+		auditAttempted = true
 		return s.audit(tx, userID, value.GroupID, "share.rotated", "share", value.ID, "success", encodeAuditSummary(map[string]any{"mode": value.AccessMode}, nil))
 	})
 	if err != nil {
+		if auditAttempted {
+			return nil, errors.Join(domain.ErrAuditUnavailable, err)
+		}
+		if auditErr := auditShareFailure(s, ctx, userID, value.GroupID, "share.rotated", id, "storage_failed", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	value.URL = shareURL(token)
@@ -289,6 +446,9 @@ func (s *Service) RotateShare(ctx context.Context, userID, id string) (*CreatedS
 func (s *Service) RememberShareToken(ctx context.Context, userID, id, token string) (*domain.Share, error) {
 	value, err := s.managedShare(ctx, userID, id)
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, "", "share.url_remembered", id, "permission_denied", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	token = strings.TrimSpace(token)
@@ -307,12 +467,20 @@ func (s *Service) RememberShareToken(ctx context.Context, userID, id, token stri
 	}
 	value.TokenCiphertext = ciphertext
 	value.URL = shareURL(token)
+	auditAttempted := false
 	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if updateErr := s.Stores.Shares.Update(tx, value); updateErr != nil {
 			return updateErr
 		}
+		auditAttempted = true
 		return s.audit(tx, userID, value.GroupID, "share.url_remembered", "share", id, "success", encodeAuditSummary(nil, nil))
 	}); err != nil {
+		if auditAttempted {
+			return nil, errors.Join(domain.ErrAuditUnavailable, err)
+		}
+		if auditErr := auditShareFailure(s, ctx, userID, value.GroupID, "share.url_remembered", id, "storage_failed", err); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	return value, nil
@@ -320,14 +488,72 @@ func (s *Service) RememberShareToken(ctx context.Context, userID, id, token stri
 func (s *Service) DeleteShare(ctx context.Context, userID, id string) error {
 	value, err := s.managedShare(ctx, userID, id)
 	if err != nil {
+		if auditErr := auditShareFailure(s, ctx, userID, "", "share.deleted", id, "permission_denied", err); auditErr != nil {
+			return auditErr
+		}
 		return err
 	}
-	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+	auditAttempted := false
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if deleteErr := s.Stores.Shares.Delete(tx, id); deleteErr != nil {
 			return deleteErr
 		}
+		auditAttempted = true
 		return s.audit(tx, userID, value.GroupID, "share.deleted", "share", id, "success", encodeAuditSummary(map[string]any{"mode": value.AccessMode}, nil))
 	})
+	if err != nil {
+		if auditAttempted {
+			return errors.Join(domain.ErrAuditUnavailable, err)
+		}
+		if auditErr := auditShareFailure(s, ctx, userID, value.GroupID, "share.deleted", id, "storage_failed", err); auditErr != nil {
+			return auditErr
+		}
+	}
+	return err
+}
+
+func auditShareFailure(s *Service, ctx context.Context, actor, groupID, action, id, reason string, cause error) error {
+	if auditErr := s.audit(ctx, actor, groupID, action, "share", id, "failure", encodeAuditSummary(map[string]any{"reason": reason}, nil)); auditErr != nil {
+		return errors.Join(domain.ErrAuditUnavailable, cause, auditErr)
+	}
+	return nil
+}
+
+func validateShare(value domain.Share, password string, creating bool) map[string]string {
+	fields := map[string]string{}
+	if strings.TrimSpace(value.Name) == "" {
+		fields["name"] = "required"
+	}
+	if value.AccessMode != "link" && value.AccessMode != "password" && value.AccessMode != "accounts" {
+		fields["accessMode"] = "invalid"
+	}
+	if value.RangeMode != "all" && value.RangeMode != "rolling" && value.RangeMode != "fixed" {
+		fields["rangeMode"] = "invalid"
+	}
+	if value.RangeMode == "rolling" && value.RollingDays != 30 && value.RollingDays != 90 && value.RollingDays != 365 {
+		fields["rollingDays"] = "invalid"
+	}
+	if value.RangeMode == "fixed" {
+		if value.StartsOn.IsZero() {
+			fields["startsOn"] = "required"
+		}
+		if value.EndsOn.IsZero() {
+			fields["endsOn"] = "required"
+		}
+		if !value.StartsOn.IsZero() && !value.EndsOn.IsZero() && value.StartsOn.After(value.EndsOn) {
+			fields["endsOn"] = "before_start"
+		}
+	}
+	if value.AccessMode == "password" && (creating || password != "") && len(strings.TrimSpace(password)) < 8 {
+		fields["password"] = "min_length"
+	}
+	if value.OwnerID != "" && value.ShowSettlements {
+		fields["showSettlements"] = "unsupported"
+	}
+	if !(value.ShowSummary || value.ShowIncomes || value.ShowRecurringIncome || value.ShowPendingIncome || value.ShowExpenses || value.ShowSubscriptions || (value.GroupID != "" && value.ShowSettlements)) {
+		fields["content"] = "required"
+	}
+	return fields
 }
 
 func shareDateConfigured(value time.Time) bool {
@@ -424,6 +650,11 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 		page.Currency = group.Currency
 	} else if user, userErr := s.Stores.Users.Get(ctx, value.OwnerID); userErr == nil {
 		page.Currency = user.DefaultCurrency
+	}
+	if value.ShowAttachments {
+		if err := s.requireShareAttachmentAccess(ctx, value); err != nil {
+			return nil, err
+		}
 	}
 
 	filteredExpenses := make([]domain.Expense, 0)
@@ -535,6 +766,15 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 	if value.ShowExpenses {
 		for _, item := range filteredExpenses {
 			row := s.shareExpenseRow(ctx, value, item)
+			typ, targetID, billing := "expense", item.ID, time.Time{}
+			if item.SubscriptionID != "" {
+				typ, targetID, billing = "subscription_period", item.SubscriptionID, item.IncurredOn
+			}
+			if value.ShowAttachments {
+				if err := s.addShareAttachmentReference(ctx, value, row, typ, targetID, billing); err != nil {
+					return nil, err
+				}
+			}
 			row["type"] = "expense"
 			row["occurredOn"] = item.IncurredOn
 			records = append(records, shareRecord{kind: "expenses", occurredOn: item.IncurredOn, row: row})
@@ -543,6 +783,11 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 	if value.ShowIncomes {
 		for _, item := range filteredIncomes {
 			row := s.shareIncomeRow(ctx, value, item)
+			if value.ShowAttachments {
+				if err := s.addShareAttachmentReference(ctx, value, row, "income", item.ID, time.Time{}); err != nil {
+					return nil, err
+				}
+			}
 			row["type"] = "income"
 			row["occurredOn"] = item.ReceivedOn
 			records = append(records, shareRecord{kind: "incomes", occurredOn: item.ReceivedOn, row: row})
@@ -571,6 +816,11 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 				occurredOn = item.StartsOn
 			}
 			row := s.shareSubscriptionRow(ctx, value, item)
+			if value.ShowAttachments {
+				if err := s.addShareAttachmentReference(ctx, value, row, "subscription", item.ID, time.Time{}); err != nil {
+					return nil, err
+				}
+			}
 			row["type"] = "subscription"
 			row["occurredOn"] = occurredOn
 			records = append(records, shareRecord{kind: "subscriptions", occurredOn: occurredOn, row: row})
@@ -579,6 +829,11 @@ func (s *Service) SharePageWithOptions(ctx context.Context, value *domain.Share,
 	if value.ShowSettlements && value.GroupID != "" {
 		for _, item := range settlements {
 			row := s.shareSettlementRow(ctx, value, item)
+			if value.ShowAttachments {
+				if err := s.addShareAttachmentReference(ctx, value, row, "settlement", item.ID, time.Time{}); err != nil {
+					return nil, err
+				}
+			}
 			row["type"] = "settlement"
 			row["occurredOn"] = item.SettledOn
 			records = append(records, shareRecord{kind: "settlements", occurredOn: item.SettledOn, row: row})

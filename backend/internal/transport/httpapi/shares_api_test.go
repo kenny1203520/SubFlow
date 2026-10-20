@@ -2,6 +2,8 @@ package httpapi_test
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	"subflow/internal/application"
 	"subflow/internal/domain"
 	"subflow/internal/ports"
+	"subflow/internal/security"
 )
 
 func TestPublicShareWithAllHistoryReturnsPage(t *testing.T) {
@@ -43,6 +46,22 @@ func TestPublicGroupShareWithAllHistoryReturnsPage(t *testing.T) {
 	}
 	token := strings.TrimPrefix(created.URL, "/share/")
 	scenario := tests.ApiScenario{Name: "public group share returns its read-only projection", Method: http.MethodGet, URL: "/api/subflow/v1/shares/" + token, TestAppFactory: f.factory(), BeforeTestFunc: f.beforeTest(), DisableTestAppCleanup: true, ExpectedStatus: http.StatusOK, ExpectedContent: []string{`"name":"Group Public"`}}
+	scenario.Test(t)
+}
+
+func TestPersonalShareFixedRangeReportsMissingEndDateAndAcceptsSameDay(t *testing.T) {
+	f := newAPITestApp(t)
+	owner := f.createUser(t, "fixed-share@example.com")
+	token := f.token(t, owner)
+	body := `{"name":"Test","accessMode":"link","password":"","viewerEmails":[],"enabled":true,"rangeMode":"fixed","rollingDays":30,"showSummary":true,"showIncomes":true,"showRecurringIncome":true,"showPendingIncome":true,"showExpenses":true,"showSubscriptions":true,"showSettlements":true,"showIdentities":true,"showNotes":true,"startsOn":"2026-08-31T16:00:00.000Z"}`
+	scenario := tests.ApiScenario{Name: "fixed share identifies the missing end date", Method: http.MethodPost, URL: "/api/subflow/v1/personal/shares", Body: strings.NewReader(body), Headers: map[string]string{"Authorization": "Bearer " + token}, TestAppFactory: f.factory(), BeforeTestFunc: f.beforeTest(), DisableTestAppCleanup: true, ExpectedStatus: http.StatusBadRequest, ExpectedContent: []string{`"code":"invalid_request"`, `"endsOn":"required"`}}
+	scenario.Test(t)
+	f = newAPITestApp(t)
+	owner = f.createUser(t, "fixed-share-success@example.com")
+	token = f.token(t, owner)
+	body = strings.TrimSuffix(body, `,"startsOn":"2026-08-31T16:00:00.000Z"}`) + `,"startsOn":"2026-08-31T16:00:00.000Z","endsOn":"2026-08-31T16:00:00.000Z"}`
+	body = strings.Replace(body, `"enabled":true`, `"enabled":false`, 1)
+	scenario = tests.ApiScenario{Name: "fixed share accepts a one-day range and respects disabled status", Method: http.MethodPost, URL: "/api/subflow/v1/personal/shares", Body: strings.NewReader(body), Headers: map[string]string{"Authorization": "Bearer " + token}, TestAppFactory: f.factory(), BeforeTestFunc: f.beforeTest(), DisableTestAppCleanup: true, ExpectedStatus: http.StatusCreated, ExpectedContent: []string{`"name":"Test"`, `"url":"/share/`, `"enabled":false`}}
 	scenario.Test(t)
 }
 func TestShareURLPersistsAcrossManagementOperations(t *testing.T) {
@@ -99,6 +118,73 @@ func TestShareURLPersistsAcrossManagementOperations(t *testing.T) {
 	if _, err = f.service.FindAvailableShare(ctx, strings.TrimPrefix(rotated.URL, "/share/")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestShareUpdatePreservesEnabledWhenFieldIsOmitted(t *testing.T) {
+	f := newAPITestApp(t)
+	owner := f.createUser(t, "share-enabled-omitted@example.com")
+	ctx := context.Background()
+	created, err := f.service.CreateShare(ctx, owner.Id, "", application.ShareInput{Share: domain.Share{Name: "Enabled", AccessMode: "link", RangeMode: "all", ShowExpenses: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var input application.ShareInput
+	if err := json.Unmarshal([]byte(`{"name":"Renamed","accessMode":"link","rangeMode":"all","showExpenses":true}`), &input); err != nil {
+		t.Fatal(err)
+	}
+	updated, err := f.service.UpdateShare(ctx, owner.Id, created.ID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !updated.Enabled {
+		t.Fatal("omitting enabled during edit should preserve the existing enabled status")
+	}
+	input.EnabledInput = new(bool)
+	updated, err = f.service.UpdateShare(ctx, owner.Id, created.ID, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Enabled {
+		t.Fatal("explicit false should disable the share")
+	}
+}
+
+func TestShareListDistinguishesMissingKeyFromUnreadableCiphertext(t *testing.T) {
+	f := newAPITestApp(t)
+	owner := f.createUser(t, "share-key-state@example.com")
+	if _, err := f.service.CreateShare(context.Background(), owner.Id, "", application.ShareInput{Share: domain.Share{Name: "Encrypted", AccessMode: "link", RangeMode: "all", ShowExpenses: true}}); err != nil {
+		t.Fatal(err)
+	}
+	pageRequest := ports.PageRequest{Page: 1, PerPage: 25}
+	f.service.Cipher = security.NewSettingsCipher("")
+	if _, err := f.service.ListShares(context.Background(), owner.Id, "", pageRequest); !errors.Is(err, domain.ErrShareKeyMissing) {
+		t.Fatalf("missing key error = %v", err)
+	}
+	f.service.Cipher = security.NewSettingsCipher("different-key")
+	if _, err := f.service.ListShares(context.Background(), owner.Id, "", pageRequest); !errors.Is(err, domain.ErrShareCiphertext) {
+		t.Fatalf("unreadable ciphertext error = %v", err)
+	}
+}
+
+func TestShareListReturnsActionableConfigurationDetail(t *testing.T) {
+	f := newAPITestApp(t)
+	owner := f.createUser(t, "share-config-response@example.com")
+	if _, err := f.service.CreateShare(context.Background(), owner.Id, "", application.ShareInput{Share: domain.Share{Name: "Encrypted", AccessMode: "link", RangeMode: "all", ShowExpenses: true}}); err != nil {
+		t.Fatal(err)
+	}
+	f.service.Cipher = security.NewSettingsCipher("")
+	scenario := tests.ApiScenario{
+		Name:                  "share listing identifies a missing encryption key",
+		Method:                http.MethodGet,
+		URL:                   "/api/subflow/v1/personal/shares",
+		Headers:               map[string]string{"Authorization": "Bearer " + f.token(t, owner)},
+		TestAppFactory:        f.factory(),
+		BeforeTestFunc:        f.beforeTest(),
+		DisableTestAppCleanup: true,
+		ExpectedStatus:        http.StatusServiceUnavailable,
+		ExpectedContent:       []string{`"code":"configuration_error"`, `"details":"share_key_missing"`},
+	}
+	scenario.Test(t)
 }
 
 func TestShareCanExposeRecurringAndPendingIncomeIndependently(t *testing.T) {

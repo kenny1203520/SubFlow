@@ -44,6 +44,7 @@ type apiError struct {
 	Code    string            `json:"code"`
 	Message string            `json:"message"`
 	Fields  map[string]string `json:"fields,omitempty"`
+	Details string            `json:"details,omitempty"`
 }
 
 func (a *API) Register(router *http.ServeMux) {}
@@ -65,6 +66,10 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/shares/{token}", a.publicShare)
 	e.Router.POST("/api/subflow/v1/shares/{token}/access", a.sharePasswordAccess)
 	e.Router.GET("/api/subflow/v1/shares/{token}/account", a.accountShare).Bind(bind)
+	e.Router.GET("/api/subflow/v1/shares/{token}/attachments/{reference}", a.shareAttachmentList)
+	e.Router.GET("/api/subflow/v1/shares/{token}/attachment/{reference}", a.shareAttachmentContent)
+	e.Router.GET("/api/subflow/v1/shares/{token}/account/attachments/{reference}", a.accountShareAttachmentList).Bind(bind)
+	e.Router.GET("/api/subflow/v1/shares/{token}/account/attachment/{reference}", a.accountShareAttachmentContent).Bind(bind)
 	e.Router.GET("/api/subflow/v1/auth/external-auths", a.listExternalAuths).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/auth/external-auths/{provider}", a.unlinkExternalAuth).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups", a.listGroups).Bind(bind)
@@ -311,6 +316,8 @@ func fail(e *core.RequestEvent, err error) error {
 	code := "internal_error"
 	message := "服務暫時無法處理請求"
 	switch {
+	case func() bool { var validation *application.ShareValidationError; return errors.As(err, &validation) }():
+		status, code, message = http.StatusBadRequest, "invalid_request", "請檢查分享資料欄位"
 	case errors.Is(err, domain.ErrAuditUnavailable):
 		status = http.StatusServiceUnavailable
 		code = "audit_unavailable"
@@ -358,7 +365,18 @@ func fail(e *core.RequestEvent, err error) error {
 		code = "setup_token_invalid"
 		message = "setup link is invalid or expired"
 	}
-	return e.JSON(status, errorEnvelope{Error: apiError{Code: code, Message: message}})
+	var fields map[string]string
+	var validation *application.ShareValidationError
+	if errors.As(err, &validation) {
+		fields = validation.Fields
+	}
+	details := ""
+	if errors.Is(err, domain.ErrShareKeyMissing) {
+		details = "share_key_missing"
+	} else if errors.Is(err, domain.ErrShareCiphertext) {
+		details = "share_url_unreadable"
+	}
+	return e.JSON(status, errorEnvelope{Error: apiError{Code: code, Message: message, Fields: fields, Details: details}})
 }
 
 func (a *API) currencies(e *core.RequestEvent) error {
@@ -366,6 +384,83 @@ func (a *API) currencies(e *core.RequestEvent) error {
 }
 
 const shareCookieName = "subflow_share_access"
+
+func (a *API) shareAttachmentAccess(e *core.RequestEvent, account bool) (*domain.Share, error) {
+	action := "share.attachment.viewed"
+	if strings.Contains(e.Request.URL.Path, "/attachments/") {
+		action = "share.attachment.listed"
+	} else if e.Request.URL.Query().Get("download") == "true" {
+		action = "share.attachment.downloaded"
+	}
+	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
+	if err != nil {
+		if auditErr := a.Service.AuditMissingShareAccess(e.Request.Context(), authID(e), "attachment_unavailable"); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, domain.ErrNotFound
+	}
+	if share.AccessMode == "accounts" {
+		if !account || a.Service.AuthorizeShareViewer(e.Request.Context(), share, authID(e)) != nil {
+			if auditErr := a.Service.AuditShareAttachmentFailure(e.Request.Context(), share, action, "viewer_not_allowed"); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, domain.ErrNotFound
+		}
+	} else if account || (share.AccessMode == "password" && !shareCookieValid(e, share)) {
+		if auditErr := a.Service.AuditShareAttachmentFailure(e.Request.Context(), share, action, "share_access_denied"); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, domain.ErrNotFound
+	}
+	return share, nil
+}
+
+func (a *API) shareAttachmentListFor(e *core.RequestEvent, account bool) error {
+	share, err := a.shareAttachmentAccess(e, account)
+	if err != nil {
+		return fail(e, err)
+	}
+	items, err := a.Service.ShareAttachmentList(e.Request.Context(), share, e.Request.PathValue("reference"))
+	if err != nil {
+		return fail(e, err)
+	}
+	e.Response.Header().Set("Cache-Control", "private, no-store")
+	e.Response.Header().Set("X-Content-Type-Options", "nosniff")
+	return ok(e, http.StatusOK, items, nil)
+}
+func (a *API) shareAttachmentList(e *core.RequestEvent) error {
+	return a.shareAttachmentListFor(e, false)
+}
+func (a *API) accountShareAttachmentList(e *core.RequestEvent) error {
+	return a.shareAttachmentListFor(e, true)
+}
+
+func (a *API) shareAttachmentContentFor(e *core.RequestEvent, account bool) error {
+	share, err := a.shareAttachmentAccess(e, account)
+	if err != nil {
+		return fail(e, err)
+	}
+	content, err := a.Service.ReadShareAttachment(e.Request.Context(), share, e.Request.PathValue("reference"), e.Request.URL.Query().Get("download") == "true")
+	if err != nil {
+		return fail(e, err)
+	}
+	e.Response.Header().Set("Content-Type", content.MediaType)
+	disposition := "attachment"
+	if e.Request.URL.Query().Get("download") != "true" && (strings.HasPrefix(content.MediaType, "image/") || content.MediaType == "application/pdf") {
+		disposition = "inline"
+	}
+	e.Response.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": content.FileName}))
+	e.Response.Header().Set("Cache-Control", "private, no-store")
+	e.Response.Header().Set("X-Content-Type-Options", "nosniff")
+	_, err = e.Response.Write(content.Data)
+	return err
+}
+func (a *API) shareAttachmentContent(e *core.RequestEvent) error {
+	return a.shareAttachmentContentFor(e, false)
+}
+func (a *API) accountShareAttachmentContent(e *core.RequestEvent) error {
+	return a.shareAttachmentContentFor(e, true)
+}
 
 func shareCookieSignature(value string) string {
 	key := os.Getenv("SUBFLOW_SHARE_SESSION_HMAC_KEY")
@@ -429,14 +524,12 @@ func (a *API) clearSharePasswordFailures(ip, shareID string) {
 	defer a.shareAttemptMu.Unlock()
 	delete(a.shareAttempts, ip+":"+shareID)
 }
-func (a *API) shareProjectionFailure(e *core.RequestEvent, share *domain.Share, actor string) error {
-	_ = a.Service.AuditShareAccess(e.Request.Context(), share, actor, "failure", "projection_failed")
-	return fail(e, domain.ErrNotFound)
-}
 func (a *API) publicShare(e *core.RequestEvent) error {
 	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
 	if err != nil {
-		_ = a.Service.AuditMissingShareAccess(e.Request.Context(), "", "unavailable")
+		if auditErr := a.Service.AuditMissingShareAccess(e.Request.Context(), "", "unavailable"); auditErr != nil {
+			return fail(e, auditErr)
+		}
 		return fail(e, domain.ErrNotFound)
 	}
 	if share.AccessMode == "password" && !shareCookieValid(e, share) {
@@ -445,23 +538,30 @@ func (a *API) publicShare(e *core.RequestEvent) error {
 	if share.AccessMode == "accounts" {
 		return ok(e, http.StatusOK, map[string]bool{"requiresLogin": true}, nil)
 	}
-	if err = a.Service.AuditShareAccess(e.Request.Context(), share, "", "success", "link"); err != nil {
-		return fail(e, err)
-	}
 	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
 	if err != nil {
-		return a.shareProjectionFailure(e, share, "")
+		if auditErr := a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "projection_failed"); auditErr != nil {
+			return fail(e, auditErr)
+		}
+		return fail(e, domain.ErrNotFound)
+	}
+	if err = a.Service.AuditShareAccess(e.Request.Context(), share, "", "success", "link"); err != nil {
+		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, page, nil)
 }
 func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
 	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
 	if err != nil {
-		_ = a.Service.AuditMissingShareAccess(e.Request.Context(), "", "unavailable")
+		if auditErr := a.Service.AuditMissingShareAccess(e.Request.Context(), "", "unavailable"); auditErr != nil {
+			return fail(e, auditErr)
+		}
 		return fail(e, domain.ErrNotFound)
 	}
 	if !a.sharePasswordAllowed(e.RealIP(), share.ID) {
-		_ = a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "rate_limited")
+		if auditErr := a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "rate_limited"); auditErr != nil {
+			return fail(e, auditErr)
+		}
 		return fail(e, domain.ErrNotFound)
 	}
 	var body struct {
@@ -469,7 +569,16 @@ func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
 	}
 	if e.BindBody(&body) != nil || a.Service.VerifySharePassword(e.Request.Context(), share, body.Password) != nil {
 		a.recordSharePasswordFailure(e.RealIP(), share.ID)
-		_ = a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "password_invalid")
+		if auditErr := a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "password_invalid"); auditErr != nil {
+			return fail(e, auditErr)
+		}
+		return fail(e, domain.ErrNotFound)
+	}
+	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
+	if err != nil {
+		if auditErr := a.Service.AuditShareAccess(e.Request.Context(), share, "", "failure", "projection_failed"); auditErr != nil {
+			return fail(e, auditErr)
+		}
 		return fail(e, domain.ErrNotFound)
 	}
 	if err = a.Service.AuditShareAccess(e.Request.Context(), share, "", "success", "password"); err != nil {
@@ -477,34 +586,37 @@ func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
 	}
 	a.clearSharePasswordFailures(e.RealIP(), share.ID)
 	setShareCookie(e, share)
-	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
-	if err != nil {
-		return a.shareProjectionFailure(e, share, "")
-	}
 	return ok(e, http.StatusOK, page, nil)
 }
 func (a *API) accountShare(e *core.RequestEvent) error {
 	share, err := a.Service.FindAvailableShare(e.Request.Context(), e.Request.PathValue("token"))
 	if err != nil {
-		_ = a.Service.AuditMissingShareAccess(e.Request.Context(), authID(e), "unavailable")
+		if auditErr := a.Service.AuditMissingShareAccess(e.Request.Context(), authID(e), "unavailable"); auditErr != nil {
+			return fail(e, auditErr)
+		}
 		return fail(e, domain.ErrNotFound)
 	}
 	if err = a.Service.AuthorizeShareViewer(e.Request.Context(), share, authID(e)); err != nil {
-		_ = a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "failure", "viewer_not_allowed")
+		if auditErr := a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "failure", "viewer_not_allowed"); auditErr != nil {
+			return fail(e, auditErr)
+		}
+		return fail(e, domain.ErrNotFound)
+	}
+	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
+	if err != nil {
+		if auditErr := a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "failure", "projection_failed"); auditErr != nil {
+			return fail(e, auditErr)
+		}
 		return fail(e, domain.ErrNotFound)
 	}
 	if err = a.Service.AuditShareAccess(e.Request.Context(), share, authID(e), "success", "account"); err != nil {
 		return fail(e, err)
 	}
-	page, err := a.Service.SharePageWithOptions(e.Request.Context(), share, sharePageOptions(e))
-	if err != nil {
-		return a.shareProjectionFailure(e, share, authID(e))
-	}
 	return ok(e, http.StatusOK, page, nil)
 }
 func sharePageOptions(e *core.RequestEvent) application.SharePageOptions {
 	section := e.Request.URL.Query().Get("section")
-	if section != "expenses" && section != "subscriptions" && section != "settlements" {
+	if section != "expenses" && section != "incomes" && section != "recurring_income" && section != "pending_income" && section != "subscriptions" && section != "settlements" {
 		section = "all"
 	}
 	sortOrder := e.Request.URL.Query().Get("sort")

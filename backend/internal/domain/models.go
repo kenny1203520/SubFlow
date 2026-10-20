@@ -292,6 +292,8 @@ type Share struct {
 	ShowSettlements     bool          `json:"showSettlements"`
 	ShowIdentities      bool          `json:"showIdentities"`
 	ShowNotes           bool          `json:"showNotes"`
+	ShowAttachments     bool          `json:"showAttachments"`
+	AttachmentOwnerID   string        `json:"-"`
 	AccessVersion       int           `json:"-"`
 	Viewers             []ShareViewer `json:"viewers,omitempty"`
 	CreatedAt           time.Time     `json:"createdAt"`
@@ -326,6 +328,14 @@ type SharePage struct {
 	TotalItems    int              `json:"totalItems"`
 	TotalPages    int              `json:"totalPages"`
 	NextPage      int              `json:"nextPage,omitempty"`
+}
+
+type ShareAttachment struct {
+	Reference string    `json:"reference"`
+	FileName  string    `json:"fileName"`
+	MediaType string    `json:"mediaType"`
+	Size      int64     `json:"size"`
+	BillingAt time.Time `json:"billingAt,omitempty"`
 }
 
 type Group struct {

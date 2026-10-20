@@ -26,6 +26,8 @@ var (
 	ErrSetupDisabled     = errors.New("setup disabled")
 	ErrSetupToken        = errors.New("setup token invalid")
 	ErrConfiguration     = errors.New("configuration unavailable")
+	ErrShareKeyMissing   = errors.New("share encryption key is missing")
+	ErrShareCiphertext   = errors.New("share URL cannot be decrypted")
 	ErrAuditUnavailable  = errors.New("audit unavailable")
 	ErrAttachmentFormat  = errors.New("unsupported attachment format")
 	ErrAttachmentSize    = errors.New("attachment size exceeded")

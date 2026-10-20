@@ -31,10 +31,18 @@ func setupStartupNotice(link string) string {
 }
 
 func main() {
+	args, err := config.LoadEnvFile(os.Args)
+	if err != nil {
+		log.Fatal(err)
+	}
+	os.Args = args
+	if os.Getenv("SUBFLOW_SETTINGS_ENCRYPTION_KEY") == "" {
+		log.Print("share settings encryption key is missing; share links and encrypted CAPTCHA settings are unavailable")
+	}
 	driver := os.Getenv("SUBFLOW_DATA_DRIVER")
 	environment := os.Getenv("SUBFLOW_ENV")
 	httpPort := os.Getenv("SUBFLOW_HTTP_PORT")
-	args, err := config.WithServeAddress(os.Args, httpPort)
+	args, err = config.WithServeAddress(os.Args, httpPort)
 	if err != nil {
 		log.Fatal(err)
 	}
