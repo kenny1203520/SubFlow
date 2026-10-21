@@ -93,6 +93,41 @@ func main() {
 			}
 			return event.Next()
 		})
+		app.OnRecordConfirmPasswordResetRequest("users").BindFunc(func(event *core.RecordConfirmPasswordResetRequestEvent) error {
+			userID := event.Record.Id
+			requestApp := event.RequestEvent.App
+			var notice *domain.Notification
+			if err := requestApp.RunInTransaction(func(txApp core.App) error {
+				event.RequestEvent.App = txApp
+				defer func() { event.RequestEvent.App = requestApp }()
+				if err := event.Next(); err != nil {
+					return err
+				}
+				txStores, err := adapters.New(driver, txApp)
+				if err != nil {
+					return err
+				}
+				now := base.Now().UTC()
+				note := &domain.Notification{UserID: userID, Category: domain.NotificationCategorySecurity, Type: "password_changed", EventKey: fmt.Sprintf("password-changed:%s:%d", userID, now.UnixNano()), Title: "password_changed", Status: domain.NotificationStatusPending, CreatedAt: now, UpdatedAt: now}
+				if err := txStores.Notifications.Create(event.Request.Context(), note); err != nil {
+					return err
+				}
+				notice = note
+				if err := txStores.NotificationEmails.Enqueue(event.Request.Context(), &domain.NotificationEmailJob{NotificationID: note.ID, UserID: userID, Status: domain.NotificationEmailQueued, NextAttemptAt: &now}); err != nil {
+					return err
+				}
+				if err := application.New(txStores).RecordAudit(event.Request.Context(), userID, "", "account.password.changed", "user", userID, "success"); err != nil {
+					return err
+				}
+				return nil
+			}); err != nil {
+				return err
+			}
+			if notice != nil {
+				_ = events.Publish(event.Request.Context(), domain.Event{Type: "created", UserID: userID, Resource: "notifications", ResourceID: notice.ID, OccurredAt: base.Now().UTC()})
+			}
+			return nil
+		})
 		app.OnRecordRequestOTPRequest("users").BindFunc(func(event *core.RecordCreateOTPRequestEvent) error {
 			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
 			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowOTPRequest, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {

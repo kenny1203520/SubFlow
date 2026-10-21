@@ -158,6 +158,7 @@ func notificationEmailContent(note *domain.Notification) (string, string) {
 		"group_invitation":             "Group invitation",
 		"ownership_transfer":           "Ownership transfer request",
 		"member_transfer":              "Member transfer request",
+		"password_changed":             "Password changed",
 		"system_role_changed":          "System role changed",
 		"subscription_post_failed":     "Subscription posting needs attention",
 		"recurring_income_post_failed": "Recurring income posting needs attention",
