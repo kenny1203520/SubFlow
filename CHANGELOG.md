@@ -6,6 +6,19 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.1] - 2026-10-21
+
+This is an alpha pre-release. Data model and behavior may change before 0.2.0.
+
+### Added
+- Added a personal ledger and group income records with allocation splits, recurring income, forecasts, and CSV export support.
+- Added file attachments for ledger records and subscriptions, with scoped access, audited file operations, and historical subscription-period support.
+- Added optional attachment listing, preview, and download to shared pages while preserving each share's access rules. Attachment sharing remains disabled by default; batch downloads and visitor uploads are not included.
+
+### Changed
+- Separated income categories from expense categories and expanded income, settlement, and dashboard calculations for split income.
+- Updated PocketBase collections and fields for income splits, recurring income, attachments, and share attachment permissions. Existing share records do not expose attachments unless an owner or eligible group manager enables the setting.
+
 ## [0.1.19] - 2026-08-26
 
 ### Fixed
