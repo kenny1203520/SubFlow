@@ -120,6 +120,9 @@ func (r *NotificationRepo) Create(ctx context.Context, v *domain.Notification) e
 func (r *NotificationRepo) Get(ctx context.Context, id string) (*domain.Notification, error) {
 	return r.GetNotification(ctx, id)
 }
+func (r *NotificationRepo) FindByEventKey(ctx context.Context, userID, eventKey string) (*domain.Notification, error) {
+	return r.FindNotificationByEventKey(ctx, userID, eventKey)
+}
 func (r *NotificationRepo) ListForUser(ctx context.Context, id string, req ports.PageRequest) (ports.Page[domain.Notification], error) {
 	return r.ListNotifications(ctx, id, req)
 }
@@ -140,6 +143,9 @@ func (r *NotificationRepo) MarkReadForResource(ctx context.Context, userID, reso
 }
 func (r *NotificationRepo) SetResourceStatus(ctx context.Context, userID, resourceID, status, outcome string, when time.Time) error {
 	return r.SetNotificationResourceStatus(ctx, userID, resourceID, status, outcome, when)
+}
+func (r *NotificationRepo) SetEventStatus(ctx context.Context, userID, eventKey, status, outcome string, when time.Time) error {
+	return r.SetNotificationEventStatus(ctx, userID, eventKey, status, outcome, when)
 }
 func (r *NotificationRepo) MarkViewed(ctx context.Context, userID string, ids []string, when time.Time) error {
 	return r.MarkNotificationsViewed(ctx, userID, ids, when)

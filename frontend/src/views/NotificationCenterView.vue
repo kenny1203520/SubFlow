@@ -31,6 +31,7 @@ function statusLabel(status:string) {
   return status === 'pending' ? tr('notificationPending') : status === 'invalid' ? tr('notificationExpired') : tr('notificationResolved')
 }
 function sourcePath(type:string, groupId?:string) {
+  if (type === 'subscription_post_failed' || type === 'recurring_income_post_failed') return groupId ? `/groups/${groupId}/${type==='subscription_post_failed'?'subscriptions':'incomes'}` : `/personal/${type==='subscription_post_failed'?'subscriptions':'incomes'}`
   if (!groupId) return ''
   if (type === 'ownership_transfer') return `/groups/${groupId}/settings`
   if (type === 'member_transfer') return `/groups/${groupId}/members`

@@ -515,15 +515,40 @@ func recurringActor(v *domain.RecurringIncome) string {
 func (s *Service) markIncomeOccurrenceFailed(ctx context.Context, actor string, series *domain.RecurringIncome, occurrence *domain.IncomeOccurrence, cause error) error {
 	occurrence.Status = "failed"
 	occurrence.Reason = "posting_failed"
+	var notification *domain.Notification
 	err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if saveErr := s.Stores.RecurringIncomes.SaveOccurrence(tx, occurrence); saveErr != nil {
 			return saveErr
 		}
+		canNotify := true
+		if series.GroupID != "" {
+			if _, roleErr := s.Stores.Memberships.GetRole(tx, series.GroupID, actor); errors.Is(roleErr, domain.ErrNotFound) {
+				canNotify = false
+			} else if roleErr != nil {
+				return roleErr
+			}
+		}
+		if canNotify {
+			eventKey := "income_occurrence:" + occurrence.ID
+			if _, findErr := s.Stores.Notifications.FindByEventKey(tx, actor, eventKey); errors.Is(findErr, domain.ErrNotFound) {
+				var createErr error
+				notification, createErr = s.createNotification(tx, actor, domain.NotificationCategoryException, eventKey, "recurring_income_post_failed", series.GroupID, series.ID)
+				if createErr != nil {
+					return createErr
+				}
+			} else if findErr != nil {
+				return findErr
+			}
+		}
 		return s.audit(tx, actor, series.GroupID, "income_occurrence.post_failed", "income_occurrence", occurrence.ID, "failure", encodeAuditSummary(map[string]any{"scheduled_on": occurrence.ScheduledOn.Format(time.RFC3339), "reason": "posting_failed"}, nil))
 	})
 	if err != nil {
-		return s.recurringIncomeFailure(ctx, actor, series, "income_occurrence.post_failed", errors.Join(err, cause))
+		if auditErr := s.audit(ctx, actor, series.GroupID, "income_occurrence.post_failed", "income_occurrence", occurrence.ID, "failure", encodeAuditSummary(map[string]any{"scheduled_on": occurrence.ScheduledOn.Format(time.RFC3339), "reason": "posting_failed"}, nil)); auditErr != nil {
+			return errors.Join(domain.ErrAuditUnavailable, auditErr, cause)
+		}
+		return errors.Join(err, cause)
 	}
+	s.publishNotification(ctx, notification, "created")
 	return nil
 }
 func nextIncomeOccurrence(v *domain.RecurringIncome, date time.Time, loc *time.Location) time.Time {
@@ -558,6 +583,9 @@ func (s *Service) postAutomaticIncomeOccurrence(ctx context.Context, series *dom
 		occ.Status = "posted"
 		occ.IncomeID = template.ID
 		if err := s.Stores.RecurringIncomes.SaveOccurrence(tx, occ); err != nil {
+			return err
+		}
+		if err := s.Stores.Notifications.SetEventStatus(tx, actor, "income_occurrence:"+occ.ID, domain.NotificationStatusResolved, "posted", s.Now().UTC()); err != nil {
 			return err
 		}
 		series.NextOn = next

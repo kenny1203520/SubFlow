@@ -90,6 +90,50 @@ func TestPostDueSubscriptionsIsIdempotentForTheSameBillingDate(t *testing.T) {
 	}
 }
 
+func TestFailedSubscriptionPostingCreatesAndResolvesActionableNotification(t *testing.T) {
+	f := newHistoricalFixture(t)
+	ctx := context.Background()
+	revisions, err := f.stores.Subscriptions.ListRevisions(ctx, f.subscription.ID)
+	if err != nil || len(revisions) == 0 {
+		t.Fatalf("load subscription revision: revisions=%d err=%v", len(revisions), err)
+	}
+	original := revisions[0]
+	broken := original
+	broken.Splits = nil
+	if err := f.stores.Subscriptions.UpdateRevision(ctx, &broken); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := f.service.PostDueSubscriptions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	page, err := f.stores.Notifications.ListForUser(ctx, f.owner, ports.PageRequest{Page: 1, PerPage: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Type != "subscription_post_failed" || page.Items[0].Status != domain.NotificationStatusPending {
+		t.Fatalf("expected one pending actionable notification, got %#v", page.Items)
+	}
+
+	if err := f.stores.Subscriptions.UpdateRevision(ctx, &original); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.service.PostDueSubscriptions(ctx); err != nil {
+		t.Fatal(err)
+	}
+	page, err = f.stores.Notifications.ListForUser(ctx, f.owner, ports.PageRequest{Page: 1, PerPage: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Status != domain.NotificationStatusResolved || page.Items[0].Outcome != "posted" {
+		t.Fatalf("expected retry to resolve its notification, got %#v", page.Items)
+	}
+	occurrences, err := f.stores.Subscriptions.ListOccurrences(ctx, f.subscription.ID)
+	if err != nil || len(occurrences) != 1 || occurrences[0].Status != "posted" {
+		t.Fatalf("expected failed occurrence to be retried in place, got %#v err=%v", occurrences, err)
+	}
+}
+
 func TestPostDueSubscriptionsSkipsNotYetDue(t *testing.T) {
 	f := newHistoricalFixture(t)
 	ctx := context.Background()
