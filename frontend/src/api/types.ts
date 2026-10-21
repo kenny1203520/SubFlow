@@ -30,7 +30,9 @@ export type CaptchaTrigger = 'load'|'submit'
 export type CaptchaMode = 'invisible'|'interactive'
 export interface CaptchaFlowConfig { enabled:boolean; trigger:CaptchaTrigger; mode:CaptchaMode }
 export interface CaptchaFlowSettings { register:CaptchaFlowConfig; passwordReset:CaptchaFlowConfig; otpRequest:CaptchaFlowConfig; login:CaptchaFlowConfig }
-export interface Notification { id:string;userId:string;type:string;groupId?:string;resourceId?:string;readAt?:string;createdAt:string;updatedAt:string }
+export interface Notification { id:string;userId:string;type:string;category:'task'|'exception'|'security';eventKey?:string;title?:string;message?:string;groupId?:string;resourceId?:string;readAt?:string;viewedAt?:string;status:'pending'|'resolved'|'invalid';resolvedAt?:string;outcome?:string;createdAt:string;updatedAt:string }
+export interface NotificationSummary { unread:number;pending:number;unseen:number }
+export interface NotificationPreferences { tasksToast:boolean;tasksEmail:boolean;exceptionsToast:boolean;exceptionsEmail:boolean;securityToast:boolean;securityEmail:boolean }
 export type SplitMode='equal'|'amount'|'percentage'
 export interface BaseSplit  { id?:string;userId:string;amountMinor:number;baseAmountMinor?:number;percentageBasisPoints?:number }
 export interface ExpenseSplit extends BaseSplit { expenseId?:string }
@@ -68,5 +70,5 @@ export interface AttachmentPage { items:Attachment[];access:AttachmentAccess;lim
 export interface SubFlowEvent { type:string;groupId:string;resource:string;resourceId:string;occurredAt:string }
 export interface Meta { page:number;perPage:number;totalItems:number;totalPages:number }
 export interface Envelope<T> { data:T;meta?:Meta }
-export interface ApiFailure { error:{code:string;message:string;fields?:Record<string,string>;details?:string} }
+export interface ApiFailure { error:{code:string;message:string;fields?:Record<string,string>;details?:string;requestId?:string} }
 

@@ -189,3 +189,86 @@ func TestMarkNotificationReadRejectsOtherUsersNotification(t *testing.T) {
 		t.Fatalf("expected the recipient to be able to mark their own notification read: %v", err)
 	}
 }
+
+func TestInvitationNotificationLifecycleKeepsReadAndResolutionSeparate(t *testing.T) {
+	collab, stores, ownerID, groupID := newTempMemberFixture(t)
+	ctx := context.Background()
+	recipientID := newRealUser(t, stores, "lifecycle@example.com")
+	invitation, err := collab.CreateInvitation(ctx, ownerID, groupID, "lifecycle@example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := collab.ListNotifications(ctx, recipientID, defaultAuditQuery().PageRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 {
+		t.Fatalf("expected one notification, got %d", len(page.Items))
+	}
+	note := page.Items[0]
+	if note.Status != domain.NotificationStatusPending || note.ReadAt != nil || note.ViewedAt != nil {
+		t.Fatalf("new notification must start pending, unread, and unseen: %#v", note)
+	}
+
+	if err = collab.MarkNotificationsViewed(ctx, recipientID, []string{note.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err = collab.MarkNotificationRead(ctx, recipientID, note.ID); err != nil {
+		t.Fatal(err)
+	}
+	summary, err := collab.NotificationSummary(ctx, recipientID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Pending != 1 || summary.Unread != 0 || summary.Unseen != 0 {
+		t.Fatalf("reading should not resolve a pending notification: %#v", summary)
+	}
+
+	if _, err = collab.AcceptInvitationByID(ctx, recipientID, invitation.ID); err != nil {
+		t.Fatal(err)
+	}
+	page, err = collab.ListNotifications(ctx, recipientID, defaultAuditQuery().PageRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Status != domain.NotificationStatusResolved || page.Items[0].Outcome != "accepted" {
+		t.Fatalf("acceptance should resolve the notification with its outcome: %#v", page.Items)
+	}
+	summary, err = collab.NotificationSummary(ctx, recipientID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Pending != 0 || summary.Unread != 0 {
+		t.Fatalf("completed invitation must leave no unread or pending count: %#v", summary)
+	}
+}
+
+func TestNotificationPreferencesKeepRequiredSecurityChannelsEnabled(t *testing.T) {
+	collab, _, userID, _ := newTempMemberFixture(t)
+	ctx := context.Background()
+	preferences, err := collab.NotificationPreferences(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !preferences.TasksEmail || !preferences.ExceptionsToast || !preferences.SecurityEmail || !preferences.SecurityToast {
+		t.Fatalf("notification defaults should enable actionable reminders and security notices: %#v", preferences)
+	}
+	preferences.TasksEmail = false
+	preferences.ExceptionsToast = false
+	preferences.SecurityEmail = false
+	preferences.SecurityToast = false
+	if err = collab.UpdateNotificationPreferences(ctx, userID, preferences); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := collab.NotificationPreferences(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.TasksEmail || stored.ExceptionsToast {
+		t.Fatalf("user preferences were not saved: %#v", stored)
+	}
+	if !stored.SecurityEmail || !stored.SecurityToast {
+		t.Fatalf("required security channels must remain enabled: %#v", stored)
+	}
+}

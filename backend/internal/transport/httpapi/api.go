@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -41,11 +44,14 @@ type errorEnvelope struct {
 	Error apiError `json:"error"`
 }
 type apiError struct {
-	Code    string            `json:"code"`
-	Message string            `json:"message"`
-	Fields  map[string]string `json:"fields,omitempty"`
-	Details string            `json:"details,omitempty"`
+	Code      string            `json:"code"`
+	Message   string            `json:"message"`
+	Fields    map[string]string `json:"fields,omitempty"`
+	Details   string            `json:"details,omitempty"`
+	RequestID string            `json:"requestId"`
 }
+
+type requestIDContextKey struct{}
 
 func (a *API) Register(router *http.ServeMux) {}
 
@@ -55,7 +61,14 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	// so unauthenticated routes like setup/register are covered too — both
 	// call s.audit and need the caller's IP/User-Agent same as anything else.
 	e.Router.BindFunc(func(re *core.RequestEvent) error {
-		re.Request = re.Request.WithContext(application.WithAuditRequestMeta(re.Request.Context(), application.AuditRequestMeta{IP: re.RealIP(), UserAgent: re.Request.UserAgent()}))
+		requestID := make([]byte, 12)
+		if _, err := rand.Read(requestID); err != nil {
+			return err
+		}
+		id := hex.EncodeToString(requestID)
+		re.Response.Header().Set("X-Request-ID", id)
+		ctx := context.WithValue(re.Request.Context(), requestIDContextKey{}, id)
+		re.Request = re.Request.WithContext(application.WithAuditRequestMeta(ctx, application.AuditRequestMeta{IP: re.RealIP(), UserAgent: re.Request.UserAgent()}))
 		return re.Next()
 	})
 	bind := apis.RequireAuth("users")
@@ -376,7 +389,8 @@ func fail(e *core.RequestEvent, err error) error {
 	} else if errors.Is(err, domain.ErrShareCiphertext) {
 		details = "share_url_unreadable"
 	}
-	return e.JSON(status, errorEnvelope{Error: apiError{Code: code, Message: message, Fields: fields, Details: details}})
+	requestID, _ := e.Request.Context().Value(requestIDContextKey{}).(string)
+	return e.JSON(status, errorEnvelope{Error: apiError{Code: code, Message: message, Fields: fields, Details: details, RequestID: requestID}})
 }
 
 func (a *API) currencies(e *core.RequestEvent) error {

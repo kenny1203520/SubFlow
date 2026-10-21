@@ -27,7 +27,7 @@ func (b *Bus) Publish(_ context.Context, event domain.Event) error {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 	for _, s := range b.subscribers {
-		if s.groupID == event.GroupID || (s.userID != "" && (event.UserID == s.userID || (event.GroupID != "" && s.groups[event.GroupID]))) {
+		if (s.groupID != "" && s.groupID == event.GroupID) || (s.userID != "" && (event.UserID == s.userID || (event.GroupID != "" && s.groups[event.GroupID]))) {
 			select {
 			case s.ch <- event:
 			default:

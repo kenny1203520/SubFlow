@@ -81,6 +81,7 @@ func main() {
 			return err
 		}
 		base := application.New(stores)
+		base.Events = events
 		base.Rates = exchange.NewOpenERAPIProvider()
 		applicationSettings := e.App.Settings().Meta
 		base.CaptchaAppName = applicationSettings.AppName

@@ -2,9 +2,10 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, IncomeOccurrence, IncomePeriodPreview, Invitation, Membership, MemberTransfer, Meta, Notification, OwnershipTransfer, RecurringIncome, RecurringIncomeInput, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, IncomeOccurrence, IncomePeriodPreview, Invitation, Membership, MemberTransfer, Meta, OwnershipTransfer, RecurringIncome, RecurringIncomeInput, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
+import { useNotificationsStore } from './notifications'
 import { useI18n } from '../i18n'
 import * as outbox from '../offline/outbox'
 import type { OutboxEntry, OutboxKind, OutboxScope } from '../offline/outbox'
@@ -35,7 +36,6 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   const invitations = ref<Invitation[]>([])
   const invitationsMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
   const pendingInvitations = ref<Invitation[]>([])
-  const notifications = ref<Notification[]>([])
   const subscriptions = ref<Subscription[]>([])
   const expenses = ref<Expense[]>([])
   const settlements = ref<Settlement[]>([])
@@ -203,7 +203,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         groups.value = groupResult.data
         currencies.value = currencyResult.data
         if (userId) { await snapshotStore.saveGroups(userId, groups.value); await snapshotStore.saveCurrencies(userId, currencies.value) }
-        try { await loadInvitationInbox() } catch { pendingInvitations.value=[]; notifications.value=[] }
+        try { await loadInvitationInbox() } catch { pendingInvitations.value=[] }
       } catch (reason) {
         if (!(reason instanceof ApiError) || reason.code !== 'network_error') throw reason
         const cachedGroups = userId ? await snapshotStore.loadGroups(userId) : undefined
@@ -417,6 +417,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     if (shouldRefreshGroup) await refreshGroup()
   }
   function onEvent(event: SubFlowEvent) {
+    if (event.resource === 'notifications') void useNotificationsStore().handleEvent(event)
     if (event.resource === 'groups' || event.resource === 'group_members') pendingLoadGroups = true
     if (event.groupId && event.groupId === currentGroupId.value) pendingGroupRefresh = true
     if (sseFlushTimer) clearTimeout(sseFlushTimer)
@@ -685,10 +686,9 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       await selectGroup(invitation.groupId)
     })
   }
-  async function loadInvitationInbox(){const [invites, notes]=await Promise.all([api.get<Invitation[]>('/invitations/pending?perPage=100'),api.get<Notification[]>('/notifications?perPage=100')]);pendingInvitations.value=invites.data;notifications.value=notes.data}
-  async function acceptPendingInvitation(id:string){await run(async()=>{const invitation=(await api.post<Invitation>(`/invitations/${id}/accept`)).data;pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id);notifications.value=notifications.value.map(item=>item.resourceId===id?{...item,readAt:new Date().toISOString()}:item);await loadGroups();await selectGroup(invitation.groupId)})}
-  async function declinePendingInvitation(id:string){await run(async()=>{await api.post(`/invitations/${id}/decline`);pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id);notifications.value=notifications.value.map(item=>item.resourceId===id?{...item,readAt:new Date().toISOString()}:item)})}
-  async function markNotificationRead(id:string){await api.post(`/notifications/${id}/read`);notifications.value=notifications.value.map(item=>item.id===id?{...item,readAt:new Date().toISOString()}:item)}
+  async function loadInvitationInbox(){const response=await api.get<Invitation[]>('/invitations/pending?perPage=100');pendingInvitations.value=response.data}
+  async function acceptPendingInvitation(id:string){await run(async()=>{const invitation=(await api.post<Invitation>(`/invitations/${id}/accept`)).data;pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id);await loadGroups();await selectGroup(invitation.groupId)})}
+  async function declinePendingInvitation(id:string){await run(async()=>{await api.post(`/invitations/${id}/decline`);pendingInvitations.value=pendingInvitations.value.filter(item=>item.id!==id)})}
 
   async function addSubscription(input: SubscriptionInput, backfill = false) {
     if (!currentGroupId.value) return false
@@ -1035,7 +1035,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     groupRequest++
     members.value = []
     invitations.value = []
-    pendingInvitations.value=[]; notifications.value=[]
+    pendingInvitations.value=[]
     subscriptions.value = []
     expenses.value = []
     groupIncomes.value = []
@@ -1061,10 +1061,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   return {
-    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations, notifications,recurringIncomes,incomeOccurrences,
+    groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations,recurringIncomes,incomeOccurrences,
     subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
-    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, markNotificationRead, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
+    revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,exportLedgerSources,loadRecurringIncomes,loadIncomeOccurrences,createRecurringIncome,updateRecurringIncome,setRecurringIncomeStatus,confirmIncomeOccurrence,skipIncomeOccurrence,retryIncomeOccurrence,previewRecurringIncomeBackfill,backfillRecurringIncome,
     loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
     online, outboxPending, syncOutbox, hasSyncErrors,

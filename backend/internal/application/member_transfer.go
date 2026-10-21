@@ -89,10 +89,25 @@ func (s *Service) CreateMemberTransfer(ctx context.Context, userID, groupID, fro
 		return nil, domain.ErrConflict
 	}
 	transfer := &domain.MemberTransfer{GroupID: groupID, FromUserID: fromUserID, ToUserID: toUserID, Status: domain.MemberTransferPending}
-	if err = s.Stores.MemberTransfers.Create(ctx, transfer); err != nil {
+	var notification *domain.Notification
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if err := s.Stores.MemberTransfers.Create(tx, transfer); err != nil {
+			return err
+		}
+		var err error
+		notification, err = s.createNotification(tx, toUserID, domain.NotificationCategoryTask, "member_transfer:"+transfer.ID, "member_transfer", groupID, transfer.ID)
+		if err != nil {
+			return err
+		}
+		return s.audit(tx, userID, groupID, "member_transfer.created", "member_transfer", transfer.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": fromUserID, "to_user_id": toUserID}, nil))
+	})
+	if err != nil {
+		if auditErr := s.audit(ctx, userID, groupID, "member_transfer.created", "member_transfer", transfer.ID, "failure"); auditErr != nil {
+			return nil, domain.ErrAuditUnavailable
+		}
 		return nil, err
 	}
-	s.audit(ctx, userID, groupID, "member_transfer.created", "member_transfer", transfer.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": fromUserID, "to_user_id": toUserID}, nil))
+	s.publishNotification(ctx, notification, "created")
 	return transfer, nil
 }
 
@@ -114,10 +129,25 @@ func (s *Service) RespondMemberTransfer(ctx context.Context, userID, id string, 
 	}
 	if !accept {
 		transfer.Status = domain.MemberTransferDeclined
-		if err = s.Stores.MemberTransfers.Update(ctx, transfer); err != nil {
+		err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+			if err := s.Stores.MemberTransfers.Update(tx, transfer); err != nil {
+				return err
+			}
+			if err := s.Stores.Notifications.SetResourceStatus(tx, userID, transfer.ID, domain.NotificationStatusResolved, "declined", s.now()); err != nil {
+				return err
+			}
+			if err := s.Stores.Notifications.MarkReadForResource(tx, userID, transfer.ID, s.now()); err != nil {
+				return err
+			}
+			return s.audit(tx, userID, transfer.GroupID, "member_transfer.declined", "member_transfer", id, "success")
+		})
+		if err != nil {
+			if auditErr := s.audit(ctx, userID, transfer.GroupID, "member_transfer.declined", "member_transfer", id, "failure"); auditErr != nil {
+				return nil, domain.ErrAuditUnavailable
+			}
 			return nil, err
 		}
-		s.audit(ctx, userID, transfer.GroupID, "member_transfer.declined", "member_transfer", id, "success")
+		s.publishNotification(ctx, &domain.Notification{ID: transfer.ID, UserID: userID, GroupID: transfer.GroupID}, "updated")
 		return transfer, nil
 	}
 	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
@@ -131,12 +161,23 @@ func (s *Service) RespondMemberTransfer(ctx context.Context, userID, id string, 
 			return repointErr
 		}
 		transfer.Status = domain.MemberTransferAccepted
-		return s.Stores.MemberTransfers.Update(tx, transfer)
+		if err := s.Stores.MemberTransfers.Update(tx, transfer); err != nil {
+			return err
+		}
+		if err := s.Stores.Notifications.SetResourceStatus(tx, userID, transfer.ID, domain.NotificationStatusResolved, "accepted", s.now()); err != nil {
+			return err
+		}
+		if err := s.Stores.Notifications.MarkReadForResource(tx, userID, transfer.ID, s.now()); err != nil {
+			return err
+		}
+		return s.audit(tx, userID, transfer.GroupID, "member_transfer.accepted", "member_transfer", id, "success", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil))
 	}); err != nil {
-		s.audit(ctx, userID, transfer.GroupID, "member_transfer.accepted", "member_transfer", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil))
+		if auditErr := s.audit(ctx, userID, transfer.GroupID, "member_transfer.accepted", "member_transfer", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil)); auditErr != nil {
+			return nil, domain.ErrAuditUnavailable
+		}
 		return nil, err
 	}
-	s.audit(ctx, userID, transfer.GroupID, "member_transfer.accepted", "member_transfer", id, "success", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil))
+	s.publishNotification(ctx, &domain.Notification{ID: transfer.ID, UserID: userID, GroupID: transfer.GroupID}, "updated")
 	return transfer, nil
 }
 
@@ -157,10 +198,22 @@ func (s *Service) CancelMemberTransfer(ctx context.Context, userID, id string) e
 		return err
 	}
 	transfer.Status = domain.MemberTransferCancelled
-	if err = s.Stores.MemberTransfers.Update(ctx, transfer); err != nil {
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if err := s.Stores.MemberTransfers.Update(tx, transfer); err != nil {
+			return err
+		}
+		if err := s.Stores.Notifications.SetResourceStatus(tx, transfer.ToUserID, transfer.ID, domain.NotificationStatusInvalid, "cancelled", s.now()); err != nil {
+			return err
+		}
+		return s.audit(tx, userID, transfer.GroupID, "member_transfer.cancelled", "member_transfer", id, "success")
+	})
+	if err != nil {
+		if auditErr := s.audit(ctx, userID, transfer.GroupID, "member_transfer.cancelled", "member_transfer", id, "failure"); auditErr != nil {
+			return domain.ErrAuditUnavailable
+		}
 		return err
 	}
-	s.audit(ctx, userID, transfer.GroupID, "member_transfer.cancelled", "member_transfer", id, "success")
+	s.publishNotification(ctx, &domain.Notification{ID: transfer.ID, UserID: transfer.ToUserID, GroupID: transfer.GroupID}, "updated")
 	return nil
 }
 

@@ -30,7 +30,13 @@ func (a *CollaborationAPI) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/invitations/{id}/accept", a.acceptByID).Bind(bind)
 	e.Router.POST("/api/subflow/v1/invitations/{id}/decline", a.decline).Bind(bind)
 	e.Router.GET("/api/subflow/v1/notifications", a.notifications).Bind(bind)
+	e.Router.GET("/api/subflow/v1/notifications/summary", a.notificationSummary).Bind(bind)
+	e.Router.GET("/api/subflow/v1/notifications/preferences", a.notificationPreferences).Bind(bind)
+	e.Router.PATCH("/api/subflow/v1/notifications/preferences", a.updateNotificationPreferences).Bind(bind)
+	e.Router.POST("/api/subflow/v1/notifications/viewed", a.notificationsViewed).Bind(bind)
+	e.Router.POST("/api/subflow/v1/notifications/read-all", a.notificationsReadAll).Bind(bind)
 	e.Router.POST("/api/subflow/v1/notifications/{id}/read", a.readNotification).Bind(bind)
+	e.Router.POST("/api/subflow/v1/notifications/{id}/unread", a.unreadNotification).Bind(bind)
 	e.Router.GET("/api/subflow/v1/events", a.events).Bind(bind)
 }
 func (a *CollaborationAPI) list(e *core.RequestEvent) error {
@@ -127,17 +133,74 @@ func (a *CollaborationAPI) notifications(e *core.RequestEvent) error {
 	if err != nil {
 		return fail(e, err)
 	}
-	v, err := a.Service.ListNotifications(e.Request.Context(), authID(e), p)
+	q := e.Request.URL.Query()
+	category, status, read := q.Get("category"), q.Get("status"), q.Get("read")
+	if (category != "" && category != domain.NotificationCategoryTask && category != domain.NotificationCategoryException && category != domain.NotificationCategorySecurity) ||
+		(status != "" && status != domain.NotificationStatusPending && status != domain.NotificationStatusResolved && status != domain.NotificationStatusInvalid && status != "closed") ||
+		(read != "" && read != "read" && read != "unread") {
+		return fail(e, domain.ErrInvalid)
+	}
+	v, err := a.Service.ListNotificationsFiltered(e.Request.Context(), authID(e), ports.NotificationQuery{PageRequest: p, Category: category, Status: status, Read: read})
 	if err != nil {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *CollaborationAPI) notificationSummary(e *core.RequestEvent) error {
+	v, err := a.Service.NotificationSummary(e.Request.Context(), authID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, v, nil)
+}
+func (a *CollaborationAPI) notificationPreferences(e *core.RequestEvent) error {
+	v, err := a.Service.NotificationPreferences(e.Request.Context(), authID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, v, nil)
+}
+func (a *CollaborationAPI) updateNotificationPreferences(e *core.RequestEvent) error {
+	var value domain.NotificationPreferences
+	if err := e.BindBody(&value); err != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value.UserID = authID(e)
+	value.SecurityToast, value.SecurityEmail = true, true
+	if err := a.Service.UpdateNotificationPreferences(e.Request.Context(), authID(e), value); err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *CollaborationAPI) notificationsViewed(e *core.RequestEvent) error {
+	var body struct {
+		IDs []string `json:"ids"`
+	}
+	if err := e.BindBody(&body); err != nil || len(body.IDs) > 100 {
+		return fail(e, domain.ErrInvalid)
+	}
+	if err := a.Service.MarkNotificationsViewed(e.Request.Context(), authID(e), body.IDs); err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]bool{"viewed": true}, nil)
+}
+func (a *CollaborationAPI) notificationsReadAll(e *core.RequestEvent) error {
+	if err := a.Service.MarkNotificationsRead(e.Request.Context(), authID(e)); err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]bool{"read": true}, nil)
 }
 func (a *CollaborationAPI) readNotification(e *core.RequestEvent) error {
 	if err := a.Service.MarkNotificationRead(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, map[string]bool{"read": true}, nil)
+}
+func (a *CollaborationAPI) unreadNotification(e *core.RequestEvent) error {
+	if err := a.Service.MarkNotificationUnread(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]bool{"read": false}, nil)
 }
 func (a *CollaborationAPI) events(e *core.RequestEvent) error {
 	group := e.Request.URL.Query().Get("groupId")

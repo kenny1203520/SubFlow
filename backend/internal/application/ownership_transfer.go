@@ -36,10 +36,25 @@ func (s *Service) CreateOwnershipTransfer(ctx context.Context, userID, groupID, 
 		return nil, domain.ErrConflict
 	}
 	transfer := &domain.OwnershipTransfer{GroupID: groupID, FromUserID: userID, ToUserID: toUserID, Status: domain.OwnershipTransferPending}
-	if err = s.Stores.OwnershipTransfers.Create(ctx, transfer); err != nil {
+	var notification *domain.Notification
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if err := s.Stores.OwnershipTransfers.Create(tx, transfer); err != nil {
+			return err
+		}
+		var err error
+		notification, err = s.createNotification(tx, toUserID, domain.NotificationCategoryTask, "ownership_transfer:"+transfer.ID, "ownership_transfer", groupID, transfer.ID)
+		if err != nil {
+			return err
+		}
+		return s.audit(tx, userID, groupID, "ownership_transfer.created", "ownership_transfer", transfer.ID, "success", encodeAuditSummary(map[string]any{"to_user_id": toUserID}, nil))
+	})
+	if err != nil {
+		if auditErr := s.audit(ctx, userID, groupID, "ownership_transfer.created", "ownership_transfer", transfer.ID, "failure"); auditErr != nil {
+			return nil, domain.ErrAuditUnavailable
+		}
 		return nil, err
 	}
-	s.audit(ctx, userID, groupID, "ownership_transfer.created", "ownership_transfer", transfer.ID, "success", encodeAuditSummary(map[string]any{"to_user_id": toUserID}, nil))
+	s.publishNotification(ctx, notification, "created")
 	return transfer, nil
 }
 
@@ -61,10 +76,25 @@ func (s *Service) RespondOwnershipTransfer(ctx context.Context, userID, id strin
 	}
 	if !accept {
 		transfer.Status = domain.OwnershipTransferDeclined
-		if err = s.Stores.OwnershipTransfers.Update(ctx, transfer); err != nil {
+		err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+			if err := s.Stores.OwnershipTransfers.Update(tx, transfer); err != nil {
+				return err
+			}
+			if err := s.Stores.Notifications.SetResourceStatus(tx, userID, transfer.ID, domain.NotificationStatusResolved, "declined", s.now()); err != nil {
+				return err
+			}
+			if err := s.Stores.Notifications.MarkReadForResource(tx, userID, transfer.ID, s.now()); err != nil {
+				return err
+			}
+			return s.audit(tx, userID, transfer.GroupID, "ownership_transfer.declined", "ownership_transfer", id, "success")
+		})
+		if err != nil {
+			if auditErr := s.audit(ctx, userID, transfer.GroupID, "ownership_transfer.declined", "ownership_transfer", id, "failure"); auditErr != nil {
+				return nil, domain.ErrAuditUnavailable
+			}
 			return nil, err
 		}
-		s.audit(ctx, userID, transfer.GroupID, "ownership_transfer.declined", "ownership_transfer", id, "success")
+		s.publishNotification(ctx, &domain.Notification{ID: transfer.ID, UserID: userID, GroupID: transfer.GroupID}, "updated")
 		return transfer, nil
 	}
 	roles, err := s.Stores.Roles.List(ctx, "group", transfer.GroupID)
@@ -105,12 +135,23 @@ func (s *Service) RespondOwnershipTransfer(ctx context.Context, userID, id strin
 			return updateErr
 		}
 		transfer.Status = domain.OwnershipTransferAccepted
-		return s.Stores.OwnershipTransfers.Update(tx, transfer)
+		if err := s.Stores.OwnershipTransfers.Update(tx, transfer); err != nil {
+			return err
+		}
+		if err := s.Stores.Notifications.SetResourceStatus(tx, userID, transfer.ID, domain.NotificationStatusResolved, "accepted", s.now()); err != nil {
+			return err
+		}
+		if err := s.Stores.Notifications.MarkReadForResource(tx, userID, transfer.ID, s.now()); err != nil {
+			return err
+		}
+		return s.audit(tx, userID, transfer.GroupID, "ownership_transfer.accepted", "ownership_transfer", id, "success", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil))
 	}); err != nil {
-		s.audit(ctx, userID, transfer.GroupID, "ownership_transfer.accepted", "ownership_transfer", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil))
+		if auditErr := s.audit(ctx, userID, transfer.GroupID, "ownership_transfer.accepted", "ownership_transfer", id, "failure", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil)); auditErr != nil {
+			return nil, domain.ErrAuditUnavailable
+		}
 		return nil, err
 	}
-	s.audit(ctx, userID, transfer.GroupID, "ownership_transfer.accepted", "ownership_transfer", id, "success", encodeAuditSummary(map[string]any{"from_user_id": transfer.FromUserID, "to_user_id": transfer.ToUserID}, nil))
+	s.publishNotification(ctx, &domain.Notification{ID: transfer.ID, UserID: transfer.ToUserID, GroupID: transfer.GroupID}, "updated")
 	return transfer, nil
 }
 
@@ -129,10 +170,22 @@ func (s *Service) CancelOwnershipTransfer(ctx context.Context, userID, id string
 		return domain.ErrForbidden
 	}
 	transfer.Status = domain.OwnershipTransferCancelled
-	if err = s.Stores.OwnershipTransfers.Update(ctx, transfer); err != nil {
+	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if err := s.Stores.OwnershipTransfers.Update(tx, transfer); err != nil {
+			return err
+		}
+		if err := s.Stores.Notifications.SetResourceStatus(tx, transfer.ToUserID, transfer.ID, domain.NotificationStatusInvalid, "cancelled", s.now()); err != nil {
+			return err
+		}
+		return s.audit(tx, userID, transfer.GroupID, "ownership_transfer.cancelled", "ownership_transfer", id, "success")
+	})
+	if err != nil {
+		if auditErr := s.audit(ctx, userID, transfer.GroupID, "ownership_transfer.cancelled", "ownership_transfer", id, "failure"); auditErr != nil {
+			return domain.ErrAuditUnavailable
+		}
 		return err
 	}
-	s.audit(ctx, userID, transfer.GroupID, "ownership_transfer.cancelled", "ownership_transfer", id, "success")
+	s.publishNotification(ctx, &domain.Notification{ID: transfer.ID, UserID: transfer.ToUserID, GroupID: transfer.GroupID}, "updated")
 	return nil
 }
 
