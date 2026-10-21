@@ -163,6 +163,14 @@ type NotificationQuery struct {
 	Read     string
 }
 
+type NotificationEmailRepository interface {
+	Enqueue(context.Context, *domain.NotificationEmailJob) error
+	ClaimDue(context.Context, time.Time, int) ([]domain.NotificationEmailJob, error)
+	Update(context.Context, *domain.NotificationEmailJob) error
+	ListFailed(context.Context, PageRequest) (Page[domain.NotificationEmailJob], error)
+	Retry(context.Context, string, time.Time) error
+}
+
 type SubscriptionRepository interface {
 	Create(context.Context, *domain.Subscription) error
 	Get(context.Context, string) (*domain.Subscription, error)
@@ -305,6 +313,11 @@ type Mailer interface {
 	// UserDirectory of their own; it may be empty.
 	SendInvitation(ctx context.Context, inv domain.Invitation, group domain.Group, inviterName, url string) error
 	Configured() bool
+}
+
+type NotificationMailer interface {
+	Configured() bool
+	SendNotification(context.Context, string, string, string) error
 }
 
 type Clock interface{ Now() time.Time }

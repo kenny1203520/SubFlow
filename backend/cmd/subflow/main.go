@@ -140,6 +140,12 @@ func main() {
 				app.Logger().Warn("recurring income posting failed", "operation", "post_due_recurring_incomes", "error", postErr)
 			}
 		})
+		notificationDelivery := application.NewNotificationDeliveryService(stores.Notifications, stores.NotificationEmails, stores.Transactions, stores.Users, base.RecordAudit, &mailer.Native{App: e.App}, nil)
+		app.Cron().MustAdd("subflow_notification_email_delivery", "* * * * *", func() {
+			if deliveryErr := notificationDelivery.ProcessDue(context.Background()); deliveryErr != nil {
+				app.Logger().Warn("notification email delivery failed", "operation", "deliver_notification_emails", "error", deliveryErr)
+			}
+		})
 		go func() {
 			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {
 				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)

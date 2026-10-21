@@ -21,6 +21,7 @@ const (
 	CollectionMemberTransfers          = "group_member_transfers"
 	CollectionNotifications            = "notifications"
 	CollectionNotificationPreferences  = "notification_preferences"
+	CollectionNotificationEmailOutbox  = "notification_email_outbox"
 	CollectionSubscriptions            = "subscriptions"
 	CollectionSubscriptionRevisions    = "subscription_revisions"
 	CollectionSubscriptionOccurrences  = "subscription_occurrences"
@@ -276,6 +277,14 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	_, err = ensureCollection(app, CollectionNotificationPreferences, func(c *core.Collection) {
 		c.Fields.Add(&core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.BoolField{Name: "tasks_toast"}, &core.BoolField{Name: "tasks_email"}, &core.BoolField{Name: "exceptions_toast"}, &core.BoolField{Name: "exceptions_email"})
 		c.AddIndex("idx_notification_preferences_user", true, "user", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionNotificationEmailOutbox, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "notification", Required: true, CollectionId: mustCollectionID(app, CollectionNotifications), MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "status", Required: true, Values: []string{domain.NotificationEmailQueued, domain.NotificationEmailSending, domain.NotificationEmailSent, domain.NotificationEmailFailed, domain.NotificationEmailCancelled}, MaxSelect: 1}, &core.NumberField{Name: "attempts"}, &core.DateField{Name: "next_attempt_at"}, &core.TextField{Name: "last_error", Max: 80})
+		c.AddIndex("idx_notification_email_outbox_notification", true, "notification", "")
+		c.AddIndex("idx_notification_email_outbox_due", false, "status, next_attempt_at", "")
 	})
 	if err != nil {
 		return "", err

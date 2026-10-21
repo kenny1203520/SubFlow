@@ -139,6 +139,13 @@ func TestSystemRoleManagerCannotEscalateTheirOwnRole(t *testing.T) {
 	if err = f.service.AssignSystemRole(ctx, f.owner, f.member, managerRole.ID); err != nil {
 		t.Fatal(err)
 	}
+	securityNotices, err := f.stores.Notifications.ListFiltered(ctx, f.member, ports.NotificationQuery{PageRequest: ports.PageRequest{Page: 1, PerPage: 10}, Category: domain.NotificationCategorySecurity})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(securityNotices.Items) != 1 || securityNotices.Items[0].Type != "system_role_changed" {
+		t.Fatalf("expected one system role security notice for the affected account, got %#v", securityNotices.Items)
+	}
 
 	if _, err = f.service.UpdateSystemRole(ctx, f.member, domain.Role{ID: managerRole.ID, Name: managerRole.Name, Permissions: []string{"system.roles.manage", "system.settings.manage"}}); !errors.Is(err, domain.ErrForbidden) {
 		t.Fatalf("expected system role manager to be unable to add missing permissions, got %v", err)

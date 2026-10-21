@@ -557,6 +557,120 @@ func (r *Repository) SaveNotificationPreferences(ctx context.Context, value doma
 	record.Set("exceptions_email", value.ExceptionsEmail)
 	return r.app(ctx).Save(record)
 }
+
+func (r *Repository) EnqueueNotificationEmail(ctx context.Context, value *domain.NotificationEmailJob) error {
+	if _, err := r.app(ctx).FindFirstRecordByFilter(CollectionNotificationEmailOutbox, "notification={:notification}", dbx.Params{"notification": value.NotificationID}); err == nil {
+		return nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return mapError(err)
+	}
+	record, err := newRecord(r.app(ctx), CollectionNotificationEmailOutbox)
+	if err != nil {
+		return err
+	}
+	writeNotificationEmailJob(record, value)
+	if err := r.app(ctx).Save(record); err != nil {
+		return mapError(err)
+	}
+	value.ID = record.Id
+	hydrateTimes(record, &value.CreatedAt, &value.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) ClaimDueNotificationEmails(ctx context.Context, now time.Time, limit int) ([]domain.NotificationEmailJob, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 25
+	}
+	cutoff, err := types.ParseDateTime(now.Add(-10 * time.Minute))
+	if err != nil {
+		return nil, err
+	}
+	normalizedNow, err := types.ParseDateTime(now)
+	if err != nil {
+		return nil, err
+	}
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionNotificationEmailOutbox, "(status='queued' && next_attempt_at<={:now}) || (status='sending' && updated<={:cutoff})", "next_attempt_at", limit, 0, dbx.Params{"now": normalizedNow, "cutoff": cutoff})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	jobs := make([]domain.NotificationEmailJob, 0, len(records))
+	for _, record := range records {
+		job := *notificationEmailJobFrom(record)
+		job.Status = domain.NotificationEmailSending
+		job.Attempts++
+		if err := r.app(ctx).Save(writeNotificationEmailJob(record, &job)); err != nil {
+			return nil, err
+		}
+		hydrateTimes(record, &job.CreatedAt, &job.UpdatedAt)
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
+}
+
+func (r *Repository) UpdateNotificationEmail(ctx context.Context, value *domain.NotificationEmailJob) error {
+	record, err := r.app(ctx).FindRecordById(CollectionNotificationEmailOutbox, value.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeNotificationEmailJob(record, value)
+	if err := r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &value.CreatedAt, &value.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) ListFailedNotificationEmails(ctx context.Context, req ports.PageRequest) (ports.Page[domain.NotificationEmailJob], error) {
+	records, err := listRecords(r.app(ctx), CollectionNotificationEmailOutbox, "status='failed'", req, nil)
+	if err != nil {
+		return ports.Page[domain.NotificationEmailJob]{}, err
+	}
+	values := make([]domain.NotificationEmailJob, len(records))
+	for i, record := range records {
+		values[i] = *notificationEmailJobFrom(record)
+	}
+	count, err := countFiltered(r.app(ctx), CollectionNotificationEmailOutbox, "status='failed'", nil)
+	if err != nil {
+		return ports.Page[domain.NotificationEmailJob]{}, err
+	}
+	return page(values, req, count), nil
+}
+
+func (r *Repository) RetryNotificationEmail(ctx context.Context, id string, now time.Time) error {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionNotificationEmailOutbox, "id={:id} && status='failed'", dbx.Params{"id": id})
+	if err != nil {
+		return mapError(err)
+	}
+	record.Set("status", domain.NotificationEmailQueued)
+	record.Set("attempts", 0)
+	record.Set("next_attempt_at", now)
+	record.Set("last_error", "")
+	return r.app(ctx).Save(record)
+}
+
+func writeNotificationEmailJob(record *core.Record, value *domain.NotificationEmailJob) *core.Record {
+	record.Set("notification", value.NotificationID)
+	record.Set("user", value.UserID)
+	record.Set("status", value.Status)
+	record.Set("attempts", value.Attempts)
+	if value.NextAttemptAt != nil {
+		record.Set("next_attempt_at", *value.NextAttemptAt)
+	} else {
+		record.Set("next_attempt_at", nil)
+	}
+	record.Set("last_error", value.LastError)
+	return record
+}
+
+func notificationEmailJobFrom(record *core.Record) *domain.NotificationEmailJob {
+	value := &domain.NotificationEmailJob{ID: record.Id, NotificationID: record.GetString("notification"), UserID: record.GetString("user"), Status: record.GetString("status"), Attempts: record.GetInt("attempts"), LastError: record.GetString("last_error")}
+	if next := record.GetDateTime("next_attempt_at").Time(); !next.IsZero() {
+		value.NextAttemptAt = &next
+	}
+	hydrateTimes(record, &value.CreatedAt, &value.UpdatedAt)
+	return value
+}
+
 func (r *Repository) MarkNotificationsReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error {
 	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && resource_id={:resource}", "", 0, 0, map[string]any{"user": userID, "resource": resourceID})
 	if err != nil {

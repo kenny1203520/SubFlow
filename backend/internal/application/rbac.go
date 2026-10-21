@@ -154,6 +154,12 @@ func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, r
 	return s.Stores.Audits.Create(ctx, &domain.AuditLog{ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, IP: ip, UserAgent: userAgent, Hash: hex.EncodeToString(mac.Sum(nil))})
 }
 
+// RecordAudit lets focused application services share the central audit policy
+// without depending on adapter assembly details.
+func (s *Service) RecordAudit(ctx context.Context, actor, groupID, action, resource, resourceID, outcome string, summary ...string) error {
+	return s.audit(ctx, actor, groupID, action, resource, resourceID, outcome, summary...)
+}
+
 func generatedRoleKey(name string) string {
 	sum := sha256.Sum256([]byte(name + time.Now().UTC().String()))
 	return fmt.Sprintf("custom-%x", sum[:6])
@@ -393,6 +399,10 @@ func (s *Service) AssignSystemRole(ctx context.Context, userID, targetID, roleID
 	if role.Scope != "system" {
 		return domain.ErrInvalid
 	}
+	target, err := s.Stores.Users.Get(ctx, targetID)
+	if err != nil {
+		return err
+	}
 	actorPermissions, permissionErr := s.SystemPermissions(ctx, userID)
 	if permissionErr != nil || !permitsAll(actorPermissions, filterRolePermissions("system", role.Permissions)) {
 		if auditErr := s.roleAuditFailure(ctx, userID, "", "system_role.assigned", targetID, "permission_not_delegable"); auditErr != nil {
@@ -400,12 +410,25 @@ func (s *Service) AssignSystemRole(ctx context.Context, userID, targetID, roleID
 		}
 		return domain.ErrForbidden
 	}
-	return s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+	var notice *domain.Notification
+	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if assignErr := s.Stores.Users.SetSystemRole(tx, targetID, roleID); assignErr != nil {
 			return assignErr
 		}
+		if target.SystemRoleID != roleID {
+			eventKey := fmt.Sprintf("system-role:%s:%s:%d", targetID, roleID, s.now().UnixNano())
+			var notificationErr error
+			notice, notificationErr = s.createNotification(tx, targetID, domain.NotificationCategorySecurity, eventKey, "system_role_changed", "", targetID)
+			if notificationErr != nil {
+				return notificationErr
+			}
+		}
 		return s.audit(tx, userID, "", "system_role.assigned", "user", targetID, "success", encodeAuditSummary(map[string]any{"role": role.Name}, nil))
-	})
+	}); err != nil {
+		return err
+	}
+	s.publishNotification(ctx, notice, "created")
+	return nil
 }
 func (s *Service) RecoverSystemAdmin(ctx context.Context, targetID string) error {
 	settings, err := s.Stores.Settings.Get(ctx)

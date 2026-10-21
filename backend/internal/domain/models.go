@@ -23,6 +23,26 @@ type NotificationPreferences struct {
 	SecurityEmail   bool   `json:"securityEmail"`
 }
 
+type NotificationEmailJob struct {
+	ID             string     `json:"id"`
+	NotificationID string     `json:"notificationId"`
+	UserID         string     `json:"userId"`
+	Status         string     `json:"status"`
+	Attempts       int        `json:"attempts"`
+	NextAttemptAt  *time.Time `json:"nextAttemptAt,omitempty"`
+	LastError      string     `json:"lastError,omitempty"`
+	CreatedAt      time.Time  `json:"createdAt"`
+	UpdatedAt      time.Time  `json:"updatedAt"`
+}
+
+const (
+	NotificationEmailQueued    = "queued"
+	NotificationEmailSending   = "sending"
+	NotificationEmailSent      = "sent"
+	NotificationEmailFailed    = "failed"
+	NotificationEmailCancelled = "cancelled"
+)
+
 func DefaultNotificationPreferences(userID string) NotificationPreferences {
 	return NotificationPreferences{UserID: userID, TasksToast: true, TasksEmail: true, ExceptionsToast: true, ExceptionsEmail: true, SecurityToast: true, SecurityEmail: true}
 }
