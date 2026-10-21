@@ -380,6 +380,13 @@ func (r *Repository) GetNotification(ctx context.Context, id string) (*domain.No
 	}
 	return notificationFrom(rec), nil
 }
+func (r *Repository) FindNotificationByEventKey(ctx context.Context, userID, eventKey string) (*domain.Notification, error) {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionNotifications, "user={:user} && event_key={:event}", dbx.Params{"user": userID, "event": eventKey})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return notificationFrom(rec), nil
+}
 func (r *Repository) ListNotifications(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Notification], error) {
 	return r.ListFilteredNotifications(ctx, userID, ports.NotificationQuery{PageRequest: req})
 }
@@ -451,6 +458,25 @@ func (r *Repository) MarkAllNotificationsRead(ctx context.Context, userID string
 }
 func (r *Repository) SetNotificationResourceStatus(ctx context.Context, userID, resourceID, status, outcome string, when time.Time) error {
 	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && resource_id={:resource}", "", 0, 0, dbx.Params{"user": userID, "resource": resourceID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range recs {
+		rec.Set("status", status)
+		rec.Set("outcome", outcome)
+		if status == domain.NotificationStatusPending {
+			rec.Set("resolved_at", nil)
+		} else {
+			rec.Set("resolved_at", when)
+		}
+		if err := r.app(ctx).Save(rec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (r *Repository) SetNotificationEventStatus(ctx context.Context, userID, eventKey, status, outcome string, when time.Time) error {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && event_key={:event}", "", 0, 0, dbx.Params{"user": userID, "event": eventKey})
 	if err != nil {
 		return mapError(err)
 	}

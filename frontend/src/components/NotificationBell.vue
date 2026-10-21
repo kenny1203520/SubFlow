@@ -13,7 +13,7 @@ async function accept(id:string){const groupId=invitationFor(id)?.groupId;await 
 async function decline(id:string){await workspace.declinePendingInvitation(id);await workspace.loadInvitationInbox();await notifications.refresh()}
 async function opened(){notifications.filter='all';notifications.category='';if(await notifications.load(1))await notifications.markVisibleViewed()}
 function notificationTitle(note:{type:string;outcome?:string}){if(note.outcome==='accepted')return tr('notificationAccepted');if(note.outcome==='declined')return tr('notificationDeclined');if(note.outcome==='revoked')return tr('notificationRevoked');if(note.outcome==='expired')return tr('notificationExpired');return note.type==='group_invitation'?tr('pendingInvitations'):tr(note.type)}
-function sourcePath(type:string,groupId?:string){if(!groupId)return '';if(type==='ownership_transfer')return `/groups/${groupId}/settings`;if(type==='member_transfer')return `/groups/${groupId}/members`;if(type==='subscription_post_failed')return `/groups/${groupId}/subscriptions`;return ''}
+function sourcePath(type:string,groupId?:string){if(type==='subscription_post_failed'||type==='recurring_income_post_failed')return groupId?`/groups/${groupId}/${type==='subscription_post_failed'?'subscriptions':'incomes'}`:`/personal/${type==='subscription_post_failed'?'subscriptions':'incomes'}`;if(!groupId)return '';if(type==='ownership_transfer')return `/groups/${groupId}/settings`;if(type==='member_transfer')return `/groups/${groupId}/members`;return ''}
 onMounted(()=>{void notifications.refreshSummary();void notifications.loadPreferences()})
 </script>
 

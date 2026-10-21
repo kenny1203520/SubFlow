@@ -211,9 +211,10 @@ func (s *Service) postOccurrenceAt(ctx context.Context, subscription *domain.Sub
 	}
 	created := false
 	err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
-		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, billingAt); findErr == nil {
+		existing, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, billingAt)
+		if findErr == nil && existing.Status != "failed" {
 			return nil
-		} else if !errors.Is(findErr, domain.ErrNotFound) {
+		} else if findErr != nil && !errors.Is(findErr, domain.ErrNotFound) {
 			return findErr
 		}
 		expense := domain.Expense{
@@ -232,11 +233,39 @@ func (s *Service) postOccurrenceAt(ctx context.Context, subscription *domain.Sub
 		if splitErr := s.Stores.Expenses.ReplaceSplits(tx, expense.ID, splits); splitErr != nil {
 			return splitErr
 		}
-		occurrence := domain.SubscriptionOccurrence{SubscriptionID: subscription.ID, RevisionID: revision.ID, ExpenseID: expense.ID, BillingAt: billingAt, Status: "posted"}
-		if createErr := s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence); createErr != nil {
-			return createErr
+		if existing != nil {
+			failedRevisionID := existing.RevisionID
+			existing.RevisionID = revision.ID
+			existing.ExpenseID = expense.ID
+			existing.Status = "posted"
+			existing.Error = ""
+			if updateErr := s.Stores.Subscriptions.UpdateOccurrence(tx, existing); updateErr != nil {
+				return updateErr
+			}
+			recipient := ""
+			for _, previousRevision := range revisions {
+				if previousRevision.ID == failedRevisionID {
+					recipient = previousRevision.PaidBy
+					break
+				}
+			}
+			if recipient == "" {
+				recipient = subscription.OwnerID
+			}
+			if recipient != "" {
+				if err := s.Stores.Notifications.SetEventStatus(tx, recipient, "subscription_occurrence:"+existing.ID, domain.NotificationStatusResolved, "posted", s.Now().UTC()); err != nil {
+					return err
+				}
+			}
+		} else {
+			occurrence := domain.SubscriptionOccurrence{SubscriptionID: subscription.ID, RevisionID: revision.ID, ExpenseID: expense.ID, BillingAt: billingAt, Status: "posted"}
+			if createErr := s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence); createErr != nil {
+				return createErr
+			}
 		}
-		s.audit(tx, actorID, subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "amount_minor": expense.AmountMinor, "currency": string(expense.Currency), "expense_id": expense.ID}, nil))
+		if err := s.audit(tx, actorID, subscription.GroupID, "subscription.occurrence_posted", "subscription", subscription.ID, "success", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "amount_minor": expense.AmountMinor, "currency": string(expense.Currency), "expense_id": expense.ID}, nil)); err != nil {
+			return err
+		}
 		created = true
 		return nil
 	})
@@ -371,7 +400,9 @@ func occurrenceRegenerationSummary(before, after *domain.Expense, billingAt time
 // regular due-date path) or a historical date being backfilled.
 func (s *Service) recordOccurrenceFailure(ctx context.Context, subscription *domain.Subscription, billingAt time.Time, reason string) error {
 	occurrence := domain.SubscriptionOccurrence{SubscriptionID: subscription.ID, BillingAt: billingAt, Status: "failed", Error: reason}
-	if err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+	var notification *domain.Notification
+	var failureRevision *domain.SubscriptionRevision
+	err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if _, findErr := s.Stores.Subscriptions.GetOccurrence(tx, subscription.ID, billingAt); findErr == nil {
 			return nil
 		} else if !errors.Is(findErr, domain.ErrNotFound) {
@@ -385,15 +416,47 @@ func (s *Service) recordOccurrenceFailure(ctx context.Context, subscription *dom
 		}
 		if revision, ok := subscriptionRevisionAt(revisions, billingAt); ok {
 			occurrence.RevisionID = revision.ID
+			failureRevision = &revision
 		}
 		if occurrence.RevisionID == "" {
 			return domain.ErrInvalid
 		}
-		return s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence)
-	}); err != nil {
+		if err := s.Stores.Subscriptions.CreateOccurrence(tx, &occurrence); err != nil {
+			return err
+		}
+		recipient := ""
+		if failureRevision != nil {
+			recipient = failureRevision.PaidBy
+		}
+		if recipient == "" {
+			recipient = subscription.OwnerID
+		}
+		if recipient != "" {
+			canNotify := true
+			if subscription.GroupID != "" {
+				if _, roleErr := s.Stores.Memberships.GetRole(tx, subscription.GroupID, recipient); errors.Is(roleErr, domain.ErrNotFound) {
+					canNotify = false
+				} else if roleErr != nil {
+					return roleErr
+				}
+			}
+			if canNotify {
+				var createErr error
+				notification, createErr = s.createNotification(tx, recipient, domain.NotificationCategoryException, "subscription_occurrence:"+occurrence.ID, "subscription_post_failed", subscription.GroupID, subscription.ID)
+				if createErr != nil {
+					return createErr
+				}
+			}
+		}
+		return s.audit(tx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "reason": reason}, nil))
+	})
+	if err != nil {
+		if auditErr := s.audit(ctx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "reason": reason}, nil)); auditErr != nil {
+			return errors.Join(domain.ErrAuditUnavailable, auditErr)
+		}
 		return err
 	}
-	s.audit(ctx, "", subscription.GroupID, "subscription.occurrence_failed", "subscription", subscription.ID, "failure", encodeAuditSummary(map[string]any{"billing_at": billingAt.Format("2006-01-02"), "reason": reason}, nil))
+	s.publishNotification(ctx, notification, "created")
 	return nil
 }
 

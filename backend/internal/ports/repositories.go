@@ -132,6 +132,7 @@ type MemberTransferRepository interface {
 type NotificationRepository interface {
 	Create(context.Context, *domain.Notification) error
 	Get(context.Context, string) (*domain.Notification, error)
+	FindByEventKey(context.Context, string, string) (*domain.Notification, error)
 	ListForUser(context.Context, string, PageRequest) (Page[domain.Notification], error)
 	ListFiltered(context.Context, string, NotificationQuery) (Page[domain.Notification], error)
 	MarkRead(context.Context, string, time.Time) error
@@ -139,6 +140,7 @@ type NotificationRepository interface {
 	MarkUnread(context.Context, string, string) error
 	MarkReadForResource(context.Context, string, string, time.Time) error
 	SetResourceStatus(context.Context, string, string, string, string, time.Time) error
+	SetEventStatus(context.Context, string, string, string, string, time.Time) error
 	MarkViewed(context.Context, string, []string, time.Time) error
 	Summary(context.Context, string, time.Time) (NotificationSummary, error)
 	GetPreferences(context.Context, string) (domain.NotificationPreferences, error)
