@@ -20,6 +20,7 @@ const (
 	CollectionOwnershipTransfers       = "group_ownership_transfers"
 	CollectionMemberTransfers          = "group_member_transfers"
 	CollectionNotifications            = "notifications"
+	CollectionNotificationPreferences  = "notification_preferences"
 	CollectionSubscriptions            = "subscriptions"
 	CollectionSubscriptionRevisions    = "subscription_revisions"
 	CollectionSubscriptionOccurrences  = "subscription_occurrences"
@@ -262,8 +263,19 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionNotifications, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "type", Required: true, Max: 80}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "resource_id", Max: 32}, &core.DateField{Name: "read_at"})
+		c.Fields.Add(&core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "type", Required: true, Max: 80}, &core.TextField{Name: "category", Max: 32}, &core.TextField{Name: "event_key", Max: 180}, &core.TextField{Name: "title", Max: 120}, &core.TextField{Name: "message", Max: 500}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: false}, &core.TextField{Name: "resource_id", Max: 32}, &core.SelectField{Name: "status", Values: []string{"pending", "resolved", "invalid"}, MaxSelect: 1}, &core.TextField{Name: "outcome", Max: 40}, &core.DateField{Name: "read_at"}, &core.DateField{Name: "viewed_at"}, &core.DateField{Name: "resolved_at"})
 		c.AddIndex("idx_notifications_user_created", false, "user, created", "")
+		c.AddIndex("idx_notifications_user_event", false, "user, event_key", "")
+	})
+	if err != nil {
+		return "", err
+	}
+	if err = backfillNotificationLifecycle(app); err != nil {
+		return "", err
+	}
+	_, err = ensureCollection(app, CollectionNotificationPreferences, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "user", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true}, &core.BoolField{Name: "tasks_toast"}, &core.BoolField{Name: "tasks_email"}, &core.BoolField{Name: "exceptions_toast"}, &core.BoolField{Name: "exceptions_email"})
+		c.AddIndex("idx_notification_preferences_user", true, "user", "")
 	})
 	if err != nil {
 		return "", err
@@ -369,6 +381,59 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	return setupLink, ensureIncomeCategoryKinds(app)
+}
+
+func backfillNotificationLifecycle(app core.App) error {
+	records, err := app.FindRecordsByFilter(CollectionNotifications, "status = ''", "", 0, 0, nil)
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		// Existing notifications predate the unseen marker. Keep their history
+		// visible without making an upgrade look like a burst of new activity.
+		if record.GetDateTime("viewed_at").IsZero() {
+			viewedAt := record.GetDateTime("created")
+			if viewedAt.IsZero() {
+				viewedAt = record.GetDateTime("updated")
+			}
+			record.Set("viewed_at", viewedAt)
+		}
+		if record.GetString("category") == "" {
+			record.Set("category", domain.NotificationCategoryTask)
+		}
+		status, outcome := domain.NotificationStatusPending, ""
+		if !record.GetDateTime("read_at").IsZero() {
+			status, outcome = domain.NotificationStatusResolved, "completed"
+		}
+		resourceID := record.GetString("resource_id")
+		if resourceID != "" {
+			if invitation, findErr := app.FindRecordById(CollectionInvitations, resourceID); findErr == nil {
+				switch invitation.GetString("status") {
+				case string(domain.InvitationAccepted):
+					status, outcome = domain.NotificationStatusResolved, "accepted"
+				case string(domain.InvitationDeclined):
+					status, outcome = domain.NotificationStatusResolved, "declined"
+				case string(domain.InvitationRevoked):
+					status, outcome = domain.NotificationStatusInvalid, "revoked"
+				case string(domain.InvitationExpired):
+					status, outcome = domain.NotificationStatusInvalid, "expired"
+				}
+			}
+		}
+		record.Set("status", status)
+		record.Set("outcome", outcome)
+		if status != domain.NotificationStatusPending {
+			resolved := record.GetDateTime("read_at")
+			if resolved.IsZero() {
+				resolved = record.GetDateTime("updated")
+			}
+			record.Set("resolved_at", resolved)
+		}
+		if err := app.Save(record); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func mustCollectionID(app core.App, name string) string {

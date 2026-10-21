@@ -15,6 +15,7 @@ import (
 
 type Service struct {
 	Stores  adapters.Stores
+	Events  ports.EventPublisher
 	Now     func() time.Time
 	Rates   RateProvider
 	Captcha captcha.Verifier

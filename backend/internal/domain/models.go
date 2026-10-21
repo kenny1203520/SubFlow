@@ -13,6 +13,20 @@ const (
 	CurrencyEUR Currency = "EUR"
 )
 
+type NotificationPreferences struct {
+	UserID          string `json:"userId,omitempty"`
+	TasksToast      bool   `json:"tasksToast"`
+	TasksEmail      bool   `json:"tasksEmail"`
+	ExceptionsToast bool   `json:"exceptionsToast"`
+	ExceptionsEmail bool   `json:"exceptionsEmail"`
+	SecurityToast   bool   `json:"securityToast"`
+	SecurityEmail   bool   `json:"securityEmail"`
+}
+
+func DefaultNotificationPreferences(userID string) NotificationPreferences {
+	return NotificationPreferences{UserID: userID, TasksToast: true, TasksEmail: true, ExceptionsToast: true, ExceptionsEmail: true, SecurityToast: true, SecurityEmail: true}
+}
+
 type MemberRole string
 
 const (
@@ -477,12 +491,29 @@ type Notification struct {
 	ID         string     `json:"id"`
 	UserID     string     `json:"userId"`
 	Type       string     `json:"type"`
+	Category   string     `json:"category"`
+	EventKey   string     `json:"eventKey,omitempty"`
+	Title      string     `json:"title,omitempty"`
+	Message    string     `json:"message,omitempty"`
 	GroupID    string     `json:"groupId,omitempty"`
 	ResourceID string     `json:"resourceId,omitempty"`
 	ReadAt     *time.Time `json:"readAt,omitempty"`
+	ViewedAt   *time.Time `json:"viewedAt,omitempty"`
+	Status     string     `json:"status"`
+	ResolvedAt *time.Time `json:"resolvedAt,omitempty"`
+	Outcome    string     `json:"outcome,omitempty"`
 	CreatedAt  time.Time  `json:"createdAt"`
 	UpdatedAt  time.Time  `json:"updatedAt"`
 }
+
+const (
+	NotificationCategoryTask      = "task"
+	NotificationCategoryException = "exception"
+	NotificationCategorySecurity  = "security"
+	NotificationStatusPending     = "pending"
+	NotificationStatusResolved    = "resolved"
+	NotificationStatusInvalid     = "invalid"
+)
 
 type Subscription struct {
 	ID                 string             `json:"id"`

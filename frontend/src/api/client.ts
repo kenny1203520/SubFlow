@@ -1,8 +1,8 @@
 ﻿import type { ApiFailure, Envelope } from './types'
 
 export class ApiError extends Error {
-  status:number;code:string;fields?:Record<string,string>;details?:string
-  constructor(status:number,code:string,message:string,fields?:Record<string,string>,details?:string){super(message);this.status=status;this.code=code;this.fields=fields;this.details=details}
+  status:number;code:string;fields?:Record<string,string>;details?:string;requestId?:string
+  constructor(status:number,code:string,message:string,fields?:Record<string,string>,details?:string,requestId?:string){super(message);this.status=status;this.code=code;this.fields=fields;this.details=details;this.requestId=requestId}
 }
 export function bearer(token:string){return token&& !token.toLowerCase().startsWith('bearer ')?`Bearer ${token}`:token}
 export class ApiClient {
@@ -14,7 +14,7 @@ export class ApiClient {
     try{response=await fetch(`/api/subflow/v1${path}`,{...options,headers})}catch{throw new ApiError(0,'network_error','Network request failed')}
     if(response.status===401)this.unauthorized()
     const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as Envelope<T>|ApiFailure
-    if(!response.ok){const failure=body as ApiFailure;throw new ApiError(response.status,failure.error?.code??'request_failed',failure.error?.message??'Request failed',failure.error?.fields,failure.error?.details)}
+    if(!response.ok){const failure=body as ApiFailure;throw new ApiError(response.status,failure.error?.code??'request_failed',failure.error?.message??'Request failed',failure.error?.fields,failure.error?.details,failure.error?.requestId)}
     return body as Envelope<T>
   }
   get<T>(path:string){return this.request<T>(path)}
@@ -34,7 +34,7 @@ export class ApiClient {
         if(xhr.status>=200&&xhr.status<300){resolve(body as Envelope<T>);return}
         const failure=body as ApiFailure
         const fallbackCode=xhr.status===401?'unauthorized':xhr.status===403?'forbidden':'request_failed'
-        reject(new ApiError(xhr.status,failure.error?.code??fallbackCode,failure.error?.message??'Request failed'))
+        reject(new ApiError(xhr.status,failure.error?.code??fallbackCode,failure.error?.message??'Request failed',failure.error?.fields,failure.error?.details,failure.error?.requestId))
       }
       xhr.send(body)
     })
@@ -44,7 +44,7 @@ export class ApiClient {
     let response:Response
     try{response=await fetch(`/api/subflow/v1${path}`,{headers})}catch{throw new ApiError(0,'network_error','Network request failed')}
     if(response.status===401)this.unauthorized()
-    if(!response.ok){const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as ApiFailure;throw new ApiError(response.status,body.error?.code??'request_failed',body.error?.message??'Request failed',body.error?.fields)}
+    if(!response.ok){const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as ApiFailure;throw new ApiError(response.status,body.error?.code??'request_failed',body.error?.message??'Request failed',body.error?.fields,body.error?.details,body.error?.requestId)}
     const disposition=response.headers.get('Content-Disposition')||''
     const match=/filename="?([^"]+)"?/.exec(disposition)
     return {blob:await response.blob(),filename:match?.[1]||'export.csv'}

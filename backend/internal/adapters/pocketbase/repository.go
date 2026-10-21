@@ -381,7 +381,28 @@ func (r *Repository) GetNotification(ctx context.Context, id string) (*domain.No
 	return notificationFrom(rec), nil
 }
 func (r *Repository) ListNotifications(ctx context.Context, userID string, req ports.PageRequest) (ports.Page[domain.Notification], error) {
-	recs, err := listRecords(r.app(ctx), CollectionNotifications, "user={:user}", req, dbx.Params{"user": userID})
+	return r.ListFilteredNotifications(ctx, userID, ports.NotificationQuery{PageRequest: req})
+}
+func (r *Repository) ListFilteredNotifications(ctx context.Context, userID string, query ports.NotificationQuery) (ports.Page[domain.Notification], error) {
+	filter := "user={:user}"
+	params := dbx.Params{"user": userID}
+	if query.Category != "" {
+		filter += " && category={:category}"
+		params["category"] = query.Category
+	}
+	if query.Status == "closed" {
+		filter += " && (status='resolved' || status='invalid')"
+	} else if query.Status != "" {
+		filter += " && status={:status}"
+		params["status"] = query.Status
+	}
+	if query.Read == "unread" {
+		filter += " && read_at = ''"
+	}
+	if query.Read == "read" {
+		filter += " && read_at != ''"
+	}
+	recs, err := listRecords(r.app(ctx), CollectionNotifications, filter, query.PageRequest, params)
 	if err != nil {
 		return ports.Page[domain.Notification]{}, err
 	}
@@ -389,8 +410,11 @@ func (r *Repository) ListNotifications(ctx context.Context, userID string, req p
 	for i, rec := range recs {
 		items[i] = *notificationFrom(rec)
 	}
-	count, _ := countFiltered(r.app(ctx), CollectionNotifications, "user={:user}", dbx.Params{"user": userID})
-	return page(items, req, count), nil
+	count, err := countFiltered(r.app(ctx), CollectionNotifications, filter, params)
+	if err != nil {
+		return ports.Page[domain.Notification]{}, err
+	}
+	return page(items, query.PageRequest, count), nil
 }
 func (r *Repository) MarkNotificationRead(ctx context.Context, id string, when time.Time) error {
 	rec, err := r.app(ctx).FindRecordById(CollectionNotifications, id)
@@ -399,6 +423,113 @@ func (r *Repository) MarkNotificationRead(ctx context.Context, id string, when t
 	}
 	rec.Set("read_at", when)
 	return r.app(ctx).Save(rec)
+}
+func (r *Repository) MarkNotificationUnread(ctx context.Context, userID, id string) error {
+	rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionNotifications, "id={:id} && user={:user}", dbx.Params{"id": id, "user": userID})
+	if err != nil {
+		return mapError(err)
+	}
+	rec.Set("read_at", nil)
+	return r.app(ctx).Save(rec)
+}
+func (r *Repository) MarkAllNotificationsRead(ctx context.Context, userID string, when, before time.Time) error {
+	normalizedBefore, err := types.ParseDateTime(before)
+	if err != nil {
+		return err
+	}
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && read_at = '' && created <= {:before}", "", 0, 0, dbx.Params{"user": userID, "before": normalizedBefore})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range recs {
+		rec.Set("read_at", when)
+		if err := r.app(ctx).Save(rec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (r *Repository) SetNotificationResourceStatus(ctx context.Context, userID, resourceID, status, outcome string, when time.Time) error {
+	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && resource_id={:resource}", "", 0, 0, dbx.Params{"user": userID, "resource": resourceID})
+	if err != nil {
+		return mapError(err)
+	}
+	for _, rec := range recs {
+		rec.Set("status", status)
+		rec.Set("outcome", outcome)
+		if status == domain.NotificationStatusPending {
+			rec.Set("resolved_at", nil)
+		} else {
+			rec.Set("resolved_at", when)
+		}
+		if err := r.app(ctx).Save(rec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func (r *Repository) MarkNotificationsViewed(ctx context.Context, userID string, ids []string, when time.Time) error {
+	for _, id := range ids {
+		rec, err := r.app(ctx).FindFirstRecordByFilter(CollectionNotifications, "id={:id} && user={:user}", dbx.Params{"id": id, "user": userID})
+		if err != nil {
+			continue
+		}
+		if rec.GetDateTime("viewed_at").IsZero() {
+			rec.Set("viewed_at", when)
+			if err = r.app(ctx).Save(rec); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+func (r *Repository) NotificationSummary(ctx context.Context, userID string, now time.Time) (ports.NotificationSummary, error) {
+	params := dbx.Params{"user": userID}
+	var result ports.NotificationSummary
+	var err error
+	if result.Unread, err = countFiltered(r.app(ctx), CollectionNotifications, "user={:user} && read_at = ''", params); err != nil {
+		return result, err
+	}
+	if result.Pending, err = countFiltered(r.app(ctx), CollectionNotifications, "user={:user} && status='pending' && category != 'security'", params); err != nil {
+		return result, err
+	}
+	if result.Unseen, err = countFiltered(r.app(ctx), CollectionNotifications, "user={:user} && viewed_at = ''", params); err != nil {
+		return result, err
+	}
+	return result, nil
+}
+func (r *Repository) GetNotificationPreferences(ctx context.Context, userID string) (domain.NotificationPreferences, error) {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionNotificationPreferences, "user={:user}", "", 1, 0, dbx.Params{"user": userID})
+	if err != nil {
+		return domain.NotificationPreferences{}, mapError(err)
+	}
+	if len(records) == 0 {
+		return domain.DefaultNotificationPreferences(userID), nil
+	}
+	record := records[0]
+	defaults := domain.DefaultNotificationPreferences(userID)
+	return domain.NotificationPreferences{UserID: userID, TasksToast: record.GetBool("tasks_toast"), TasksEmail: record.GetBool("tasks_email"), ExceptionsToast: record.GetBool("exceptions_toast"), ExceptionsEmail: record.GetBool("exceptions_email"), SecurityToast: defaults.SecurityToast, SecurityEmail: defaults.SecurityEmail}, nil
+}
+func (r *Repository) SaveNotificationPreferences(ctx context.Context, value domain.NotificationPreferences) error {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionNotificationPreferences, "user={:user}", "", 1, 0, dbx.Params{"user": value.UserID})
+	if err != nil {
+		return mapError(err)
+	}
+	var record *core.Record
+	if len(records) > 0 {
+		record = records[0]
+	} else {
+		record, err = newRecord(r.app(ctx), CollectionNotificationPreferences)
+		if err != nil {
+			return err
+		}
+	}
+	record.Set("user", value.UserID)
+	record.Set("tasks_toast", value.TasksToast)
+	record.Set("tasks_email", value.TasksEmail)
+	record.Set("exceptions_toast", value.ExceptionsToast)
+	record.Set("exceptions_email", value.ExceptionsEmail)
+	return r.app(ctx).Save(record)
 }
 func (r *Repository) MarkNotificationsReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error {
 	recs, err := r.app(ctx).FindRecordsByFilter(CollectionNotifications, "user={:user} && resource_id={:resource}", "", 0, 0, map[string]any{"user": userID, "resource": resourceID})
@@ -1673,16 +1804,44 @@ func memberTransferFrom(r *core.Record) *domain.MemberTransfer {
 func writeNotification(r *core.Record, value *domain.Notification) {
 	r.Set("user", value.UserID)
 	r.Set("type", value.Type)
+	r.Set("category", value.Category)
+	r.Set("event_key", value.EventKey)
+	r.Set("title", value.Title)
+	r.Set("message", value.Message)
 	r.Set("group", value.GroupID)
 	r.Set("resource_id", value.ResourceID)
+	r.Set("status", value.Status)
+	r.Set("outcome", value.Outcome)
 	if value.ReadAt != nil {
 		r.Set("read_at", *value.ReadAt)
 	}
+	if value.ViewedAt != nil {
+		r.Set("viewed_at", *value.ViewedAt)
+	}
+	if value.ResolvedAt != nil {
+		r.Set("resolved_at", *value.ResolvedAt)
+	}
 }
 func notificationFrom(r *core.Record) *domain.Notification {
-	value := &domain.Notification{ID: r.Id, UserID: r.GetString("user"), Type: r.GetString("type"), GroupID: r.GetString("group"), ResourceID: r.GetString("resource_id")}
+	value := &domain.Notification{ID: r.Id, UserID: r.GetString("user"), Type: r.GetString("type"), Category: r.GetString("category"), EventKey: r.GetString("event_key"), Title: r.GetString("title"), Message: r.GetString("message"), GroupID: r.GetString("group"), ResourceID: r.GetString("resource_id"), Status: r.GetString("status"), Outcome: r.GetString("outcome")}
 	if read := r.GetDateTime("read_at").Time(); !read.IsZero() {
 		value.ReadAt = &read
+	}
+	if viewed := r.GetDateTime("viewed_at").Time(); !viewed.IsZero() {
+		value.ViewedAt = &viewed
+	}
+	if resolved := r.GetDateTime("resolved_at").Time(); !resolved.IsZero() {
+		value.ResolvedAt = &resolved
+	}
+	if value.Category == "" {
+		value.Category = domain.NotificationCategoryTask
+	}
+	if value.Status == "" {
+		if value.ReadAt != nil {
+			value.Status = domain.NotificationStatusResolved
+		} else {
+			value.Status = domain.NotificationStatusPending
+		}
 	}
 	hydrateTimes(r, &value.CreatedAt, &value.UpdatedAt)
 	return value

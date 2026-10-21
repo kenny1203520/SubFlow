@@ -19,6 +19,7 @@ import ShareView from './views/ShareView.vue'
 import ShareManagerView from './views/ShareManagerView.vue'
 import PersonalLedgerView from './views/PersonalLedgerView.vue'
 import GroupLedgerView from './views/GroupLedgerView.vue'
+import NotificationCenterView from './views/NotificationCenterView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
@@ -53,6 +54,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/subscriptions', redirect: { name: 'personal-subscriptions' } },
   { path: '/expenses', redirect: { name: 'personal-expenses' } },
   { path: '/profile', name: 'profile', component: ProfileView },
+  { path: '/notifications', name: 'notifications', component: NotificationCenterView },
   { path: '/about', name: 'about', component: AboutView },
   { path: '/admin', name: 'admin', component: AdminView },
   { path: '/admin/:section(settings|users|roles|audit)', name: 'admin-section', component: AdminView },

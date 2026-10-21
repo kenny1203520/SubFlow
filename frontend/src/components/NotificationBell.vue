@@ -1,41 +1,55 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import BaseDropdown from './BaseDropdown.vue'
 import { useI18n } from '../i18n'
 import { useWorkspaceStore } from '../stores/workspace'
+import { useNotificationsStore } from '../stores/notifications'
 
-const workspace=useWorkspaceStore(),router=useRouter(),{tr,formatDate}=useI18n()
+const workspace=useWorkspaceStore(),notifications=useNotificationsStore(),router=useRouter(),{tr,formatDate}=useI18n()
 const open=ref(false)
-const unread=computed(()=>workspace.notifications?.filter(item=>!item.readAt).length||0)
 const invitationFor=(id:string)=>workspace.pendingInvitations?.find(item=>item.id===id)
-async function accept(id:string){const groupId=invitationFor(id)?.groupId;await workspace.acceptPendingInvitation(id);open.value=false;if(groupId)await router.push(`/groups/${groupId}/overview`)}
-async function decline(id:string){await workspace.declinePendingInvitation(id)}
-function opened(){void workspace.loadInvitationInbox?.();nextTick()}
+async function accept(id:string){const groupId=invitationFor(id)?.groupId;await workspace.acceptPendingInvitation(id);await workspace.loadInvitationInbox();await notifications.refresh();open.value=false;if(groupId)await router.push(`/groups/${groupId}/overview`)}
+async function decline(id:string){await workspace.declinePendingInvitation(id);await workspace.loadInvitationInbox();await notifications.refresh()}
+async function opened(){notifications.filter='all';notifications.category='';if(await notifications.load(1))await notifications.markVisibleViewed()}
+function notificationTitle(note:{type:string;outcome?:string}){if(note.outcome==='accepted')return tr('notificationAccepted');if(note.outcome==='declined')return tr('notificationDeclined');if(note.outcome==='revoked')return tr('notificationRevoked');if(note.outcome==='expired')return tr('notificationExpired');return note.type==='group_invitation'?tr('pendingInvitations'):tr(note.type)}
+function sourcePath(type:string,groupId?:string){if(!groupId)return '';if(type==='ownership_transfer')return `/groups/${groupId}/settings`;if(type==='member_transfer')return `/groups/${groupId}/members`;if(type==='subscription_post_failed')return `/groups/${groupId}/subscriptions`;return ''}
+onMounted(()=>{void notifications.refreshSummary();void notifications.loadPreferences()})
 </script>
+
 <template>
   <BaseDropdown v-model="open" class="notification-bell" :panel-label="tr('notifications')" panel-role="dialog" placement="bottom-end" mobile-sheet @opened="opened">
     <template #trigger="{toggle}">
       <button type="button" class="bell-trigger" :aria-label="tr('notifications')" :aria-expanded="open" @click="toggle">
-        <span aria-hidden="true">♧</span><span v-if="unread" class="bell-count">{{unread}}</span>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4" /></svg>
+        <span v-if="notifications.hasNew" class="bell-count new" aria-hidden="true">!</span>
+        <span v-else-if="notifications.pendingCount" class="bell-count" aria-hidden="true">{{notifications.pendingCount>99?'99+':notifications.pendingCount}}</span>
+        <span class="sr-only">{{ notifications.hasNew ? tr('newNotification') : tr('pendingCount',{count:notifications.pendingCount}) }}</span>
       </button>
     </template>
     <template #default="{close}">
       <section class="notification-menu">
-        <header><strong>{{tr('notifications')}}</strong><span v-if="unread" class="count">{{unread}}</span></header>
-        <p v-if="!workspace.notifications?.length" class="empty-inline">{{tr('noInvitations')}}</p>
-        <article v-for="note in workspace.notifications||[]" :key="note.id" class="notification-item" :class="{unread:!note.readAt}">
-          <template v-if="note.type==='group_invitation' && invitationFor(note.resourceId||'')">
-            <strong>{{invitationFor(note.resourceId||'')?.groupInfo?.name||tr('pendingInvitations')}}</strong>
-            <small>{{tr('pendingInvitations')}} · {{formatDate(note.createdAt)}}</small>
-            <div class="notification-actions"><button type="button" class="button primary" @click="accept(note.resourceId||'');close()">{{tr('acceptInvitation')}}</button><button type="button" class="button ghost" @click="decline(note.resourceId||'')">{{tr('declineInvitation')}}</button></div>
-          </template>
-          <template v-else><strong>{{tr('pendingInvitations')}}</strong><small>{{formatDate(note.createdAt)}}</small></template>
-        </article>
+        <header><strong>{{tr('notifications')}}</strong><span v-if="notifications.pendingCount" class="count">{{notifications.pendingCount}}</span></header>
+        <p v-if="notifications.error" class="notice danger" role="alert">{{tr('notificationLoadFailed')}} <button type="button" @click="opened">{{tr('retry')}}</button></p>
+        <p v-else-if="!notifications.items.length" class="empty-inline">{{tr('notificationEmpty')}}</p>
+        <ul v-else class="notification-items" aria-label="Notifications">
+          <li v-for="note in notifications.items.slice(0,5)" :key="note.id" class="notification-item" :class="{unread:!note.readAt}">
+            <strong>{{notificationTitle(note)}}</strong>
+            <small>{{formatDate(note.createdAt)}} / {{tr(note.status==='pending'?'notificationPending':note.status==='invalid'?'notificationExpired':'notificationResolved')}}</small>
+            <RouterLink v-if="sourcePath(note.type,note.groupId)" :to="sourcePath(note.type,note.groupId)" @click="close">{{tr('notificationOpenSource')}}</RouterLink>
+            <div v-if="note.type==='group_invitation' && note.status==='pending' && invitationFor(note.resourceId||'')" class="notification-actions">
+              <button type="button" class="button primary" @click="accept(note.resourceId||'');close()">{{tr('acceptInvitation')}}</button>
+              <button type="button" class="button ghost" @click="decline(note.resourceId||'')">{{tr('declineInvitation')}}</button>
+            </div>
+            <button v-if="!note.readAt" type="button" class="mark-read" @click="notifications.setRead(note.id,true)">{{tr('notificationRead')}}</button>
+          </li>
+        </ul>
+        <footer><RouterLink :to="{name:'notifications'}" @click="close">{{tr('notificationViewAll')}}</RouterLink><button v-if="notifications.summary.unread" type="button" @click="notifications.markAllRead">{{tr('notificationMarkAllRead')}}</button></footer>
       </section>
     </template>
   </BaseDropdown>
 </template>
+
 <style scoped>
-.notification-bell{position:relative}.bell-trigger{position:relative;display:grid;place-items:center;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);color:var(--ink);font-size:18px}.bell-trigger:hover{border-color:var(--brand);color:var(--brand)}.bell-count,.count{display:grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--brand);color:white;font-size:11px}.bell-count{position:absolute;right:-5px;top:-5px}.notification-menu{display:grid;gap:.6rem;width:min(23rem,calc(100vw - 2rem));padding:.8rem}.notification-menu header{display:flex;justify-content:space-between;align-items:center}.notification-item{display:grid;gap:.3rem;padding:.7rem;border:1px solid var(--line);border-radius:.65rem}.notification-item.unread{border-color:var(--brand)}.notification-item small{color:var(--muted)}.notification-actions{display:flex;gap:.45rem;margin-top:.25rem}.button{min-height:34px;padding:.35rem .65rem;border-radius:.5rem;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}.button.primary{background:var(--brand);border-color:var(--brand);color:white}.button.ghost{background:transparent}
+.notification-bell{position:relative}.bell-trigger{position:relative;display:grid;place-items:center;width:42px;height:42px;border:1px solid var(--line-strong);border-radius:10px;background:var(--surface);color:var(--ink);cursor:pointer}.bell-trigger svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.bell-trigger:hover{border-color:var(--brand);color:var(--brand)}.bell-count,.count{display:grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--brand);color:white;font-size:11px}.bell-count{position:absolute;right:-5px;top:-5px}.bell-count.new{font-size:14px;font-weight:800}.notification-menu{display:grid;gap:.6rem;width:min(25rem,calc(100vw - 2rem));padding:.8rem}.notification-menu header,.notification-menu footer{display:flex;justify-content:space-between;align-items:center;gap:.75rem}.notification-items{display:grid;gap:.5rem;padding:0;margin:0;list-style:none}.notification-item{display:grid;gap:.3rem;padding:.7rem;border:1px solid var(--line);border-radius:.65rem}.notification-item.unread{border-inline-start:3px solid var(--brand)}.notification-item small{color:var(--muted)}.notification-item button,.notification-menu footer button{justify-self:start;background:none;border:0;color:var(--brand);text-decoration:underline;cursor:pointer}.notification-actions{display:flex;gap:.45rem;margin-top:.25rem}.button{min-height:34px;padding:.35rem .65rem;border-radius:.5rem;border:1px solid var(--line-strong);background:var(--surface);color:var(--ink)}.button.primary{background:var(--brand);border-color:var(--brand);color:white}.button.ghost{background:transparent}.notification-menu :focus-visible{outline:2px solid var(--brand);outline-offset:2px}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 </style>

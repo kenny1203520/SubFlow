@@ -123,11 +123,35 @@ func (r *NotificationRepo) Get(ctx context.Context, id string) (*domain.Notifica
 func (r *NotificationRepo) ListForUser(ctx context.Context, id string, req ports.PageRequest) (ports.Page[domain.Notification], error) {
 	return r.ListNotifications(ctx, id, req)
 }
+func (r *NotificationRepo) ListFiltered(ctx context.Context, id string, req ports.NotificationQuery) (ports.Page[domain.Notification], error) {
+	return r.ListFilteredNotifications(ctx, id, req)
+}
 func (r *NotificationRepo) MarkRead(ctx context.Context, id string, when time.Time) error {
 	return r.MarkNotificationRead(ctx, id, when)
 }
+func (r *NotificationRepo) MarkReadAll(ctx context.Context, userID string, when, before time.Time) error {
+	return r.MarkAllNotificationsRead(ctx, userID, when, before)
+}
+func (r *NotificationRepo) MarkUnread(ctx context.Context, userID, id string) error {
+	return r.MarkNotificationUnread(ctx, userID, id)
+}
 func (r *NotificationRepo) MarkReadForResource(ctx context.Context, userID, resourceID string, when time.Time) error {
 	return r.MarkNotificationsReadForResource(ctx, userID, resourceID, when)
+}
+func (r *NotificationRepo) SetResourceStatus(ctx context.Context, userID, resourceID, status, outcome string, when time.Time) error {
+	return r.SetNotificationResourceStatus(ctx, userID, resourceID, status, outcome, when)
+}
+func (r *NotificationRepo) MarkViewed(ctx context.Context, userID string, ids []string, when time.Time) error {
+	return r.MarkNotificationsViewed(ctx, userID, ids, when)
+}
+func (r *NotificationRepo) Summary(ctx context.Context, userID string, now time.Time) (ports.NotificationSummary, error) {
+	return r.NotificationSummary(ctx, userID, now)
+}
+func (r *NotificationRepo) GetPreferences(ctx context.Context, userID string) (domain.NotificationPreferences, error) {
+	return r.GetNotificationPreferences(ctx, userID)
+}
+func (r *NotificationRepo) SavePreferences(ctx context.Context, value domain.NotificationPreferences) error {
+	return r.SaveNotificationPreferences(ctx, value)
 }
 func (r *NotificationRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
 	return r.ReassignNotificationUser(ctx, groupID, fromUserID, toUserID)
