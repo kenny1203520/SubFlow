@@ -80,6 +80,14 @@ Tag 推上去之後 workflow 才會啟動。先推分支、確認 CI 沒問題�
 
 tag 含有 `-`（例如 `v0.2.0-rc.1`）時會被視為 pre-release，且不會更新 `latest`。
 
+## Alpha 預發布
+
+Alpha 使用 SemVer 預發布識別碼，例如 `0.2.0-alpha.1`（tag 為 `v0.2.0-alpha.1`）。序號以獨立的數字識別碼遞增，如 `alpha.2`、`alpha.10`，讓 SemVer 依數值順序比較。
+
+依 Git Flow 從最新 `develop` 建立 `release/<version>`，更新 `frontend/package.json`、`frontend/package-lock.json` 與 `CHANGELOG.md`。確認完整驗證和發布 workflow 通過後，在 release 分支的已驗證提交建立 annotated tag；tag 推送會建立 GitHub Pre-release 並發布對應版本的容器映像。
+
+Alpha 發布不合入 `master`。發布成功後，以 `--no-ff` 將 release 分支合回 `develop`，確認整合提交已推送後即可移除 release 分支。含連字號的 tag 不會更新 `latest`；例如 `v0.2.0-alpha.1` 只發布版本專屬映像標籤。
+
 ## 發布後
 
 ```bash
