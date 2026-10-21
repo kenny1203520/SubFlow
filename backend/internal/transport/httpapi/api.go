@@ -862,7 +862,7 @@ func (a *API) changeCurrency(e *core.RequestEvent) error {
 	return ok(e, http.StatusOK, value, nil)
 }
 
-var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "incomes": {"received_on": true, "-received_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}, "audits": {"created": true, "-created": true}}
+var sorts = map[string]map[string]bool{"groups": {"name": true, "-name": true, "created": true, "-created": true}, "members": {"created": true, "-created": true}, "subscriptions": {"name": true, "-name": true, "next_billing": true, "-next_billing": true, "created": true, "-created": true}, "expenses": {"incurred_on": true, "-incurred_on": true, "created": true, "-created": true}, "incomes": {"received_on": true, "-received_on": true, "created": true, "-created": true}, "settlements": {"settled_on": true, "-settled_on": true, "created": true, "-created": true}, "audits": {"created": true, "-created": true}, "notification_emails": {"created": true, "-created": true}}
 
 func pageRequest(e *core.RequestEvent, resource string) (ports.PageRequest, error) {
 	q := e.Request.URL.Query()

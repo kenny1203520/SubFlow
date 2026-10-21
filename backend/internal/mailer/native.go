@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/mail"
+	"strings"
 
 	"github.com/pocketbase/pocketbase/core"
 	pbmailer "github.com/pocketbase/pocketbase/tools/mailer"
@@ -25,6 +26,24 @@ var invitationLogoPNG []byte
 type Native struct{ App core.App }
 
 func (m *Native) Configured() bool { return m.App.Settings().SMTP.Enabled }
+
+func (m *Native) SendNotification(ctx context.Context, recipient, subject, body string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !m.Configured() {
+		return fmt.Errorf("smtp is not configured")
+	}
+	settings := m.App.Settings()
+	senderName := settings.Meta.SenderName
+	if senderName == "" {
+		senderName = "SubFlow"
+	}
+	text := body + "\r\n\r\n" + strings.TrimRight(settings.Meta.AppURL, "/")
+	html := "<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#16161a\"><h1>" + escapeHTML(subject) + "</h1><p>" + strings.ReplaceAll(escapeHTML(body), "\n", "<br>") + "</p><p><a href=\"" + escapeHTML(strings.TrimRight(settings.Meta.AppURL, "/")) + "\">Open SubFlow</a></p></body></html>"
+	message := &pbmailer.Message{From: mail.Address{Name: senderName, Address: settings.Meta.SenderAddress}, To: []mail.Address{{Address: recipient}}, Subject: subject, HTML: html, Text: text}
+	return m.App.NewMailClient().Send(message)
+}
 
 // The layout (white background, #16161a text, Source Sans Pro stack, black
 // rounded button) mirrors PocketBase's own built-in auth email templates

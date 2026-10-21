@@ -15,6 +15,7 @@ type InvitationRepo struct{ *Repository }
 type OwnershipTransferRepo struct{ *Repository }
 type MemberTransferRepo struct{ *Repository }
 type NotificationRepo struct{ *Repository }
+type NotificationEmailRepo struct{ *Repository }
 type SubscriptionRepo struct{ *Repository }
 type ExpenseRepo struct{ *Repository }
 type IncomeRepo struct{ *Repository }
@@ -37,6 +38,7 @@ type Stores struct {
 	OwnershipTransfers *OwnershipTransferRepo
 	MemberTransfers    *MemberTransferRepo
 	Notifications      *NotificationRepo
+	NotificationEmails *NotificationEmailRepo
 	Subscriptions      *SubscriptionRepo
 	Expenses           *ExpenseRepo
 	Incomes            *IncomeRepo
@@ -56,7 +58,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, RecurringIncomes: &RecurringIncomeRepo{base}, Settlements: &SettlementRepo{base}, Attachments: &AttachmentRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
+	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, NotificationEmails: &NotificationEmailRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, RecurringIncomes: &RecurringIncomeRepo{base}, Settlements: &SettlementRepo{base}, Attachments: &AttachmentRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -158,6 +160,21 @@ func (r *NotificationRepo) GetPreferences(ctx context.Context, userID string) (d
 }
 func (r *NotificationRepo) SavePreferences(ctx context.Context, value domain.NotificationPreferences) error {
 	return r.SaveNotificationPreferences(ctx, value)
+}
+func (r *NotificationEmailRepo) Enqueue(ctx context.Context, value *domain.NotificationEmailJob) error {
+	return r.EnqueueNotificationEmail(ctx, value)
+}
+func (r *NotificationEmailRepo) ClaimDue(ctx context.Context, now time.Time, limit int) ([]domain.NotificationEmailJob, error) {
+	return r.ClaimDueNotificationEmails(ctx, now, limit)
+}
+func (r *NotificationEmailRepo) Update(ctx context.Context, value *domain.NotificationEmailJob) error {
+	return r.UpdateNotificationEmail(ctx, value)
+}
+func (r *NotificationEmailRepo) ListFailed(ctx context.Context, req ports.PageRequest) (ports.Page[domain.NotificationEmailJob], error) {
+	return r.ListFailedNotificationEmails(ctx, req)
+}
+func (r *NotificationEmailRepo) Retry(ctx context.Context, id string, now time.Time) error {
+	return r.RetryNotificationEmail(ctx, id, now)
 }
 func (r *NotificationRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
 	return r.ReassignNotificationUser(ctx, groupID, fromUserID, toUserID)

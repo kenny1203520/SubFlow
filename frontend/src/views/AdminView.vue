@@ -26,6 +26,10 @@ const api = new ApiClient(() => auth.token, auth.logout)
 const roles = ref<AccessRole[]>([])
 const users = ref<User[]>([])
 const logs = ref<AuditLog[]>([])
+type FailedNotificationEmail = { id: string; notificationId: string; status: string; attempts: number; lastError?: string; createdAt: string }
+const failedEmails = ref<FailedNotificationEmail[]>([])
+const failedEmailPage = ref(1)
+const failedEmailMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
 const logsMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
 const auditLoading = ref(false)
 const auditError = ref('')
@@ -76,10 +80,22 @@ async function loadLogs() {
   }
 }
 async function loadSettings() { if (can('system.settings.manage')) settings.value = (await api.get<typeof settings.value>('/system/settings')).data }
+async function loadFailedEmails() {
+  if (!can('system.settings.manage') || section.value !== 'notification-emails') return
+  const result = await api.get<FailedNotificationEmail[]>(`/system/notification-emails/failed?page=${failedEmailPage.value}&perPage=25&sort=-created`)
+  failedEmails.value = result.data
+  failedEmailMeta.value = result.meta || { page:failedEmailPage.value, perPage:25, totalItems:result.data.length, totalPages:1 }
+}
+async function retryFailedEmail(job: FailedNotificationEmail) {
+  try {
+    await api.post(`/system/notification-emails/${job.id}/retry`, {})
+    await loadFailedEmails()
+  } catch { error.value = tr('requestFailed') }
+}
 async function load() {
   loading.value = true
   error.value = ''
-  try { await Promise.all([loadRoles(), loadUsers(), loadLogs(), loadSettings()]) } catch { error.value = tr('requestFailed') } finally { loading.value = false }
+  try { await Promise.all([loadRoles(), loadUsers(), loadLogs(), loadSettings(), loadFailedEmails()]) } catch { error.value = tr('requestFailed') } finally { loading.value = false }
 }
 function updateCaptchaProvider(value: string) {
   settings.value.captchaProvider = value
@@ -150,6 +166,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       <RouterLink v-if="can('system.users.assign')" :to="{ name: 'admin-section', params: { section: 'users' } }">{{ tr('userManagement') }}</RouterLink>
       <RouterLink v-if="can('system.roles.manage')" :to="{ name: 'admin-section', params: { section: 'roles' } }">{{ tr('roleManagement') }}</RouterLink>
       <RouterLink v-if="can('system.audit.read')" :to="{ name: 'admin-section', params: { section: 'audit' } }">{{ tr('auditLogs') }}</RouterLink>
+      <RouterLink v-if="can('system.settings.manage')" :to="{ name: 'admin-section', params: { section: 'notification-emails' } }">{{ tr('failedNotificationEmails') }}</RouterLink>
     </nav>
     <p v-if="error" class="notice danger">{{ error }}</p>
     <p v-if="loading" class="notice">{{ tr('processing') }}</p>
@@ -206,6 +223,19 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
         </article>
         <p v-if="!users.length" class="empty-inline">{{ tr('noUsers') }}</p>
       </div>
+    </section>
+
+    <section v-else-if="section === 'notification-emails' && can('system.settings.manage')" class="card admin-form">
+      <div class="section-heading"><h2>{{ tr('failedNotificationEmails') }}</h2><button class="ghost" @click="loadFailedEmails">{{ tr('refresh') }}</button></div>
+      <p class="field-help">{{ tr('failedNotificationEmailsHelp') }}</p>
+      <div class="data-list">
+        <article v-for="job in failedEmails" :key="job.id" class="data-row">
+          <div class="grow"><strong>{{ tr('notificationDeliveryFailed') }}</strong><small>{{ tr('deliveryAttempts', { count: job.attempts }) }} · {{ tr('deliveryErrorCode') }}: {{ job.lastError || 'unknown' }}</small></div>
+          <button class="ghost" @click="retryFailedEmail(job)">{{ tr('retry') }}</button>
+        </article>
+        <p v-if="!failedEmails.length" class="empty-inline">{{ tr('noFailedNotificationEmails') }}</p>
+      </div>
+      <div v-if="failedEmailMeta.totalPages > 1" class="form-actions"><button class="ghost" :disabled="failedEmailPage <= 1" @click="failedEmailPage--; loadFailedEmails()">{{ tr('previous') }}</button><span>{{ failedEmailPage }} / {{ failedEmailMeta.totalPages }}</span><button class="ghost" :disabled="failedEmailPage >= failedEmailMeta.totalPages" @click="failedEmailPage++; loadFailedEmails()">{{ tr('next') }}</button></div>
     </section>
 
     <section v-else-if="section === 'roles' && can('system.roles.manage')" class="admin-stack">

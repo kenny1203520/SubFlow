@@ -70,10 +70,36 @@ test('date ranges round-trip in supported timezones and narrow screens', async (
     await page.locator('[name="endsOn"]').fill('2026-08-31')
     const shareName = `Date check ${timezoneId} ${browserName}`
     await page.getByRole('textbox', { name: 'Name', exact: true }).fill(shareName)
+    await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async () => { throw new Error('clipboard permission denied') } },
+    }))
     await page.locator('form').getByRole('button', { name: 'Save settings' }).click()
     await expect(page.locator('.share-item').getByRole('heading', { name: shareName, exact: true })).toBeVisible()
-    const widths = await page.evaluate(() => ({ body: document.body.scrollWidth, viewport: window.innerWidth }))
-    expect(widths.body).toBeLessThanOrEqual(widths.viewport)
+    await expect(page.getByText(/Share created\. Copy this link manually:/)).toBeVisible()
+    const widths = await page.evaluate(() => ({
+      body: document.body.scrollWidth,
+      document: document.documentElement.scrollWidth,
+      viewport: window.innerWidth,
+      overflowing: [...document.querySelectorAll<HTMLElement>('body *')]
+        .map(element => {
+          const rect = element.getBoundingClientRect()
+          return {
+            tag: element.tagName.toLowerCase(),
+            className: typeof element.className === 'string' ? element.className : '',
+            text: element.innerText?.slice(0, 80) || '',
+            left: Math.round(rect.left),
+            right: Math.round(rect.right),
+            width: Math.round(rect.width),
+            scrollWidth: element.scrollWidth,
+            clientWidth: element.clientWidth,
+          }
+        })
+        .filter(element => element.right > window.innerWidth + 1 || element.left < -1)
+        .sort((left, right) => right.right - left.right)
+        .slice(0, 10),
+    }))
+    expect(widths.body, JSON.stringify(widths, null, 2)).toBeLessThanOrEqual(widths.viewport)
     await context.close()
   }
 })

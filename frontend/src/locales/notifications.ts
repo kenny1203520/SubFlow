@@ -1,5 +1,7 @@
 export const notificationMessages = {
   'zh-TW': {
+    password_changed:'帳號密碼已變更',
+    system_role_changed:'系統角色已變更',
     notificationCenter:'通知中心', notificationAll:'全部', notificationUnread:'未讀', notificationPending:'待處理', notificationResolved:'已結束',
     notificationTask:'待辦', notificationException:'異常', notificationSecurity:'安全', notificationAccepted:'已接受', notificationDeclined:'已婉拒', notificationRevoked:'已撤銷', notificationExpired:'已過期',
     notificationRead:'標記已讀', notificationUnreadAction:'標記未讀', notificationMarkAllRead:'全部標記已讀', notificationViewAll:'查看全部通知', notificationEmpty:'目前沒有通知', notificationLoadFailed:'通知載入失敗',
@@ -8,6 +10,8 @@ export const notificationMessages = {
     requestId:'追蹤編號', copyErrorReference:'複製追蹤編號', notificationOpenSource:'開啟相關項目', group_invitation:'群組邀請', ownership_transfer:'群組擁有權移轉確認', member_transfer:'成員移轉確認', subscription_post_failed:'週期扣款需要處理', recurring_income_post_failed:'週期收入入帳需要處理',
   },
   en: {
+    password_changed:'Your password changed',
+    system_role_changed:'Your system role changed',
     notificationCenter:'Notification center', notificationAll:'All', notificationUnread:'Unread', notificationPending:'Needs action', notificationResolved:'Completed',
     notificationTask:'Tasks', notificationException:'Issues', notificationSecurity:'Security', notificationAccepted:'Accepted', notificationDeclined:'Declined', notificationRevoked:'Revoked', notificationExpired:'Expired',
     notificationRead:'Mark as read', notificationUnreadAction:'Mark as unread', notificationMarkAllRead:'Mark all as read', notificationViewAll:'View all notifications', notificationEmpty:'You are all caught up', notificationLoadFailed:'Could not load notifications',

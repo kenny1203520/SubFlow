@@ -37,6 +37,8 @@ func (a *CollaborationAPI) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/notifications/read-all", a.notificationsReadAll).Bind(bind)
 	e.Router.POST("/api/subflow/v1/notifications/{id}/read", a.readNotification).Bind(bind)
 	e.Router.POST("/api/subflow/v1/notifications/{id}/unread", a.unreadNotification).Bind(bind)
+	e.Router.GET("/api/subflow/v1/system/notification-emails/failed", a.failedNotificationEmails).Bind(bind)
+	e.Router.POST("/api/subflow/v1/system/notification-emails/{id}/retry", a.retryNotificationEmail).Bind(bind)
 	e.Router.GET("/api/subflow/v1/events", a.events).Bind(bind)
 }
 func (a *CollaborationAPI) list(e *core.RequestEvent) error {
@@ -201,6 +203,23 @@ func (a *CollaborationAPI) unreadNotification(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, map[string]bool{"read": false}, nil)
+}
+func (a *CollaborationAPI) failedNotificationEmails(e *core.RequestEvent) error {
+	p, err := pageRequest(e, "notification_emails")
+	if err != nil {
+		return fail(e, err)
+	}
+	v, err := a.Service.Base.ListFailedNotificationEmails(e.Request.Context(), authID(e), p)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, v.Items, pageMeta(v))
+}
+func (a *CollaborationAPI) retryNotificationEmail(e *core.RequestEvent) error {
+	if err := a.Service.Base.RetryNotificationEmail(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]bool{"queued": true}, nil)
 }
 func (a *CollaborationAPI) events(e *core.RequestEvent) error {
 	group := e.Request.URL.Query().Get("groupId")

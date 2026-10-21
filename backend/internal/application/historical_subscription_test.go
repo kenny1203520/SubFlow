@@ -17,6 +17,7 @@ import (
 )
 
 type historicalFixture struct {
+	app          core.App
 	service      *application.Service
 	stores       adapters.Stores
 	group        *domain.Group
@@ -106,6 +107,7 @@ func newHistoricalFixtureTZ(t *testing.T, timezone string) *historicalFixture {
 		t.Fatal(err)
 	}
 	return &historicalFixture{
+		app:          app,
 		service:      service,
 		stores:       stores,
 		group:        group,

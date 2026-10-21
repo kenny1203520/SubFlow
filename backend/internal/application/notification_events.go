@@ -12,7 +12,29 @@ func (s *Service) createNotification(ctx context.Context, userID, category, even
 	if err := s.Stores.Notifications.Create(ctx, note); err != nil {
 		return nil, err
 	}
+	if err := s.queueNotificationEmail(ctx, note); err != nil {
+		return nil, err
+	}
 	return note, nil
+}
+
+func (s *Service) queueNotificationEmail(ctx context.Context, note *domain.Notification) error {
+	preferences, err := s.Stores.Notifications.GetPreferences(ctx, note.UserID)
+	if err != nil {
+		return err
+	}
+	enabled := note.Category == domain.NotificationCategorySecurity
+	switch note.Category {
+	case domain.NotificationCategoryTask:
+		enabled = preferences.TasksEmail
+	case domain.NotificationCategoryException:
+		enabled = preferences.ExceptionsEmail
+	}
+	if !enabled {
+		return nil
+	}
+	now := s.now()
+	return s.Stores.NotificationEmails.Enqueue(ctx, &domain.NotificationEmailJob{NotificationID: note.ID, UserID: note.UserID, Status: domain.NotificationEmailQueued, NextAttemptAt: &now})
 }
 
 func (s *Service) publishNotification(ctx context.Context, note *domain.Notification, kind string) {
