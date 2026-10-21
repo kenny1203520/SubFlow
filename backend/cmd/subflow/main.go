@@ -95,11 +95,11 @@ func main() {
 		})
 		app.OnRecordConfirmPasswordResetRequest("users").BindFunc(func(event *core.RecordConfirmPasswordResetRequestEvent) error {
 			userID := event.Record.Id
-			requestApp := event.RequestEvent.App
+			requestApp := event.App
 			var notice *domain.Notification
 			if err := requestApp.RunInTransaction(func(txApp core.App) error {
-				event.RequestEvent.App = txApp
-				defer func() { event.RequestEvent.App = requestApp }()
+				event.App = txApp
+				defer func() { event.App = requestApp }()
 				if err := event.Next(); err != nil {
 					return err
 				}
