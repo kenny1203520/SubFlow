@@ -337,6 +337,19 @@ describe('workspace store run()/retryLast() error wrapper', () => {
 })
 
 describe('workspace all-scope personal pages', () => {
+  it('normalizes an empty income response to a safe empty list', async () => {
+    mockFetch([
+      ['/subscriptions?scope=all&perPage=25', () => envelope([])],
+      ['/expenses?scope=all&perPage=25', () => envelope([])],
+      ['/incomes?scope=all&perPage=25', () => envelope(null)],
+      ['/dashboard?scope=all', () => envelope({})],
+    ])
+    const workspace = useWorkspaceStore()
+    await workspace.refreshPersonal()
+    expect(workspace.personalIncomes).toEqual([])
+    expect(workspace.personalIncomesMeta.totalItems).toBe(0)
+  })
+
   it('requests scope=all for personal expense, income, and subscription pages', async () => {
     const fetchMock = mockFetch([
       ['/expenses?page=2&perPage=10&scope=all', () => envelope([])],

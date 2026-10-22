@@ -11,6 +11,7 @@ import * as outbox from '../offline/outbox'
 import type { OutboxEntry, OutboxKind, OutboxScope } from '../offline/outbox'
 import * as snapshotStore from '../offline/snapshot'
 import { defaultPageSize } from '../pageSize'
+import { toDateInput } from '../dateInput'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'> & Partial<Pick<Group, 'attachmentMaxSize'|'attachmentMaxCount'|'attachmentLimitsInherited'>>
 // startsOn is optional so an update can omit it when the user did not touch
@@ -309,10 +310,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const canReadSettlements = !accessLoaded || hasGroupPermission('ledger.settlements.read')
     await Promise.all([
       canViewGroup ? load('members', () => api.get<Membership[]>(`/groups/${id}/members?perPage=100`).then(value => value.data), value => { members.value = value }, cached?.members) : Promise.resolve(),
-      canReadSubscriptions ? load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=${perPage}`), value => { subscriptions.value = value.data; subscriptionsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.subscriptions ? { data: cached.subscriptions } : undefined) : Promise.resolve(),
-      canReadExpenses ? load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=${perPage}`), value => { expenses.value = value.data; expensesMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.expenses ? { data: cached.expenses } : undefined) : Promise.resolve(),
-      canReadIncomes ? load('incomes', () => api.get<Income[]>(`/groups/${id}/incomes?perPage=${perPage}`), value => { groupIncomes.value = value.data; groupIncomesMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.incomes ? { data: cached.incomes } : undefined) : Promise.resolve(),
-      canReadSettlements ? load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=${perPage}`), value => { settlements.value = value.data; settlementsMeta.value = value.meta || { page:1, perPage, totalItems:value.data.length, totalPages:1 } }, cached?.settlements ? { data: cached.settlements } : undefined) : Promise.resolve(),
+      canReadSubscriptions ? load('subscriptions', () => api.get<Subscription[]>(`/groups/${id}/subscriptions?perPage=${perPage}`), value => { const rows = value.data || []; subscriptions.value = rows; subscriptionsMeta.value = value.meta || { page:1, perPage, totalItems:rows.length, totalPages:1 } }, cached?.subscriptions ? { data: cached.subscriptions } : undefined) : Promise.resolve(),
+      canReadExpenses ? load('expenses', () => api.get<Expense[]>(`/groups/${id}/expenses?perPage=${perPage}`), value => { const rows = value.data || []; expenses.value = rows; expensesMeta.value = value.meta || { page:1, perPage, totalItems:rows.length, totalPages:1 } }, cached?.expenses ? { data: cached.expenses } : undefined) : Promise.resolve(),
+      canReadIncomes ? load('incomes', () => api.get<Income[]>(`/groups/${id}/incomes?perPage=${perPage}`), value => { const rows = value.data || []; groupIncomes.value = rows; groupIncomesMeta.value = value.meta || { page:1, perPage, totalItems:rows.length, totalPages:1 } }, cached?.incomes ? { data: cached.incomes } : undefined) : Promise.resolve(),
+      canReadSettlements ? load('settlements', () => api.get<Settlement[]>(`/groups/${id}/settlements?perPage=${perPage}`), value => { const rows = value.data || []; settlements.value = rows; settlementsMeta.value = value.meta || { page:1, perPage, totalItems:rows.length, totalPages:1 } }, cached?.settlements ? { data: cached.settlements } : undefined) : Promise.resolve(),
       canViewGroup && canReadExpenses && canReadSubscriptions && canReadSettlements ? load('summary', () => api.get<DashboardSummary>(`/groups/${id}/summary`).then(value => value.data), value => { summary.value = value }) : Promise.resolve(),
     ])
     if (expectedRequest === groupRequest && id === currentGroupId.value) {
@@ -327,8 +328,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function loadInvitations(page = 1, perPage = invitationsMeta.value.perPage || 25) {
     if (!currentGroupId.value) return
     const result = await api.get<Invitation[]>(`/groups/${currentGroupId.value}/invitations?${new URLSearchParams({ page:String(page), perPage:String(perPage) }).toString()}`)
-    invitations.value = result.data
-    invitationsMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    invitations.value = result.data || []
+    invitationsMeta.value = result.meta || { page:1, perPage, totalItems:invitations.value.length, totalPages:1 }
     return result
   }
 
@@ -344,12 +345,12 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           api.get<Income[]>("/incomes?scope=all&perPage=" + perPage),
           api.get<DashboardSummary>(`/dashboard?scope=${scope}${month ? `&month=${encodeURIComponent(month)}` : ''}`),
         ])
-        personalSubscriptions.value = subscriptionPage.data
-        personalSubscriptionsMeta.value = subscriptionPage.meta || { page:1, perPage, totalItems:subscriptionPage.data.length, totalPages:1 }
-        personalExpenses.value = expensePage.data
-        personalIncomes.value = incomePage.data
-        personalIncomesMeta.value = incomePage.meta || { page:1, perPage, totalItems:incomePage.data.length, totalPages:1 }
-        personalExpensesMeta.value = expensePage.meta || { page:1, perPage, totalItems:expensePage.data.length, totalPages:1 }
+        personalSubscriptions.value = subscriptionPage.data || []
+        personalSubscriptionsMeta.value = subscriptionPage.meta || { page:1, perPage, totalItems:personalSubscriptions.value.length, totalPages:1 }
+        personalExpenses.value = expensePage.data || []
+        personalIncomes.value = incomePage.data || []
+        personalIncomesMeta.value = incomePage.meta || { page:1, perPage, totalItems:personalIncomes.value.length, totalPages:1 }
+        personalExpensesMeta.value = expensePage.meta || { page:1, perPage, totalItems:personalExpenses.value.length, totalPages:1 }
         personalSummary.value = dashboard.data
         if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value, incomes: personalIncomes.value })
       } catch (reason) {
@@ -364,6 +365,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   }
 
   async function refreshPersonalLedger(date = '') { const userId = auth.record?.id; const cached = userId && date ? await snapshotStore.loadLedger(userId, date) : undefined; try { if (!online.value) throw new ApiError(0, 'network_error', 'offline'); const query = new URLSearchParams({ scope: 'all' }); if (date) query.set('date', date); personalLedger.value = (await api.get<DailyLedger>('/personal/ledger?' + query.toString())).data; if (userId && personalLedger.value) await snapshotStore.saveLedger(userId, personalLedger.value); return personalLedger.value } catch (reason) { if (reason instanceof ApiError && reason.code === 'network_error' && cached) { personalLedger.value = cached; return cached } throw reason } }
+  function incomeLedgerDate(value?: string) { return value ? toDateInput(value, auth.record?.timezone || 'UTC') : '' }
   async function refreshGroupLedger(date = "") {
     if (!currentGroupId.value) return null
     const id = currentGroupId.value
@@ -576,8 +578,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const params = new URLSearchParams(query)
     if (!params.has('perPage')) params.set('perPage', '25')
     const result = await api.get<AuditLog[]>(`/groups/${currentGroupId.value}/audit-logs?${params.toString()}`)
-    groupAuditLogs.value = result.data
-    groupAuditMeta.value = result.meta || { page:1, perPage:25, totalItems:result.data.length, totalPages:1 }
+    groupAuditLogs.value = result.data || []
+    groupAuditMeta.value = result.meta || { page:1, perPage:25, totalItems:groupAuditLogs.value.length, totalPages:1 }
     return result
   }
 
@@ -591,24 +593,24 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
     if (sort) params.set('sort', sort)
     const result = await api.get<Expense[]>(`/groups/${currentGroupId.value}/expenses?${params.toString()}`)
-    expenses.value = result.data
-    expensesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    expenses.value = result.data || []
+    expensesMeta.value = result.meta || { page:1, perPage, totalItems:expenses.value.length, totalPages:1 }
     return result
   }
   async function loadPersonalExpensesPage(page = 1, perPage = personalExpensesMeta.value.perPage || defaultPageSize.value, sort = '') {
     const params = new URLSearchParams({ page:String(page), perPage:String(perPage), scope:'all' })
     if (sort) params.set('sort', sort)
     const result = await api.get<Expense[]>(`/expenses?${params.toString()}`)
-    personalExpenses.value = result.data
-    personalExpensesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    personalExpenses.value = result.data || []
+    personalExpensesMeta.value = result.meta || { page:1, perPage, totalItems:personalExpenses.value.length, totalPages:1 }
     return result
   }
   async function loadPersonalIncomesPage(page = 1, perPage = personalIncomesMeta.value.perPage || defaultPageSize.value, sort = '') {
     const params = new URLSearchParams({ page:String(page), perPage:String(perPage), scope:'all' })
     if (sort) params.set('sort', sort)
     const result = await api.get<Income[]>(`/incomes?${params.toString()}`)
-    personalIncomes.value = result.data
-    personalIncomesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    personalIncomes.value = result.data || []
+    personalIncomesMeta.value = result.meta || { page:1, perPage, totalItems:personalIncomes.value.length, totalPages:1 }
     return result
   }
   async function loadGroupIncomesPage(page = 1, perPage = groupIncomesMeta.value.perPage || defaultPageSize.value, sort = '') {
@@ -616,8 +618,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
     if (sort) params.set('sort', sort)
     const result = await api.get<Income[]>('/groups/' + currentGroupId.value + '/incomes?' + params.toString())
-    groupIncomes.value = result.data
-    groupIncomesMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    groupIncomes.value = result.data || []
+    groupIncomesMeta.value = result.meta || { page:1, perPage, totalItems:groupIncomes.value.length, totalPages:1 }
     return result
   }
   async function loadSubscriptionsPage(page = 1, perPage = subscriptionsMeta.value.perPage || defaultPageSize.value, sort = '') {
@@ -625,16 +627,16 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const params = new URLSearchParams({ page:String(page), perPage:String(perPage) })
     if (sort) params.set('sort', sort)
     const result = await api.get<Subscription[]>(`/groups/${currentGroupId.value}/subscriptions?${params.toString()}`)
-    subscriptions.value = result.data
-    subscriptionsMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    subscriptions.value = result.data || []
+    subscriptionsMeta.value = result.meta || { page:1, perPage, totalItems:subscriptions.value.length, totalPages:1 }
     return result
   }
   async function loadPersonalSubscriptionsPage(page = 1, perPage = personalSubscriptionsMeta.value.perPage || defaultPageSize.value, sort = '') {
     const params = new URLSearchParams({ page:String(page), perPage:String(perPage), scope:'all' })
     if (sort) params.set('sort', sort)
     const result = await api.get<Subscription[]>(`/subscriptions?${params.toString()}`)
-    personalSubscriptions.value = result.data
-    personalSubscriptionsMeta.value = result.meta || { page:1, perPage, totalItems:result.data.length, totalPages:1 }
+    personalSubscriptions.value = result.data || []
+    personalSubscriptionsMeta.value = result.meta || { page:1, perPage, totalItems:personalSubscriptions.value.length, totalPages:1 }
     return result
   }
   // Query-string based like loadGroupAuditLogs, since settlements need
@@ -644,8 +646,8 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     const params = new URLSearchParams(query)
     if (!params.has('perPage')) params.set('perPage', String(defaultPageSize.value))
     const result = await api.get<Settlement[]>(`/groups/${currentGroupId.value}/settlements?${params.toString()}`)
-    settlements.value = result.data
-    settlementsMeta.value = result.meta || { page:1, perPage:defaultPageSize.value, totalItems:result.data.length, totalPages:1 }
+    settlements.value = result.data || []
+    settlementsMeta.value = result.meta || { page:1, perPage:defaultPageSize.value, totalItems:settlements.value.length, totalPages:1 }
     return result
   }
 
@@ -805,11 +807,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     await run(async () => {
       const response = await api.post<Income>(personal ? '/incomes' : `/groups/${currentGroupId.value}/incomes`, input)
       id = response.data.id
-      if (personal) await refreshPersonalLedger(input.receivedOn || ''); else await refreshGroup()
+      if (personal) await refreshPersonalLedger(incomeLedgerDate(input.receivedOn)); else await refreshGroup()
     }, 'incomes')
     return id
   }
-  async function addIncome(input: IncomeInput) { return run(async () => { await withOfflineFallback(async () => { await api.post<Income>('/incomes', input); }, async () => { const id = outbox.localId(); personalIncomes.value = [localIncome(id, input), ...personalIncomes.value]; if (personalLedger.value) personalLedger.value = { ...personalLedger.value, items: [{ id, kind: "income", recordId: id, occurredAt: input.receivedOn || new Date().toISOString(), title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, status: "pending" }, ...personalLedger.value.items] as any }; const userId = auth.record?.id; if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input }); }); await refreshPersonalLedger(input.receivedOn || '') }) }
+  async function addIncome(input: IncomeInput) { return run(async () => { await withOfflineFallback(async () => { await api.post<Income>('/incomes', input); }, async () => { const id = outbox.localId(); personalIncomes.value = [localIncome(id, input), ...personalIncomes.value]; if (personalLedger.value) personalLedger.value = { ...personalLedger.value, items: [{ id, kind: "income", recordId: id, occurredAt: input.receivedOn || new Date().toISOString(), title: input.title, category: input.category, categoryId: input.categoryId, amountMinor: input.amountMinor, currency: input.currency, status: "pending" }, ...personalLedger.value.items] as any }; const userId = auth.record?.id; if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'create', scope: 'personal', groupId: '', targetId: id, payload: input }); }); await refreshPersonalLedger(incomeLedgerDate(input.receivedOn)) }) }
   async function addGroupIncome(input: IncomeInput) {
     if (!currentGroupId.value) return false
     return run(async () => {
@@ -1002,7 +1004,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     })
   }
 
-  async function updateIncome(id: string, input: IncomeInput) { return run(async () => { await withOfflineFallback(async () => { await api.patch<Income>(`/incomes/${id}`, input); }, async () => { personalIncomes.value = personalIncomes.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item); const userId = auth.record?.id; if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'update', scope: 'personal', groupId: '', targetId: id, payload: input }); }); await refreshPersonalLedger(input.receivedOn || '') }) }
+  async function updateIncome(id: string, input: IncomeInput) { return run(async () => { await withOfflineFallback(async () => { await api.patch<Income>(`/incomes/${id}`, input); }, async () => { personalIncomes.value = personalIncomes.value.map(item => item.id === id ? { ...item, ...input, pendingSync: true } : item); const userId = auth.record?.id; if (userId) await outbox.enqueue({ userId, kind: 'income', op: 'update', scope: 'personal', groupId: '', targetId: id, payload: input }); }); await refreshPersonalLedger(incomeLedgerDate(input.receivedOn)) }) }
   async function deleteIncome(id: string) { return run(async () => { await withOfflineFallback(async () => { await api.delete(`/incomes/${id}`); }, async () => { await localDelete('income', 'personal', '', id); personalIncomes.value = personalIncomes.value.filter(item => item.id !== id); }); await refreshPersonalLedger() }) }
   async function exportLedger(groupId?: string) {
     const path = groupId ? `/groups/${groupId}/export` : '/export/personal'

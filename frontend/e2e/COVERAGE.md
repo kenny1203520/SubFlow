@@ -7,7 +7,8 @@ The sitewide suite checks every registered page at 320, 375, 390, 768, 1024 and 
 | Sign in | Owner | UI sign-in with seeded isolated backend | Invalid credentials are not covered | `sitewide-ui.spec.ts`; share and notification setup helpers |
 | Registration and first setup | New user / first administrator | Registration API is used to seed share and notification tests; isolated backend is initialized by the test server | UI registration and a separate uninitialized setup instance are not covered | `share-flow.spec.ts`, `share-attachments.spec.ts`, `notifications.spec.ts`; setup server in `start.mjs` |
 | Personal ledger | Owner | Expense create, edit, cancel, validation and confirmed delete; previous day, date picker and query preservation | Network failure and authorization denial are not covered | `sitewide-ui.spec.ts` |
-| Personal income and subscriptions | Owner | Routes render | Create, edit, cancel and delete flows are not covered | `sitewide-ui.spec.ts` route smoke |
+| Personal income | Owner | Create and confirmed delete; empty API result renders safely; ledger refresh uses the viewer's date | Edit, cancel and backend failure are not covered | `sitewide-ui.spec.ts`; `workspace.test.ts` null-list regression |
+| Personal subscriptions | Owner | Create and confirmed delete | Edit, stop/cancel-stop, period history and backend failure are not covered | `sitewide-ui.spec.ts` |
 | Personal shares and public share | Owner / public visitor | Create, edit, disable, open public share; fixed-date validation; attachment sharing opt-in persists | Invalid public token is route-smoke only; request failure is not injected | `share-flow.spec.ts`, `share-attachments.spec.ts`, `sitewide-ui.spec.ts` |
 | Groups, ledger and settings | Group owner | Create/cancel/required-field validation, update group name, route rendering, ledger date navigation | Member and restricted-role permissions; financial CRUD; request failure are not covered | `sitewide-ui.spec.ts` |
 | Group members, roles, audit, shares and settings | Group owner | Audit search/apply/clear; pages render; mobile navigation displays allowed owner links | Member/role mutations, denied access and audit-write failures are not covered | `sitewide-ui.spec.ts` |
@@ -19,7 +20,7 @@ The sitewide suite checks every registered page at 320, 375, 390, 768, 1024 and 
 ## Validation status
 
 - Full E2E suite: 15 tests across Chromium, Firefox and WebKit. The latest all-route six-width matrix passed in all three browsers; the other four E2E scenarios passed in the preceding full-suite run.
-- Frontend unit tests: 135 passed across 33 files.
+- Frontend unit tests: 136 passed across 33 files; the focused workspace suite has 25 passing tests.
 - Frontend production build and changed-file ESLint checks passed.
 - Screenshots are retained under Playwright `test-results` locally and uploaded by the Verify workflow as a 14-day artifact.
 
