@@ -6,11 +6,13 @@ const pdf = vi.hoisted(() => ({ getDocument: vi.fn(), getPage: vi.fn(), GlobalWo
 vi.mock('pdfjs-dist', () => pdf)
 
 import AttachmentPdfPreview from './AttachmentPdfPreview.vue'
+import { locale } from '../i18n'
 
 describe('AttachmentPdfPreview', () => {
   let render: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    locale.value = 'zh-TW'
     render = vi.fn(() => ({ promise: Promise.resolve(), cancel: vi.fn() }))
     pdf.getPage.mockImplementation(async () => ({
       getViewport: vi.fn(({ scale }: { scale: number }) => ({ width: 100 * scale, height: 140 * scale })),
@@ -34,6 +36,12 @@ describe('AttachmentPdfPreview', () => {
     expect(wrapper.find('canvas').exists()).toBe(true)
     expect(wrapper.find('[role="alert"]').exists(), wrapper.text()).toBe(false)
     expect(render).toHaveBeenCalledTimes(1)
+    const buttons = wrapper.findAll('button')
+    expect(buttons.map(button => button.text())).toEqual(['上一頁', '下一頁'])
+    locale.value = 'en'
+    await flushPromises()
+    expect(buttons.map(button => button.text())).toEqual(['Previous', 'Next'])
+    locale.value = 'zh-TW'
     await wrapper.get('button:last-of-type').trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('2 / 2')
