@@ -6,6 +6,28 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.2] - 2026-10-22
+
+This is an alpha pre-release. Data model and behavior may change before 0.2.0. Release preparation and outstanding validation are tracked in [the Alpha 2 plan](docs/releases/0.2.0-alpha.2.md).
+
+### Added
+- Added a notification center with unread, pending and resolved filters, notification preferences, and separate viewed/read and action-resolution states.
+- Added persistent notification email delivery with scheduled retries and an administrator view for failed jobs. Security notifications include password resets and system-role changes; subscription and recurring-income posting failures provide actionable notices.
+- Added Playwright checks for 28 route targets at six viewport widths across Chromium, Firefox and WebKit, with screenshots retained by CI and an explicit functional coverage matrix.
+
+### Changed
+- Unified personal and group ledger date navigation, preserved selected dates and other URL queries, and used each workspace's effective timezone for today's date.
+- Improved shared page spacing, 44px square theme controls, mobile group navigation, audit layouts, long-text wrapping, and native confirmation-dialog focus behavior.
+
+### Fixed
+- Fixed empty income lists and ledger refreshes that incorrectly sent ISO timestamps where a local calendar date was required.
+- Fixed direct reloads of notification-email administration redirecting to the personal ledger; admin sections now load their own resources and show distinct loading, failure, retry and success states.
+- Fixed overflow in shared-page management and improved notification preferences on narrow screens.
+- Removed random username collisions from the large-group permission pagination test without weakening its permission assertions.
+
+### Validation limits
+- Route rendering checks are not complete functional verification. Setup/registration UI, restricted group roles, several mutation/failure paths, SMTP delivery, upgrade/restore rehearsal and full visual baselines still require qualification; see [Playwright coverage](frontend/e2e/COVERAGE.md) and the release plan.
+
 ## [0.2.0-alpha.1] - 2026-10-21
 
 This is an alpha pre-release. Data model and behavior may change before 0.2.0.
