@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import './admin.css'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiClient } from '../api/client'
+import { ApiClient, ApiError } from '../api/client'
 import type { AccessRole, AuditLog, CaptchaFlowConfig, Meta, User } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -16,6 +16,8 @@ import RoleSelect from '../components/RoleSelect.vue'
 import BaseCombobox from '../components/BaseCombobox.vue'
 import AuditFilterBar, { type AuditFilters } from '../components/AuditFilterBar.vue'
 import AuditLogList from '../components/AuditLogList.vue'
+import Pagination from '../components/Pagination.vue'
+import PageSizeSelect from '../components/PageSizeSelect.vue'
 import { defaultPageSize } from '../pageSize'
 
 const auth = useAuthStore()
@@ -28,8 +30,15 @@ const users = ref<User[]>([])
 const logs = ref<AuditLog[]>([])
 type FailedNotificationEmail = { id: string; notificationId: string; status: string; attempts: number; lastError?: string; createdAt: string }
 const failedEmails = ref<FailedNotificationEmail[]>([])
-const failedEmailPage = ref(1)
+const failedEmailPage = computed(() => Math.max(1, Number(route.query.page) || 1))
+const failedEmailPageSize = computed(() => [10, 25, 50, 100].includes(Number(route.query.perPage)) ? Number(route.query.perPage) : 25)
 const failedEmailMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
+const failedEmailLoading = ref(false)
+const failedEmailError = ref('')
+const failedEmailNotice = ref('')
+const retryingEmailId = ref('')
+let failedEmailRequest = 0
+let loadRequest = 0
 const logsMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages:0 })
 const auditLoading = ref(false)
 const auditError = ref('')
@@ -50,6 +59,22 @@ const captchaModeOptions = computed(() => [{ value: 'interactive', label: tr('ca
 const editRole = ref<AccessRole | null>(null)
 const allPermissions = ['system.roles.manage', 'system.users.assign', 'system.audit.read', 'system.settings.manage']
 const section = computed(() => String(route.params.section || 'overview'))
+const adminNav = ref<HTMLElement>()
+let navResize: ResizeObserver | undefined
+function revealCurrentSection() {
+  const nav = adminNav.value
+  const active = nav?.querySelector<HTMLElement>('[aria-current="page"]')
+  if (!nav || !active) return
+  const bounds = nav.getBoundingClientRect(), link = active.getBoundingClientRect()
+  if (link.left < bounds.left || link.right > bounds.right) nav.scrollLeft += link.left - bounds.left - (nav.clientWidth - link.width) / 2
+}
+onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined' && adminNav.value) {
+    navResize = new ResizeObserver(revealCurrentSection)
+    navResize.observe(adminNav.value)
+  }
+})
+onBeforeUnmount(() => navResize?.disconnect())
 const roleCategories = computed(() => [...new Set(roles.value.map(role => role.category).filter((value): value is string => !!value))].sort())
 const rolesByCategory = computed(() => roles.value.reduce<Record<string, AccessRole[]>>((groups, role) => { const category = role.category || tr('ungroupedRoles'); (groups[category] ||= []).push(role); return groups }, {}))
 const can = (permission: string) => auth.permissions.includes(permission)
@@ -61,8 +86,8 @@ const pbAdminUrl = computed(() => {
 function permissionInfo(permission: string) {
   return systemPermissionText[locale.value][permission as keyof typeof systemPermissionText['zh-TW']] ?? { title: permission, description: permission }
 }
-async function loadRoles() { if (can('system.roles.manage')) roles.value = (await api.get<AccessRole[]>('/system/roles')).data }
-async function loadUsers() { if (can('system.users.assign')) users.value = (await api.get<User[]>(`/system/users?perPage=50&q=${encodeURIComponent(query.value)}`)).data }
+async function loadRoles() { if (can('system.roles.manage')) roles.value = (await api.get<AccessRole[]>('/system/roles')).data || [] }
+async function loadUsers() { if (can('system.users.assign')) users.value = (await api.get<User[]>(`/system/users?perPage=50&q=${encodeURIComponent(query.value)}`)).data || [] }
 function readAuditFilters(): AuditFilters { return { q:String(route.query.q || ''), action:String(route.query.action || ''), resource:String(route.query.resource || ''), outcome:String(route.query.outcome || ''), from:String(route.query.from || ''), to:String(route.query.to || '') } }
 function auditQuery(page = Number(route.query.page || 1), perPage = auditPageSize.value) { const result:Record<string, string> = {}; for (const [key, value] of Object.entries(auditFilters)) if (value) result[key] = value; if (page > 1) result.page = String(page); if (perPage !== defaultPageSize.value) result.perPage = String(perPage); return result }
 async function loadLogs() {
@@ -71,8 +96,8 @@ async function loadLogs() {
   auditError.value = ''
   try {
     const result = await api.get<AuditLog[]>(`/system/audit-logs?${new URLSearchParams({ ...auditQuery(), perPage:String(auditPageSize.value) }).toString()}`)
-    logs.value = result.data
-    logsMeta.value = result.meta || { page:1, perPage:auditPageSize.value, totalItems:result.data.length, totalPages:1 }
+    logs.value = result.data || []
+    logsMeta.value = result.meta || { page:1, perPage:auditPageSize.value, totalItems:logs.value.length, totalPages:1 }
   } catch {
     auditError.value = tr('requestFailed')
   } finally {
@@ -82,20 +107,57 @@ async function loadLogs() {
 async function loadSettings() { if (can('system.settings.manage')) settings.value = (await api.get<typeof settings.value>('/system/settings')).data }
 async function loadFailedEmails() {
   if (!can('system.settings.manage') || section.value !== 'notification-emails') return
-  const result = await api.get<FailedNotificationEmail[]>(`/system/notification-emails/failed?page=${failedEmailPage.value}&perPage=25&sort=-created`)
-  failedEmails.value = result.data
-  failedEmailMeta.value = result.meta || { page:failedEmailPage.value, perPage:25, totalItems:result.data.length, totalPages:1 }
+  const request = ++failedEmailRequest
+  const page = failedEmailPage.value, perPage = failedEmailPageSize.value
+  failedEmailLoading.value = true
+  failedEmailError.value = ''
+  try {
+    const result = await api.get<FailedNotificationEmail[]>(`/system/notification-emails/failed?page=${page}&perPage=${perPage}&sort=-created`)
+    if (request !== failedEmailRequest || section.value !== 'notification-emails') return
+    failedEmails.value = result.data || []
+    failedEmailMeta.value = result.meta || { page, perPage, totalItems:failedEmails.value.length, totalPages:failedEmails.value.length ? 1 : 0 }
+    if (page > Math.max(1, failedEmailMeta.value.totalPages)) setFailedEmailPage(Math.max(1, failedEmailMeta.value.totalPages))
+  } catch (reason) {
+    if (request === failedEmailRequest && section.value === 'notification-emails') failedEmailError.value = notificationEmailError(reason)
+  } finally {
+    if (request === failedEmailRequest) failedEmailLoading.value = false
+  }
 }
+function notificationEmailError(reason: unknown) {
+  return reason instanceof ApiError && reason.status === 404 ? tr('notificationEmailUnavailable') : tr('requestFailed')
+}
+function setFailedEmailPage(page: number) { void router.replace({ query:{ ...route.query, page:page > 1 ? String(page) : undefined } }) }
+function setFailedEmailPageSize(perPage: number) { void router.replace({ query:{ ...route.query, page:undefined, perPage:perPage === 25 ? undefined : String(perPage) } }) }
 async function retryFailedEmail(job: FailedNotificationEmail) {
+  if (retryingEmailId.value) return
+  retryingEmailId.value = job.id
+  failedEmailError.value = ''
+  failedEmailNotice.value = ''
   try {
     await api.post(`/system/notification-emails/${job.id}/retry`, {})
+    if (section.value !== 'notification-emails') return
+    failedEmails.value = failedEmails.value.filter(value => value.id !== job.id)
+    failedEmailNotice.value = tr('notificationEmailQueued')
     await loadFailedEmails()
-  } catch { error.value = tr('requestFailed') }
+  } catch (reason) { failedEmailError.value = reason instanceof ApiError && reason.status === 404 ? tr('notificationEmailRetryUnavailable') : tr('requestFailed') }
+  finally { retryingEmailId.value = '' }
 }
 async function load() {
+  const request = ++loadRequest
   loading.value = true
   error.value = ''
-  try { await Promise.all([loadRoles(), loadUsers(), loadLogs(), loadSettings(), loadFailedEmails()]) } catch { error.value = tr('requestFailed') } finally { loading.value = false }
+  failedEmailNotice.value = ''
+  try {
+    switch (section.value) {
+      case 'overview': await Promise.all([loadRoles(), loadUsers(), loadSettings()]); break
+      case 'settings': await loadSettings(); break
+      case 'users': await Promise.all([loadUsers(), loadRoles()]); break
+      case 'roles': await loadRoles(); break
+      case 'audit': await loadLogs(); break
+      case 'notification-emails': await loadFailedEmails(); break
+    }
+  } catch { if (request === loadRequest) error.value = tr('requestFailed') }
+  finally { if (request === loadRequest) loading.value = false }
 }
 function updateCaptchaProvider(value: string) {
   settings.value.captchaProvider = value
@@ -145,7 +207,7 @@ function applyAuditFilters() { void router.replace({ query:auditQuery(1) }) }
 function resetAuditFilters() { void router.replace({ query:{} }) }
 function setAuditPage(page:number) { void router.replace({ query:auditQuery(page) }) }
 function setAuditPageSize(value:number) { void router.replace({ query:auditQuery(1, value) }) }
-watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters()); void load() }, { immediate:true })
+watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters()); void load(); void nextTick(revealCurrentSection) }, { immediate:true })
 </script>
 
 <template>
@@ -160,7 +222,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
         {{ tr('openPocketBase') }} <span aria-hidden="true">↗</span>
       </a>
     </div>
-    <nav class="admin-tabs">
+    <nav ref="adminNav" class="admin-tabs" :aria-label="tr('systemAdministration')">
       <RouterLink :to="{ name: 'admin' }">{{ tr('adminOverview') }}</RouterLink>
       <RouterLink v-if="can('system.settings.manage')" :to="{ name: 'admin-section', params: { section: 'settings' } }">{{ tr('settings') }}</RouterLink>
       <RouterLink v-if="can('system.users.assign')" :to="{ name: 'admin-section', params: { section: 'users' } }">{{ tr('userManagement') }}</RouterLink>
@@ -169,7 +231,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       <RouterLink v-if="can('system.settings.manage')" :to="{ name: 'admin-section', params: { section: 'notification-emails' } }">{{ tr('failedNotificationEmails') }}</RouterLink>
     </nav>
     <p v-if="error" class="notice danger">{{ error }}</p>
-    <p v-if="loading" class="notice">{{ tr('processing') }}</p>
+    <p v-if="loading && section !== 'notification-emails' && section !== 'audit'" class="notice" role="status">{{ tr('processing') }}</p>
 
     <template v-if="section === 'overview'">
       <div class="admin-grid">
@@ -225,17 +287,21 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       </div>
     </section>
 
-    <section v-else-if="section === 'notification-emails' && can('system.settings.manage')" class="card admin-form">
-      <div class="section-heading"><h2>{{ tr('failedNotificationEmails') }}</h2><button class="ghost" @click="loadFailedEmails">{{ tr('refresh') }}</button></div>
+    <section v-else-if="section === 'notification-emails' && can('system.settings.manage')" class="card admin-form failed-email-panel" :aria-busy="failedEmailLoading">
+      <div class="section-heading"><h2>{{ tr('failedNotificationEmails') }}</h2><button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="loadFailedEmails">{{ tr('refresh') }}</button></div>
       <p class="field-help">{{ tr('failedNotificationEmailsHelp') }}</p>
-      <div class="data-list">
-        <article v-for="job in failedEmails" :key="job.id" class="data-row">
+      <p v-if="failedEmailNotice" class="notice success" role="status">{{ failedEmailNotice }}</p>
+      <div v-if="failedEmailError" class="resource-error failed-email-error" role="alert"><p>{{ failedEmailError }}</p><button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="loadFailedEmails">{{ tr('retry') }}</button></div>
+      <p v-if="failedEmailLoading" class="empty-inline" role="status">{{ tr('processing') }}</p>
+      <div class="failed-email-controls"><span>{{ tr('records', { count: failedEmailMeta.totalItems }) }}</span><PageSizeSelect :model-value="failedEmailPageSize" @update:model-value="setFailedEmailPageSize" /></div>
+      <div class="failed-email-list">
+        <article v-for="job in failedEmails" :key="job.id" class="failed-email-row">
           <div class="grow"><strong>{{ tr('notificationDeliveryFailed') }}</strong><small>{{ tr('deliveryAttempts', { count: job.attempts }) }} · {{ tr('deliveryErrorCode') }}: {{ job.lastError || 'unknown' }}</small></div>
-          <button class="ghost" @click="retryFailedEmail(job)">{{ tr('retry') }}</button>
+          <button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="retryFailedEmail(job)">{{ retryingEmailId === job.id ? tr('processing') : tr('retryNotificationEmail') }}</button>
         </article>
-        <p v-if="!failedEmails.length" class="empty-inline">{{ tr('noFailedNotificationEmails') }}</p>
+        <p v-if="!failedEmailLoading && !failedEmailError && !failedEmails.length" class="empty-inline">{{ tr('noFailedNotificationEmails') }}</p>
       </div>
-      <div v-if="failedEmailMeta.totalPages > 1" class="form-actions"><button class="ghost" :disabled="failedEmailPage <= 1" @click="failedEmailPage--; loadFailedEmails()">{{ tr('previous') }}</button><span>{{ failedEmailPage }} / {{ failedEmailMeta.totalPages }}</span><button class="ghost" :disabled="failedEmailPage >= failedEmailMeta.totalPages" @click="failedEmailPage++; loadFailedEmails()">{{ tr('next') }}</button></div>
+      <Pagination :meta="failedEmailMeta" @page="setFailedEmailPage" />
     </section>
 
     <section v-else-if="section === 'roles' && can('system.roles.manage')" class="admin-stack">
@@ -282,5 +348,6 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       <AuditFilterBar :model-value="auditFilters" @update:model-value="Object.assign(auditFilters, $event)" @apply="applyAuditFilters" @reset="resetAuditFilters" />
       <AuditLogList :logs="logs" :meta="logsMeta" :page-size="auditPageSize" :loading="auditLoading" :error="auditError" @retry="loadLogs" @page="setAuditPage" @update:page-size="setAuditPageSize" />
     </section>
+    <section v-else class="card resource-error" role="alert"><p>{{ tr('forbiddenError') }}</p></section>
   </section>
 </template>

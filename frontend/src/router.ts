@@ -57,7 +57,7 @@ export const routes: RouteRecordRaw[] = [
   { path: '/notifications', name: 'notifications', component: NotificationCenterView },
   { path: '/about', name: 'about', component: AboutView },
   { path: '/admin', name: 'admin', component: AdminView },
-  { path: '/admin/:section(settings|users|roles|audit)', name: 'admin-section', component: AdminView },
+  { path: '/admin/:section(settings|users|roles|audit|notification-emails)', name: 'admin-section', component: AdminView },
   { path: '/:pathMatch(.*)*', redirect: { name: 'personal-ledger' } },
 ]
 

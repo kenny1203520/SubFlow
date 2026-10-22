@@ -123,6 +123,8 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   for (const [routeIndex, route] of routes.entries()) {
     await page.setViewportSize({ width: 1440, height: 1000 })
     await page.goto(route)
+    await expect(page).toHaveURL(url => url.pathname === route)
+    await expect(page.locator('.main .error-state')).toHaveCount(0)
     await expect(page.locator('body')).not.toContainText('Unexpected error')
     await expectNoHorizontalOverflow(page)
     if (routeIndex === 2 || route.includes('/ledger')) {
