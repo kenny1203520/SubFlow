@@ -66,6 +66,9 @@ jobs:
   browsers:
     name: Browsers (${{ matrix.project }})
     runs-on: ubuntu-latest
+    # Firefox refuses to start when the container HOME is not owned by its user.
+    env:
+      HOME: /root
     # Keep browser binaries and fonts identical across runs. Update this image
     # and the version assertion together with the Playwright lockfile entry.
     container:
