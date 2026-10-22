@@ -7,7 +7,7 @@ The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` a
 | Sign in | Owner / regular user | UI sign-in with isolated backend; production-container login | Invalid credentials covered by production-container browser check | `sitewide-ui.spec.ts`; `scripts/release/container-smoke.mjs` |
 | Registration and first setup | New user / first administrator | Separate uninitialized production container uses setup and registration UI; main Playwright server initializes separate test data via API | Empty setup form and repeat initialization rejected; full registration validation remains incomplete | `scripts/release/container-smoke.mjs`; API fixture server in `start.mjs` |
 | Explicit sign out | Regular user | UI sign out followed by unauthenticated screen; backend success audit | Real anonymous rejection/failure audit; audit failure returns 503 in Go; frontend retains session on network/audit failure in Vitest | `container-smoke.mjs`, `logout_api_test.go`, `auth.test.ts` |
-| Personal ledger | Owner | Expense create, edit, cancel, validation and confirmed delete; previous day, date picker and query preservation | Network failure and authorization denial are not covered | `sitewide-ui.spec.ts` |
+| Personal ledger | Owner / isolated regular user | Expense create, edit, cancel, validation and confirmed delete; previous day, date picker and query preservation; save remains usable during a delayed real SSE refresh | Network outage and authorization denial are not covered; duplicate submit and rejected write are checked in Vitest | `sitewide-ui.spec.ts`, `ledger-save.spec.ts`, `LedgerQuickAddDrawer.test.ts` |
 | Personal income | Owner | Create and confirmed delete; empty API result renders safely; ledger refresh uses the viewer's date | Edit, cancel and backend failure are not covered | `sitewide-ui.spec.ts`; `workspace.test.ts` null-list regression |
 | Personal subscriptions | Owner | Create and confirmed delete | Edit, stop/cancel-stop, period history and backend failure are not covered | `sitewide-ui.spec.ts` |
 | Personal shares and public share | Owner / public visitor | Create, edit, disable, open public share; fixed-date validation; attachment sharing opt-in persists | Invalid public token is route-smoke only; request failure is not injected | `share-flow.spec.ts`, `share-attachments.spec.ts`, `sitewide-ui.spec.ts` |
@@ -21,12 +21,19 @@ The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` a
 
 ## Validation status
 
-- Full E2E configuration: 60 tests (12 scenarios across five projects). Complete execution results are recorded by CI and the release evidence; no project is skipped for publication.
-- Frontend unit tests: 142 passed across 34 files.
+- Full E2E configuration: 65 tests (13 scenarios across five projects). Complete execution results are recorded by CI and the release evidence; no project is skipped for publication.
+- Frontend unit tests: 145 passed across 35 files.
 - Frontend production build and changed-file ESLint checks passed.
 - Screenshots are retained under Playwright `test-results` locally and uploaded by the Verify workflow as a 14-day artifact.
 
 Rows explicitly marked as not covered are follow-up work; a route rendering check is not counted as functional verification.
+
+## Save-race follow-up and CI isolation
+
+- Post-merge CI exposed Firefox losing a save click while SSE background reads briefly toggled the global loading state. A deterministic regression holds a real SSE-triggered expense read, then requires a valid edit to send its real PATCH successfully. Before repair, the save button remained disabled; the repaired behavior passes all five browser projects.
+- The drawer now tracks its own pending submission independently and rejects duplicate submits. A rejected write keeps the form values and error feedback available for retry. Existing backend mutations and audit behavior are unchanged.
+- Sitewide mutation names include a unique identifier for each test attempt. A failed attempt's records cannot match another browser's expense, income, subscription or group selectors.
+- CI runs each browser project in a separate job with its own temporary PocketBase instance. All five jobs are required and fail-fast is disabled. Browser binaries and OS fonts come from the official Playwright 1.64.1 Noble image pinned by digest; an explicit SDK-version check guards mismatches. This replaces repeated Ubuntu browser-dependency installation in the full browser suite. The production-container gate remains separate.
 
 ## Additional release qualification
 
