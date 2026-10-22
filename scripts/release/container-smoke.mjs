@@ -64,6 +64,7 @@ try {
   await expect(page.locator('body')).toContainText(version)
   // Start a second browser context so registration is tested without the owner session.
   const visitor = await browser.newPage({ baseURL, viewport: { width: 1440, height: 900 }, timezoneId: 'UTC' })
+  visitor.on('pageerror', error => errors.push(error.message))
   await visitor.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
   await visitor.goto('/auth')
   await visitor.locator('.segmented').getByRole('button', { name: 'Create account', exact: true }).click()
@@ -86,10 +87,17 @@ try {
   await visitor.goto('/personal')
   await visitor.getByRole('button', { name: 'Sign out', exact: true }).click()
   await expect(visitor).toHaveURL(/\/auth/)
+  assert.equal((await page.request.post('/api/subflow/v1/auth/logout')).status(), 403)
+  const auditResponse = await page.request.get('/api/subflow/v1/system/audit-logs?perPage=50&action=auth.logout', { headers: { Authorization: adminToken } })
+  assert.equal(auditResponse.status(), 200)
+  const logoutAudits = (await auditResponse.json()).data
+  assert.ok(logoutAudits.some(value => value.action === 'auth.logout' && value.outcome === 'success'))
+  assert.ok(logoutAudits.some(value => value.action === 'auth.logout' && value.outcome === 'failure'))
+  assert.ok(logoutAudits.every(value => !JSON.stringify(value).includes(memberToken)))
   const secondSetup = await page.request.post('/api/subflow/v1/setup/initialize', { data: { token, adminName: 'Second', email: 'second@example.test', password } })
   assert.ok(secondSetup.status() >= 400, 'setup cannot be repeated')
   assert.deepEqual(errors, [], 'no browser runtime errors')
-  const result = { version, image, freshSetupUI: true, registrationUI: true, invalidLogin: true, logoutUI: true, adminList: 200, regularUserDenied: 403, directReload: true, aboutVersion: true, runtimeErrors: 0, device: 'Chromium touch simulation 390px; desktop 1440px' }
+  const result = { version, image, freshSetupUI: true, registrationUI: true, invalidLogin: true, logoutUI: true, logoutBackendAudits: true, adminList: 200, regularUserDenied: 403, directReload: true, aboutVersion: true, runtimeErrors: 0, device: 'Chromium touch simulation 390px; desktop 1440px' }
   await writeFile('.release/container-smoke.json', `${JSON.stringify(result, null, 2)}\n`)
   console.log(JSON.stringify(result))
 } finally {

@@ -105,7 +105,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
       <div class="sidebar-bottom">
         <RouterLink v-if="auth.canAdminister" class="admin-link" :to="{ name: 'admin' }"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7l-8-4Z" /></svg><span>{{ tr('systemAdministration') }}</span></RouterLink>
         <RouterLink class="profile-link" :to="{ name: 'profile' }"><span class="user-avatar">{{ auth.name.slice(0, 1).toUpperCase() }}</span><span><small>{{ tr('accountSettings') }}</small>{{ auth.name }}</span></RouterLink>
-        <button class="logout-button" @click="auth.logout">{{ tr('logout') }}</button>
+        <button class="logout-button" :disabled="auth.signingOut" @click="auth.signOut">{{ tr('logout') }}</button>
       </div>
     </aside>
     <main class="main">

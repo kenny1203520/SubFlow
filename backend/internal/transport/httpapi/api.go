@@ -76,6 +76,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/auth/captcha/challenge", a.captchaChallenge)
 	e.Router.POST("/api/subflow/v1/setup/initialize", a.initializeSetup)
 	e.Router.POST("/api/subflow/v1/auth/register", a.register)
+	e.Router.POST("/api/subflow/v1/auth/logout", a.logout)
 	e.Router.GET("/api/subflow/v1/shares/{token}", a.publicShare)
 	e.Router.POST("/api/subflow/v1/shares/{token}/access", a.sharePasswordAccess)
 	e.Router.GET("/api/subflow/v1/shares/{token}/account", a.accountShare).Bind(bind)
@@ -316,6 +317,13 @@ func authID(e *core.RequestEvent) string {
 		return ""
 	}
 	return e.Auth.Id
+}
+
+func (a *API) logout(e *core.RequestEvent) error {
+	if err := a.Service.Logout(e.Request.Context(), authID(e)); err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, map[string]bool{"recorded": true}, nil)
 }
 func groupID(e *core.RequestEvent) string { return e.Request.PathValue("groupId") }
 func ok(e *core.RequestEvent, status int, data any, meta any) error {

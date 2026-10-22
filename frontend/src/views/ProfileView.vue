@@ -131,7 +131,7 @@ async function toggleProvider(name: string) {
                 <div><p class="eyebrow">{{t.accountActions}}</p><h2>{{ t.accountActions }}</h2><p class="setting-description">{{ t.accountActionsDesc }}</p></div>
                 <div class="form-actions">
                     <RouterLink v-if="auth.canAdminister" class="ghost" :to="{ name: 'admin' }">{{ tr('systemAdministration') }}</RouterLink>
-                    <button type="button" class="ghost danger-text" @click="auth.logout">{{ t.logout }}</button>
+                    <button type="button" class="ghost danger-text" :disabled="auth.signingOut" @click="auth.signOut">{{ t.logout }}</button>
                 </div>
             </section>
         </div>

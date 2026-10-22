@@ -4,6 +4,7 @@ import { pb } from '../pocketbase'
 import { useI18n } from '../i18n'
 import { ApiClient } from '../api/client'
 import type { SystemAccess } from '../api/types'
+import { useToastStore } from './toast'
 
 export class ProviderLinkedElsewhereError extends Error {}
 
@@ -14,6 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
   const authValid = ref(pb.authStore.isValid)
   const ready = ref(false)
   const permissions = ref<string[]>([])
+  const signingOut = ref(false)
   const authenticated = computed(() => authValid.value && !!authToken.value && !!record.value)
   const token = computed(() => authToken.value)
   const name = computed(() => String(record.value?.name || record.value?.email || tr('userFallback')))
@@ -108,5 +110,18 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     pb.authStore.clear(); authToken.value = ''; authValid.value = false; record.value = null; permissions.value=[]
   }
-  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, requestPasswordReset, requestOTP, loginOTP, updateProfile, oauthProviders, loginOAuth, linkOAuth, listLinkedProviders, unlinkProvider, refreshAccess, logout }
+  async function signOut() {
+    if (signingOut.value) return false
+    signingOut.value = true
+    try {
+      const api = new ApiClient(() => pb.authStore.token, logout)
+      await api.post('/auth/logout')
+      logout()
+      return true
+    } catch {
+      useToastStore().push('error', tr('logoutFailed'))
+      return false
+    } finally { signingOut.value = false }
+  }
+  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, requestPasswordReset, requestOTP, loginOTP, updateProfile, oauthProviders, loginOAuth, linkOAuth, listLinkedProviders, unlinkProvider, refreshAccess, logout, signOut, signingOut }
 })
