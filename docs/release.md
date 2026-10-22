@@ -1,99 +1,69 @@
 # SubFlow Release Process
 
-發布完全由 **版本 tag** 驅動。推送 `v<version>` tag 後，`.github/workflows/release.yml` 會自動建置單一映像檔、推送到 GHCR，並開立對應的 GitHub Release。
+Version tags drive publication. A release-branch push runs CI. An annotated v<version> tag runs .github/workflows/release.yml, publishes the single runtime image to GHCR and creates the matching GitHub Release.
 
-## 一次性設定
+## Credentials and metadata
 
-Workflow 需要兩個 repository secret（`Settings` → `Secrets and variables` → `Actions`）：
+Configure Actions secrets DOCKERHUB_USERNAME and DOCKERHUB_TOKEN for entitled access to Docker Hardened Images. GHCR publication uses GITHUB_TOKEN with packages/write and contents/write. Package visibility is configured separately in GitHub Packages.
 
-| Secret | 用途 |
-| --- | --- |
-| `DOCKERHUB_USERNAME` | 登入 `dhi.io` 拉取 base image 的 Docker 帳號 |
-| `DOCKERHUB_TOKEN` | 該帳號的 access token（不要用密碼） |
+frontend/package.json is the display-version source. Its version, both lockfile version fields, tag (without v) and exactly one dated nonempty CHANGELOG section must agree. Metadata validation rejects branches, malformed SemVer and missing/mismatched entries before building.
 
-`Dockerfile` 的三個 base image 都來自 Docker Hardened Images（`dhi.io/node`、`dhi.io/golang`、`dhi.io/alpine-base`），只有具備 DHI 授權的帳號才拉得到。**沒有設定這兩個 secret，build job 會在拉取 base image 時失敗。**
+Production needs a persistent SUBFLOW_SETTINGS_ENCRYPTION_KEY. Preserve it with the PocketBase backup; never put credentials or bearer tokens into release artifacts.
 
-推送到 GHCR 用的是內建的 GITHUB_TOKEN，不需要額外設定。首次發布後，套件預設為 private，若要公開需到 repository 的 Packages 頁面手動改成 public。部署時也必須設定 SUBFLOW_SETTINGS_ENCRYPTION_KEY，並在資料生命週期內保持不變；它同時保護 CAPTCHA secret 與管理頁取回分享 URL 所需的加密資料。更換密鑰不會立即使公開 URL 失效，但管理頁將無法解密既有 URL。
+## Preparation and Git Flow
 
-## 版本編號
+Start from clean updated develop and create release/<version>. Update package/lockfile versions and changelog, then open a release PR back to develop. Commit independent fixes separately using Conventional Commits.
 
-`frontend/package.json` 的 `version` 是**唯一**的版本來源：
+Run backend commands in backend/ and frontend commands in frontend/:
 
-- `vite.config.ts` 在 build 時把它注入成 `VITE_APP_VERSION`，「關於系統」頁面顯示的就是這個值。
-- Workflow 的 `verify` job 會比對 tag 與 `package.json`，不一致就直接失敗。
-
-所以 **改版本號一定要同時改 `package.json` 與 `package-lock.json`**（後者有兩處），否則 `npm ci` 會因為 lockfile 不同步而失敗。
-
-## 發布步驟
-
-依 Git Flow，正式版從 `release/<version>` 分支出去：
-
-```bash
-git checkout develop
-git pull
-git checkout -b release/0.1.0
+```powershell
+rtk go vet ./...
+rtk go test ./...
+rtk npm ci
+rtk npm audit --audit-level=moderate
+rtk npm test -- --coverage
+rtk npm run build
+rtk npm run test:e2e
 ```
 
-在 release 分支上完成兩件事：
+Go tests precede frontend build in CI to retain the tracked embedded development placeholder. Trusted CI also builds/qualifies the production container and Alpha 1 upgrade/restore. Fork PRs cannot access DHI credentials; container qualification must pass on a trusted branch before publishing.
 
-1. 更新 `frontend/package.json` 與 `frontend/package-lock.json` 的版本號。
-2. 在 `CHANGELOG.md` 把 `## [Unreleased]` 底下的內容移到新的 `## [0.1.0] - YYYY-MM-DD` 區段。
+Stable releases merge into master before tagging and back into develop. Prereleases tag the verified release-branch commit directly and merge back into develop after publication; master stays on stable.
 
-本機驗收：
-
-```bash
-cd backend && go vet ./... && go test ./...
-cd ../frontend && npm ci && npm test && npm run build
-docker build -t subflow:local .
+```powershell
+rtk git status --short --branch
+rtk git rev-parse HEAD
+rtk git tag -a v0.2.0-alpha.2 -m "SubFlow 0.2.0-alpha.2"
+rtk git push origin v0.2.0-alpha.2
 ```
 
-確認無誤後合併並打 tag：
+## Workflow gates and outputs
 
-```bash
-git checkout master
-git merge --no-ff release/0.1.0
-git tag -a v0.1.0 -m "SubFlow 0.1.0"
+The tag workflow validates metadata, then runs reusable Verify: Go vet/tests/coverage and govulncheck, npm install/audit, 25 release contract tests, frontend tests/build and all Playwright desktop/touch projects. Screenshots, reports and retained failure traces/video are uploaded even when later steps fail.
 
-git checkout develop
-git merge --no-ff release/0.1.0
+Before publication, a production container must pass setup, registration, login, permission, direct reload, version and logout-audit checks. An isolated Alpha 1 data fixture is backed up offline, upgraded, restarted and restored to another volume under the old image. Only test-owned containers/volumes are removed.
 
-git push origin master develop
-git push origin v0.1.0   # 這一步才會觸發發布
+Publishing pushes the full version tag. Stable releases also update major.minor and latest; prereleases update neither stable alias. Release notes contain the exact changelog section and versioned/digest Docker pull commands.
+
+Post-publication checks compare the actual registry digest and GitHub release to expected outputs and ensure prereleases have not changed latest. Release outcome fails unless metadata, Verify and publication all succeed. A green Verify job alone does not prove publication.
+
+## Recovery and evidence
+
+For interrupted tags, inspect the failed/cancelled job and rerun without moving the tag:
+
+```powershell
+rtk gh run view <run-id> --repo kenny1203520/SubFlow
+rtk gh run rerun <run-id> --failed --repo kenny1203520/SubFlow
 ```
 
-Tag 推上去之後 workflow 才會啟動。先推分支、確認 CI 沒問題再推 tag，可以避免發布到一半失敗。
+Tags containing the dispatch-enabled workflow can also be dispatched explicitly:
 
-## Workflow 做了什麼
-
-`verify` job：
-
-1. 先跑 `go vet` 與 `go test`。這一步刻意排在前端 build 之前 —— `backend/internal/web/dist/` 有一份被 git 追蹤的 placeholder，`asset_test.go` 會對它做斷言，先蓋掉會讓測試失敗。
-2. 再跑 `npm ci`、`npm test`、`npm run build`。
-3. 最後比對 tag 與 `package.json` 版本。
-
-`release` job（`verify` 通過才會執行）：
-
-1. 登入 `dhi.io` 與 `ghcr.io`。
-2. 用 `docker/metadata-action` 產生 tag：`0.1.0`、`0.1`，以及非 pre-release 時的 `latest`。
-3. 以 repository 根目錄為 build context 建置並推送（`Dockerfile` 同時需要 `frontend/` 與 `backend/`）。
-4. 從 `CHANGELOG.md` 取出該版本區段作為 release notes，附上 `docker pull` 指令後開立 Release。
-
-tag 含有 `-`（例如 `v0.2.0-rc.1`）時會被視為 pre-release，且不會更新 `latest`。
-
-## Alpha 預發布
-
-目前的候選版本與驗收紀錄見 [0.2.0-alpha.2 發佈計畫](releases/0.2.0-alpha.2.md)。計畫準備不代表已推送 tag 或完成發佈。
-
-Alpha 使用 SemVer 預發布識別碼，例如 `0.2.0-alpha.1`（tag 為 `v0.2.0-alpha.1`）。序號以獨立的數字識別碼遞增，如 `alpha.2`、`alpha.10`，讓 SemVer 依數值順序比較。
-
-依 Git Flow 從最新 `develop` 建立 `release/<version>`，更新 `frontend/package.json`、`frontend/package-lock.json` 與 `CHANGELOG.md`。確認完整驗證和發布 workflow 通過後，在 release 分支的已驗證提交建立 annotated tag；tag 推送會建立 GitHub Pre-release 並發布對應版本的容器映像。
-
-Alpha 發布不合入 `master`。發布成功後，以 `--no-ff` 將 release 分支合回 `develop`，確認整合提交已推送後即可移除 release 分支。含連字號的 tag 不會更新 `latest`；例如 `v0.2.0-alpha.1` 只發布版本專屬映像標籤。
-
-## 發布後
-
-```bash
-docker pull ghcr.io/kenny1203520/subflow:0.1.0
+```powershell
+rtk gh workflow run release.yml --ref v0.2.0-alpha.2 --repo kenny1203520/SubFlow
 ```
 
-部署方式見 [deployment.md](deployment.md)。
+Branch dispatch is intentionally rejected. Older tags lacking workflow_dispatch use rerun. Never silently replace a published version tag.
+
+Retain workflow/source SHA, image digest and Release URL. release-evidence artifacts (30 days) contain metadata, notes, stable snapshot, container smoke, upgrade/restore and publication results. Trusted container and Playwright evidence lasts 14 days. After publication, merge the release PR into develop with a merge commit.
+
+See [Alpha 2 qualification](releases/0.2.0-alpha.2.md), [Playwright coverage](../frontend/e2e/COVERAGE.md) and [deployment](deployment.md).

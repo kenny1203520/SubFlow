@@ -1,11 +1,12 @@
 # Playwright coverage matrix
 
-The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` at 320, 375, 390, 768, 1024 and 1440 CSS pixels for horizontal overflow. It asserts the requested URL remains active and the app does not render its runtime-error fallback, then saves desktop and mobile screenshots. English/Traditional Chinese and light/dark combinations are checked on the personal ledger, group audit and admin audit pages. These are browser viewport checks, not physical-device tests. Setup and authentication coverage limits are listed below.
+The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` at 320, 375, 390, 768, 1024 and 1440 CSS pixels for horizontal overflow. It asserts the requested URL remains active and the app does not render its runtime-error fallback, then saves desktop and mobile screenshots. English/Traditional Chinese and light/dark combinations are checked on the personal ledger, group audit and admin audit pages. The suite runs Chromium, Firefox and WebKit desktop projects plus Chromium and WebKit touch emulation. These are browser contexts, not physical-device tests; the language/theme matrix is representative rather than every combination on every route.
 
 | Route or feature | Actor | Success path covered | Rejection or failure covered | Playwright coverage |
 | --- | --- | --- | --- | --- |
-| Sign in | Owner | UI sign-in with seeded isolated backend | Invalid credentials are not covered | `sitewide-ui.spec.ts`; share and notification setup helpers |
-| Registration and first setup | New user / first administrator | Registration API is used to seed share and notification tests; isolated backend is initialized by the test server | UI registration and a separate uninitialized setup instance are not covered | `share-flow.spec.ts`, `share-attachments.spec.ts`, `notifications.spec.ts`; setup server in `start.mjs` |
+| Sign in | Owner / regular user | UI sign-in with isolated backend; production-container login | Invalid credentials covered by production-container browser check | `sitewide-ui.spec.ts`; `scripts/release/container-smoke.mjs` |
+| Registration and first setup | New user / first administrator | Separate uninitialized production container uses setup and registration UI; main Playwright server initializes separate test data via API | Empty setup form and repeat initialization rejected; full registration validation remains incomplete | `scripts/release/container-smoke.mjs`; API fixture server in `start.mjs` |
+| Explicit sign out | Regular user | UI sign out followed by unauthenticated screen; backend success audit | Real anonymous rejection/failure audit; audit failure returns 503 in Go; frontend retains session on network/audit failure in Vitest | `container-smoke.mjs`, `logout_api_test.go`, `auth.test.ts` |
 | Personal ledger | Owner | Expense create, edit, cancel, validation and confirmed delete; previous day, date picker and query preservation | Network failure and authorization denial are not covered | `sitewide-ui.spec.ts` |
 | Personal income | Owner | Create and confirmed delete; empty API result renders safely; ledger refresh uses the viewer's date | Edit, cancel and backend failure are not covered | `sitewide-ui.spec.ts`; `workspace.test.ts` null-list regression |
 | Personal subscriptions | Owner | Create and confirmed delete | Edit, stop/cancel-stop, period history and backend failure are not covered | `sitewide-ui.spec.ts` |
@@ -20,12 +21,27 @@ The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` a
 
 ## Validation status
 
-- Full E2E suite: 27 tests across Chromium, Firefox and WebKit, all passed in the latest complete run.
-- Frontend unit tests: 139 passed across 34 files.
+- Full E2E configuration: 60 tests (12 scenarios across five projects). Complete execution results are recorded by CI and the release evidence; no project is skipped for publication.
+- Frontend unit tests: 142 passed across 34 files.
 - Frontend production build and changed-file ESLint checks passed.
 - Screenshots are retained under Playwright `test-results` locally and uploaded by the Verify workflow as a 14-day artifact.
 
 Rows explicitly marked as not covered are follow-up work; a route rendering check is not counted as functional verification.
+
+## Additional release qualification
+
+- `scripts/release/container-smoke.mjs` starts a production image with fresh temporary data, drives setup/registration/auth/admin UI in Chromium and checks backend permission and logout audit results. It is required on trusted CI branches and version publication.
+- `scripts/release/upgrade-smoke.mjs` uses a pinned Alpha 1 image and generated data, backs up the stopped database, upgrades/restarts the candidate and restores a separate backup under Alpha 1. IDs/amounts, groups, attachment bytes and legacy notification backfill are checked. This does not qualify every historical data shape.
+- `notification_smtp_test.go` uses the real mailer over loopback TCP, checking delivery, rejection, outbox state, duplicate prevention and backend audit outcomes. External provider TLS and inbox deliverability are not tested. Existing unit tests check bounded retries; successful administrator retry of a real failed job remains outside the browser suite.
+- Release contract tests verify metadata and final publication outputs, including alpha preservation of stable latest. Deliberate dispatch against a branch is a negative test and must fail before publication.
+- E2E startup withholds raw backend logs because setup tokens, credentials or SQL values could otherwise reach uploaded diagnostics.
+
+## Share editor and mobile controls
+
+- Touch emulation exposed a hidden checkbox inheriting full input width and expanding a 1024px page to 1705px. The checkbox now has explicit one-pixel dimensions inside its 44px label, with visible keyboard focus on the custom switch.
+- Date cases independently check Taipei/UTC/New York at 375/768/1024/1440px before saving and after clipboard-denied feedback. Measurements compare document width to the configured width; expanded mobile innerWidth cannot produce a false pass. Diagnostics omit text that might contain a secret share URL.
+- Inspected mobile header and light/dark share editor screenshots. Language controls retain an accessible name when their visible text is hidden. Content option cards use a readable minimum width rather than squeezing words into thin columns.
+- Screenshots provide review evidence, not automatically approved visual baselines. Complete per-route visual approval and physical-device checks remain outstanding.
 
 ## Admin visual review and diagnosis
 
