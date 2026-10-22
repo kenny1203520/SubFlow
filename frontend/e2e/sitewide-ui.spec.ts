@@ -3,8 +3,9 @@ import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
 async function signInAsTestOwner(page: Page) {
-  await page.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
   await page.goto('/auth')
+  await page.evaluate(() => localStorage.setItem('subflow-locale', 'en'))
+  await page.reload()
   await page.getByLabel('Email').fill('owner@example.test')
   await page.locator('input[autocomplete="current-password"]').fill('test-password-1234')
   await page.locator('form').getByRole('button', { name: 'Log in' }).click()
@@ -104,6 +105,11 @@ test('all application routes render on desktop and narrow screens', async ({ pag
     await mkdir(dirname(desktopPath), { recursive: true })
     await page.screenshot({ path: desktopPath, fullPage: true, animations: 'disabled' })
 
+    for (const width of [1024, 768, 390, 320]) {
+      await page.setViewportSize({ width, height: 900 })
+      await expectNoHorizontalOverflow(page)
+    }
+
     await page.setViewportSize({ width: 375, height: 812 })
     await expectNoHorizontalOverflow(page)
     if (route === '/personal' || route.endsWith('/ledger')) {
@@ -147,4 +153,20 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   await expect(page).toHaveURL(/q=no\+matching\+audit\+item/)
   await page.getByRole('button', { name: 'Clear filters' }).click()
   await expect(page).not.toHaveURL(/q=/)
+
+  const matrixRoutes = ['/personal', `${groupPath}/audit`, '/admin/audit']
+  for (const locale of ['en', 'zh-TW']) {
+    await page.evaluate(value => localStorage.setItem('subflow-locale', value), locale)
+    for (const route of matrixRoutes) {
+      for (const theme of ['light', 'dark']) {
+        await page.goto(route)
+        await page.evaluate(value => document.documentElement.setAttribute('data-theme', value), theme)
+        await expect(page.locator('html')).toHaveAttribute('lang', locale)
+        for (const width of [320, 1440]) {
+          await page.setViewportSize({ width, height: 900 })
+          await expectNoHorizontalOverflow(page)
+        }
+      }
+    }
+  }
 })
