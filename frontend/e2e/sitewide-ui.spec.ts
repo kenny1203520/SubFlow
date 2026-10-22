@@ -23,7 +23,7 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   await signInAsTestOwner(page)
 
   await page.goto('/personal')
-  const addRecord = page.locator('.ledger-add-desktop')
+  const addRecord = page.getByRole('button', { name: 'Add record', exact: true })
   await addRecord.click()
   let expenseDrawer = page.getByRole('dialog', { name: 'Add record' })
   await expenseDrawer.getByRole('button', { name: 'Save record' }).click()
@@ -146,6 +146,14 @@ test('all application routes render on desktop and narrow screens', async ({ pag
 
     await page.setViewportSize({ width: 375, height: 812 })
     await expectNoHorizontalOverflow(page)
+    const languageButton = page.locator('.topbar-actions .language-trigger').first()
+    if (await languageButton.isVisible()) {
+      await expect(languageButton).toHaveAccessibleName('Choose language')
+      const bounds = await languageButton.boundingBox()
+      expect(bounds?.width).toBe(44)
+      expect(bounds?.height).toBeGreaterThanOrEqual(44)
+      expect((bounds?.x || 0) + (bounds?.width || 0)).toBeLessThanOrEqual(375)
+    }
     if (route === '/personal' || route.endsWith('/ledger')) {
       const addButton = page.locator('.ledger-fab').first()
       await expect(addButton).toBeVisible()

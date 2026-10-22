@@ -54,7 +54,7 @@ const backend = start('go', ['run', './cmd/subflow', 'serve', `--env-file=${envF
 })
 backend.stdout.on('data', chunk => { backendOutput = (backendOutput + chunk.toString()).slice(-30000) })
 backend.stderr.on('data', chunk => { backendOutput = (backendOutput + chunk.toString()).slice(-30000) })
-backend.on('exit', code => { if (!stopping && code !== 0) { console.error(backendOutput); process.exitCode = code || 1 } })
+backend.on('exit', code => { if (!stopping && code !== 0) { console.error(`Isolated backend exited (${code ?? 'signal'}). Raw logs are withheld because they may contain credentials.`); process.exitCode = code || 1 } })
 
 let setupToken
 for (let attempt = 0; attempt < 240 && !setupToken; attempt++) {
@@ -62,7 +62,7 @@ for (let attempt = 0; attempt < 240 && !setupToken; attempt++) {
   if (match) setupToken = match[1]
   else await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
 }
-if (!setupToken) { stop(); throw new Error(`Isolated backend did not issue setup token. Output:\n${backendOutput}`) }
+if (!setupToken) { stop(); throw new Error('Isolated backend did not issue a setup token. Raw logs are withheld because they may contain credentials.') }
 
 const setupStatus = await fetch(`${backendURL}/api/subflow/v1/setup/status?token=${setupToken}`)
 if (!(await setupStatus.json()).data?.setupAvailable) { stop(); throw new Error('The isolated backend did not accept its own setup token.') }
@@ -71,7 +71,7 @@ const initialized = await fetch(`${backendURL}/api/subflow/v1/setup/initialize`,
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ token: setupToken, adminName: 'Playwright Owner', email: 'owner@example.test', password: 'test-password-1234', siteName: 'SubFlow E2E', defaultTimezone: 'Asia/Taipei', defaultCurrency: 'TWD', allowRegistration: true }),
 })
-if (!initialized.ok) { const detail = await initialized.text(); stop(); throw new Error(`Test setup failed (${initialized.status}): ${detail}`) }
+if (!initialized.ok) { stop(); throw new Error(`Test setup failed (${initialized.status}).`) }
 
 start(process.execPath, [join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', '127.0.0.1', '--port', '4174', '--strictPort'], {
   cwd: frontendDir,

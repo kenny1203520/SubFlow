@@ -7,7 +7,7 @@ const matches = computed(() => { const term = query.value.trim().toLocaleLowerCa
 function close() { open.value = false; query.value = '' }; function openDialog() { open.value = true; nextTick(() => searchInput.value?.focus()) }; function choose(value: Locale) { setLocale(value); close() }; function onKey(event: KeyboardEvent) { if (event.key === 'Escape' && open.value) close() }
 onMounted(() => window.addEventListener('keydown', onKey)); onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
-<template><button class="language-trigger" type="button" :aria-expanded="open" @click="openDialog"><svg
+<template><button class="language-trigger" type="button" :aria-label="t.chooseLanguage" :aria-expanded="open" @click="openDialog"><svg
             class="globe-icon" viewBox="0 0 24 24" aria-hidden="true">
             <circle cx="12" cy="12" r="9" />
             <path d="M3 12h18M12 3c2.5 2.5 3.8 5.5 3.8 9S14.5 18.5 12 21M12 3C9.5 5.5 8.2 8.5 8.2 12S9.5 18.5 12 21" />

@@ -17,6 +17,25 @@ async function signIn(page: Page, browserName: string) {
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 1500 }).catch(() => {})
 }
 
+async function expectNoOverflow(page: Page, width: number) {
+  const sizes = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    document: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+    overflowing: [...document.querySelectorAll<HTMLElement>('body *')]
+      .map(element => ({
+        tag: element.tagName,
+        className: typeof element.className === 'string' ? element.className : '',
+        right: Math.round(element.getBoundingClientRect().right),
+      }))
+      .filter(element => element.right > document.documentElement.clientWidth + 1)
+      .slice(0, 10),
+  }))
+  expect(sizes.viewport).toBe(width)
+  expect(sizes.document, JSON.stringify(sizes)).toBeLessThanOrEqual(width + 1)
+  expect(sizes.body, JSON.stringify(sizes)).toBeLessThanOrEqual(width + 1)
+}
+
 test('creates, edits, disables and opens a share, while fixed-date validation explains missing dates', async ({ page, browserName }) => {
   await page.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
   await signIn(page, browserName)
@@ -55,13 +74,13 @@ test('creates, edits, disables and opens a share, while fixed-date validation ex
   await expect(item.locator('.status-pill')).toHaveText('Disabled')
 })
 
-test('date ranges round-trip in supported timezones and narrow screens', async ({ browser, browserName }) => {
-  for (const [timezoneId, width, colorScheme] of [
+for (const [timezoneId, width, colorScheme] of [
     ['Asia/Taipei', 375, 'dark'], ['UTC', 768, 'light'], ['America/New_York', 1024, 'dark'],
     ['Asia/Taipei', 1440, 'light'],
   ] as const) {
-    const context = await browser.newContext({ timezoneId, viewport: { width, height: 900 }, colorScheme })
-    const page = await context.newPage()
+  test.describe(`date ranges ${timezoneId} at ${width}px`, () => {
+    test.use({ timezoneId, viewport: { width, height: 900 }, screen: { width, height: 900 }, colorScheme })
+    test('date ranges round-trip in supported timezones and narrow screens', async ({ page, browserName }) => {
     await page.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
     await signIn(page, browserName)
     await page.getByRole('button', { name: /create share/i }).first().click()
@@ -74,32 +93,16 @@ test('date ranges round-trip in supported timezones and narrow screens', async (
       configurable: true,
       value: { writeText: async () => { throw new Error('clipboard permission denied') } },
     }))
-    await page.locator('form').getByRole('button', { name: 'Save settings' }).click()
+    const save = page.locator('form').getByRole('button', { name: 'Save settings' })
+    await save.scrollIntoViewIfNeeded()
+    await expectNoOverflow(page, width)
+    await page.screenshot({ path: test.info().outputPath('share-editor.png'), fullPage: true })
+    await save.click()
     await expect(page.locator('.share-item').getByRole('heading', { name: shareName, exact: true })).toBeVisible()
     await expect(page.getByText(/Share created\. Copy this link manually:/)).toBeVisible()
-    const widths = await page.evaluate(() => ({
-      body: document.body.scrollWidth,
-      document: document.documentElement.scrollWidth,
-      viewport: window.innerWidth,
-      overflowing: [...document.querySelectorAll<HTMLElement>('body *')]
-        .map(element => {
-          const rect = element.getBoundingClientRect()
-          return {
-            tag: element.tagName.toLowerCase(),
-            className: typeof element.className === 'string' ? element.className : '',
-            text: element.innerText?.slice(0, 80) || '',
-            left: Math.round(rect.left),
-            right: Math.round(rect.right),
-            width: Math.round(rect.width),
-            scrollWidth: element.scrollWidth,
-            clientWidth: element.clientWidth,
-          }
-        })
-        .filter(element => element.right > window.innerWidth + 1 || element.left < -1)
-        .sort((left, right) => right.right - left.right)
-        .slice(0, 10),
-    }))
-    expect(widths.body, JSON.stringify(widths, null, 2)).toBeLessThanOrEqual(widths.viewport)
-    await context.close()
-  }
-})
+    const feedback = page.locator('.notice.success').first()
+    expect(await feedback.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+    await expectNoOverflow(page, width)
+    })
+  })
+}
