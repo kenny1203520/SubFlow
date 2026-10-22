@@ -48,13 +48,12 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Release metadata contract tests
+        run: node --test scripts/release/metadata.test.mjs scripts/release/publication.test.mjs
+
       - name: Frontend dependency audit
         working-directory: frontend
-        # Report-only for now: the current lockfile has pre-existing
-        # high-severity transitive advisories that are a separate cleanup
-        # task, not something this check should block on until triaged.
-        run: npm audit --audit-level=high
-        continue-on-error: true
+        run: npm audit --audit-level=moderate
 
       - name: Frontend tests
         working-directory: frontend
@@ -81,11 +80,11 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload Playwright failure artifacts
-        if: failure()
+      - name: Upload Playwright report and diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-failure-${{ github.run_id }}
+          name: playwright-report-${{ github.run_id }}
           path: |
             frontend/test-results/
             frontend/playwright-report/

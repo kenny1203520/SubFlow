@@ -8,3 +8,4 @@ backend/pb_data/
 backend/subflow
 backend/subflow.exe
 *.log
+.release/
