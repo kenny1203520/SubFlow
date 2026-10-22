@@ -153,8 +153,9 @@ jobs:
         with:
           name: release-evidence-${{ github.ref_name }}-${{ github.run_attempt }}
           path: .release/
+          include-hidden-files: true
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
 
   outcome:
     name: Release outcome

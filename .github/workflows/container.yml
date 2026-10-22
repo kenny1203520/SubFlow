@@ -50,5 +50,6 @@ jobs:
         with:
           name: container-qualification-${{ github.run_id }}
           path: .release/
+          include-hidden-files: true
           retention-days: 14
-          if-no-files-found: warn
+          if-no-files-found: error
