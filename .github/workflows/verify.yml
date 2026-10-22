@@ -72,6 +72,15 @@ jobs:
         working-directory: frontend
         run: npm run test:e2e
 
+      - name: Upload all-route desktop and mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-route-screenshots-${{ github.run_id }}
+          path: frontend/test-results/**/sitewide-routes/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
       - name: Upload Playwright failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4

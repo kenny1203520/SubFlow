@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import PersonalLedgerNav from '../components/PersonalLedgerNav.vue'
+import LedgerDateNav from '../components/LedgerDateNav.vue'
 import LedgerQuickAddDrawer from '../components/LedgerQuickAddDrawer.vue'
 import AttachmentEntry from '../components/AttachmentEntry.vue'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
@@ -9,6 +10,7 @@ import { useWorkspaceStore } from '../stores/workspace'
 import { useAuthStore } from '../stores/auth'
 import { useI18n } from '../i18n'
 import type { Currency, LedgerItem } from '../api/types'
+import { todayInput } from '../dateInput'
 
 const route = useRoute()
 const router = useRouter()
@@ -16,25 +18,17 @@ const workspace = useWorkspaceStore()
 const auth = useAuthStore()
 const { tr, locale } = useI18n()
 const open = ref(false)
-const datePicker = ref<HTMLInputElement>()
 const editingItem = ref<LedgerItem>()
 const pendingDelete = ref<LedgerItem>()
 const loadError = ref('')
-const today = () => new Date().toISOString().slice(0, 10)
+const timezone = computed(() => workspace.personalLedger?.timezone || auth.record?.timezone || 'UTC')
+const today = () => todayInput(timezone.value)
 const date = computed(() => String(route.query.date || workspace.personalLedger?.date || today()))
 const ledger = computed(() => workspace.personalLedger)
 const items = computed(() => ledger.value?.items || [])
 function sourceLabel(item: { groupId?: string }) { return item.groupId ? workspace.groups.find(group => group.id === item.groupId)?.name || item.groupId : tr('privateRecord') }
-const label = computed(() => {
-  const value = new Date(date.value + 'T12:00:00')
-  return Number.isNaN(value.getTime()) ? date.value : new Intl.DateTimeFormat(locale.value, { month: 'long', day: 'numeric', weekday: 'short' }).format(value)
-})
 const money = (value: number, currency: Currency) => new Intl.NumberFormat(locale.value, { style: 'currency', currency, maximumFractionDigits: 2 }).format(value / 100)
 function statusLabel(status: string) { return tr(status === 'scheduled' ? 'scheduled' : status === 'failed' ? 'failed' : status === 'pending' ? 'pendingLedger' : 'recorded') }
-function move(days: number) { const value = new Date(date.value + 'T12:00:00'); value.setDate(value.getDate() + days); router.replace({ query: { ...route.query, date: value.toISOString().slice(0, 10) } }) }
-function resetDate() { router.replace({ query: { ...route.query, date: undefined } }) }
-function openDatePicker() { const picker = datePicker.value; if (!picker) return; const showPicker = (picker as HTMLInputElement & { showPicker?: () => void }).showPicker; if (showPicker) showPicker.call(picker); else picker.click() }
-function selectDate(event: Event) { const value = (event.target as HTMLInputElement).value; if (value) router.replace({ query: { ...route.query, date: value } }) }
 function resourceFor(item: LedgerItem) { if (item.kind === 'expense') return workspace.personalExpenses.find(value => value.id === item.recordId); if (item.kind === 'income') return workspace.personalIncomes.find(value => value.id === item.recordId); return workspace.personalSubscriptions.find(value => value.id === (item.subscriptionId || item.recordId)) }
 const editRecord = computed(() => editingItem.value ? resourceFor(editingItem.value) : undefined)
 async function saved() { await workspace.refreshPersonal(); await loadLedger(date.value); editingItem.value = undefined; open.value = false }
@@ -50,7 +44,7 @@ onMounted(() => { void loadLedger(String(route.query.date || '')) })
 <template>
 <div class="page personal-ledger-page"><PersonalLedgerNav/>
 <header class="ledger-header"><div><p class="eyebrow">{{ tr('personalLedger') }}</p><h1>{{ tr('personalLedger') }}</h1><p class="muted">{{ tr('personalLedgerDesc') }}</p></div><button class="primary ledger-add-desktop" @click="show()">{{ tr('addRecord') }}</button></header>
-<section class="ledger-datebar card"><button class="icon-button" :aria-label="tr('previousDay')" @click="move(-1)">&lsaquo;</button><button type="button" class="ledger-date-copy date-trigger" :aria-label="tr('chooseDate')" @click="openDatePicker"><strong>{{ label }}</strong><span>{{ ledger?.timezone || auth.record?.timezone || tr('accountTimezone') }} &middot; {{ date }}</span></button><input ref="datePicker" class="ledger-date-picker" type="date" :value="date" :aria-label="tr('chooseDate')" @change="selectDate"><button class="icon-button" :aria-label="tr('nextDay')" @click="move(1)">&rsaquo;</button><button v-if="date!==today()" class="ghost today-button" @click="resetDate">{{ tr('backToToday') }}</button></section>
+<LedgerDateNav :date="date" :timezone="timezone" :today="today()" @change="value => router.replace({ query: { ...route.query, date: value } })" />
 <p v-if="workspace.error||loadError" class="inline-error">{{ loadError || workspace.error }}</p>
 <section v-if="ledger" class="ledger-summary-grid"><article v-for="summary in ledger.summaries" :key="summary.currency" class="ledger-summary card"><div class="summary-top"><span>{{ summary.currency }}</span><span>{{ tr('ledgerRecords', { count: summary.count }) }}</span></div><strong>{{ money(summary.netMinor,summary.currency) }}</strong><div class="summary-lines"><span class="income">{{ tr('beneficialIncome') }} {{ money(summary.incomeMinor,summary.currency) }}</span><span class="income">{{ tr('receivedIncome') }} {{ money(summary.receivedIncomeMinor || 0,summary.currency) }}</span><span class="expense">{{ tr('expense') }} {{ money(summary.expenseMinor,summary.currency) }}</span><span class="subscription">{{ tr('subscriptions') }} {{ money(summary.subscriptionMinor,summary.currency) }}</span></div></article><article v-if="!ledger.summaries.length" class="ledger-summary card empty-summary"><strong>{{ tr('noRecords') }}</strong><span>{{ tr('noRecordsDesc') }}</span></article></section>
 <section class="ledger-list card"><div class="section-heading"><div><p class="eyebrow">{{ tr('timeline') }}</p><h2>{{ tr('ledgerRecords', { count: items.length }) }}</h2></div><span>{{ tr('ledgerRecords', { count: items.length }) }}</span></div><div v-if="!items.length" class="ledger-empty"><div class="empty-icon">*</div><strong>{{ tr('noRecords') }}</strong><p>{{ tr('noRecordsDesc') }}</p></div><article v-for="item in items" :key="item.id" class="ledger-item" :class="'kind-'+item.kind+' status-'+item.status"><div class="item-icon">{{ item.kind==='income' ? '+' : item.kind==='subscription' ? '~' : '-' }}</div><div class="item-main"><strong>{{ item.title }}</strong><span>{{ item.category || tr('uncategorized') }} &middot; {{ sourceLabel(item) }} &middot; {{ statusLabel(item.status) }}</span><small v-if="item.notes">{{ item.notes }}</small></div><div class="item-side"><strong :class="item.kind==='income'?'income':'expense'">{{ item.kind==='income'?'+':'-' }}{{ money(item.amountMinor,item.currency) }}</strong><time>{{ new Date(item.occurredAt).toLocaleTimeString(locale,{hour:'2-digit',minute:'2-digit'}) }}</time><span class="row-actions"><AttachmentEntry v-if="item.kind!=='subscription'||item.subscriptionId" :target-type="item.kind==='income'?'income':item.kind==='subscription'?'subscription_period':'expense'" :target-id="item.kind==='subscription'?(item.subscriptionId||item.recordId||''):(item.recordId||'')" :billing-at="item.kind==='subscription'?item.occurredAt:undefined" :online="workspace.online" :disabled="!item.recordId&&item.kind!=='subscription'"/><button v-if="!item.groupId && (item.recordId || item.subscriptionId)" class="text-button" :aria-label="tr('edit')" @click="editItem(item)">{{ tr('edit') }}</button><button v-if="!item.groupId && (item.recordId || item.subscriptionId)" class="text-button danger-text" :aria-label="tr('remove')" @click="pendingDelete=item">{{ tr('remove') }}</button></span></div></article></section>

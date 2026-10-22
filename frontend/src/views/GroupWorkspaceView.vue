@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
@@ -7,6 +7,7 @@ import { timezoneLabel } from '../timezone'
 import { currencyLabel } from '../currency'
 
 const route = useRoute()
+const mobileMenu = ref<HTMLDetailsElement>()
 const workspace = useWorkspaceStore()
 const { tr } = useI18n()
 const groupId = computed(() => String(route.params.groupId || ''))
@@ -35,6 +36,23 @@ const routePermissions = computed<Record<string, string[]>>(() => ({
 }))
 const canAccessRoute = computed(() => (routePermissions.value[String(route.name)] || []).every(permission => workspace.groupPermissions.includes(permission)))
 const accessLoading = computed(() => workspace.groupBusy.access > 0)
+const navigationItems = computed(() => [
+  { name: 'group-overview', label: tr('groupOverview'), visible: canViewDashboard.value },
+  { name: 'group-ledger', label: tr('ledger'), visible: canViewLedger.value },
+  { name: 'group-expenses', label: tr('splitExpenses'), visible: canReadExpenses.value },
+  { name: 'group-incomes', label: tr('groupIncomes'), visible: canReadIncomes.value },
+  { name: 'group-subscriptions', label: tr('manageSubscriptions'), visible: canReadSubscriptions.value },
+  { name: 'group-members', label: tr('members'), visible: canViewGroup.value },
+  { name: 'group-roles', label: tr('roleManagement'), visible: canManageRoles.value },
+  { name: 'group-audit', label: tr('auditLogs'), visible: canReadAudit.value },
+  { name: 'group-share', label: tr('share'), visible: canManageShares.value },
+  { name: 'group-settings', label: tr('settings'), visible: canManageSettings.value },
+].filter(item => item.visible))
+const currentNavigationLabel = computed(() => navigationItems.value.find(item => item.name === route.name)?.label || tr('groupWorkspace'))
+
+function closeMobileMenu() {
+  mobileMenu.value?.removeAttribute('open')
+}
 
 async function activate() {
   if (groupId.value) await workspace.selectGroup(groupId.value)
@@ -69,6 +87,12 @@ watch(groupId, () => void activate())
       <RouterLink v-if="canManageShares" :to="`/groups/${groupId}/share`">{{ tr('share') }}</RouterLink>
       <RouterLink v-if="canManageSettings" :to="`/groups/${groupId}/settings`">{{ tr('settings') }}</RouterLink>
     </nav>
+    <details ref="mobileMenu" class="group-mobile-nav">
+      <summary>{{ currentNavigationLabel }}</summary>
+      <nav class="group-mobile-nav-links" :aria-label="tr('groupWorkspace')">
+        <RouterLink v-for="item in navigationItems" :key="item.name" :to="{ name: item.name, params: { groupId } }" @click="closeMobileMenu">{{ item.label }}</RouterLink>
+      </nav>
+    </details>
     <div v-if="accessLoading" class="empty-inline">{{ tr('processing') }}</div>
     <div v-else-if="!canAccessRoute" class="resource-error">
       <p>{{ workspace.groupErrors.access || tr('forbiddenError') }}</p>

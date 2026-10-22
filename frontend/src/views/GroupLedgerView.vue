@@ -1,18 +1,21 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import ConfirmDialog from '../components/ConfirmDialog.vue'
+import LedgerDateNav from '../components/LedgerDateNav.vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
 import LedgerQuickAddDrawer from '../components/LedgerQuickAddDrawer.vue'
 import AttachmentEntry from '../components/AttachmentEntry.vue'
 import type { Currency, Expense, Income, LedgerItem, LedgerKind, Subscription } from '../api/types'
+import { todayInput } from '../dateInput'
 
 const route = useRoute()
+const router = useRouter()
 const workspace = useWorkspaceStore()
-const { tr, formatDate, locale } = useI18n()
+const { tr, locale } = useI18n()
 const groupId = computed(() => String(route.params.groupId || ''))
-const date = ref(new Date().toISOString().slice(0, 10))
+const date = ref(String(route.query.date || todayInput(workspace.groups.find(value => value.id === String(route.params.groupId || ''))?.timezone || 'UTC')))
 const loading = ref(false)
 const loadError = ref('')
 const quickAdd = ref(false)
@@ -22,7 +25,8 @@ const pendingDelete = ref<LedgerItem>()
 const ledger = computed(() => workspace.groupLedger)
 const items = computed(() => ledger.value?.items || [])
 const group = computed(() => workspace.groups.find(value => value.id === groupId.value))
-const currentDate = () => new Date().toISOString().slice(0, 10)
+const timezone = computed(() => ledger.value?.timezone || group.value?.timezone || 'UTC')
+const currentDate = () => todayInput(timezone.value)
 
 function money(minor: number, currency: Currency) {
   return new Intl.NumberFormat(locale.value, { style: 'currency', currency, maximumFractionDigits: 2 }).format(minor / 100)
@@ -30,12 +34,10 @@ function money(minor: number, currency: Currency) {
 function statusLabel(status: string) {
   return tr(status === 'recorded' ? 'recorded' : status === 'scheduled' ? 'scheduled' : status === 'failed' ? 'failed' : 'pending')
 }
-function move(days: number) {
-  const next = new Date(date.value + 'T12:00:00')
-  next.setDate(next.getDate() + days)
-  date.value = next.toISOString().slice(0, 10)
+function setDate(value: string) {
+  date.value = value
+  void router.replace({ query: { ...route.query, date: value } })
 }
-function today() { date.value = currentDate() }
 async function saved() { quickAdd.value = false; editRecord.value = undefined; editKind.value = undefined; await load() }
 function canEdit(item: LedgerItem) {
   return item.kind === 'expense' ? workspace.groupPermissions.includes('ledger.expenses.write') : item.kind === 'income' ? workspace.groupPermissions.includes('ledger.incomes.write') : workspace.groupPermissions.includes('ledger.subscriptions.write')
@@ -79,6 +81,9 @@ async function load() {
 }
 onMounted(() => void load())
 watch([groupId, date], () => { if (groupId.value) void load() })
+watch(() => route.query.date, value => {
+  if (typeof value === 'string' && value !== date.value) date.value = value
+})
 </script>
 
 <template>
@@ -92,15 +97,7 @@ watch([groupId, date], () => { if (groupId.value) void load() })
       <button class="primary" @click="quickAdd=true">+ {{ tr('addRecord') }}</button>
     </header>
     <p v-if="loadError" class="notice danger">{{ loadError }}</p>
-    <section class="ledger-datebar card">
-      <button class="icon-button" :aria-label="tr('previousDay')" @click="move(-1)">&lsaquo;</button>
-      <div class="ledger-date-copy">
-        <strong>{{ formatDate(date + 'T12:00:00') }}</strong>
-        <span>{{ ledger?.timezone || group?.timezone || 'UTC' }} &middot; {{ ledger?.date || date }}</span>
-      </div>
-      <button class="icon-button" :aria-label="tr('nextDay')" @click="move(1)">&rsaquo;</button>
-      <button v-if="date !== currentDate()" class="ghost today-button" @click="today">{{ tr('backToToday') }}</button>
-    </section>
+    <LedgerDateNav :date="date" :timezone="timezone" :today="currentDate()" :loading="loading" @change="setDate" />
     <p v-if="loading" class="empty-inline">{{ tr('processing') }}</p>
     <section v-if="ledger" class="ledger-summary-grid">
       <article v-for="summary in ledger.summaries" :key="summary.currency" class="ledger-summary card">
