@@ -104,6 +104,8 @@ jobs:
 
       - name: Verify fresh setup, registration and production SPA/API
         run: node scripts/release/container-smoke.mjs subflow:candidate
+      - name: Rehearse Alpha 1 data upgrade and backup restore
+        run: node scripts/release/upgrade-smoke.mjs
 
       - name: Build and push
         id: publish
