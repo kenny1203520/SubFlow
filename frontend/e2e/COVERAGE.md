@@ -18,11 +18,12 @@ The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` a
 | Admin notification emails | Administrator / regular account | Real backend list returns 200; named navigation and direct reload; URL pagination and page size; pending/retry-success UI in Vitest | Simulated list 404 recovers through the real backend; real API denies a regular account with 403; real retry of a missing job returns 404 and writes a failure audit; row remains on rejection. Successful retry mutation against a real failed job is not covered | `admin-notification-emails.spec.ts`, `AdminView.test.ts` |
 | Profile, categories, contacts, attachments, about | Owner | Routes render; attachment sharing preference is covered separately | Page-specific create/edit/delete operations are not covered | `sitewide-ui.spec.ts`, `share-attachments.spec.ts` |
 | Confirmation dialog | Owner | Focus enters dialog; cancel and confirm; Escape behavior is covered by notification dialog | Focus restoration is implemented but not asserted in E2E | `sitewide-ui.spec.ts`, `notifications.spec.ts` |
+| Attachment drafts and previews | Isolated regular user / component harness | Draft files selected by desktop drop or touch file input; no early upload; cancel clears selection; a real one-page PDF renders nonblank pixels | Dropzone disabled and PDF load failure covered in Vitest; full upload-to-preview and Office formats are not covered in browser flows | `attachment-dropzone.spec.ts`, `pdf-preview.spec.ts`, `AttachmentDraftField.test.ts`, `AttachmentDropzone.test.ts`, `AttachmentPdfPreview.test.ts`, `attachmentPreview.test.ts` |
 
 ## Validation status
 
-- Full E2E configuration: 65 tests (13 scenarios across five projects). Complete execution results are recorded by CI and the release evidence; no project is skipped for publication.
-- Frontend unit tests: 145 passed across 35 files.
+- Full E2E configuration: 75 tests (15 scenarios across five projects). Complete execution results are recorded by CI and the release evidence; no project is skipped for publication.
+- Frontend unit tests: 158 passed across 39 files.
 - Frontend production build and changed-file ESLint checks passed.
 - Screenshots are retained under Playwright `test-results` locally and uploaded by the Verify workflow as a 14-day artifact.
 
