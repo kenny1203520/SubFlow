@@ -15,6 +15,7 @@ import PayerSelect from '../components/PayerSelect.vue'
 import ConversionPreview from '../components/ConversionPreview.vue'
 import SourceDialog from '../components/SourceDialog.vue'
 import AttachmentPanel from '../components/AttachmentPanel.vue'
+import AttachmentDraftField from '../components/AttachmentDraftField.vue'
 import AttachmentEntry from '../components/AttachmentEntry.vue'
 import RecurringIncomePanel from '../components/RecurringIncomePanel.vue'
 import Pagination from '../components/Pagination.vue'
@@ -80,6 +81,7 @@ const incomeMinor = computed(() => majorToMinor(form.amount || '0', currency.val
 const splitValid = computed(() => personal.value && !editing.value?.groupId ? true : form.splitMode === 'equal' ? participants.value.length > 0 : form.splitMode === 'amount' ? splitTotalMinor.value === incomeMinor.value : splitTotalMinor.value === 10000)
 watch([currency, reportingCurrency], ([from, to]) => { if (from === to) { form.rateMode = 'automatic'; form.exchangeRate = '' } })
 
+function cancelIncome() { open.value = false; pendingFiles.value = [] }
 function reset() { editingId.value = ''; pendingFiles.value = []; formError.value = ''; rateValid.value = true; receivedOnTouched.value = false; Object.assign(form, { title: '', category: '', categoryId: '', amount: '', currency: workspace.currentGroup?.currency || auth.record?.defaultCurrency || 'TWD', rateMode: 'automatic', exchangeRate: '', earnedBy: auth.record?.id || '', receivedOn: todayInput(viewerTimezone()), notes: '', splitMode: 'equal', participants: {}, values: {} }) }
 async function loadFormCategories() { try { await workspace.loadCategories(personal.value && !editing.value?.groupId ? 'personal' : 'group', editing.value?.groupId || workspace.currentGroupId, 'income') } catch { formError.value = workspace.localizedError || tr('requestFailed') } }
 async function create() { if (!canWrite.value) return; reset(); if (!personal.value) selectableMembers.value.forEach(m => { form.participants[m.userId] = true }); open.value = true; await loadFormCategories() }
@@ -169,7 +171,7 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
             <Pagination :meta="listMeta" @page="goToPage" />
         </section>
         </template>
-        <AppDrawer :open="open" :title="tr(editingId ? 'editIncome' : 'createIncome')" @close="open = false">
+        <AppDrawer :open="open" :title="tr(editingId ? 'editIncome' : 'createIncome')" @close="cancelIncome">
             <form class="form-card ledger-form" @submit.prevent="submit">
                 <div v-if="formError" class="notice danger inline">{{ formError }}</div>
                 <div v-if="editing?.groupId && personal" class="notice inline">
@@ -236,10 +238,10 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                         </p>
                     </fieldset>
                 </section>
-                <section v-if="!editingId" class="ledger-form-section"><label>{{tr('attachments')}}<input type="file" multiple :disabled="!workspace.online" accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" @change="pendingFiles=Array.from(($event.target as HTMLInputElement).files||[])"></label><small v-if="!workspace.online" class="field-help">{{tr('offlineActionDisabled')}}</small><small v-else-if="pendingFiles.length" class="field-help">{{tr('attachmentSelected',{count:pendingFiles.length})}}</small></section><section class="ledger-form-section"><label>{{ tr('notes') }}<textarea v-model="form.notes"
+                <section v-if="!editingId" class="ledger-form-section"><AttachmentDraftField v-model="pendingFiles" :disabled="!workspace.online" :disabled-message="tr('offlineActionDisabled')"/></section><section class="ledger-form-section"><label>{{ tr('notes') }}<textarea v-model="form.notes"
                             rows="3"></textarea></label></section><section v-if="editingId" class="ledger-form-section"><AttachmentPanel target-type="income" :target-id="editingId" :online="workspace.online" :initial-files="pendingFiles" @initial-files-handled="pendingFiles=[]"/></section>
                 <div class="form-actions ledger-form-actions"><button type="button" class="ghost"
-                        @click="open = false">{{ tr('cancel') }}</button><button class="primary"
+                        @click="cancelIncome">{{ tr('cancel') }}</button><button class="primary"
                         :disabled="workspace.loading || !splitValid || !rateValid">{{ tr(editingId ? 'saveChanges' :
                         'createIncome') }}</button>
                 </div>
