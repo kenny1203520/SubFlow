@@ -19,6 +19,8 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'], timezoneId: 'Asia/Taipei' } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'], timezoneId: 'Asia/Taipei' } },
     { name: 'webkit', use: { ...devices['Desktop Safari'], timezoneId: 'Asia/Taipei' } },
+    { name: 'chromium-touch', use: { ...devices['Pixel 5'], browserName: 'chromium', timezoneId: 'Asia/Taipei' } },
+    { name: 'webkit-touch', use: { ...devices['iPhone 13'], browserName: 'webkit', timezoneId: 'Asia/Taipei' } },
   ],
   webServer: {
     command: 'node e2e/start.mjs',

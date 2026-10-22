@@ -6,6 +6,33 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.2] - 2026-10-23
+
+This is an alpha pre-release. Data model and behavior may change before 0.2.0. Release preparation and outstanding validation are tracked in [the Alpha 2 plan](docs/releases/0.2.0-alpha.2.md).
+
+### Added
+- Added a notification center with unread, pending and resolved filters, notification preferences, and separate viewed/read and action-resolution states.
+- Added persistent notification email delivery with scheduled retries and an administrator view for failed jobs. Security notifications include password resets and system-role changes; subscription and recurring-income posting failures provide actionable notices.
+- Added Playwright checks for 28 route targets at six viewport widths across Chromium, Firefox and WebKit, with screenshots retained by CI and an explicit functional coverage matrix.
+- Added Chromium and WebKit touch-emulation projects, production-container setup/registration checks, real loopback SMTP integration tests, and an Alpha 1 upgrade/offline restore rehearsal.
+- Added strict release metadata and publication checks, manual retry against existing tags, immutable image references, and an explicit final release outcome.
+
+### Changed
+- Unified personal and group ledger date navigation, preserved selected dates and other URL queries, and used each workspace's effective timezone for today's date.
+- Improved shared page spacing, 44px square theme controls, mobile group navigation, audit layouts, long-text wrapping, and native confirmation-dialog focus behavior.
+
+### Fixed
+- Fixed empty income lists and ledger refreshes that incorrectly sent ISO timestamps where a local calendar date was required.
+- Fixed direct reloads of notification-email administration redirecting to the personal ledger; admin sections now load their own resources and show distinct loading, failure, retry and success states.
+- Fixed overflow in shared-page management and improved notification preferences on narrow screens.
+- Removed random username collisions from the large-group permission pagination test without weakening its permission assertions.
+- Fixed the hidden share-enabled checkbox widening the mobile layout and obstructing touch actions; compact language controls now retain an accessible name.
+- Explicit sign-out now records a backend audit before clearing the local session, with visible failure feedback and duplicate-submit prevention.
+- Resolved frontend dependency audit findings and made the moderate-or-higher audit gate mandatory.
+
+### Validation limits
+- Route rendering checks are not complete functional verification. Restricted group roles, several mutation/failure paths and full reviewed visual baselines remain incomplete. SMTP tests use loopback transport; external provider deliverability and physical devices were not verified. See [Playwright coverage](frontend/e2e/COVERAGE.md) and the release plan.
+
 ## [0.2.0-alpha.1] - 2026-10-21
 
 This is an alpha pre-release. Data model and behavior may change before 0.2.0.

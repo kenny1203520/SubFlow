@@ -7,7 +7,7 @@ import { locale } from '../i18n'
 vi.mock('../stores/auth', () => ({ useAuthStore: () => ({ token: 'token', logout: vi.fn() }) }))
 let stored: object[] = []
 let status = 201
-let responseCode = 'forbidden'
+const responseCode = 'forbidden'
 let failRefresh = false
 let failRename = false
 let allowRename = true

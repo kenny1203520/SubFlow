@@ -1,0 +1,55 @@
+name: Container qualification
+
+on:
+  workflow_call:
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  container:
+    name: Build and browser smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '26'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: dhi.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Install browser checks
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: subflow:candidate
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Check production SPA/API on isolated fresh data
+        run: node scripts/release/container-smoke.mjs subflow:candidate
+      - name: Rehearse Alpha 1 data upgrade and backup restore
+        run: node scripts/release/upgrade-smoke.mjs
+      - name: Retain container qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-qualification-${{ github.run_id }}
+          path: .release/
+          include-hidden-files: true
+          retention-days: 14
+          if-no-files-found: error

@@ -8,3 +8,7 @@ backend/subflow
 backend/subflow.exe
 backend/db
 *.log
+.release
+frontend/test-results
+frontend/playwright-report
+frontend/coverage
