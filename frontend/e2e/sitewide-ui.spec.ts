@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
 import { mkdir } from 'node:fs/promises'
 import { dirname } from 'node:path'
 
@@ -20,6 +21,13 @@ async function expectNoHorizontalOverflow(page: Page) {
 
 test('all application routes render on desktop and narrow screens', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
+  const prefix = randomUUID()
+  const originalExpense = `E2E expense original ${prefix}`
+  const updatedExpense = `E2E expense updated ${prefix}`
+  const incomeName = `E2E income ${prefix}`
+  const subscriptionName = `E2E subscription ${prefix}`
+  const groupName = `Responsive test group ${prefix}`
+  const updatedGroupName = `Responsive test group updated ${prefix}`
   await signInAsTestOwner(page)
 
   await page.goto('/personal')
@@ -33,21 +41,24 @@ test('all application routes render on desktop and narrow screens', async ({ pag
 
   await addRecord.click()
   expenseDrawer = page.getByRole('dialog', { name: 'Add record' })
-  await expenseDrawer.getByLabel('Item').fill('E2E expense original')
+  await expenseDrawer.getByLabel('Item').fill(originalExpense)
   await expenseDrawer.getByLabel('Amount').fill('123')
   await expenseDrawer.getByRole('button', { name: 'Save record' }).click()
   await expect(expenseDrawer).toBeHidden()
-  let expenseRow = page.locator('.ledger-item').filter({ hasText: 'E2E expense original' })
+  let expenseRow = page.locator('.ledger-item').filter({ hasText: originalExpense })
   await expect(expenseRow).toBeVisible()
   await expenseRow.getByRole('button', { name: 'Edit' }).click()
   expenseDrawer = page.getByRole('dialog', { name: 'Edit expense' })
-  await expenseDrawer.getByLabel('Item').fill('E2E expense updated')
-  const expenseUpdatePromise = page.waitForResponse(response => response.url().includes('/expenses/') && response.request().method() === 'PATCH')
+  await expect(expenseDrawer.getByLabel('Item')).toHaveValue(originalExpense)
+  await expect(expenseDrawer.getByLabel('Amount')).toHaveValue('123.00')
+  await expenseDrawer.getByLabel('Item').fill(updatedExpense)
+  expect(await expenseDrawer.locator('form').evaluate(form => (form as HTMLFormElement).checkValidity())).toBe(true)
+  const expenseUpdatePromise = page.waitForResponse(response => response.url().includes('/expenses/') && response.request().method() === 'PATCH', { timeout: 10_000 })
   await expenseDrawer.getByRole('button', { name: 'Save record' }).click()
   const expenseUpdate = await expenseUpdatePromise
   expect(expenseUpdate.ok(), await expenseUpdate.text()).toBeTruthy()
-  await expect(page.locator('.ledger-item').filter({ hasText: 'E2E expense updated' })).toBeVisible()
-  expenseRow = page.locator('.ledger-item').filter({ hasText: 'E2E expense updated' })
+  await expect(page.locator('.ledger-item').filter({ hasText: updatedExpense })).toBeVisible()
+  expenseRow = page.locator('.ledger-item').filter({ hasText: updatedExpense })
   await expenseRow.getByRole('button', { name: 'Remove' }).click()
   let confirmation = page.getByRole('alertdialog')
   await confirmation.getByRole('button', { name: 'Cancel' }).click()
@@ -62,11 +73,11 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   await expect(page.getByRole('button', { name: 'Add income' })).toBeVisible()
   await page.getByRole('button', { name: 'Add income' }).click()
   const incomeDrawer = page.getByRole('dialog', { name: 'Add income' })
-  await incomeDrawer.getByLabel('Item').fill('E2E income')
+  await incomeDrawer.getByLabel('Item').fill(incomeName)
   await incomeDrawer.getByLabel('Amount').fill('456')
   await incomeDrawer.getByRole('button', { name: 'Add income' }).click()
   await expect(incomeDrawer).toBeHidden()
-  const incomeRow = page.locator('.data-table-row').filter({ hasText: 'E2E income' })
+  const incomeRow = page.locator('.data-table-row').filter({ hasText: incomeName })
   await expect(incomeRow).toBeVisible()
   await incomeRow.getByRole('button', { name: 'Remove' }).click()
   confirmation = page.getByRole('alertdialog')
@@ -76,11 +87,11 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   await page.goto('/personal/subscriptions')
   await page.getByRole('button', { name: 'Add subscription' }).click()
   const subscriptionDrawer = page.getByRole('dialog', { name: 'Add subscription' })
-  await subscriptionDrawer.getByLabel('Name').fill('E2E subscription')
+  await subscriptionDrawer.getByLabel('Name').fill(subscriptionName)
   await subscriptionDrawer.getByLabel('Amount').fill('789')
   await subscriptionDrawer.getByRole('button', { name: 'Add subscription' }).click()
   await expect(subscriptionDrawer).toBeHidden()
-  const subscriptionRow = page.locator('.data-table-row').filter({ hasText: 'E2E subscription' })
+  const subscriptionRow = page.locator('.data-table-row').filter({ hasText: subscriptionName })
   await expect(subscriptionRow).toBeVisible()
   await subscriptionRow.getByRole('button', { name: 'Delete' }).click()
   confirmation = page.getByRole('alertdialog')
@@ -97,17 +108,17 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   await reopenedDialog.getByRole('button', { name: 'Create group' }).click()
   await expect(reopenedDialog.getByLabel('Group name')).toBeFocused()
   await expect(reopenedDialog.getByLabel('Group name')).toHaveJSProperty('validity.valid', false)
-  await reopenedDialog.getByLabel('Group name').fill('Responsive test group')
+  await reopenedDialog.getByLabel('Group name').fill(groupName)
   await reopenedDialog.getByRole('button', { name: 'Create group' }).click()
   await expect(page).toHaveURL(/\/groups\/[^/]+\/overview/)
   const groupPath = new URL(page.url()).pathname.split('/').slice(0, 3).join('/')
 
   await page.goto(`${groupPath}/settings`)
-  const groupName = page.getByLabel('Group name')
-  await expect(groupName).toHaveValue('Responsive test group')
-  await groupName.fill('Responsive test group updated')
+  const groupNameInput = page.getByLabel('Group name')
+  await expect(groupNameInput).toHaveValue(groupName)
+  await groupNameInput.fill(updatedGroupName)
   await page.getByRole('button', { name: 'Save changes' }).click()
-  await expect(groupName).toHaveValue('Responsive test group updated')
+  await expect(groupNameInput).toHaveValue(updatedGroupName)
 
   const routes = [
     '/overview', '/groups', '/personal', '/personal/incomes', '/personal/expenses', '/personal/subscriptions',

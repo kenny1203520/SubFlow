@@ -148,6 +148,7 @@ function incomeSplits(): IncomeSplit[] {
 }
 
 async function submit() {
+  if (saving.value) return
   if (!form.title.trim() || !form.amount.trim() || (mode.value === 'income' ? amountMinor.value < 0 : amountMinor.value <= 0) || !form.payer || !splitValid.value || !rateValid.value) {
     error.value = tr('invalidRequest')
     return
@@ -250,7 +251,7 @@ watch(() => form.billingCycle, cycle => {
       </section>
       <div class="form-actions ledger-form-actions">
         <button type="button" class="ghost" @click="emit('close')">{{ tr('cancel') }}</button>
-        <button class="primary" :disabled="saving || workspace.loading || !splitValid || !rateValid">{{ saving ? tr('processing') : tr('saveRecord') }}</button>
+        <button class="primary" :disabled="saving || !splitValid || !rateValid">{{ saving ? tr('processing') : tr('saveRecord') }}</button>
       </div>
     </form>
   </AppDrawer>
