@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/pocketbase/pocketbase/core"
+
 	"subflow/internal/domain"
 	"subflow/internal/ports"
 )
@@ -158,24 +160,33 @@ func TestSystemRoleManagerCannotEscalateTheirOwnRole(t *testing.T) {
 func TestGroupPermissionsFindsMembersBeyondFirstPage(t *testing.T) {
 	f := newHistoricalFixture(t)
 	ctx := context.Background()
-	target, err := f.stores.Users.Create(ctx, domain.SetupInput{AdminName: "Page two", Email: "page-two@example.com", Password: "correct-horse-battery-staple"})
-	if err != nil {
-		t.Fatal(err)
+	users, lookupErr := f.app.FindCollectionByNameOrId("users")
+	if lookupErr != nil {
+		t.Fatal(lookupErr)
 	}
-	if err = f.stores.Memberships.Create(ctx, &domain.Membership{GroupID: f.group.ID, UserID: target.ID, Role: domain.RoleMember}); err != nil {
-		t.Fatal(err)
+	createMember := func(username string) string {
+		t.Helper()
+		user := core.NewRecord(users)
+		// The upstream test fixture generates usernames as users[0-9]{5}.
+		// Explicit names keep this pagination test independent of collisions.
+		user.Set("username", username)
+		user.Set("email", username+"@example.com")
+		user.Set("name", username)
+		user.SetPassword("correct-horse-battery-staple")
+		if err := f.app.Save(user); err != nil {
+			t.Fatal(err)
+		}
+		if err := f.stores.Memberships.Create(ctx, &domain.Membership{GroupID: f.group.ID, UserID: user.Id, Role: domain.RoleMember}); err != nil {
+			t.Fatal(err)
+		}
+		return user.Id
 	}
+	targetID := createMember("page-two")
 	for i := 0; i < 100; i++ {
-		user, createErr := f.stores.Users.Create(ctx, domain.SetupInput{AdminName: "Later member", Email: fmt.Sprintf("later-member-%03d@example.com", i), Password: "correct-horse-battery-staple"})
-		if createErr != nil {
-			t.Fatal(createErr)
-		}
-		if createErr = f.stores.Memberships.Create(ctx, &domain.Membership{GroupID: f.group.ID, UserID: user.ID, Role: domain.RoleMember}); createErr != nil {
-			t.Fatal(createErr)
-		}
+		createMember(fmt.Sprintf("later-member-%03d", i))
 	}
 
-	permissions, err := f.service.GroupPermissions(ctx, target.ID, f.group.ID)
+	permissions, err := f.service.GroupPermissions(ctx, targetID, f.group.ID)
 	if err != nil {
 		t.Fatalf("expected the member beyond page one to resolve permissions: %v", err)
 	}

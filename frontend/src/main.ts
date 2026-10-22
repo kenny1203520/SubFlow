@@ -6,6 +6,7 @@ import './style.css'
 import './form-controls.css'
 import './completion.css'
 import './layout.css'
+import './responsive.css'
 
 createApp(App).use(createPinia()).use(router).mount('#app')
 

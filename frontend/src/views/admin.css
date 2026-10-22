@@ -18,3 +18,18 @@
 .admin-stack{gap:28px}.role-editor{display:grid;gap:28px}.role-editor .form-section{display:grid;gap:16px}.role-editor .form-section h2{margin:0}.role-editor .form-actions{margin-top:4px;padding-top:20px;border-top:1px solid var(--line)}
 .admin-stack>.role-editor .form-actions{position:static;margin:4px 0 0;padding:20px 0 0;background:transparent;border-top:1px solid var(--line);backdrop-filter:none}
 @media(max-width:720px){.admin-header{align-items:stretch;flex-direction:column}.admin-console-link{justify-content:center}.admin-grid{grid-template-columns:1fr}.section-heading{align-items:stretch;flex-direction:column}.section-heading .field{min-width:0}.data-row{align-items:stretch;flex-wrap:wrap}.data-row .role-select{width:100%;margin-left:0}.permission-summary,.admin-form fieldset{grid-template-columns:1fr}.role-category .pill,.role-category .ghost,.role-category .danger-text{margin-top:0}.admin-stack>.admin-form .form-actions{margin:8px -18px -18px;padding:12px 18px}}@media(max-width:900px){.sidebar-bottom .admin-link{display:none}}
+.admin-page .admin-tabs a { min-block-size: 44px; }
+.admin-page .failed-email-panel { container: failed-email / inline-size; min-inline-size: 0; }
+.admin-page .failed-email-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-block: 20px 8px; color: var(--muted); }
+.admin-page .failed-email-list { display: grid; }
+.admin-page .failed-email-row { display: grid; gap: 12px; padding-block: 16px; border-block-end: 1px solid var(--line); }
+.admin-page .failed-email-row:last-child { border-block-end: 0; }
+.admin-page .failed-email-row .grow { min-inline-size: 0; overflow-wrap: anywhere; }
+.admin-page .failed-email-row small { display: block; margin-block-start: 6px; color: var(--muted); line-height: 1.6; overflow-wrap: anywhere; }
+.admin-page .failed-email-row strong, .admin-page .failed-email-row small { white-space: normal; overflow: visible; text-overflow: clip; }
+.admin-page .failed-email-error { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.admin-page .failed-email-error p { flex: 1 1 180px; margin: 0; overflow-wrap: anywhere; }
+@container failed-email (min-width: 480px) {
+  .admin-page .failed-email-row { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+}
+
