@@ -6,6 +6,27 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.3] - 2026-10-23
+
+This is an alpha pre-release. Includes the attachment improvements and fixes merged after Alpha 2. See [Alpha 3 qualification](docs/releases/0.2.0-alpha.3.md) and [functional coverage limits](frontend/e2e/COVERAGE.md).
+
+### Added
+- Added reusable attachment dropzones and draft file lists to expense, income and dashboard forms. Selecting files does not upload them before the record is saved; cancelling clears the draft selection.
+- Added in-app PDF page rendering and basic DOCX text, XLSX cell and PPTX text previews, including shared attachments. Office previews do not reproduce the original document layout.
+- Added browser regressions for attachment draft selection/cancellation and real PDF canvas rendering across all five browser projects.
+
+### Fixed
+- Fixed valid ledger edits losing their save action during an SSE background refresh. A drawer's own pending write now controls duplicate-submit prevention; rejected writes retain values for retry.
+- Corrected PDF navigation to say previous/next page in both supported languages.
+
+### Changed
+- Isolated browser fixtures by unique names and separate temporary PocketBase instances per CI job, preventing failed attempts from contaminating other browsers.
+- Pinned all five browser jobs to the matching official Playwright runtime and set its Firefox container home explicitly. Every browser job remains a required publishing gate.
+
+### Validation limits
+- Browser tests use desktop engines and touch emulation, not physical devices. The complete route/role/failure matrix and reviewed visual baselines remain unfinished.
+- Office extraction has unit coverage; full upload-to-preview flows for every document format, malformed-file permutation and large document remain outside browser coverage. PDF canvas rendering is tested with a component harness.
+
 ## [0.2.0-alpha.2] - 2026-10-23
 
 This is an alpha pre-release. Data model and behavior may change before 0.2.0. Release preparation and outstanding validation are tracked in [the Alpha 2 plan](docs/releases/0.2.0-alpha.2.md).

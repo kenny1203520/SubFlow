@@ -87,9 +87,9 @@ onBeforeUnmount(() => {
     <p v-else-if="failed" role="alert" class="notice danger">{{ tr('attachmentPreviewFailed') }}</p>
     <template v-else-if="pageCount">
       <nav class="pdf-controls" :aria-label="tr('attachmentPreview')">
-        <button type="button" class="ghost" :disabled="pageNumber <= 1" :aria-label="tr('previousDay')" @click="pageNumber--">{{ tr('previousDay') }}</button>
+        <button type="button" class="ghost" :disabled="pageNumber <= 1" @click="pageNumber--">{{ tr('previousPage') }}</button>
         <span aria-live="polite">{{ pageNumber }} / {{ pageCount }}</span>
-        <button type="button" class="ghost" :disabled="pageNumber >= pageCount" :aria-label="tr('nextDay')" @click="pageNumber++">{{ tr('nextDay') }}</button>
+        <button type="button" class="ghost" :disabled="pageNumber >= pageCount" @click="pageNumber++">{{ tr('nextPage') }}</button>
       </nav>
       <div class="pdf-canvas-wrap"><canvas ref="canvas" :aria-label="`${tr('attachmentPreview')} ${pageNumber} / ${pageCount}`"></canvas></div>
     </template>
