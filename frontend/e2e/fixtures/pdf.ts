@@ -17,4 +17,3 @@ export function onePagePdf(): Uint8Array {
   source += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.slice(1).map(offset => `${String(offset).padStart(10, '0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`
   return new TextEncoder().encode(source)
 }
-

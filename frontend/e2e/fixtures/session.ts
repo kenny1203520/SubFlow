@@ -13,4 +13,3 @@ export async function account(page: Page, request: APIRequestContext) {
   }, auth)
   return { headers: { Authorization: `Bearer ${auth.token}` }, userID: auth.record.id as string }
 }
-
