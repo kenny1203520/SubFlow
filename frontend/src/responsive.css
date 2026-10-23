@@ -224,3 +224,12 @@ dialog.modal-backdrop.confirm-dialog-backdrop::backdrop {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Keep touch text controls readable without restricting the user's zoom. */
+@media (pointer: coarse), (max-width: 700px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+  select,
+  textarea {
+    font-size: max(16px, 1rem) !important;
+  }
+}
