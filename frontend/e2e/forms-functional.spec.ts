@@ -1,7 +1,21 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 import { account } from './fixtures/session'
 import { onePagePdf } from './fixtures/pdf'
 import { randomUUID } from 'node:crypto'
+
+async function expectPdfContent(canvas: Locator) {
+  await expect(canvas).toBeVisible()
+  await expect.poll(() => canvas.evaluate((element: HTMLCanvasElement) => {
+    const context = element.getContext('2d')
+    if (!context || !element.width || !element.height) return 0
+    const pixels = context.getImageData(0, 0, element.width, element.height).data
+    let dark = 0
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] < 80 && pixels[index + 1] < 80 && pixels[index + 2] < 80 && pixels[index + 3] > 0) dark++
+    }
+    return dark
+  })).toBeGreaterThan(20)
+}
 
 test('financial drawers and profile selectors accept pointer and keyboard input without saving on cancel', async ({ page, request }, testInfo) => {
   test.setTimeout(180_000)
@@ -79,7 +93,7 @@ test('an uploaded PDF renders through personal and shared attachment dialogs', a
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 500 }).catch(() => {})
   await page.getByRole('button', { name: 'Attachments', exact: true }).click()
   await page.getByRole('button', { name: 'real-receipt.pdf', exact: true }).click()
-  await expect(page.locator('.attachment-preview .pdf-preview canvas')).toBeVisible()
+  await expectPdfContent(page.locator('.attachment-preview .pdf-preview canvas'))
   await expect(page.locator('.attachment-preview [role="alert"]')).toHaveCount(0)
   await page.getByRole('dialog', { name: 'Attachment preview', exact: true }).getByRole('button', { name: 'Close', exact: true }).click()
   await page.getByRole('dialog', { name: 'Attachments', exact: true }).getByRole('button', { name: 'Close', exact: true }).click()
@@ -91,7 +105,7 @@ test('an uploaded PDF renders through personal and shared attachment dialogs', a
   await page.locator('.share-attachment-trigger').click()
   const dialog = page.getByRole('dialog', { name: 'Attachments', exact: true })
   await dialog.getByRole('button', { name: 'Preview', exact: true }).click()
-  await expect(dialog.locator('.pdf-preview canvas')).toBeVisible()
+  await expectPdfContent(dialog.locator('.pdf-preview canvas'))
   await page.screenshot({ path: testInfo.outputPath('shared-pdf-preview.png') })
   await expect(dialog.getByRole('alert')).toHaveCount(0)
   await page.keyboard.press('Escape')
