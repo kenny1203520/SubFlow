@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.4] - 2026-10-23
+
+This is an alpha pre-release. It includes the mobile interface, shared attachment, form and PDF preview repairs merged after Alpha 3. See [Alpha 4 qualification](docs/releases/0.2.0-alpha.4.md) and [functional coverage limits](frontend/e2e/COVERAGE.md).
+
 ### Fixed
 - Restored production PDF previews by allowing authorized blob reads in CSP; PDF main and worker bundles now use the matching compatibility build.
 - Kept category, currency and nested icon menus interactive inside native modal forms, with viewport-aware placement and Escape focus return.
@@ -293,7 +297,8 @@ This is an alpha pre-release. Data model and behavior may change before 0.2.0.
 - ALTCHA Community 驗證一律顯示「Verification failed. Try again later.」：後端誤用了與前端 widget 不相容的 KDF v2 挑戰格式，已改回與 widget 相符的傳統協定。
 - Docker 映像檔改用 Docker Hardened Images 後建置失敗（執行期基底映像沒有 `apk`、也無法以非 root 身分建立使用者）：改在 `-dev` 映像的獨立階段安裝 `tzdata` 並只複製時區資料進最終映像，執行期直接沿用基底映像內建的 `nonroot`（65532）使用者，不再嘗試建立自訂使用者。
 
-[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.1.15...HEAD
+[Unreleased]: https://github.com/kenny1203520/SubFlow/compare/v0.2.0-alpha.4...HEAD
+[0.2.0-alpha.4]: https://github.com/kenny1203520/SubFlow/compare/v0.2.0-alpha.3...v0.2.0-alpha.4
 [0.1.15]: https://github.com/kenny1203520/SubFlow/compare/v0.1.14...v0.1.15
 [0.1.14]: https://github.com/kenny1203520/SubFlow/compare/v0.1.13...v0.1.14
 [0.1.13]: https://github.com/kenny1203520/SubFlow/compare/v0.1.12...v0.1.13
