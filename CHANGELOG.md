@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Fixed
+- Fixed attachment dialogs appearing while closed and covering shared ledgers, introduced in Alpha 3. Dialog layout now applies only while open; closing restores focus to its trigger in WebKit too.
+- Added populated attachment-share checks for all sharing modes and a required production-container regression.
+
 ## [0.2.0-alpha.3] - 2026-10-23
 
 This is an alpha pre-release. Includes the attachment improvements and fixes merged after Alpha 2. See [Alpha 3 qualification](docs/releases/0.2.0-alpha.3.md) and [functional coverage limits](frontend/e2e/COVERAGE.md).

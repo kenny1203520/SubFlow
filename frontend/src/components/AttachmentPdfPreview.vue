@@ -98,5 +98,4 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .pdf-preview{display:flex;flex:1;min-height:0;flex-direction:column;gap:.5rem}.pdf-controls{display:flex;justify-content:center;align-items:center;gap:.75rem;flex-wrap:wrap}.pdf-controls button{min-height:44px}.pdf-canvas-wrap{flex:1;min-height:0;overflow:auto;display:grid;place-items:start center;padding:12px;background:var(--surface-soft);border-radius:8px}.pdf-canvas-wrap canvas{max-width:100%;height:auto!important;box-shadow:0 1px 8px #0003;background:white}.preview-status{padding:1rem;text-align:center;color:var(--muted)}
-:global(.share-attachment-dialog){display:flex;flex-direction:column;gap:12px}:global(.share-attachment-dialog)>ul{flex:1;min-height:0;overflow:auto}
 </style>
