@@ -47,7 +47,7 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   const incomeName = `E2E income ${prefix}`
   const subscriptionName = `E2E subscription ${prefix}`
   const groupName = `Responsive test group ${prefix}`
-  const updatedGroupName = `Responsive test group updated ${prefix}`
+  const updatedGroupName = `Long group ${'W'.repeat(24)}${prefix.slice(0, 8)}`
   await signInAsTestOwner(page)
 
   await page.goto('/personal')

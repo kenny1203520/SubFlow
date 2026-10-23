@@ -69,6 +69,8 @@ Rows explicitly marked as not covered are follow-up work; a route rendering chec
 
 ## Mobile forms, overview and production preview regressions
 
+The group route fixture now includes a long unbroken name. Firefox with the pinned Linux fonts exposed a card widening a 320px page to 370px after the old clipping mask was removed; an explicit unbroken fixture also reproduced the issue locally. Group cards and headings now wrap these values rather than relying on browser-specific UUID line breaks.
+
 Manual mobile screenshot review exposed profile/admin forms clipped by an old page-wide overflow-x:hidden rule. The rule is removed. Form and workspace grids now use shrinkable tracks, dropdown roots have no intrinsic minimum, and list headings wrap. Sitewide checks also measure form inputs, selects, textareas, buttons and primary heading actions against viewport bounds; document width alone cannot approve clipped controls. Overflow diagnostics include only path, element tag/class and geometry, never field values or share queries.
 
 | Feature | Actor and real-backend path | Assertions | Limits |

@@ -131,6 +131,9 @@
 .grow,
 .item-main,
 .item-cell,
+.group-card,
+.group-workspace-identity h1,
+.page-heading h1,
 .audit-row-toggle .grow {
   min-inline-size: 0;
   overflow-wrap: anywhere;
