@@ -3,7 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const pdf = vi.hoisted(() => ({ getDocument: vi.fn(), getPage: vi.fn(), GlobalWorkerOptions: { workerSrc: '' } }))
-vi.mock('pdfjs-dist', () => pdf)
+vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => pdf)
 
 import AttachmentPdfPreview from './AttachmentPdfPreview.vue'
 import { locale } from '../i18n'

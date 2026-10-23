@@ -24,10 +24,24 @@ function onPicker(event: Event) {
 
 <template>
   <div class="month-nav">
-    <button class="icon-button" :aria-label="tr('previousMonth')" @click="moveMonth(-1)">‹</button>
-    <strong>{{ formatMonth(modelValue) }}</strong>
-    <button class="icon-button" :aria-label="tr('nextMonth')" @click="moveMonth(1)">›</button>
-    <button class="ghost month-jump" :class="{ 'is-current': isCurrentMonth }" :disabled="isCurrentMonth" @click="goCurrentMonth">{{ tr('currentMonth') }}</button>
-    <input class="month-picker" type="month" :value="modelValue" :aria-label="tr('currentMonth')" @change="onPicker">
+    <div class="month-navigation">
+      <button class="icon-button" :aria-label="tr('previousMonth')" @click="moveMonth(-1)">‹</button>
+      <strong>{{ formatMonth(modelValue) }}</strong>
+      <button class="icon-button" :aria-label="tr('nextMonth')" @click="moveMonth(1)">›</button>
+    </div>
+    <div class="month-actions">
+      <button class="ghost month-jump" :class="{ 'is-current': isCurrentMonth }" :disabled="isCurrentMonth" @click="goCurrentMonth">{{ tr('currentMonth') }}</button>
+      <input class="month-picker" type="month" :value="modelValue" :aria-label="tr('currentMonth')" @change="onPicker">
+    </div>
   </div>
 </template>
+
+<style scoped>
+.month-nav{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;width:100%;min-width:0;white-space:normal}
+.month-navigation{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:8px}
+.month-navigation strong{min-width:0;text-align:center}
+.month-navigation .icon-button{width:44px;min-width:44px;height:44px}
+.month-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.month-actions .month-jump{flex:0 0 auto;min-height:44px}
+.month-actions .month-picker{flex:1 0 150px;width:150px;max-width:100%;min-height:44px}
+</style>

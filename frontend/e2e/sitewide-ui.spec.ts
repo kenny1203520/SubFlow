@@ -15,8 +15,28 @@ async function signInAsTestOwner(page: Page) {
 }
 
 async function expectNoHorizontalOverflow(page: Page) {
-  const sizes = await page.evaluate(() => ({ viewport: document.documentElement.clientWidth, content: document.documentElement.scrollWidth }))
+  const sizes = await page.evaluate(() => {
+    const viewport = document.documentElement.clientWidth, content = document.documentElement.scrollWidth
+    return {
+      viewport, content, path: location.pathname,
+      overflowing: content > viewport + 1 ? [...document.querySelectorAll('body *')].flatMap(element => {
+        const rect = element.getBoundingClientRect()
+        return rect.right > viewport + 1 ? [{ tag: element.tagName, class: element.className, right: Math.round(rect.right) }] : []
+      }).slice(0, 12) : [],
+    }
+  })
   expect(sizes.content, JSON.stringify(sizes)).toBeLessThanOrEqual(sizes.viewport + 1)
+  const clipped = await page.locator('form input, form select, form textarea, form button, .page-heading > .primary').evaluateAll(elements => {
+    const width = document.documentElement.clientWidth
+    return elements.flatMap(element => {
+      const rect = element.getBoundingClientRect()
+      if (rect.width <= 1 || rect.height <= 1) return []
+      return rect.left < -1 || rect.right > width + 1
+        ? [{ tag: element.tagName, left: Math.round(rect.left), right: Math.round(rect.right), viewport: width }]
+        : []
+    })
+  })
+  expect(clipped, 'Form controls must stay within the viewport even when an ancestor clips overflow').toEqual([])
 }
 
 test('all application routes render on desktop and narrow screens', async ({ page }, testInfo) => {
@@ -27,7 +47,7 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   const incomeName = `E2E income ${prefix}`
   const subscriptionName = `E2E subscription ${prefix}`
   const groupName = `Responsive test group ${prefix}`
-  const updatedGroupName = `Responsive test group updated ${prefix}`
+  const updatedGroupName = `Long group ${'W'.repeat(24)}${prefix.slice(0, 8)}`
   await signInAsTestOwner(page)
 
   await page.goto('/personal')

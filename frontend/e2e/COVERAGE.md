@@ -18,11 +18,11 @@ The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` a
 | Admin notification emails | Administrator / regular account | Real backend list returns 200; named navigation and direct reload; URL pagination and page size; pending/retry-success UI in Vitest | Simulated list 404 recovers through the real backend; real API denies a regular account with 403; real retry of a missing job returns 404 and writes a failure audit; row remains on rejection. Successful retry mutation against a real failed job is not covered | `admin-notification-emails.spec.ts`, `AdminView.test.ts` |
 | Profile, categories, contacts, attachments, about | Owner | Routes render; attachment sharing preference is covered separately | Page-specific create/edit/delete operations are not covered | `sitewide-ui.spec.ts`, `share-attachments.spec.ts` |
 | Confirmation dialog | Owner | Focus enters dialog; cancel and confirm; Escape behavior is covered by notification dialog | Focus restoration is implemented but not asserted in E2E | `sitewide-ui.spec.ts`, `notifications.spec.ts` |
-| Attachment drafts and previews | Isolated regular user / component harness | Draft files selected by desktop drop or touch file input; no early upload; cancel clears selection; a real one-page PDF renders nonblank pixels | Dropzone disabled and PDF load failure covered in Vitest; full upload-to-preview and Office formats are not covered in browser flows | `attachment-dropzone.spec.ts`, `pdf-preview.spec.ts`, `AttachmentDraftField.test.ts`, `AttachmentDropzone.test.ts`, `AttachmentPdfPreview.test.ts`, `attachmentPreview.test.ts` |
+| Attachment drafts and previews | Isolated regular user / component harness | Draft files selected by desktop drop or touch file input; no early upload; cancel clears selection; a real one-page PDF renders nonblank pixels | Dropzone disabled and PDF load failure covered in Vitest; image upload-to-preview and download are covered by the share regression; Office browser flows remain incomplete | `attachment-dropzone.spec.ts`, `pdf-preview.spec.ts`, `AttachmentDraftField.test.ts`, `AttachmentDropzone.test.ts`, `AttachmentPdfPreview.test.ts`, `attachmentPreview.test.ts` |
 
 ## Validation status
 
-- Full E2E configuration: 75 tests (15 scenarios across five projects). Complete execution results are recorded by CI and the release evidence; no project is skipped for publication.
+- Full E2E configuration: 130 tests (26 scenarios across five projects). Complete execution results are recorded by CI and qualification evidence; no project is skipped for publication.
 - Frontend unit tests: 158 passed across 39 files.
 - Frontend production build and changed-file ESLint checks passed.
 - Screenshots are retained under Playwright `test-results` locally and uploaded by the Verify workflow as a 14-day artifact.
@@ -57,3 +57,33 @@ Rows explicitly marked as not covered are follow-up work; a route rendering chec
 - Long failed-job records are explicitly simulated UI fixtures. List recovery, permission rejection and the missing-job retry/audit assertions use the isolated real backend.
 - The production backend launched from this checkout returns 200 for `/api/subflow/v1/system/notification-emails/failed?page=1&perPage=25&sort=-created`. The supplied server-side 404 was not reproduced there. An existing server still returning a default 404 should be checked for a frontend/backend version mismatch or different API target.
 - The reproduced frontend defect was a missing `notification-emails` alternative in the admin route pattern: a menu link worked but refreshing redirected to `/personal`. The focused regression test failed before the route fix and now passes. Section-specific loading also prevents unrelated settings/users/roles/audit requests when visiting this page.
+
+## Alpha 3 shared-attachment white-overlay regression
+
+- The published Alpha 3 image was reproduced by its immutable digest. A populated share mounted an attachment dialog with no open attribute, but PDF global CSS forced display:flex; it covered the viewport at phone widths and part of desktop screens. Empty-share smoke tests had not exercised this state.
+- Dialog layout now belongs to ShareAttachments and only applies to [open]. An explicit trigger reference also restores focus in WebKit, where pointer activation does not necessarily focus a button.
+- share-view.spec.ts adds a minimal simulated projection plus real-backend link/password/accounts shares with uploaded PNGs. Every project checks 320/375/390/768/1024/1440px in light/dark, closed/open state, geometry, Escape, focus return, rejected-read retry, image decoding, download and unauthenticated/wrong-password rejection. These are five browser projects, not physical devices.
+- Production-container qualification now creates a real anonymous attachment share, verifies the closed dialog stays hidden, and opens/previews/closes it at mobile and desktop widths. This checks bundled CSS before future publication.
+
+- Manual review also exposed overlapping type/amount/attachment controls on 320px populated shares. Record rows now use bounded grid tracks with stacked mobile content; tests assert control rectangles do not overlap and titles are not clipped.
+
+## Mobile forms, overview and production preview regressions
+
+The group route fixture now includes a long unbroken name. Firefox with the pinned Linux fonts exposed a card widening a 320px page to 370px after the old clipping mask was removed; an explicit unbroken fixture also reproduced the issue locally. Group cards and headings now wrap these values rather than relying on browser-specific UUID line breaks.
+
+Manual mobile screenshot review exposed profile/admin forms clipped by an old page-wide overflow-x:hidden rule. The rule is removed. Form and workspace grids now use shrinkable tracks, dropdown roots have no intrinsic minimum, and list headings wrap. Sitewide checks also measure form inputs, selects, textareas, buttons and primary heading actions against viewport bounds; document width alone cannot approve clipped controls. Overflow diagnostics include only path, element tag/class and geometry, never field values or share queries.
+
+| Feature | Actor and real-backend path | Assertions | Limits |
+| --- | --- | --- | --- |
+| Participant binding | Isolated group owner with a placeholder member | Invite & bind reveals/focuses the invitation form at 320/390/768/1440px with both motion preferences; cancellation sends no invitation | Invitation acceptance and restricted-member mutation paths remain outside this case |
+| Modal category and nested icon menus | Isolated user opens the personal ledger drawer | Options accept real pointer clicks; Escape closes only the active menu, restores focus and leaves the drawer open; simulated reduced visual viewport keeps options reachable | The keyboard viewport is injected, not a physical on-screen keyboard |
+| Financial and profile forms | Isolated user and group owner | Personal/group expense, income and subscription forms at 320/768/1440px: category, available currency, billing cycle, input focus, cancellation without writes and no page overflow; profile currency/timezone selection | Does not claim all form validation, successful mutations, role denial or backend failure paths |
+| Overview metrics | Isolated user with a large real expense | Six widths; equal card tracks, values and children not clipped, cards stay within their parent; month picker at least 140px wide and 44px high; mobile/desktop screenshots | This case uses personal overview; route checks cover the group overview separately |
+| Touch text controls and zoom | Isolated user opens ledger form | Visible text inputs/selects/textarea are at least 16px on narrow/coarse-pointer contexts; viewport metadata permits zoom and body touch-action stays auto | Focus autozoom, pinch and double-tap gestures still need physical iOS qualification |
+| PDF compatibility | Real PDF component harness | Nonblank canvas pixels with native APIs and with Promise.try removed from both window and worker; all five projects | Capability injection is explicitly simulated; it does not identify a user's exact Safari minor version |
+| Uploaded PDF | Isolated user uploads a valid PDF to a real expense and creates an attachment-enabled public share | Personal and public dialogs render nonblank canvas pixels, show no preview error, and close correctly; screenshots wait for actual content | Generated one-page PDF; complex, malformed, encrypted and large files remain outside this case |
+| Production CSP | Fresh production container, anonymous shared PDF | Closed dialog stays hidden; bundled worker renders nonblank canvas at 390/1440px; backend test requires blob connect permission while retaining script/worker/object restrictions | Chromium touch emulation plus desktop, not physical Safari |
+
+The confirmed production PDF failure was CSP rejecting fetch(blob:), which development Vite does not reproduce. The required container check now uses a real uploaded PDF rather than an image-only attachment. No new write endpoint, audit event, schema or financial rule is introduced by these presentation/security-header fixes. Existing fixture writes use the existing backend APIs.
+
+See [Alpha 3 UI regression qualification](../../docs/validation/alpha3-ui-regressions.md). Screenshots are review evidence, not approved visual baselines; the full site/role/failure acceptance plan remains incomplete.

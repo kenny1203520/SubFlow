@@ -51,3 +51,23 @@ func TestHeadReturnsNoBody(t *testing.T) {
 		t.Fatal("HEAD response must not include a body")
 	}
 }
+
+func TestCSPAllowsProtectedBlobPreviewsWithoutRelaxingScripts(t *testing.T) {
+	e, response := event(http.MethodGet, "/")
+	if err := serve(e, "/"); err != nil {
+		t.Fatal(err)
+	}
+	policy := response.Header().Get("Content-Security-Policy")
+	var connect string
+	for _, directive := range strings.Split(policy, ";") {
+		if strings.HasPrefix(strings.TrimSpace(directive), "connect-src ") {
+			connect = directive
+		}
+	}
+	if !strings.Contains(connect, "blob:") {
+		t.Fatal("PDF and Office previews must be able to read their authorized blob URLs")
+	}
+	if strings.Contains(policy, "'unsafe-eval'") || !strings.Contains(policy, "worker-src 'self';") || !strings.Contains(policy, "object-src 'none';") {
+		t.Fatal("blob preview support must retain script, worker and object restrictions")
+	}
+}
