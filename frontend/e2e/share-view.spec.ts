@@ -66,11 +66,22 @@ for (const mode of ['link', 'password', 'accounts'] as const) {
     for (const width of [320, 375, 390, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: 900 })
       for (const theme of ['light', 'dark']) {
-        await page.evaluate(value => document.documentElement.dataset.theme = value, theme)
+        await page.evaluate(value => {
+          document.documentElement.dataset.theme = value
+          document.documentElement.style.colorScheme = value
+        }, theme)
         await expect(dialog).toBeHidden()
         const sizes = await page.evaluate(() => ({ document: document.documentElement.scrollWidth, viewport: document.documentElement.clientWidth }))
         expect(sizes.viewport).toBe(width)
         expect(sizes.document).toBeLessThanOrEqual(width + 1)
+        const recordLayout = await page.locator('.record').evaluate(element => {
+          const title = element.querySelector<HTMLElement>('.record-heading strong')!
+          const selectors = ['.record-type', '.record-amount', '.share-attachment-trigger']
+          const bounds = selectors.map(selector => element.querySelector(selector)!.getBoundingClientRect())
+          const overlap = bounds.some((a, index) => bounds.slice(index + 1).some(b => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1))
+          return { overlap, titleClipped: title.scrollWidth > title.clientWidth + 1 }
+        })
+        expect(recordLayout).toEqual({ overlap: false, titleClipped: false })
         await trigger.click()
         await expect(dialog).toBeVisible()
         await expect(dialog.getByText('receipt.png', { exact: true })).toBeVisible()

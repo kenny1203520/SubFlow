@@ -7,6 +7,7 @@
 ## [Unreleased]
 
 ### Fixed
+- Fixed shared ledger amounts and attachment actions overlapping on narrow screens; long record titles now wrap and attachment actions have their own row.
 - Fixed attachment dialogs appearing while closed and covering shared ledgers, introduced in Alpha 3. Dialog layout now applies only while open; closing restores focus to its trigger in WebKit too.
 - Added populated attachment-share checks for all sharing modes and a required production-container regression.
 

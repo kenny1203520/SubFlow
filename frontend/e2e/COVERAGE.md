@@ -64,3 +64,5 @@ Rows explicitly marked as not covered are follow-up work; a route rendering chec
 - Dialog layout now belongs to ShareAttachments and only applies to [open]. An explicit trigger reference also restores focus in WebKit, where pointer activation does not necessarily focus a button.
 - share-view.spec.ts adds a minimal simulated projection plus real-backend link/password/accounts shares with uploaded PNGs. Every project checks 320/375/390/768/1024/1440px in light/dark, closed/open state, geometry, Escape, focus return, rejected-read retry, image decoding, download and unauthenticated/wrong-password rejection. These are five browser projects, not physical devices.
 - Production-container qualification now creates a real anonymous attachment share, verifies the closed dialog stays hidden, and opens/previews/closes it at mobile and desktop widths. This checks bundled CSS before future publication.
+
+- Manual review also exposed overlapping type/amount/attachment controls on 320px populated shares. Record rows now use bounded grid tracks with stacked mobile content; tests assert control rectangles do not overlap and titles are not clipped.
