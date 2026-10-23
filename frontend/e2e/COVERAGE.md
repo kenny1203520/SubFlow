@@ -69,6 +69,8 @@ Rows explicitly marked as not covered are follow-up work; a route rendering chec
 
 ## Mobile forms, overview and production preview regressions
 
+Manual mobile screenshot review exposed profile/admin forms clipped by an old page-wide overflow-x:hidden rule. The rule is removed. Form and workspace grids now use shrinkable tracks, dropdown roots have no intrinsic minimum, and list headings wrap. Sitewide checks also measure form inputs, selects, textareas, buttons and primary heading actions against viewport bounds; document width alone cannot approve clipped controls. Overflow diagnostics include only path, element tag/class and geometry, never field values or share queries.
+
 | Feature | Actor and real-backend path | Assertions | Limits |
 | --- | --- | --- | --- |
 | Participant binding | Isolated group owner with a placeholder member | Invite & bind reveals/focuses the invitation form at 320/390/768/1440px with both motion preferences; cancellation sends no invitation | Invitation acceptance and restricted-member mutation paths remain outside this case |

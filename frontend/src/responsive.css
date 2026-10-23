@@ -9,10 +9,34 @@
 .page,
 .admin-page,
 .group-workspace .page {
+  min-inline-size: 0;
+  grid-template-columns: minmax(0, 1fr);
   width: min(100%, var(--page-max-width));
   max-width: var(--page-max-width);
   margin-inline: auto;
   padding-inline: var(--page-gutter);
+}
+
+/* Grid's automatic minimum must not make whole forms wider than the page. */
+.page > *,
+.profile-layout > *,
+.form-card > *,
+.form-card label,
+.base-dropdown {
+  min-inline-size: 0;
+}
+
+.profile-layout,
+.form-card {
+  min-inline-size: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.form-card input,
+.form-card select,
+.form-card textarea {
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .page.narrow:not(.profile-page),
@@ -98,6 +122,10 @@
 .data-table-row,
 .audit-row-toggle {
   min-inline-size: 0;
+}
+
+.card-title {
+  flex-wrap: wrap;
 }
 
 .grow,
