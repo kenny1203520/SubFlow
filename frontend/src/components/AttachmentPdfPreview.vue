@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PDFDocumentLoadingTask, PDFDocumentProxy, RenderTask } from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from '../i18n'
 
@@ -54,7 +54,7 @@ watch(() => props.src, async (src) => {
   try {
     const response = await fetch(src)
     if (!response.ok) throw new Error('pdf_fetch_failed')
-    const pdfjs = await import('pdfjs-dist')
+    const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
     pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
     const task = pdfjs.getDocument({ data: await response.arrayBuffer() })
     loadingTask = task
