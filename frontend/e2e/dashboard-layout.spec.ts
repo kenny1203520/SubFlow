@@ -8,8 +8,11 @@ test('overview metric values remain readable without clipping at supported width
   } })).status()).toBe(201)
   await page.goto('/overview?scope=personal')
   await expect(page.locator('.metric-strip article').first()).toBeVisible()
-  for (const width of [320, 375, 390, 768, 1024, 1440]) {
+  for (const width of [1440, 320, 375, 390, 768, 1024]) {
     await page.setViewportSize({ width, height: 900 })
+    const monthPicker = page.locator('.month-picker')
+    await expect.poll(async () => (await monthPicker.boundingBox())!.width).toBeGreaterThanOrEqual(140)
+    await expect.poll(async () => (await monthPicker.boundingBox())!.height).toBeGreaterThanOrEqual(44)
     const cards = await page.locator('.metric-strip article').evaluateAll(elements => elements.map(element => {
       const parent = element.parentElement!.getBoundingClientRect(), rect = element.getBoundingClientRect()
       return {
