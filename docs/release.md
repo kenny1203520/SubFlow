@@ -33,8 +33,8 @@ Stable releases merge into master before tagging and back into develop. Prerelea
 ```powershell
 rtk git status --short --branch
 rtk git rev-parse HEAD
-rtk git tag -a v0.2.0-alpha.3 -m "SubFlow 0.2.0-alpha.3"
-rtk git push origin v0.2.0-alpha.3
+rtk git tag -a v0.2.0-alpha.4 -m "SubFlow 0.2.0-alpha.4"
+rtk git push origin v0.2.0-alpha.4
 ```
 
 ## Workflow gates and outputs
@@ -59,11 +59,11 @@ rtk gh run rerun <run-id> --failed --repo kenny1203520/SubFlow
 Tags containing the dispatch-enabled workflow can also be dispatched explicitly:
 
 ```powershell
-rtk gh workflow run release.yml --ref v0.2.0-alpha.3 --repo kenny1203520/SubFlow
+rtk gh workflow run release.yml --ref v0.2.0-alpha.4 --repo kenny1203520/SubFlow
 ```
 
 Branch dispatch is intentionally rejected. Older tags lacking workflow_dispatch use rerun. Never silently replace a published version tag.
 
 Retain workflow/source SHA, image digest and Release URL. release-evidence artifacts (30 days) contain metadata, notes, stable snapshot, container smoke, upgrade/restore and publication results. Trusted container and Playwright evidence lasts 14 days. After publication, merge the release PR into develop with a merge commit.
 
-See [Alpha 3 qualification](releases/0.2.0-alpha.3.md), [Alpha 2 qualification](releases/0.2.0-alpha.2.md), [Playwright coverage](../frontend/e2e/COVERAGE.md) and [deployment](deployment.md).
+See [Alpha 4 qualification](releases/0.2.0-alpha.4.md), [Alpha 3 qualification](releases/0.2.0-alpha.3.md), [Playwright coverage](../frontend/e2e/COVERAGE.md) and [deployment](deployment.md).
