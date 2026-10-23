@@ -7,6 +7,11 @@
 ## [Unreleased]
 
 ### Fixed
+- Restored production PDF previews by allowing authorized blob reads in CSP; PDF main and worker bundles now use the matching compatibility build.
+- Kept category, currency and nested icon menus interactive inside native modal forms, with viewport-aware placement and Escape focus return.
+- Made group participant binding reveal and focus the invitation form, without sending an invitation until submitted.
+- Gave overview metric cards readable responsive tracks and touch text controls a minimum 16px font, while preserving browser zoom.
+- Added real-backend form cancellation and uploaded PDF preview checks across all five browser projects.
 - Fixed shared ledger amounts and attachment actions overlapping on narrow screens; long record titles now wrap and attachment actions have their own row.
 - Fixed attachment dialogs appearing while closed and covering shared ledgers, introduced in Alpha 3. Dialog layout now applies only while open; closing restores focus to its trigger in WebKit too.
 - Added populated attachment-share checks for all sharing modes and a required production-container regression.

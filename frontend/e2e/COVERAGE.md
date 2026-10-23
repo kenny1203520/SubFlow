@@ -22,7 +22,7 @@ The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` a
 
 ## Validation status
 
-- Full E2E configuration: 95 tests (19 scenarios across five projects). Complete execution results are recorded by CI and the release evidence; no project is skipped for publication.
+- Full E2E configuration: 130 tests (26 scenarios across five projects). Complete execution results are recorded by CI and qualification evidence; no project is skipped for publication.
 - Frontend unit tests: 158 passed across 39 files.
 - Frontend production build and changed-file ESLint checks passed.
 - Screenshots are retained under Playwright `test-results` locally and uploaded by the Verify workflow as a 14-day artifact.
@@ -66,3 +66,20 @@ Rows explicitly marked as not covered are follow-up work; a route rendering chec
 - Production-container qualification now creates a real anonymous attachment share, verifies the closed dialog stays hidden, and opens/previews/closes it at mobile and desktop widths. This checks bundled CSS before future publication.
 
 - Manual review also exposed overlapping type/amount/attachment controls on 320px populated shares. Record rows now use bounded grid tracks with stacked mobile content; tests assert control rectangles do not overlap and titles are not clipped.
+
+## Mobile forms, overview and production preview regressions
+
+| Feature | Actor and real-backend path | Assertions | Limits |
+| --- | --- | --- | --- |
+| Participant binding | Isolated group owner with a placeholder member | Invite & bind reveals/focuses the invitation form at 320/390/768/1440px with both motion preferences; cancellation sends no invitation | Invitation acceptance and restricted-member mutation paths remain outside this case |
+| Modal category and nested icon menus | Isolated user opens the personal ledger drawer | Options accept real pointer clicks; Escape closes only the active menu, restores focus and leaves the drawer open; simulated reduced visual viewport keeps options reachable | The keyboard viewport is injected, not a physical on-screen keyboard |
+| Financial and profile forms | Isolated user and group owner | Personal/group expense, income and subscription forms at 320/768/1440px: category, available currency, billing cycle, input focus, cancellation without writes and no page overflow; profile currency/timezone selection | Does not claim all form validation, successful mutations, role denial or backend failure paths |
+| Overview metrics | Isolated user with a large real expense | Six widths; equal card tracks, values and children not clipped, cards stay within their parent; mobile/desktop screenshots | This case uses personal overview; route checks cover the group overview separately |
+| Touch text controls and zoom | Isolated user opens ledger form | Visible text inputs/selects/textarea are at least 16px on narrow/coarse-pointer contexts; viewport metadata permits zoom and body touch-action stays auto | Focus autozoom, pinch and double-tap gestures still need physical iOS qualification |
+| PDF compatibility | Real PDF component harness | Nonblank canvas pixels with native APIs and with Promise.try removed from both window and worker; all five projects | Capability injection is explicitly simulated; it does not identify a user's exact Safari minor version |
+| Uploaded PDF | Isolated user uploads a valid PDF to a real expense and creates an attachment-enabled public share | Personal and public dialogs render canvas, show no preview error, and close correctly | Generated one-page PDF; complex, malformed, encrypted and large files remain outside this case |
+| Production CSP | Fresh production container, anonymous shared PDF | Closed dialog stays hidden; bundled worker renders nonblank canvas at 390/1440px; backend test requires blob connect permission while retaining script/worker/object restrictions | Chromium touch emulation plus desktop, not physical Safari |
+
+The confirmed production PDF failure was CSP rejecting fetch(blob:), which development Vite does not reproduce. The required container check now uses a real uploaded PDF rather than an image-only attachment. No new write endpoint, audit event, schema or financial rule is introduced by these presentation/security-header fixes. Existing fixture writes use the existing backend APIs.
+
+See [Alpha 3 UI regression qualification](../../docs/validation/alpha3-ui-regressions.md). Screenshots are review evidence, not approved visual baselines; the full site/role/failure acceptance plan remains incomplete.
