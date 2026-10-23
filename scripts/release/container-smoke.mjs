@@ -100,7 +100,7 @@ try {
   const secondSetup = await page.request.post('/api/subflow/v1/setup/initialize', { data: { token, adminName: 'Second', email: 'second@example.test', password } })
   assert.ok(secondSetup.status() >= 400, 'setup cannot be repeated')
   assert.deepEqual(errors, [], 'no browser runtime errors')
-  const result = { version, image, freshSetupUI: true, registrationUI: true, invalidLogin: true, logoutUI: true, logoutBackendAudits: true, sharedAttachmentDialog: true, adminList: 200, regularUserDenied: 403, directReload: true, aboutVersion: true, runtimeErrors: 0, device: 'Chromium touch simulation 390px; desktop 1440px' }
+  const result = { version, image, freshSetupUI: true, registrationUI: true, invalidLogin: true, logoutUI: true, logoutBackendAudits: true, sharedAttachmentDialog: true, sharedPdfPreview: true, adminList: 200, regularUserDenied: 403, directReload: true, aboutVersion: true, runtimeErrors: 0, device: 'Chromium touch simulation 390px; desktop 1440px' }
   await writeFile('.release/container-smoke.json', `${JSON.stringify(result, null, 2)}\n`)
   console.log(JSON.stringify(result))
 } finally {
