@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useAuthStore } from '../stores/auth'
 import EmptyState from '../components/EmptyState.vue'
@@ -14,6 +14,8 @@ import { defaultPageSize } from '../pageSize'
 const workspace = useWorkspaceStore()
 const auth = useAuthStore()
 const email = ref('')
+const invitationForm = ref<HTMLFormElement>()
+const invitationEmail = ref<HTMLInputElement>()
 const tempMemberName = ref('')
 const bindTarget = ref<{userId:string;label:string}>()
 const pendingRemoval = ref<{userId:string;label:string}>()
@@ -53,7 +55,14 @@ async function invite() {
     email.value = ''
     bindTarget.value = undefined
 }
-function startBinding(userId:string, label:string) { bindTarget.value = { userId, label } }
+async function startBinding(userId:string, label:string) {
+    bindTarget.value = { userId, label }
+    await nextTick()
+    // Immediate movement keeps the form and focus together in every browser,
+    // including reduced-motion settings and mobile virtual keyboards.
+    await invitationForm.value?.scrollIntoView({ behavior: 'instant', block: 'center', inline: 'nearest' })
+    invitationEmail.value?.focus({ preventScroll: true })
+}
 async function addTempMember() {
     if (!tempMemberName.value.trim()) return
     await workspace.createTempMember(tempMemberName.value.trim())
@@ -170,10 +179,10 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                 </form>
             </div>
             <div v-if="canManageMembers">
-                <form class="card form-card" @submit.prevent="invite">
+                <form ref="invitationForm" class="card form-card" @submit.prevent="invite">
                     <h2>{{tr('inviteMember')}}</h2>
                     <div v-if="bindTarget" class="notice inline">{{tr('bindingInviteNotice',{name:bindTarget.label})}} <button type="button" @click="bindTarget=undefined">{{tr('cancel')}}</button></div>
-                    <label>Email<input v-model="email" type="email" required placeholder="friend@example.com"></label>
+                    <label>Email<input ref="invitationEmail" v-model="email" type="email" required placeholder="friend@example.com"></label>
                     <button class="primary" :disabled="workspace.loading||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')">{{tr('sendInvitation')}}</button>
                 </form>
                 <div class="card invitations">
