@@ -21,6 +21,7 @@ type ExpenseRepo struct{ *Repository }
 type IncomeRepo struct{ *Repository }
 type RecurringIncomeRepo struct{ *Repository }
 type SettlementRepo struct{ *Repository }
+type SettlementReviewRepo struct{ *Repository }
 type AttachmentRepo struct{ *Repository }
 type CategoryRepo struct{ *Repository }
 type ExchangeRateRepo struct{ *Repository }
@@ -44,6 +45,7 @@ type Stores struct {
 	Incomes            *IncomeRepo
 	RecurringIncomes   *RecurringIncomeRepo
 	Settlements        *SettlementRepo
+	SettlementReviews  *SettlementReviewRepo
 	Attachments        *AttachmentRepo
 	Categories         *CategoryRepo
 	ExchangeRates      *ExchangeRateRepo
@@ -58,7 +60,7 @@ type Stores struct {
 
 func NewStores(app core.App) Stores {
 	base := &Repository{App: app}
-	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, NotificationEmails: &NotificationEmailRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, RecurringIncomes: &RecurringIncomeRepo{base}, Settlements: &SettlementRepo{base}, Attachments: &AttachmentRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
+	return Stores{Groups: base, Memberships: &MembershipRepo{base}, Invitations: &InvitationRepo{base}, OwnershipTransfers: &OwnershipTransferRepo{base}, MemberTransfers: &MemberTransferRepo{base}, Notifications: &NotificationRepo{base}, NotificationEmails: &NotificationEmailRepo{base}, Subscriptions: &SubscriptionRepo{base}, Expenses: &ExpenseRepo{base}, Incomes: &IncomeRepo{base}, RecurringIncomes: &RecurringIncomeRepo{base}, Settlements: &SettlementRepo{base}, SettlementReviews: &SettlementReviewRepo{base}, Attachments: &AttachmentRepo{base}, Categories: &CategoryRepo{base}, ExchangeRates: &ExchangeRateRepo{base}, Roles: &RoleRepo{base}, Audits: &AuditRepo{base}, Shares: &ShareRepo{base}, Contacts: &ContactRepo{base}, Users: &UserRepo{base}, Settings: &SystemSettingsRepo{base}, Transactions: base}
 }
 
 func (r *MembershipRepo) Create(ctx context.Context, v *domain.Membership) error {
@@ -278,6 +280,25 @@ func (r *SettlementRepo) Delete(ctx context.Context, id string) error {
 }
 func (r *SettlementRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
 	return r.ReassignSettlementUser(ctx, groupID, fromUserID, toUserID)
+}
+
+func (r *SettlementReviewRepo) Create(ctx context.Context, v *domain.SettlementReview) error {
+	return r.CreateSettlementReview(ctx, v)
+}
+func (r *SettlementReviewRepo) Get(ctx context.Context, id string) (*domain.SettlementReview, error) {
+	return r.GetSettlementReview(ctx, id)
+}
+func (r *SettlementReviewRepo) FindPending(ctx context.Context, settlementID string) (*domain.SettlementReview, error) {
+	return r.FindPendingSettlementReview(ctx, settlementID)
+}
+func (r *SettlementReviewRepo) ListPending(ctx context.Context, groupID string) ([]domain.SettlementReview, error) {
+	return r.ListPendingSettlementReviews(ctx, groupID)
+}
+func (r *SettlementReviewRepo) Update(ctx context.Context, v *domain.SettlementReview) error {
+	return r.UpdateSettlementReview(ctx, v)
+}
+func (r *SettlementReviewRepo) ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	return r.ReassignSettlementReviewUser(ctx, groupID, fromUserID, toUserID)
 }
 
 func (r *CategoryRepo) Create(ctx context.Context, v *domain.Category) error {

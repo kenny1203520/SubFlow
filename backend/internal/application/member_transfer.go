@@ -34,6 +34,11 @@ func (s *Service) repointUserReferences(ctx context.Context, groupID, fromUserID
 	if err := s.Stores.Settlements.ReassignUser(ctx, groupID, fromUserID, toUserID); err != nil {
 		return err
 	}
+	if s.Stores.SettlementReviews != nil {
+		if err := s.Stores.SettlementReviews.ReassignUser(ctx, groupID, fromUserID, toUserID); err != nil {
+			return err
+		}
+	}
 	if err := s.Stores.Notifications.ReassignUser(ctx, groupID, fromUserID, toUserID); err != nil {
 		return err
 	}

@@ -207,6 +207,7 @@ func (s *Service) UpdateGroup(ctx context.Context, userID string, group domain.G
 	groupChanges.addString("color", current.Color, group.Color)
 	groupChanges.addInt64("attachment_max_size", current.AttachmentMaxSize, group.AttachmentMaxSize)
 	groupChanges.addInt("attachment_max_count", current.AttachmentMaxCount, group.AttachmentMaxCount)
+	groupChanges.addBool("settlement_approval_enabled", current.SettlementApprovalEnabled, group.SettlementApprovalEnabled)
 	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
 		if updateErr := s.Stores.Groups.Update(tx, &group); updateErr != nil {
 			return updateErr

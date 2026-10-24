@@ -382,6 +382,7 @@ type Group struct {
 	AttachmentMaxSize         int64     `json:"attachmentMaxSize,omitempty"`
 	AttachmentMaxCount        int       `json:"attachmentMaxCount,omitempty"`
 	AttachmentLimitsInherited bool      `json:"attachmentLimitsInherited,omitempty"`
+	SettlementApprovalEnabled bool      `json:"settlementApprovalEnabled"`
 	OwnerID                   string    `json:"ownerId"`
 	CreatedAt                 time.Time `json:"createdAt"`
 	UpdatedAt                 time.Time `json:"updatedAt"`
@@ -408,10 +409,11 @@ type AttachmentLimits struct {
 }
 
 type AttachmentAccess struct {
-	CanRead   bool `json:"canRead"`
-	CanUpload bool `json:"canUpload"`
-	CanDelete bool `json:"canDelete"`
-	CanRename bool `json:"canRename"`
+	CanRead                    bool `json:"canRead"`
+	CanUpload                  bool `json:"canUpload"`
+	CanDelete                  bool `json:"canDelete"`
+	CanRename                  bool `json:"canRename"`
+	ModificationRequiresReview bool `json:"modificationRequiresReview,omitempty"`
 }
 
 type AttachmentPage struct {
@@ -731,22 +733,48 @@ func (b *BaseSplit) GetBaseSplit() *BaseSplit {
 }
 
 type Settlement struct {
-	ID               string    `json:"id"`
-	GroupID          string    `json:"groupId"`
-	FromUserID       string    `json:"fromUserId"`
-	ToUserID         string    `json:"toUserId"`
-	CreatedBy        string    `json:"createdBy"`
-	AmountMinor      int64     `json:"amountMinor"`
-	Currency         Currency  `json:"currency"`
-	BaseCurrency     Currency  `json:"baseCurrency"`
-	BaseAmountMinor  int64     `json:"baseAmountMinor"`
-	ExchangeRate     string    `json:"exchangeRate"`
-	RateScaled       int64     `json:"-"`
-	ExchangeRateDate time.Time `json:"exchangeRateDate"`
-	SettledOn        time.Time `json:"settledOn"`
-	Notes            string    `json:"notes"`
-	CreatedAt        time.Time `json:"createdAt"`
-	UpdatedAt        time.Time `json:"updatedAt"`
+	ID                string    `json:"id"`
+	GroupID           string    `json:"groupId"`
+	FromUserID        string    `json:"fromUserId"`
+	ToUserID          string    `json:"toUserId"`
+	CreatedBy         string    `json:"createdBy"`
+	AmountMinor       int64     `json:"amountMinor"`
+	Currency          Currency  `json:"currency"`
+	BaseCurrency      Currency  `json:"baseCurrency"`
+	BaseAmountMinor   int64     `json:"baseAmountMinor"`
+	ExchangeRate      string    `json:"exchangeRate"`
+	RateScaled        int64     `json:"-"`
+	ExchangeRateDate  time.Time `json:"exchangeRateDate"`
+	SettledOn         time.Time `json:"settledOn"`
+	Notes             string    `json:"notes"`
+	Status            string    `json:"status,omitempty"`
+	ApprovalRequired  bool      `json:"approvalRequired,omitempty"`
+	Version           int       `json:"version,omitempty"`
+	SuggestionVersion string    `json:"suggestionVersion,omitempty"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+// SettlementReview preserves the proposal and its decision independently of
+// the effective settlement row. A pending correction never changes balances.
+type SettlementReview struct {
+	ID              string     `json:"id"`
+	GroupID         string     `json:"groupId"`
+	SettlementID    string     `json:"settlementId"`
+	Action          string     `json:"action"` // create, change, or void
+	Proposal        Settlement `json:"proposal"`
+	SubmittedBy     string     `json:"submittedBy"`
+	Status          string     `json:"status"` // pending, accepted, rejected, withdrawn
+	DecidedBy       string     `json:"decidedBy,omitempty"`
+	Reason          string     `json:"reason,omitempty"`
+	ExpectedVersion int        `json:"expectedVersion"`
+	CanRespond      bool       `json:"canRespond,omitempty"`
+	CanManage       bool       `json:"canManage,omitempty"`
+	FromName        string     `json:"fromName,omitempty"`
+	ToName          string     `json:"toName,omitempty"`
+	GroupName       string     `json:"groupName,omitempty"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       time.Time  `json:"updatedAt"`
 }
 
 type CurrencyDashboard struct {
@@ -782,6 +810,82 @@ type DashboardSummary struct {
 	Balances                         []MemberBalance     `json:"balances,omitempty"`
 	ReportingCurrency                Currency            `json:"reportingCurrency,omitempty"`
 	OriginalCurrencies               []CurrencyDashboard `json:"originalCurrencies,omitempty"`
+}
+
+type CurrencyAmount struct {
+	Currency    Currency `json:"currency"`
+	AmountMinor int64    `json:"amountMinor"`
+}
+
+type HomeGroupPosition struct {
+	GroupID          string   `json:"groupId"`
+	GroupName        string   `json:"groupName"`
+	Timezone         string   `json:"timezone"`
+	Currency         Currency `json:"currency"`
+	BalanceMinor     int64    `json:"balanceMinor"`
+	BalanceAvailable bool     `json:"balanceAvailable"`
+}
+
+type HomeUpcoming struct {
+	ID          string    `json:"id"`
+	GroupID     string    `json:"groupId,omitempty"`
+	Kind        string    `json:"kind"`
+	Name        string    `json:"name"`
+	NextBilling time.Time `json:"nextBilling"`
+	AmountMinor int64     `json:"amountMinor"`
+	Currency    Currency  `json:"currency"`
+	Timezone    string    `json:"timezone"`
+}
+
+type HomeAction struct {
+	ID          string    `json:"id"`
+	Type        string    `json:"type"`
+	GroupID     string    `json:"groupId,omitempty"`
+	ResourceID  string    `json:"resourceId,omitempty"`
+	Title       string    `json:"title,omitempty"`
+	Message     string    `json:"message,omitempty"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"createdAt,omitempty"`
+	ScheduledOn time.Time `json:"scheduledOn,omitempty"`
+	AmountMinor int64     `json:"amountMinor,omitempty"`
+	Currency    Currency  `json:"currency,omitempty"`
+}
+
+type HomeMonthlyCashflow struct {
+	GroupID                   string   `json:"groupId,omitempty"`
+	GroupName                 string   `json:"groupName,omitempty"`
+	Month                     string   `json:"month"`
+	Timezone                  string   `json:"timezone"`
+	Currency                  Currency `json:"currency"`
+	IncomeReceivedMinor       int64    `json:"incomeReceivedMinor"`
+	ExpensePaidMinor          int64    `json:"expensePaidMinor"`
+	SettlementReceivedMinor   int64    `json:"settlementReceivedMinor"`
+	SettlementPaidMinor       int64    `json:"settlementPaidMinor"`
+	BeneficialIncomeMinor     int64    `json:"beneficialIncomeMinor"`
+	PersonalExpenseShareMinor int64    `json:"personalExpenseShareMinor"`
+}
+
+type HomeDashboard struct {
+	AsOf          time.Time             `json:"asOf"`
+	Month         string                `json:"month"`
+	Receivables   []CurrencyAmount      `json:"receivables"`
+	Payables      []CurrencyAmount      `json:"payables"`
+	Groups        []HomeGroupPosition   `json:"groups"`
+	Monthly       []HomeMonthlyCashflow `json:"monthly"`
+	Upcoming      []HomeUpcoming        `json:"upcoming"`
+	Reviews       []SettlementReview    `json:"reviews"`
+	Actions       []HomeAction          `json:"actions"`
+	IncompleteIDs []string              `json:"incompleteGroupIds,omitempty"`
+}
+
+type SettlementSuggestion struct {
+	GroupID     string   `json:"groupId"`
+	FromUserID  string   `json:"fromUserId"`
+	ToUserID    string   `json:"toUserId"`
+	AmountMinor int64    `json:"amountMinor"`
+	Currency    Currency `json:"currency"`
+	Label       string   `json:"label"`
+	Version     string   `json:"version"`
 }
 
 type CurrencyChangeMissing struct {

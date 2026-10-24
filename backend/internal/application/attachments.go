@@ -222,9 +222,10 @@ func (s *Service) ListAttachments(ctx context.Context, userID string, target Att
 		}
 		page.Access = domain.AttachmentAccess{CanRead: has("ledger.attachments.read"), CanUpload: has("ledger.attachments.upload"), CanDelete: has("ledger.attachments.delete")}
 		if page.Access.CanUpload || page.Access.CanDelete {
-			if err := s.attachmentHistoricalWrite(ctx, userID, a); errors.Is(err, domain.ErrForbidden) {
+			if err := s.attachmentHistoricalWrite(ctx, userID, a); errors.Is(err, domain.ErrForbidden) || errors.Is(err, domain.ErrConflict) {
 				page.Access.CanUpload = false
 				page.Access.CanDelete = false
+				page.Access.ModificationRequiresReview = errors.Is(err, domain.ErrConflict)
 			} else if err != nil {
 				if auditErr := s.attachmentFailure(ctx, userID, a.GroupID, "attachment.listed", target.ID, "permission_unavailable"); auditErr != nil {
 					return page, auditErr
@@ -607,6 +608,9 @@ func (s *Service) attachmentHistoricalWrite(ctx context.Context, actor string, a
 		v, err := s.Stores.Settlements.Get(ctx, a.TargetID)
 		if err != nil {
 			return err
+		}
+		if v.ApprovalRequired {
+			return domain.ErrConflict
 		}
 		at = v.SettledOn
 	case "subscription_period":

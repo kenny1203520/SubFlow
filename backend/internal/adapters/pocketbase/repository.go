@@ -1891,10 +1891,11 @@ func writeGroup(r *core.Record, v *domain.Group) {
 	r.Set("color", v.Color)
 	r.Set("attachment_max_size", v.AttachmentMaxSize)
 	r.Set("attachment_max_count", v.AttachmentMaxCount)
+	r.Set("settlement_approval_enabled", v.SettlementApprovalEnabled)
 	r.Set("owner", v.OwnerID)
 }
 func groupFrom(r *core.Record) *domain.Group {
-	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Timezone: r.GetString("timezone"), Color: r.GetString("color"), OwnerID: r.GetString("owner"), AttachmentMaxSize: int64(r.GetFloat("attachment_max_size")), AttachmentMaxCount: r.GetInt("attachment_max_count")}
+	v := &domain.Group{ID: r.Id, Name: r.GetString("name"), Description: r.GetString("description"), Currency: domain.Currency(r.GetString("currency")), Timezone: r.GetString("timezone"), Color: r.GetString("color"), OwnerID: r.GetString("owner"), AttachmentMaxSize: int64(r.GetFloat("attachment_max_size")), AttachmentMaxCount: r.GetInt("attachment_max_count"), SettlementApprovalEnabled: r.GetBool("settlement_approval_enabled")}
 	if v.Timezone == "" {
 		v.Timezone = "UTC"
 	}
@@ -2116,12 +2117,154 @@ func writeSettlement(r *core.Record, v *domain.Settlement) {
 	r.Set("exchange_rate_date", v.ExchangeRateDate)
 	r.Set("settled_on", v.SettledOn)
 	r.Set("notes", v.Notes)
+	status := v.Status
+	if status == "" {
+		status = "confirmed"
+	}
+	r.Set("status", status)
+	r.Set("approval_required", v.ApprovalRequired)
+	version := v.Version
+	if version < 1 {
+		version = 1
+	}
+	r.Set("version", version)
 }
 func settlementFrom(r *core.Record) *domain.Settlement {
-	v := &domain.Settlement{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), CreatedBy: r.GetString("created_by"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), SettledOn: r.GetDateTime("settled_on").Time(), Notes: r.GetString("notes")}
+	v := &domain.Settlement{ID: r.Id, GroupID: r.GetString("group"), FromUserID: r.GetString("from_user"), ToUserID: r.GetString("to_user"), CreatedBy: r.GetString("created_by"), AmountMinor: int64(r.GetFloat("amount_minor")), Currency: domain.Currency(r.GetString("currency")), BaseCurrency: domain.Currency(r.GetString("base_currency")), BaseAmountMinor: int64(r.GetFloat("base_amount_minor")), RateScaled: int64(r.GetFloat("exchange_rate_scaled")), ExchangeRateDate: r.GetDateTime("exchange_rate_date").Time(), SettledOn: r.GetDateTime("settled_on").Time(), Notes: r.GetString("notes"), Status: r.GetString("status"), ApprovalRequired: r.GetBool("approval_required"), Version: r.GetInt("version")}
+	if v.Status == "" {
+		v.Status = "confirmed"
+	}
+	if v.Version < 1 {
+		v.Version = 1
+	}
 	v.ExchangeRate = domain.FormatRate(v.RateScaled)
 	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
 	return v
+}
+
+func (r *Repository) CreateSettlementReview(ctx context.Context, v *domain.SettlementReview) error {
+	if _, err := r.FindPendingSettlementReview(ctx, v.SettlementID); err == nil {
+		return domain.ErrConflict
+	} else if err != domain.ErrNotFound {
+		return err
+	}
+	record, err := newRecord(r.app(ctx), CollectionSettlementReviews)
+	if err != nil {
+		return err
+	}
+	writeSettlementReview(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	v.ID = record.Id
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) GetSettlementReview(ctx context.Context, id string) (*domain.SettlementReview, error) {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlementReviews, id)
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return settlementReviewFrom(record)
+}
+
+func (r *Repository) FindPendingSettlementReview(ctx context.Context, settlementID string) (*domain.SettlementReview, error) {
+	record, err := r.app(ctx).FindFirstRecordByFilter(CollectionSettlementReviews, "settlement={:settlement} && status='pending'", dbx.Params{"settlement": settlementID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	return settlementReviewFrom(record)
+}
+
+func (r *Repository) ListPendingSettlementReviews(ctx context.Context, groupID string) ([]domain.SettlementReview, error) {
+	records, err := r.app(ctx).FindRecordsByFilter(CollectionSettlementReviews, "group={:group} && status='pending'", "created", 0, 0, dbx.Params{"group": groupID})
+	if err != nil {
+		return nil, mapError(err)
+	}
+	items := make([]domain.SettlementReview, 0, len(records))
+	for _, record := range records {
+		item, decodeErr := settlementReviewFrom(record)
+		if decodeErr != nil {
+			return nil, decodeErr
+		}
+		items = append(items, *item)
+	}
+	return items, nil
+}
+
+func (r *Repository) UpdateSettlementReview(ctx context.Context, v *domain.SettlementReview) error {
+	record, err := r.app(ctx).FindRecordById(CollectionSettlementReviews, v.ID)
+	if err != nil {
+		return mapError(err)
+	}
+	writeSettlementReview(record, v)
+	if err = r.app(ctx).Save(record); err != nil {
+		return err
+	}
+	hydrateTimes(record, &v.CreatedAt, &v.UpdatedAt)
+	return nil
+}
+
+func (r *Repository) ReassignSettlementReviewUser(ctx context.Context, groupID, fromUserID, toUserID string) error {
+	items, err := r.ListPendingSettlementReviews(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	for i := range items {
+		item := &items[i]
+		changed := false
+		if item.SubmittedBy == fromUserID {
+			item.SubmittedBy, changed = toUserID, true
+		}
+		if item.DecidedBy == fromUserID {
+			item.DecidedBy, changed = toUserID, true
+		}
+		if item.Proposal.FromUserID == fromUserID {
+			item.Proposal.FromUserID, changed = toUserID, true
+		}
+		if item.Proposal.ToUserID == fromUserID {
+			item.Proposal.ToUserID, changed = toUserID, true
+		}
+		if item.Proposal.CreatedBy == fromUserID {
+			item.Proposal.CreatedBy, changed = toUserID, true
+		}
+		if item.Proposal.FromUserID == item.Proposal.ToUserID {
+			item.Status, item.Reason, changed = "rejected", "member transfer made the proposal self-referential", true
+		}
+		if changed {
+			if err = r.UpdateSettlementReview(ctx, item); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func writeSettlementReview(r *core.Record, v *domain.SettlementReview) {
+	r.Set("group", v.GroupID)
+	r.Set("settlement", v.SettlementID)
+	r.Set("action", v.Action)
+	r.Set("proposal", v.Proposal)
+	r.Set("submitted_by", v.SubmittedBy)
+	r.Set("status", v.Status)
+	r.Set("decided_by", v.DecidedBy)
+	r.Set("reason", v.Reason)
+	r.Set("expected_version", v.ExpectedVersion)
+}
+
+func settlementReviewFrom(r *core.Record) (*domain.SettlementReview, error) {
+	data, err := json.Marshal(r.Get("proposal"))
+	if err != nil {
+		return nil, err
+	}
+	var proposal domain.Settlement
+	if err = json.Unmarshal(data, &proposal); err != nil {
+		return nil, err
+	}
+	v := &domain.SettlementReview{ID: r.Id, GroupID: r.GetString("group"), SettlementID: r.GetString("settlement"), Action: r.GetString("action"), Proposal: proposal, SubmittedBy: r.GetString("submitted_by"), Status: r.GetString("status"), DecidedBy: r.GetString("decided_by"), Reason: r.GetString("reason"), ExpectedVersion: r.GetInt("expected_version")}
+	hydrateTimes(r, &v.CreatedAt, &v.UpdatedAt)
+	return v, nil
 }
 func userFrom(r *core.Record) *domain.User {
 	return &domain.User{ID: r.Id, Email: r.Email(), Name: r.GetString("name"), Avatar: r.GetString("avatar"), Timezone: r.GetString("timezone"), DefaultCurrency: domain.Currency(r.GetString("default_currency")), SystemRoleID: r.GetString("system_role"), Placeholder: r.GetBool("placeholder"), LinkedUserID: r.GetString("linked_user_id")}

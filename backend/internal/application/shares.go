@@ -1005,7 +1005,7 @@ func inRange(value, start, end time.Time) bool {
 func filterSettlements(values []domain.Settlement, start, end time.Time) []domain.Settlement {
 	result := []domain.Settlement{}
 	for _, item := range values {
-		if inRange(item.SettledOn, start, end) {
+		if domain.SettlementIsEffective(item) && inRange(item.SettledOn, start, end) {
 			result = append(result, item)
 		}
 	}
