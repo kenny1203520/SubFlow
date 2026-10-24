@@ -1,12 +1,15 @@
 # Playwright coverage matrix
 
-The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` at 320, 375, 390, 768, 1024 and 1440 CSS pixels for horizontal overflow. It asserts the requested URL remains active and the app does not render its runtime-error fallback, then saves desktop and mobile screenshots. English/Traditional Chinese and light/dark combinations are checked on the personal ledger, group audit and admin audit pages. The suite runs Chromium, Firefox and WebKit desktop projects plus Chromium and WebKit touch emulation. These are browser contexts, not physical-device tests; the language/theme matrix is representative rather than every combination on every route.
+The sitewide suite checks the 30 route targets listed in `sitewide-ui.spec.ts` at 320, 375, 390, 768, 1024 and 1440 CSS pixels for horizontal overflow. It asserts the requested URL remains active and the app does not render its runtime-error fallback, then saves desktop and mobile screenshots. English/Traditional Chinese and light/dark combinations are checked on the personal ledger, group audit and admin audit pages. The suite runs Chromium, Firefox and WebKit desktop projects plus Chromium and WebKit touch emulation. These are browser contexts, not physical-device tests; the language/theme matrix is representative rather than every combination on every route.
 
 | Route or feature | Actor | Success path covered | Rejection or failure covered | Playwright coverage |
 | --- | --- | --- | --- | --- |
 | Sign in | Owner / regular user | UI sign-in with isolated backend; production-container login | Invalid credentials covered by production-container browser check | `sitewide-ui.spec.ts`; `scripts/release/container-smoke.mjs` |
 | Registration and first setup | New user / first administrator | Separate uninitialized production container uses setup and registration UI; main Playwright server initializes separate test data via API | Empty setup form and repeat initialization rejected; full registration validation remains incomplete | `scripts/release/container-smoke.mjs`; API fixture server in `start.mjs` |
 | Explicit sign out | Regular user | UI sign out followed by unauthenticated screen; backend success audit | Real anonymous rejection/failure audit; audit failure returns 503 in Go; frontend retains session on network/audit failure in Vitest | `container-smoke.mjs`, `logout_api_test.go`, `auth.test.ts` |
+| Home and primary navigation | Owner | New `/home` renders outstanding/actionable sections; mobile four-item navigation reaches More and highlights nested ledger/group sections; backend tests verify timezone-specific monthly data, settlement cashflow, manual income actions and recurring-income forecasts | Home API error retry, data completeness failure, and projected-income display with seeded real data are not injected in Playwright | `sitewide-ui.spec.ts`, `home_test.go` |
+| More page | Owner / administrator | Share, profile, notification and admin entry points render in the responsive route matrix | Page-specific entry permissions and broken destinations are not injected | `sitewide-ui.spec.ts` |
+| Settlement confirmation | Group owner / members | Browser flow is authored for approval setting, pending state, missing-reason rejection and manager confirmation from the responsive home; backend lifecycle test covers recipient confirmation, change, reject, void and manager self-confirm | Local Playwright could not complete this flow: the Vite proxy intermittently receives `ECONNRESET` from its isolated Go backend and returns 502 before assertions. Concurrent requests, audit-store failure rollback, notification delivery failure, and browser recipient accept/reject/withdraw remain uncovered | `settlement-approval.spec.ts`, `settlement_reviews_test.go` |
 | Personal ledger | Owner / isolated regular user | Expense create, edit, cancel, validation and confirmed delete; previous day, date picker and query preservation; save remains usable during a delayed real SSE refresh | Network outage and authorization denial are not covered; duplicate submit and rejected write are checked in Vitest | `sitewide-ui.spec.ts`, `ledger-save.spec.ts`, `LedgerQuickAddDrawer.test.ts` |
 | Personal income | Owner | Create and confirmed delete; empty API result renders safely; ledger refresh uses the viewer's date | Edit, cancel and backend failure are not covered | `sitewide-ui.spec.ts`; `workspace.test.ts` null-list regression |
 | Personal subscriptions | Owner | Create and confirmed delete | Edit, stop/cancel-stop, period history and backend failure are not covered | `sitewide-ui.spec.ts` |
@@ -22,12 +25,15 @@ The sitewide suite checks the 28 route targets listed in `sitewide-ui.spec.ts` a
 
 ## Validation status
 
-- Full E2E configuration: 130 tests (26 scenarios across five projects). Complete execution results are recorded by CI and qualification evidence; no project is skipped for publication.
+- Full E2E configuration: 140 tests across five projects. The local run completed with 17 passed and 123 failed, primarily because the isolated Vite-to-Go requests reset or returned 502; a focused settlement flow also failed at setup after three retries for the same reason. These are not counted as passed product checks.
 - Frontend unit tests: 158 passed across 39 files.
-- Frontend production build and changed-file ESLint checks passed.
+- Frontend production build passed after the attachment access-state change. Go vet passed.
+- Full Go tests: 413 passed and 21 failed. Failures were local SMTP connection errors, unavailable external exchange quote services, and the local attachment-storage service returning 503. Focused home, settlement lifecycle, settlement suggestion and new settlement-attachment guard tests passed.
 - Screenshots are retained under Playwright `test-results` locally and uploaded by the Verify workflow as a 14-day artifact.
 
-Rows explicitly marked as not covered are follow-up work; a route rendering check is not counted as functional verification.
+Rows explicitly marked as not covered are follow-up work; a route rendering check is not counted as functional verification. This implementation has not completed the full plan's route/role/operation matrix, all-browser mutation flows, or reviewed visual baselines; the passing counts above must not be read as full acceptance.
+
+Approval-managed settlement attachments are currently read-only. Direct upload, rename and delete are blocked with a review-required conflict so the attachment API cannot bypass settlement approval. Staging attachment changes into a settlement review proposal and applying them after approval is not implemented yet.
 
 ## Save-race follow-up and CI isolation
 
