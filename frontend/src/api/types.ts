@@ -8,7 +8,14 @@ export type Role = 'owner' | 'member'
 export type BillingCycle = 'daily' | 'every_n_days' | 'weekly' | 'every_n_weeks' | 'every_n_hours' | 'monthly' | 'quarterly' | 'yearly'
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled'
 
-export interface Group { id:string;name:string;description:string;currency:Currency;timezone:string;color:string;attachmentMaxSize?:number;attachmentMaxCount?:number;attachmentLimitsInherited?:boolean;ownerId:string;createdAt:string;updatedAt:string }
+export interface Group { id:string;name:string;description:string;currency:Currency;timezone:string;color:string;attachmentMaxSize?:number;attachmentMaxCount?:number;attachmentLimitsInherited?:boolean;settlementApprovalEnabled?:boolean;ownerId:string;createdAt:string;updatedAt:string }
+export interface SettlementReview { id:string;groupId:string;settlementId:string;action:'create'|'change'|'void';proposal:Settlement;submittedBy:string;status:'pending'|'accepted'|'rejected'|'withdrawn';decidedBy?:string;reason?:string;expectedVersion:number;canRespond?:boolean;canManage?:boolean;fromName?:string;toName?:string;groupName?:string;createdAt:string;updatedAt:string }
+export interface SettlementSuggestion { groupId:string;fromUserId:string;toUserId:string;amountMinor:number;currency:Currency;label:string;version:string }
+export interface HomeMonthlyCashflow { groupId?:string;groupName?:string;month:string;timezone:string;currency:Currency;incomeReceivedMinor:number;expensePaidMinor:number;settlementReceivedMinor:number;settlementPaidMinor:number;beneficialIncomeMinor:number;personalExpenseShareMinor:number }
+export interface HomeGroupPosition { groupId:string;groupName:string;timezone:string;currency:Currency;balanceMinor:number;balanceAvailable:boolean }
+export interface HomeUpcoming { id:string;groupId?:string;kind:'subscription'|'income';name:string;nextBilling:string;amountMinor:number;currency:Currency;timezone:string }
+export interface HomeAction { id:string;type:string;groupId?:string;resourceId?:string;title?:string;message?:string;status:string;createdAt?:string;scheduledOn?:string;amountMinor?:number;currency?:Currency }
+export interface HomeDashboard { asOf:string;month:string;receivables:Array<{currency:Currency;amountMinor:number}>;payables:Array<{currency:Currency;amountMinor:number}>;groups:HomeGroupPosition[];monthly:HomeMonthlyCashflow[];upcoming:HomeUpcoming[];reviews:SettlementReview[];actions:HomeAction[];incompleteGroupIds?:string[] }
 export type ShareAccessMode='link'|'password'|'accounts'
 export type ShareRangeMode='all'|'rolling'|'fixed'
 export interface ShareViewer { id?:string;shareId?:string;userId:string;email:string;name:string }
@@ -56,7 +63,7 @@ export type LedgerStatus = "recorded"|"scheduled"|"pending"|"failed"
 export interface LedgerItem { earnedBy?:string;personalIncomeMinor?:number;receivedIncomeMinor?:number; id:string;kind:LedgerKind;recordId?:string;subscriptionId?:string;groupId?:string;occurredAt:string;title:string;category?:string;categoryId?:string;amountMinor:number;currency:Currency;baseCurrency?:Currency;baseAmountMinor?:number;notes?:string;status:LedgerStatus }
 export interface DailyLedgerCurrencySummary { beneficialIncomeMinor?:number;receivedIncomeMinor?:number; currency:Currency;incomeMinor:number;expenseMinor:number;subscriptionMinor:number;netMinor:number;count:number }
 export interface DailyLedger { date:string;timezone:string;summaries:DailyLedgerCurrencySummary[];items:LedgerItem[] }
-export interface Settlement extends OfflineState { id:string;groupId:string;fromUserId:string;toUserId:string;createdBy:string;amountMinor:number;currency:Currency;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;exchangeRateDate:string;settledOn:string;notes:string;createdAt:string;updatedAt:string }
+export interface Settlement extends OfflineState { id:string;groupId:string;fromUserId:string;toUserId:string;createdBy:string;amountMinor:number;currency:Currency;baseCurrency:Currency;baseAmountMinor:number;exchangeRate:string;exchangeRateDate:string;settledOn:string;notes:string;suggestionVersion?:string;status?:'confirmed'|'pending'|'rejected'|'voided'|'withdrawn';approvalRequired?:boolean;version?:number;createdAt:string;updatedAt:string }
 export interface CurrencyDashboard { beneficialIncomeMinor?:number;receivedIncomeMinor?:number; currency:Currency;cashInflowMinor?:number;cashOutflowMinor:number;personalShareMinor:number;reimbursableMinor:number;monthlySubscriptionMinor:number;personalMonthlySubscriptionMinor:number;activeSubscriptions:number;chargeCount?:number }
 export interface MemberBalance { userId:string;amountMinor:number }
 export interface DashboardSummary { incomeCurrencyRepairIds?:string[]; monthReceivedIncomeMinor?:number; month?:string;monthlySubscriptionMinor:number;monthExpenseMinor:number;monthIncomeMinor?:number;activeSubscriptions:number;upcoming:Subscription[];currencies?:CurrencyDashboard[];balances?:MemberBalance[];reportingCurrency?:Currency;originalCurrencies?:CurrencyDashboard[] }
@@ -64,7 +71,7 @@ export interface BillingDates { dates:string[];nextCursor?:string }
 export interface SubscriptionPeriod { billingAt:string;amountMinor:number;currency:Currency;baseAmountMinor:number;baseCurrency:Currency;paidBy:string;splits?:ExpenseSplit[];status:'pending'|'posted'|'failed';expenseId?:string;error?:string }
 export interface SubscriptionPeriods { periods:SubscriptionPeriod[];nextCursor?:string }
 export interface Attachment { id:string;groupId?:string;ownerId?:string;targetType:string;targetId:string;billingAt?:string;uploadedBy:string;fileName:string;mediaType:string;size:number;createdAt:string }
-export interface AttachmentAccess { canRead:boolean;canUpload:boolean;canDelete:boolean;canRename:boolean }
+export interface AttachmentAccess { canRead:boolean;canUpload:boolean;canDelete:boolean;canRename:boolean;modificationRequiresReview?:boolean }
 export interface AttachmentLimits { maxSize:number;maxCount:number }
 export interface AttachmentPage { items:Attachment[];access:AttachmentAccess;limits:AttachmentLimits }
 export interface SubFlowEvent { type:string;groupId:string;resource:string;resourceId:string;occurredAt:string }

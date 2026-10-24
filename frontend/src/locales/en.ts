@@ -1,10 +1,12 @@
 import type { MessageKey } from './zh-TW'
 import { incomeAttachmentMessages } from './incomeAttachments'
 import { notificationMessages } from './notifications'
+import { homeMessages } from './home'
 
 export const en: Record<MessageKey, string> = {
   ...incomeAttachmentMessages.en,
   ...notificationMessages.en,
+  ...homeMessages.en,
   incomeCurrencyRepair:'Some income reporting currencies need repair. Income totals and balances are withheld until repaired. Preview recalculation in group settings.',previewCurrencyRepair:'Preview currency recalculation / repair',
   beneficialIncome:'My income share',receivedIncome:'Received by me',shareIncomes:'Income',shareIncomeDesc:'Received income records and totals',shareForecastDesc:'Recurring income plans and expected next dates',sharePendingIncomeDesc:'Income periods awaiting confirmation',exportSourcesHelp:'Choose the private ledger and groups to include. Each selected group is checked for access.',exportForecastIncome:'Include expected and pending recurring income (not counted as received)',
   incomeViews:'Income views',incomeDetails:'Income details',recurringIncome:'Recurring income',pendingIncome:'Pending confirmation',createRecurringIncome:'Add recurring income',recurringIncomeDescription:'Set up an income plan that repeats on a schedule.',recurringIncomeOnlyPostsWhenReceived:'Only received amounts are recorded as income',incomeBackfill:'Backfill missed periods',incomeBackfillDescription:'Review missed periods before recording them. Existing periods are left unchanged.',backfillThrough:'Include periods through',previewBackfill:'Preview periods',applyBackfill:'Record missed periods',backfillPeriods:'{count} periods will be checked',endDate:'End date',postingMode:'Posting mode',automaticPosting:'Automatic posting',manualConfirmation:'Manual confirmation',nextReceipt:'Next receipt',actualAmount:'Actual amount',confirmReceived:'Confirm received',skipReason:'Skip reason',skipOccurrence:'Skip this period',incomePeriods:'Period history',noRecurringIncome:'No recurring income yet',noIncomePeriods:'No periods to show yet',

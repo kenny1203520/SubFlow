@@ -111,7 +111,7 @@ async function toggleProvider(name: string) {
                 <button type="button" class="ghost" :disabled="!auth.record?.email || resetBusy" @click="resetPassword">{{ resetBusy ? t.processing : t.resetPassword }}</button>
                 <p v-if="resetSent" class="success">{{ t.resetPasswordSent }}</p>
             </section>
-            <section class="card form-card profile-categories"><CategoryManagement scope="personal" /></section>            <section class="card form-card profile-contacts">
+            <section id="profile-categories" class="card form-card profile-categories"><CategoryManagement scope="personal" /></section>            <section id="profile-contacts" class="card form-card profile-contacts">
                 <div><p class="eyebrow">{{ tr('contacts') }}</p><h2>{{ tr('contactManagement') }}</h2><p class="setting-description">{{ tr('contactManagementDesc') }}</p></div>
                 <div class="contact-form"><input v-model="contactForm.name" :placeholder="tr('contactName')"><input v-model="contactForm.email" type="email" :placeholder="tr('contactEmail')"><div class="form-actions"><button class="primary" :disabled="contactBusy || !contactForm.name || !contactForm.email" @click="saveContact">{{ tr('contactSave') }}</button><button v-if="contactForm.id" type="button" class="ghost" @click="resetContact">{{ tr('cancel') }}</button></div></div>
                 <input v-model="contactSearch" :placeholder="tr('contactSearch')">
