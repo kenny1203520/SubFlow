@@ -52,7 +52,7 @@ function changeItems(log:AuditLog) {
       <PageSizeSelect :model-value="pageSize" @update:model-value="emit('update:pageSize', $event)" />
     </div>
     <div v-if="loading" class="empty-inline">{{ tr('processing') }}</div>
-    <div v-else-if="error" class="resource-error"><p>{{ error }}</p><button class="ghost" @click="emit('retry')">{{ tr('retry') }}</button></div>
+    <div v-else-if="error" class="resource-error"><p>{{ error }}</p><button class="ghost" @click="emit('retry')" type="button">{{ tr('retry') }}</button></div>
     <div v-else-if="logs.length" class="data-list">
       <article v-for="log in logs" :key="log.id" class="audit-row-wrap">
         <button type="button" class="data-row audit-row audit-row-toggle" :aria-expanded="!!expanded[log.id]" @click="toggle(log.id)">

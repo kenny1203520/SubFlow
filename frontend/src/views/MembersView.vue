@@ -105,9 +105,9 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                         <span v-if="member.user?.placeholder" class="pill">{{ member.user?.linkedUserId ? tr('tempMemberBound') : tr('tempMember') }}</span>
                         <RoleSelect v-if="canManageRoles && member.role !== 'owner' && workspace.groupRoles.length" :model-value="member.roleId||''" :roles="assignableRoles" :label="tr('assignRole')" @update:model-value="assignRole(member.userId,$event)" />
                         <button v-if="canManageMembers && member.user?.placeholder && !member.user?.linkedUserId" class="ghost"
-                            @click="startBinding(member.userId, member.user?.name || tr('thisMember'))">{{tr('bindTempMember')}}</button>
+                            @click="startBinding(member.userId, member.user?.name || tr('thisMember'))" type="button">{{tr('bindTempMember')}}</button>
                         <button v-if="canManageMembers && member.role !== 'owner'" class="ghost danger-text"
-                            @click="removeMember(member.userId, member.user?.name || member.user?.email || tr('thisMember'))">{{tr('remove')}}</button>
+                            @click="removeMember(member.userId, member.user?.name || member.user?.email || tr('thisMember'))" type="button">{{tr('remove')}}</button>
                     </div>
                 </div>
                 <EmptyState v-else :title="tr('noMemberData')" :description="tr('noMemberDataDesc')" />
@@ -118,12 +118,12 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                 <div v-if="workspace.ownershipTransfer" class="notice inline">
                     <template v-if="workspace.isOwner">
                         <p>{{tr('transferPendingFor',{name:memberLabel(workspace.ownershipTransfer.toUserId)})}}</p>
-                        <button class="ghost danger-text" :disabled="workspace.loading" @click="cancelTransfer">{{tr('cancelTransfer')}}</button>
+                        <button class="ghost danger-text" :disabled="workspace.loading" @click="cancelTransfer" type="button">{{tr('cancelTransfer')}}</button>
                     </template>
                     <template v-else>
                         <p>{{tr('transferOfferedBy',{name:memberLabel(workspace.ownershipTransfer.fromUserId)})}}</p>
-                        <button class="primary" :disabled="workspace.loading" @click="respondTransfer(true)">{{tr('acceptTransfer')}}</button>
-                        <button class="ghost" :disabled="workspace.loading" @click="respondTransfer(false)">{{tr('declineTransfer')}}</button>
+                        <button class="primary" :disabled="workspace.loading" @click="respondTransfer(true)" type="button">{{tr('acceptTransfer')}}</button>
+                        <button class="ghost" :disabled="workspace.loading" @click="respondTransfer(false)" type="button">{{tr('declineTransfer')}}</button>
                     </template>
                 </div>
                 <form v-else-if="workspace.isOwner" class="form-card" @submit.prevent="startTransfer">
@@ -133,7 +133,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                             <option v-for="member in transferCandidates" :key="member.userId" :value="member.userId">{{member.user?.name || member.user?.email}}</option>
                         </select>
                     </label>
-                    <button class="primary" :disabled="workspace.loading || !transferTarget">{{tr('startTransfer')}}</button>
+                    <button class="primary" :disabled="workspace.loading || !transferTarget" type="submit">{{tr('startTransfer')}}</button>
                 </form>
             </div>
             <div v-if="canManageMembers || workspace.memberTransfers.length" class="card">
@@ -144,12 +144,12 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                     <div v-for="item in workspace.memberTransfers" :key="item.id" class="notice inline">
                         <template v-if="item.toUserId === auth.record?.id">
                             <p>{{tr('memberTransferOfferedBy',{by:memberLabel(item.fromUserId),from:memberLabel(item.fromUserId)})}}</p>
-                            <button class="primary" :disabled="workspace.loading" @click="respondMemberTransfer(item.id,true)">{{tr('acceptTransfer')}}</button>
-                            <button class="ghost" :disabled="workspace.loading" @click="respondMemberTransfer(item.id,false)">{{tr('declineTransfer')}}</button>
+                            <button class="primary" :disabled="workspace.loading" @click="respondMemberTransfer(item.id,true)" type="button">{{tr('acceptTransfer')}}</button>
+                            <button class="ghost" :disabled="workspace.loading" @click="respondMemberTransfer(item.id,false)" type="button">{{tr('declineTransfer')}}</button>
                         </template>
                         <template v-else>
                             <p>{{tr('memberTransferPendingFor',{from:memberLabel(item.fromUserId),to:memberLabel(item.toUserId)})}}</p>
-                            <button v-if="canManageMembers" class="ghost danger-text" :disabled="workspace.loading" @click="cancelMemberTransfer(item.id)">{{tr('cancelTransfer')}}</button>
+                            <button v-if="canManageMembers" class="ghost danger-text" :disabled="workspace.loading" @click="cancelMemberTransfer(item.id)" type="button">{{tr('cancelTransfer')}}</button>
                         </template>
                     </div>
                 </template>
@@ -167,7 +167,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                             <option v-for="member in memberTransferCandidates.filter(m=>m.userId!==memberTransferFrom)" :key="member.userId" :value="member.userId">{{member.user?.name || member.user?.email}}</option>
                         </select>
                     </label>
-                    <button class="primary" :disabled="workspace.loading || !memberTransferFrom || !memberTransferTo">{{tr('startMemberTransfer')}}</button>
+                    <button class="primary" :disabled="workspace.loading || !memberTransferFrom || !memberTransferTo" type="submit">{{tr('startMemberTransfer')}}</button>
                 </form>
             </div>
             <div v-if="canManageMembers" class="card">
@@ -175,7 +175,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                 <p class="field-help">{{tr('addTempMemberDesc')}}</p>
                 <form class="form-card" @submit.prevent="addTempMember">
                     <label>{{tr('displayName')}}<input v-model="tempMemberName" required :placeholder="tr('addTempMember')"></label>
-                    <button class="primary" :disabled="workspace.loading||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')">{{tr('addTempMember')}}</button>
+                    <button class="primary" :disabled="workspace.loading||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')" type="submit">{{tr('addTempMember')}}</button>
                 </form>
             </div>
             <div v-if="canManageMembers">
@@ -183,7 +183,7 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                     <h2>{{tr('inviteMember')}}</h2>
                     <div v-if="bindTarget" class="notice inline">{{tr('bindingInviteNotice',{name:bindTarget.label})}} <button type="button" @click="bindTarget=undefined">{{tr('cancel')}}</button></div>
                     <label>Email<input ref="invitationEmail" v-model="email" type="email" required placeholder="friend@example.com"></label>
-                    <button class="primary" :disabled="workspace.loading||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')">{{tr('sendInvitation')}}</button>
+                    <button class="primary" :disabled="workspace.loading||!workspace.online" :title="workspace.online?'':tr('offlineActionDisabled')" type="submit">{{tr('sendInvitation')}}</button>
                 </form>
                 <div class="card invitations">
                     <div class="audit-list-heading">
@@ -196,9 +196,9 @@ onMounted(()=>{if(canManageRoles.value)void workspace.loadGroupRoles();void work
                             <div><strong>{{ item.email }}</strong><small>{{ tr(item.status==='delivery_failed'?'deliveryFailed':item.status) }} · {{ formatDate(item.expiresAt) }}</small><a v-if="item.debugUrl"
                                     :href="item.debugUrl">{{tr('developmentLink')}}</a></div>
                             <div v-if="item.status === 'pending' || item.status === 'delivery_failed'" class="actions">
-                                <button class="ghost" @click="workspace.resendInvitation(item.id)">{{tr('resend')}}</button>
+                                <button class="ghost" @click="workspace.resendInvitation(item.id)" type="button">{{tr('resend')}}</button>
                                 <button class="ghost danger-text"
-                                    @click="workspace.revokeInvitation(item.id)">{{tr('revoke')}}</button>
+                                    @click="workspace.revokeInvitation(item.id)" type="button">{{tr('revoke')}}</button>
                             </div>
                         </div>
                     </div>

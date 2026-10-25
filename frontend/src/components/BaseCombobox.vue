@@ -8,7 +8,7 @@ const props = withDefaults(defineProps<{ modelValue:string; options:ComboboxOpti
 const emit = defineEmits<{ 'update:modelValue':[value:string] }>()
 const { tr } = useI18n()
 const open=ref(false),search=ref(''),input=ref<HTMLInputElement|null>(null)
-const uid=getCurrentInstance()?.uid??Math.floor(Math.random()*100000), inputId=`base-combobox-${uid}`,helpId=`${inputId}-help`,errorId=`${inputId}-error`
+const uid=getCurrentInstance()?.uid??Math.floor(Math.random()*100000), inputId=`base-combobox-${uid}`,searchInputId=`${inputId}-search`,helpId=`${inputId}-help`,errorId=`${inputId}-error`
 const describedBy=computed(()=>[props.help?helpId:'',props.error?errorId:''].filter(Boolean).join(' ')||undefined)
 const normalized=computed(()=>props.options.map(option=>typeof option==='string'?{value:option,label:option,searchText:option}:{...option,searchText:option.searchText||`${option.label} ${option.value}`}))
 const selected=computed(()=>normalized.value.find(option=>option.value===props.modelValue))
@@ -21,7 +21,7 @@ function commit(close:()=>void){const value=search.value.trim();if(props.allowCr
     <label class="combobox-label" :class="{ 'visually-hidden': hideLabel }" :for="inputId">{{label}}<span v-if="required" aria-hidden="true"> *</span></label>
     <BaseDropdown v-model="open" :panel-label="label" mobile-sheet @opened="nextTick(()=>input?.focus())">
       <template #trigger="{toggle}"><button :id="inputId" type="button" class="combobox-trigger" :aria-expanded="open" :aria-invalid="!!error" :aria-describedby="describedBy" @click="toggle"><span>{{selected?.label||placeholder||label}}</span><span aria-hidden="true">⌄</span></button></template>
-      <template #default="{close}"><div class="combobox-menu"><input ref="input" v-model="search" :placeholder="tr('search')" @keydown.enter.prevent="commit(close)"><button v-for="option in filtered" :key="option.value" type="button" class="combobox-option" :class="{selected:option.value===modelValue}" @click="choose(option.value,close)">{{option.label}}</button><button v-if="allowCreate&&search.trim()&&!normalized.some(option=>option.value===search.trim())" type="button" class="combobox-option create" @click="commit(close)">+ {{search.trim()}}</button><p v-if="!filtered.length&&!allowCreate" class="empty-inline">{{tr('notFound')}}</p></div></template>
+      <template #default="{close}"><div class="combobox-menu"><label class="sr-only" :for="searchInputId">{{tr('search')}}</label><input :id="searchInputId" ref="input" v-model="search" :placeholder="tr('search')" @keydown.enter.prevent="commit(close)"><button v-for="option in filtered" :key="option.value" type="button" class="combobox-option" :class="{selected:option.value===modelValue}" @click="choose(option.value,close)">{{option.label}}</button><button v-if="allowCreate&&search.trim()&&!normalized.some(option=>option.value===search.trim())" type="button" class="combobox-option create" @click="commit(close)">+ {{search.trim()}}</button><p v-if="!filtered.length&&!allowCreate" class="empty-inline">{{tr('notFound')}}</p></div></template>
     </BaseDropdown>
     <small v-if="help" :id="helpId" class="combobox-help">{{help}}</small><small v-if="error" :id="errorId" class="combobox-error">{{error}}</small>
   </div>

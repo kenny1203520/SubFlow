@@ -1,13 +1,13 @@
-﻿<script setup lang="ts">
-import { computed, nextTick, ref } from 'vue'
+<script setup lang="ts">
+import { computed, nextTick, ref, useId } from 'vue'
 import { useI18n } from '../i18n'
 import BaseDropdown from './BaseDropdown.vue'
 import { timezoneOffset, timezoneLabel } from '../timezone'
 
 type TimeZone = { name: string; displayName: string; offset: string; offsetMinutes: number }
-const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean }>(), { disabled: false })
+const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean; id?: string }>(), { disabled: false })
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
-const { locale, t } = useI18n(); const query = ref(''); const open = ref(false); const searchInput = ref<HTMLInputElement | null>(null)
+const { locale, t } = useI18n(); const query = ref(''); const open = ref(false); const searchInput = ref<HTMLInputElement | null>(null); const searchInputId = useId()
 function getDisplayName(name: string) { return new Intl.DateTimeFormat(locale.value, { timeZone: name, timeZoneName: 'long' }).formatToParts(new Date()).find(value => value.type === 'timeZoneName')?.value || name.replaceAll('_', ' ') }
 const allZones = computed<TimeZone[]>(() => ['UTC', ...Intl.supportedValuesOf('timeZone').filter(name => name !== 'UTC')].map(name => { const offset = timezoneOffset(name); return { name, displayName: getDisplayName(name), offset: offset.label, offsetMinutes: offset.minutes } }).sort((a, b) => a.offsetMinutes - b.offsetMinutes || a.displayName.localeCompare(b.displayName, locale.value)))
 const selectedZone = computed(() => allZones.value.find(zone => zone.name === props.modelValue))
@@ -19,7 +19,7 @@ function focusSearch() { nextTick(() => searchInput.value?.focus()) }
 </script>
 <template>
     <BaseDropdown v-model="open" class="timezone-select" :panel-label="t.timezone" mobile-sheet @opened="focusSearch"><template
-            #trigger="{ open: isOpen, toggle }"><button class="timezone-trigger" type="button" :aria-expanded="isOpen" :disabled="props.disabled"
+            #trigger="{ open: isOpen, toggle }"><button :id="props.id" class="timezone-trigger" type="button" :aria-expanded="isOpen" :disabled="props.disabled"
                 @click="toggle"><span>{{ label }}</span><svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m7 10 5 5 5-5" />
                 </svg></button></template><template #default="{ close }">
@@ -27,7 +27,7 @@ function focusSearch() { nextTick(() => searchInput.value?.focus()) }
                 <div class="timezone-search"><svg viewBox="0 0 24 24" aria-hidden="true">
                         <circle cx="11" cy="11" r="6" />
                         <path d="m16 16 4 4" />
-                    </svg><input ref="searchInput" v-model="query" :placeholder="t.searchTimezone"></div>
+                    </svg><label class="sr-only" :for="searchInputId">{{t.searchTimezone}}</label><input :id="searchInputId" ref="searchInput" v-model="query" :placeholder="t.searchTimezone"></div>
                 <div v-if="!query && selectedZone" class="timezone-current"><small>{{ t.currentTimezone }}</small><button
                         type="button" class="timezone-option selected" role="option" aria-selected="true"
                         @click="select(selectedZone.name, close)"><span><strong>{{ selectedZone.displayName }}</strong><em>{{ selectedZone.name }}

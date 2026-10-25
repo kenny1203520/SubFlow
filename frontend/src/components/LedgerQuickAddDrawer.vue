@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, useId, watch } from 'vue'
 import AppDrawer from './AppDrawer.vue'
 import BaseInput from './BaseInput.vue'
 import BaseCombobox from './BaseCombobox.vue'
@@ -17,6 +17,7 @@ import { useI18n } from '../i18n'
 
 const props = defineProps<{ open: boolean; groupId?: string; date: string; personal?: boolean; editRecord?: Expense | Income | Subscription; editKind?: LedgerKind }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
+const quickAddFieldId = useId()
 
 const workspace = useWorkspaceStore()
 const auth = useAuthStore()
@@ -206,15 +207,15 @@ watch(() => form.billingCycle, cycle => {
         <div class="ledger-section-heading"><strong>{{ tr('item') }}</strong></div>
         <div class="ledger-form-grid">
           <BaseInput v-model="form.title" class="ledger-wide" :label="tr('item')" required :placeholder="tr('itemPlaceholder')" />
-          <div class="ledger-field ledger-wide"><span>{{ tr('category') }}</span><CategorySelect v-model="form.categoryId" :categories="workspace.categories" @create="addCategory" /></div>
+          <div class="ledger-field ledger-wide"><label :for="quickAddFieldId + '-category'">{{ tr('category') }}</label><CategorySelect :id="quickAddFieldId + '-category'" v-model="form.categoryId" :categories="workspace.categories" @create="addCategory" /></div>
         </div>
       </section>
       <section class="ledger-form-section">
         <div class="ledger-section-heading"><strong>{{ tr('amount') }} · {{ tr('currency') }}</strong></div>
         <div class="ledger-form-grid">
           <BaseInput v-model="form.amount" :label="tr('amount')" type="number" inputmode="decimal" min="0" :step="amountStep(form.currency)" required />
-          <div class="ledger-field"><span>{{ tr('currency') }}</span><CurrencySelect v-model="form.currency" :currencies="workspace.currencies" /></div>
-          <div v-if="!personal" class="ledger-field"><span>{{ mode==='income' ? tr('receivedBy') : tr('payer') }}</span><PayerSelect v-model="form.payer" :members="members" :self-id="auth.record?.id" /></div>
+          <div class="ledger-field"><label :for="quickAddFieldId + '-currency'">{{ tr('currency') }}</label><CurrencySelect :id="quickAddFieldId + '-currency'" v-model="form.currency" :currencies="workspace.currencies" /></div>
+          <div v-if="!personal" class="ledger-field"><label :for="quickAddFieldId + '-payer'">{{ mode==='income' ? tr('receivedBy') : tr('payer') }}</label><PayerSelect :id="quickAddFieldId + '-payer'" v-model="form.payer" :members="members" :self-id="auth.record?.id" /></div>
           <BaseInput v-if="mode!=='subscription'" v-model="form.date" :label="tr('date')" type="date" required @update:model-value="dateTouched = true" />
         </div>
       </section>
@@ -251,7 +252,7 @@ watch(() => form.billingCycle, cycle => {
       </section>
       <div class="form-actions ledger-form-actions">
         <button type="button" class="ghost" @click="emit('close')">{{ tr('cancel') }}</button>
-        <button class="primary" :disabled="saving || !splitValid || !rateValid">{{ saving ? tr('processing') : tr('saveRecord') }}</button>
+        <button class="primary" :disabled="saving || !splitValid || !rateValid" type="submit">{{ saving ? tr('processing') : tr('saveRecord') }}</button>
       </div>
     </form>
   </AppDrawer>

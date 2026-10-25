@@ -22,8 +22,9 @@ export function useI18n() {
     locale.value = next
     if (typeof localStorage !== 'undefined') localStorage.setItem('subflow-locale', next)
   }
-  function formatDate(value: string | Date, options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' }) {
-    return new Intl.DateTimeFormat(locale.value, options).format(new Date(value))
+  function formatDate(value: string | Date, options?: Intl.DateTimeFormatOptions) {
+    const dateOptions = options ?? { dateStyle: 'medium' }
+    return new Intl.DateTimeFormat(locale.value, dateOptions).format(new Date(value))
   }
   function formatMonth(value: string) {
     return new Intl.DateTimeFormat(locale.value, { year: 'numeric', month: 'long', timeZone: 'UTC' }).format(new Date(`${value}-01T00:00:00Z`))

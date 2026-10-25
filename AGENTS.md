@@ -43,12 +43,13 @@
 - 商業規則放在後端 application/domain；Vue 只負責呈現、互動、路由與 API 呼叫。
 - PocketBase schema 的變更必須具備既有資料的相容升級/backfill 考量與測試。
 - 前端變更至少執行相關 Vitest；後端變更至少執行相關 `go test`，必要時補跑完整測試、`go vet`、frontend build 與 Docker 驗證。
+- GitHub CodeQL 是本地 CI 品質標準的一部分：在 `frontend/` 執行 `npm run test:ci`，一併跑 Vitest 與 Go、JavaScript/TypeScript 的 CodeQL 掃描；GitHub CI 也必須通過 `.github/workflows/codeql.yml`。本機需安裝 CodeQL CLI 並放在 `PATH`，或以 `CODEQL_CLI` 指定執行檔；缺少 CLI 時不可略過掃描。
 - 回報時說明實際修改、測試結果、未處理風險，以及 commit 是否成功。
 
 ## 完成功能的最低條件
 
 1. 功能行為、權限與錯誤路徑已實作。
 2. 所有使用者操作都有對應稽核事件，且測試涵蓋成功與失敗結果。
-3. 前後端相關測試與必要 build 通過。
+3. 前後端相關測試、必要 build 與 GitHub CodeQL 掃描通過。
 4. 只提交本次功能的變更，commit message 符合 Conventional Commits。
 

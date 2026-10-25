@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref , useId} from 'vue'
 import { ProviderLinkedElsewhereError, useAuthStore } from '../stores/auth'
 import { useSetupStore } from '../stores/setup'
 import { useI18n } from '../i18n'
@@ -13,6 +13,8 @@ import { pb } from '../pocketbase'
 import { ApiClient } from '../api/client'
 import type { Contact } from '../api/types'
 import CaptchaChallenge from '../components/CaptchaChallenge.vue'
+
+const a11yId = useId()
 const auth = useAuthStore(), setup = useSetupStore(), workspace=useWorkspaceStore(), toast = useToastStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), resetCaptchaToken = ref(''), { t, tr } = useI18n(), { preference, setTheme } = useTheme()
 const form = reactive({ name: String(auth.record?.name || ''), timezone: String(auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone), default_currency:String(auth.record?.defaultCurrency||'TWD') })
 async function submit() { await auth.updateProfile(form); saved.value = true; setTimeout(() => saved.value = false, 1800) }
@@ -36,6 +38,7 @@ async function resetPassword() {
 const contactClient = new ApiClient(() => pb.authStore.token, () => {})
 const contacts = ref<Contact[]>([])
 const contactForm = reactive({ id: '', name: '', email: '' })
+const contactNameId = useId(), contactEmailId = useId(), contactSearchId = useId()
 const contactBusy = ref(false)
 const contactSearch = ref('')
 const filteredContacts = computed(() => contacts.value.filter(contact => !contactSearch.value || (contact.name + contact.email).toLowerCase().includes(contactSearch.value.toLowerCase())))
@@ -87,9 +90,9 @@ async function toggleProvider(name: string) {
             <form class="card form-card profile-account" @submit.prevent="submit">
                 <h2>{{t.accountInfo}}</h2><label>{{ t.email }}<input :value="auth.record?.email"
                         disabled></label><label>{{ t.displayName }}<input v-model="form.name"
-                        required></label><label>{{ t.timezone }}
-                    <TimezoneSelect v-model="form.timezone" />
-                </label><label>{{t.currency}}<CurrencySelect v-model="form.default_currency" :currencies="workspace.currencies"/></label><button class="primary">{{ t.save }}</button><span v-if="saved" class="success">{{ t.saved }}</span>
+                        required></label><label :for="a11yId + '-field-1'">{{ t.timezone }}
+                    <TimezoneSelect v-model="form.timezone"  :id="a11yId + '-field-1'"/>
+                </label><label :for="a11yId + '-field-2'">{{t.currency}}<CurrencySelect v-model="form.default_currency" :currencies="workspace.currencies" :id="a11yId + '-field-2'"/></label><button class="primary" type="submit">{{ t.save }}</button><span v-if="saved" class="success">{{ t.saved }}</span>
             </form>
             <section class="card form-card profile-appearance">
                 <div>
@@ -113,8 +116,8 @@ async function toggleProvider(name: string) {
             </section>
             <section class="card form-card profile-categories"><CategoryManagement scope="personal" /></section>            <section class="card form-card profile-contacts">
                 <div><p class="eyebrow">{{ tr('contacts') }}</p><h2>{{ tr('contactManagement') }}</h2><p class="setting-description">{{ tr('contactManagementDesc') }}</p></div>
-                <div class="contact-form"><input v-model="contactForm.name" :placeholder="tr('contactName')"><input v-model="contactForm.email" type="email" :placeholder="tr('contactEmail')"><div class="form-actions"><button class="primary" :disabled="contactBusy || !contactForm.name || !contactForm.email" @click="saveContact">{{ tr('contactSave') }}</button><button v-if="contactForm.id" type="button" class="ghost" @click="resetContact">{{ tr('cancel') }}</button></div></div>
-                <input v-model="contactSearch" :placeholder="tr('contactSearch')">
+                <div class="contact-form"><label class="sr-only" :for="contactNameId">{{ tr('contactName') }}</label><input :id="contactNameId" v-model="contactForm.name" autocomplete="name" :placeholder="tr('contactName')"><label class="sr-only" :for="contactEmailId">{{ tr('contactEmail') }}</label><input :id="contactEmailId" v-model="contactForm.email" type="email" autocomplete="email" :placeholder="tr('contactEmail')"><div class="form-actions"><button class="primary" :disabled="contactBusy || !contactForm.name || !contactForm.email" @click="saveContact" type="button">{{ tr('contactSave') }}</button><button v-if="contactForm.id" type="button" class="ghost" @click="resetContact">{{ tr('cancel') }}</button></div></div>
+                <label class="sr-only" :for="contactSearchId">{{ tr('contactSearch') }}</label><input :id="contactSearchId" v-model="contactSearch" type="search" autocomplete="off" :placeholder="tr('contactSearch')">
                 <div class="rows"><div v-for="contact in filteredContacts" :key="contact.id" class="row"><div class="grow"><strong>{{ contact.name }}</strong><small>{{ contact.email }}</small></div><button type="button" class="ghost" @click="editContact(contact)">{{ tr('edit') }}</button><button type="button" class="ghost danger-text" @click="deleteContact(contact)">{{ tr('deleteContactAction') }}</button></div><p v-if="!filteredContacts.length" class="empty-inline">{{ tr('noContacts') }}</p></div>
             </section>
             <section v-if="providers.length" class="card form-card profile-providers">

@@ -25,12 +25,12 @@ function onPicker(event: Event) {
 <template>
   <div class="month-nav">
     <div class="month-navigation">
-      <button class="icon-button" :aria-label="tr('previousMonth')" @click="moveMonth(-1)">‹</button>
+      <button class="icon-button" :aria-label="tr('previousMonth')" @click="moveMonth(-1)" type="button">‹</button>
       <strong>{{ formatMonth(modelValue) }}</strong>
-      <button class="icon-button" :aria-label="tr('nextMonth')" @click="moveMonth(1)">›</button>
+      <button class="icon-button" :aria-label="tr('nextMonth')" @click="moveMonth(1)" type="button">›</button>
     </div>
     <div class="month-actions">
-      <button class="ghost month-jump" :class="{ 'is-current': isCurrentMonth }" :disabled="isCurrentMonth" @click="goCurrentMonth">{{ tr('currentMonth') }}</button>
+      <button class="ghost month-jump" :class="{ 'is-current': isCurrentMonth }" :disabled="isCurrentMonth" @click="goCurrentMonth" type="button">{{ tr('currentMonth') }}</button>
       <input class="month-picker" type="month" :value="modelValue" :aria-label="tr('currentMonth')" @change="onPicker">
     </div>
   </div>
