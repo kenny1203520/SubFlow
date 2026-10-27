@@ -68,7 +68,7 @@ backend.stderr.on('data', chunk => { backendOutput = (backendOutput + chunk.toSt
 backend.on('exit', code => { if (!stopping && code !== 0) { console.error(`Isolated backend exited (${code ?? 'signal'}). Raw logs are withheld because they may contain credentials.`); process.exitCode = code || 1 } })
 
 let setupToken
-for (let attempt = 0; attempt < 240 && !setupToken && backend.exitCode === null; attempt++) {
+for (let attempt = 0; attempt < 600 && !setupToken && backend.exitCode === null; attempt++) {
     const match = /setup[?]token=([A-Za-z0-9_-]+)/.exec(backendOutput)
   if (match) setupToken = match[1]
   else await new Promise(resolveDelay => setTimeout(resolveDelay, 500))

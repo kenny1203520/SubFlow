@@ -28,11 +28,34 @@ async function start(image, data, suffix) {
   docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
   containers.add(name)
   const base = `http://${docker('port', name, '8080/tcp')}`
-  for (let attempt = 0; attempt < 120; attempt++) {
-    try { if ((await fetch(`${base}/api/health`)).ok) return { name, base } } catch {}
-    await new Promise(resolve => setTimeout(resolve, 500))
+  let healthStatus = 'unreachable'
+  let runtimeStatus = 'unavailable'
+  for (let attempt = 0; attempt < 600; attempt++) {
+    try {
+      const response = await fetch(`${base}/api/health`)
+      healthStatus = `http-${response.status}`
+      if (response.ok) return { name, base }
+    } catch { healthStatus = 'unreachable' }
+    if (attempt % 5 === 0) {
+      try {
+        const response = await fetch(`${base}/api/subflow/v1/runtime/status`)
+        if (response.ok) {
+          const payload = await response.json()
+          const state = payload?.data?.state
+          const problemCode = payload?.data?.problemCode
+          if (['checking', 'backing_up', 'migrating', 'verifying', 'ready', 'failed'].includes(state)) {
+            runtimeStatus = state
+            if (state === 'failed' && typeof problemCode === 'string' && /^[a-z0-9_]{1,64}$/.test(problemCode)) runtimeStatus += `:${problemCode}`
+          }
+        }
+      } catch { /* Keep the diagnostic limited to public, safe runtime state. */ }
+      if (runtimeStatus.startsWith('failed')) {
+        throw new Error(`Upgrade test container entered maintenance failure (${healthStatus}, runtime=${runtimeStatus}).`)
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000))
   }
-  throw new Error('Upgrade test container did not become healthy.')
+  throw new Error(`Upgrade test container did not become healthy (${healthStatus}, runtime=${runtimeStatus}).`)
 }
 function stop(server) { docker('stop', server.name); containers.delete(server.name) }
 async function request(server, path, token, method = 'GET', body) {
