@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { h } from 'vue'
+import BaseCombobox from './BaseCombobox.vue'
 import BaseInput from './BaseInput.vue'
 import PasswordField from './PasswordField.vue'
 
@@ -14,6 +16,22 @@ describe('form controls', () => {
     expect(input.attributes('aria-describedby')).toContain('-help')
     await input.setValue('user@example.com')
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['user@example.com'])
+  })
+
+  it('generates unique stable ids for inputs and comboboxes', () => {
+    const wrapper = mount({
+      render: () => h('div', [
+        h(BaseInput, { modelValue: '', label: 'Name' }),
+        h(BaseInput, { modelValue: '', label: 'Nickname' }),
+        h(BaseCombobox, { modelValue: 'one', options: ['one', 'two'], label: 'Category' }),
+        h(BaseCombobox, { modelValue: 'one', options: ['one', 'two'], label: 'Role' }),
+      ]),
+    })
+    const inputIds = wrapper.findAll('.base-input-control input').map(input => input.attributes('id'))
+    expect(new Set(inputIds).size).toBe(2)
+
+    const comboboxIds = wrapper.findAll('.combobox-trigger').map(button => button.attributes('id'))
+    expect(new Set(comboboxIds).size).toBe(2)
   })
 
   it('toggles passwords without changing the value', async () => {

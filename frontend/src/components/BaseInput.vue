@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance } from 'vue'
+import { computed, useId } from 'vue'
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -16,8 +16,8 @@ const props = withDefaults(defineProps<{
   error?: string
 }>(), { type: 'text' })
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
-const uid = getCurrentInstance()?.uid ?? Math.floor(Math.random() * 100000)
-const inputId = computed(() => props.id || `base-input-${uid}`)
+const fallbackId = useId()
+const inputId = computed(() => props.id || `base-input-${fallbackId}`)
 const helpId = computed(() => `${inputId.value}-help`)
 const errorId = computed(() => `${inputId.value}-error`)
 const describedBy = computed(() => [props.help ? helpId.value : '', props.error ? errorId.value : ''].filter(Boolean).join(' ') || undefined)
