@@ -52,6 +52,25 @@ func TestHeadReturnsNoBody(t *testing.T) {
 	}
 }
 
+func TestMaintenanceHandlerRejectsTraversalAndKeepsAPIMaintenanceResponse(t *testing.T) {
+	handler := MaintenanceHandler()
+	for _, target := range []string{"/../index.html", "/assets/../../index.html", "/%2e%2e/index.html"} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("%s: expected 404 for invalid embedded path, got %d", target, response.Code)
+		}
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/subflow/v1/runtime/status", nil)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("business API must remain unavailable during maintenance, got %d", response.Code)
+	}
+}
+
 func TestCSPAllowsProtectedBlobPreviewsWithoutRelaxingScripts(t *testing.T) {
 	e, response := event(http.MethodGet, "/")
 	if err := serve(e, "/"); err != nil {

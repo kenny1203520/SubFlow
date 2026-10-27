@@ -29,10 +29,15 @@ func Register(e *core.ServeEvent) {
 func MaintenanceHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		setHTTPHeaders(w)
-		requestPath := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		requestPath := strings.TrimPrefix(r.URL.Path, "/")
 		if strings.HasPrefix(requestPath, "api/") || requestPath == "api" || strings.HasPrefix(requestPath, "_/") || requestPath == "_" {
 			w.Header().Set("Retry-After", "3")
 			http.Error(w, `{"error":{"code":"maintenance","message":"Service maintenance is in progress"}}`, http.StatusServiceUnavailable)
+			return
+		}
+		requestPath = strings.TrimSuffix(requestPath, "/")
+		if requestPath != "" && !fs.ValidPath(requestPath) {
+			http.NotFound(w, r)
 			return
 		}
 		clean := requestPath
