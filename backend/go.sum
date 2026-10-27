@@ -1,7 +1,7 @@
 github.com/altcha-org/altcha-lib-go v1.0.0 h1:7oPti0aUS+YCep8nwt5b9g4jYfCU55ZruWESL8G9K5M=
 github.com/altcha-org/altcha-lib-go v1.0.0/go.mod h1:I8ESLVWR9C58uvGufB/AJDPhaSU4+4Oh3DLpVtgwDAk=
-github.com/altcha-org/altcha-lib-go/v2 v2.0.0-20260725115309-2c4fc27a7b2d h1:XpzSlCZV+/xWwAT1+SIWRLwUNmodQQeQHeR1ay1F9vw=
-github.com/altcha-org/altcha-lib-go/v2 v2.0.0-20260725115309-2c4fc27a7b2d/go.mod h1:SpmAda2tBJcOIZJ4P8zjHyKq5MrE3kQic0h9UT+m4IY=
+github.com/altcha-org/altcha-lib-go/v2 v2.4.1 h1:Y1lIhe+Y4QI/w1KV0wsCEfCzSmaBWJgu4I3gAKtHYaU=
+github.com/altcha-org/altcha-lib-go/v2 v2.4.1/go.mod h1:n3KVRk3ziFGC5GIPkiSFMSROrAZ0wezy88///KeYdRo=
 github.com/asaskevich/govalidator v0.0.0-20200108200545-475eaeb16496/go.mod h1:oGkLhpf+kjZl6xBf758TQhh5XrAeiJv/7FRz/2spLIg=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 h1:DklsrG3dyBCFEj5IhUbnKptjxatkF07cF2ak3yi77so=
 github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2/go.mod h1:WaHUgvxTVq04UNunO+XhnAqY/wQc+bxr74GqbsZ/Jqw=
