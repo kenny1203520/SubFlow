@@ -47,9 +47,9 @@ jobs:
       # is lower than the targeted Go version"). The action itself must be
       # v7+ too -- v6 doesn't know how to install a v2 golangci-lint at all
       # ("golangci-lint v2 is not supported by golangci-lint-action v6").
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@db9de0fc1a667e1a49d2291a1a042dff081d78f6 # v9
         with:
-          version: v2.12.2
+          version: v2.15.0
           working-directory: backend
           args: --new-from-rev=${{ steps.base.outputs.sha }}
 
