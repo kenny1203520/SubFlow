@@ -19,17 +19,17 @@ function docker(...args) {
 }
 function safeUpgradeDetail(name) {
   try {
-    const line = docker('logs', name).split(/\r?\n/).reverse().find(value => /SubFlow upgrade stopped:|SubFlow stopped:|SubFlow command completed but upgrade state could not be finalized:|cannot prepare upgrade status:/i.test(value))
-    if (!line) return 'detail-unavailable'
-    return line
-      .replace(/^.*(?:SubFlow upgrade stopped|SubFlow stopped|SubFlow command completed but upgrade state could not be finalized|cannot prepare upgrade status):\s*/i, '')
+    const lines = docker('logs', name).split(/\r?\n/).filter(value => /error|failed|stopped|denied|no such|migration|backup|unknown schema|audit/i.test(value))
+    if (lines.length === 0) return 'no-error-lines'
+    return lines.slice(-3).map(line => line
+      .replace(/([?&](?:token|key|password|secret)=)[^&\s]+/gi, '$1[redacted]')
       .replace(/((?:token|secret|key|password)\s*[:=]\s*)\S+/gi, '$1[redacted]')
       .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
       .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[email]')
       .replace(/[A-Za-z]:\\[^\s:]+/g, '[path]')
       .replace(/\/(?:[^\s/:]+\/)*[^\s/:]+/g, '[path]')
-      .slice(0, 180)
-  } catch { return 'detail-unavailable' }
+      .slice(0, 180)).join(' | ')
+  } catch { return 'docker-logs-unavailable' }
 }
 function volume(suffix) {
   const name = `${prefix}-${suffix}`
