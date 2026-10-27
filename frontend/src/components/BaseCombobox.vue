@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, useId } from 'vue'
 import BaseDropdown from './BaseDropdown.vue'
 import { useI18n } from '../i18n'
 
@@ -8,7 +8,7 @@ const props = withDefaults(defineProps<{ modelValue:string; options:ComboboxOpti
 const emit = defineEmits<{ 'update:modelValue':[value:string] }>()
 const { tr } = useI18n()
 const open=ref(false),search=ref(''),input=ref<HTMLInputElement|null>(null)
-const uid=getCurrentInstance()?.uid??Math.floor(Math.random()*100000), inputId=`base-combobox-${uid}`,searchInputId=`${inputId}-search`,helpId=`${inputId}-help`,errorId=`${inputId}-error`
+const uid=useId(), inputId=`base-combobox-${uid}`,searchInputId=`${inputId}-search`,helpId=`${inputId}-help`,errorId=`${inputId}-error`
 const describedBy=computed(()=>[props.help?helpId:'',props.error?errorId:''].filter(Boolean).join(' ')||undefined)
 const normalized=computed(()=>props.options.map(option=>typeof option==='string'?{value:option,label:option,searchText:option}:{...option,searchText:option.searchText||`${option.label} ${option.value}`}))
 const selected=computed(()=>normalized.value.find(option=>option.value===props.modelValue))

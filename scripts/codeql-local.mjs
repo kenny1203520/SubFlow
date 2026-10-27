@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const codeql = process.env.CODEQL_CLI || 'codeql'
+const codeScanningConfig = path.join(repositoryRoot, '.github', 'codeql', 'codeql-config.yml')
 
 function run(args, options = {}) {
   const result = spawnSync(codeql, args, {
@@ -52,6 +53,7 @@ try {
       'database', 'create', database,
       `--language=${analysis.language}`,
       `--source-root=${analysis.sourceRoot}`,
+      `--codescanning-config=${codeScanningConfig}`,
     ]
     if (analysis.buildCommand) createArgs.push(`--command=${analysis.buildCommand}`)
 
