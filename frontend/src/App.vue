@@ -13,11 +13,14 @@ import ThemeSwitcher from './components/ThemeSwitcher.vue'
 import PwaUpdatePrompt from './components/PwaUpdatePrompt.vue'
 import ToastContainer from './components/ToastContainer.vue'
 import TimezoneMismatchDialog from './components/TimezoneMismatchDialog.vue'
+import UpgradeMaintenance from './components/UpgradeMaintenance.vue'
 import { browserTimezone } from './timezone'
+import { useUpgradeStore } from './stores/upgrade'
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
 const setup = useSetupStore()
+const upgrade = useUpgradeStore()
 const router = useRouter()
 const route = useRoute()
 const { tr } = useI18n()
@@ -26,6 +29,7 @@ const routeError = ref<unknown>()
 const routeRetry = ref(0)
 let hydratedUser = ''
 let hydration: Promise<void> | undefined
+let bootstrapRunning = false
 useTheme()
 
 // Checked once per login/app-open (per the user's chosen cadence), not
@@ -55,10 +59,18 @@ async function hydrateWorkspace() {
 }
 
 async function bootstrap() {
-	try { await setup.refresh() } catch { setup.status.initialized = true; setup.ready = true }
+	if (bootstrapRunning) return
+	bootstrapRunning = true
+	try {
+	await upgrade.start()
+	if (upgrade.blocked) return
+	try { await setup.refresh() } catch { if (upgrade.blocked) return; setup.status.initialized = true; setup.ready = true }
 	if (!setup.initialized) { if (route.name !== 'setup') await router.replace({ name: 'setup' }); return }
   await auth.initialize()
   if (auth.authenticated) await hydrateWorkspace()
+	} finally {
+		bootstrapRunning = false
+	}
 }
 
 function retryRoute() {
@@ -71,6 +83,10 @@ onErrorCaptured(error => {
   return false
 })
 onMounted(() => void bootstrap())
+watch(() => upgrade.blocked, (blocked, wasBlocked) => {
+  if (blocked) { workspace.pauseForMaintenance(); return }
+  if (wasBlocked) { void bootstrap(); void workspace.resumeAfterMaintenance() }
+})
 watch(() => auth.authenticated, authenticated => {
   if (authenticated) { void hydrateWorkspace(); return }
   hydratedUser = ''
@@ -84,13 +100,15 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
 </script>
 
 <template>
-  <PwaUpdatePrompt />
-  <ToastContainer />
-  <TimezoneMismatchDialog :open="!!timezoneMismatch" :saved-timezone="timezoneMismatch?.saved||''" :current-timezone="timezoneMismatch?.current||''" @update="applyDetectedTimezone" @later="timezoneMismatch=undefined" />
-  <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><Logo variant="lockup" size="lg" /></div>
-  <RouterView v-else-if="!setup.initialized" />
-  <RouterView v-else-if="!auth.authenticated || publicRoute" />
-  <div v-else class="shell">
+  <div class="app-frame">
+    <div class="app-content">
+      <PwaUpdatePrompt v-if="!upgrade.blocked" />
+      <ToastContainer />
+      <TimezoneMismatchDialog :open="!!timezoneMismatch" :saved-timezone="timezoneMismatch?.saved||''" :current-timezone="timezoneMismatch?.current||''" @update="applyDetectedTimezone" @later="timezoneMismatch=undefined" />
+      <div v-if="!setup.ready || (setup.initialized && !auth.ready)" class="splash"><Logo variant="lockup" size="lg" /></div>
+      <RouterView v-else-if="!setup.initialized" />
+      <RouterView v-else-if="!auth.authenticated || publicRoute" />
+      <div v-else class="shell">
     <aside class="sidebar">
       <RouterLink class="brand" :to="{ name: 'dashboard' }"><Logo variant="lockup" size="md" /></RouterLink>
       <p class="sidebar-label">{{ tr('workspace') }}</p>
@@ -123,5 +141,8 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
       <section v-if="routeError" class="page narrow"><div class="card error-state"><h1>{{ tr('routeError') }}</h1><p>{{ tr('routeErrorDesc') }}</p><div class="form-actions"><button class="primary" @click="retryRoute" type="button">{{ tr('retry') }}</button><RouterLink class="ghost" :to="{ name: 'dashboard' }">{{ tr('backToDashboard') }}</RouterLink></div></div></section>
       <RouterView v-else v-slot="{ Component }"><component :is="Component" :key="`${route.matched[0]?.path || route.path}-${routeRetry}`" /></RouterView>
     </main>
+      </div>
+    </div>
+    <UpgradeMaintenance />
   </div>
 </template>

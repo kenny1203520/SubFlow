@@ -23,6 +23,17 @@ const children = []
 let backendOutput = ''
 let stopping = false
 
+function safeBackendDiagnostics() {
+  return backendOutput
+    .replace(/([?&](?:token|key|password|secret)=)[^\s&]+/gi, '$1[redacted]')
+    .replace(/\bBearer\s+\S+/gi, 'Bearer [redacted]')
+    .replace(/\b(password|secret|token|key)(\s*[:=]\s*)\S+/gi, '$1$2[redacted]')
+    .split(/\r?\n/)
+    .filter(line => /\b(fatal|panic|error|failed|cannot)\b/i.test(line))
+    .slice(-8)
+    .join('\n')
+}
+
 function start(command, args, options) {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options })
   children.push(child)
@@ -57,12 +68,16 @@ backend.stderr.on('data', chunk => { backendOutput = (backendOutput + chunk.toSt
 backend.on('exit', code => { if (!stopping && code !== 0) { console.error(`Isolated backend exited (${code ?? 'signal'}). Raw logs are withheld because they may contain credentials.`); process.exitCode = code || 1 } })
 
 let setupToken
-for (let attempt = 0; attempt < 240 && !setupToken; attempt++) {
+for (let attempt = 0; attempt < 240 && !setupToken && backend.exitCode === null; attempt++) {
     const match = /setup[?]token=([A-Za-z0-9_-]+)/.exec(backendOutput)
   if (match) setupToken = match[1]
   else await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
 }
-if (!setupToken) { stop(); throw new Error('Isolated backend did not issue a setup token. Raw logs are withheld because they may contain credentials.') }
+if (!setupToken) {
+  const diagnostics = safeBackendDiagnostics()
+  stop()
+  throw new Error(`Isolated backend did not issue a setup token (exit=${backend.exitCode ?? 'still running'}). Raw logs are withheld because they may contain credentials.${diagnostics ? ` Safe error summary:\n${diagnostics}` : ''}`)
+}
 
 const setupStatus = await fetch(`${backendURL}/api/subflow/v1/setup/status?token=${setupToken}`)
 if (!(await setupStatus.json()).data?.setupAvailable) { stop(); throw new Error('The isolated backend did not accept its own setup token.') }

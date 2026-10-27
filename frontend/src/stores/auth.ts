@@ -2,9 +2,10 @@
 import { defineStore } from 'pinia'
 import { pb } from '../pocketbase'
 import { useI18n } from '../i18n'
-import { ApiClient } from '../api/client'
+import { ApiClient, ApiError } from '../api/client'
 import type { SystemAccess } from '../api/types'
 import { useToastStore } from './toast'
+import { isMaintenanceBlocked } from '../runtime/maintenance'
 
 export class ProviderLinkedElsewhereError extends Error {}
 
@@ -20,6 +21,7 @@ export const useAuthStore = defineStore('auth', () => {
   const token = computed(() => authToken.value)
   const name = computed(() => String(record.value?.name || record.value?.email || tr('userFallback')))
   const canAdminister = computed(() => permissions.value.some(value => value.startsWith('system.')))
+  function assertRuntimeReady() { if (isMaintenanceBlocked()) throw new ApiError(503, 'maintenance', 'SubFlow is in maintenance mode') }
 
   pb.authStore.onChange((nextToken, nextRecord) => {
     authToken.value = nextToken
@@ -28,6 +30,7 @@ export const useAuthStore = defineStore('auth', () => {
   })
 
   async function refreshAccess() {
+    if (isMaintenanceBlocked()) return
     if (!pb.authStore.isValid) { permissions.value=[]; return }
     try {
       const api = new ApiClient(() => pb.authStore.token, logout)
@@ -36,6 +39,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function initialize() {
+    if (isMaintenanceBlocked()) return
     if (pb.authStore.isValid) {
       // A network failure (status 0 — the request never reached the server)
       // must not be treated the same as the server rejecting the token:
@@ -43,7 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
       // session on every launch, defeating offline support before the app
       // shell even renders. Only a genuine server response (expired/revoked
       // token) clears it.
-      try { await pb.collection('users').authRefresh() } catch (reason) { if ((reason as { status?: number }).status !== 0) pb.authStore.clear() }
+      try { await pb.collection('users').authRefresh() } catch (reason) { if ((reason as { status?: number }).status === 401) pb.authStore.clear() }
     }
     authToken.value = pb.authStore.token
     authValid.value = pb.authStore.isValid
@@ -53,6 +57,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(email: string, password: string, captchaToken = '') {
+    assertRuntimeReady()
     await pb.collection('users').authWithPassword(email, password, { headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {} })
     authToken.value = pb.authStore.token
     authValid.value = pb.authStore.isValid
@@ -62,28 +67,33 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function register(input: { email: string; password: string; name: string; captchaToken?: string }) {
+    assertRuntimeReady()
     const api = new ApiClient(() => '', () => {})
     await api.post('/auth/register', { email: input.email, password: input.password, adminName: input.name, captchaToken: input.captchaToken || '' })
     await pb.collection('users').requestVerification(input.email)
   }
   async function requestPasswordReset(email: string, captchaToken = '') {
+    assertRuntimeReady()
     await pb.collection('users').requestPasswordReset(email, { headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {} })
   }
   async function requestOTP(email: string, captchaToken = '') {
+    assertRuntimeReady()
     return pb.collection('users').requestOTP(email, { headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {} })
   }
   async function loginOTP(otpId: string, password: string, mfaId = '') {
+    assertRuntimeReady()
     await pb.collection('users').authWithOTP(otpId, password, mfaId ? { mfaId } : {})
     authToken.value = pb.authStore.token; authValid.value = pb.authStore.isValid; record.value = pb.authStore.record
     await refreshAccess(); ready.value = true
   }
 
   async function updateProfile(input: { name: string; timezone: string; default_currency?: string }) {
+    assertRuntimeReady()
     if (!record.value) throw new Error(tr('notSignedIn'))
     record.value = await pb.collection('users').update(record.value.id, input)
   }
-  async function oauthProviders() { const methods=await pb.collection('users').listAuthMethods(); return methods.oauth2?.providers||[] }
-  async function loginOAuth(provider:string) { await pb.collection('users').authWithOAuth2({provider,createData:{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,default_currency:'TWD'}}); await refreshAccess() }
+  async function oauthProviders() { assertRuntimeReady(); const methods=await pb.collection('users').listAuthMethods(); return methods.oauth2?.providers||[] }
+  async function loginOAuth(provider:string) { assertRuntimeReady(); await pb.collection('users').authWithOAuth2({provider,createData:{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,default_currency:'TWD'}}); await refreshAccess() }
   // Calling authWithOAuth2 while already authenticated makes PocketBase link
   // the provider to the CURRENT record instead of matching/creating by
   // email — unless that provider is already linked to a different account,
@@ -91,6 +101,7 @@ export const useAuthStore = defineStore('auth', () => {
   // instead. Detect the mismatch and bail out rather than leaving the
   // session pointed at a stranger's account.
   async function linkOAuth(provider: string) {
+    assertRuntimeReady()
     const originalId = record.value?.id
     await pb.collection('users').authWithOAuth2({ provider })
     if (pb.authStore.record?.id !== originalId) {
@@ -100,10 +111,12 @@ export const useAuthStore = defineStore('auth', () => {
     await refreshAccess()
   }
   async function listLinkedProviders() {
+    assertRuntimeReady()
     const api = new ApiClient(() => pb.authStore.token, logout)
     return (await api.get<{ provider: string; created: string }[]>('/auth/external-auths')).data
   }
   async function unlinkProvider(provider: string) {
+    assertRuntimeReady()
     const api = new ApiClient(() => pb.authStore.token, logout)
     await api.delete(`/auth/external-auths/${encodeURIComponent(provider)}`)
   }

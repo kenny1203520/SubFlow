@@ -1,14 +1,14 @@
 {
     "name": "frontend",
     "private": true,
-    "version": "0.2.0-alpha.5",
+    "version": "0.2.0-alpha.6",
     "type": "module",
     "scripts": {
         "dev": "vite",
         "build": "vue-tsc -b && vite build",
         "test": "vitest run",
-    "codeql": "node ../scripts/codeql-local.mjs",
-    "test:ci": "npm run test && npm run codeql",
+        "codeql": "node ../scripts/codeql-local.mjs",
+        "test:ci": "npm run test && npm run codeql",
         "test:e2e": "playwright test",
         "test:e2e:ui": "playwright test --ui",
         "test:e2e:report": "playwright show-report",

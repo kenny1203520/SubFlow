@@ -47,3 +47,19 @@ button.primary,.ghost,input,select,textarea{font-size:var(--font-size-secondary)
   .drawer-backdrop { z-index: 110 !important; padding-bottom: calc(76px + env(safe-area-inset-bottom)); }
   .ledger-drawer { max-height: calc(100dvh - 76px - env(safe-area-inset-bottom)); padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)); }
 }
+
+.app-frame{min-height:100dvh}
+.upgrade-maintenance-backdrop{position:fixed;inset:0;z-index:3000;width:100%;height:100%;max-width:none;max-height:none;margin:0;padding:24px;border:0;display:grid;place-items:center;background:transparent}
+.upgrade-maintenance-backdrop::backdrop{background:color-mix(in srgb,var(--ink) 38%,transparent);backdrop-filter:blur(8px)}
+.upgrade-maintenance{width:min(520px,100%);max-height:calc(100dvh - 48px);overflow:auto;overscroll-behavior:contain;display:grid;justify-items:start;gap:14px;padding:clamp(24px,5vw,38px);border:1px solid var(--line);border-radius:24px;background:var(--surface);color:var(--ink);box-shadow:var(--shadow-lg)}
+.upgrade-maintenance-mark{width:54px;height:54px;display:grid;place-items:center;border-radius:17px;background:var(--brand-soft);color:var(--brand)}
+.upgrade-maintenance-mark span{width:24px;height:24px;border:3px solid currentColor;border-right-color:transparent;border-radius:50%;animation:upgrade-spin 1s linear infinite}
+.upgrade-maintenance .eyebrow{margin:4px 0 -10px;color:var(--brand);font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase}
+.upgrade-maintenance h1{margin:0;font-size:clamp(24px,5vw,30px);letter-spacing:-.035em;line-height:1.2}
+.upgrade-maintenance-description,.upgrade-maintenance-footnote,.upgrade-problem{margin:0;color:var(--muted);font-size:15px;line-height:1.6}
+.upgrade-problem{padding:9px 12px;border:1px solid var(--line);border-radius:10px;font-family:ui-monospace,monospace;font-size:13px}
+.upgrade-maintenance button{min-height:44px;margin-top:4px}
+.upgrade-maintenance :focus-visible{outline:3px solid var(--brand);outline-offset:3px}
+@keyframes upgrade-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.upgrade-maintenance-mark span{animation:none;border-right-color:currentColor;opacity:.7}}
+@media(max-width:560px){.upgrade-maintenance-backdrop{padding:16px env(safe-area-inset-right) calc(16px + env(safe-area-inset-bottom)) env(safe-area-inset-left)}.upgrade-maintenance{max-height:calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));gap:12px;padding:24px;border-radius:20px}.upgrade-maintenance h1{font-size:25px}}
