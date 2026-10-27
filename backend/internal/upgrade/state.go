@@ -687,7 +687,11 @@ func safeEventValue(value string) bool {
 		return false
 	}
 	for _, char := range value {
-		if !(char >= 'a' && char <= 'z' || char >= '0' && char <= '9' || char == '.' || char == '_' || char == '-') {
+		switch {
+		case char >= 'a' && char <= 'z':
+		case char >= '0' && char <= '9':
+		case char == '.' || char == '_' || char == '-':
+		default:
 			return false
 		}
 	}

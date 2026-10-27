@@ -62,7 +62,7 @@ const base = process.env.MIGRATION_BASE
 if (base) {
   let changed
   try {
-    changed = execFileSync('git', ['diff', '--name-only', `${base}...HEAD`], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean)
+    changed = execFileSync('git', ['diff', '--name-only', `${base}..HEAD`], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean)
   } catch {
     throw new Error(`Could not compare migration history with base revision ${base}.`)
   }

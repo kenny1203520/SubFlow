@@ -25,13 +25,14 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '26'
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/setup-codeql@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        id: codeql
         with:
           languages: javascript-typescript, go
-          build-mode: manual
-          config-file: ./.github/codeql/codeql-config.yml
       - name: Analyze both languages and fail on unresolved findings
         working-directory: frontend
+        env:
+          CODEQL_CLI: ${{ steps.codeql.outputs.codeql-path }}
         run: npm run codeql
 
   analyze:

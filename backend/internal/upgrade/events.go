@@ -39,7 +39,11 @@ func ReconcileDurableEvents(ctx context.Context, app core.App, driver, directory
 			return fmt.Errorf("durable upgrade event is invalid")
 		}
 		for _, character := range event.ID {
-			if !(character >= '0' && character <= '9' || character >= 'a' && character <= 'f' || character == '-') {
+			switch {
+			case character >= '0' && character <= '9':
+			case character >= 'a' && character <= 'f':
+			case character == '-':
+			default:
 				return fmt.Errorf("durable upgrade event ID is invalid")
 			}
 		}
