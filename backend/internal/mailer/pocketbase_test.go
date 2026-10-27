@@ -3,7 +3,7 @@ package mailer
 import (
 	"testing"
 
-	"github.com/pocketbase/pocketbase/tests"
+	"ganigeorgiev.com/pocketbase/pocketbase/tests"
 )
 
 func TestConfigurePocketBaseSMTP(t *testing.T) {

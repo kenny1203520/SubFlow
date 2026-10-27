@@ -1,7 +1,7 @@
 package pocketbase
 
 import (
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 )
 
 var incomeCategoryKeys = []string{"income_salary", "income_bonus", "income_freelance", "income_investment", "income_rental", "income_gifts", "income_other"}

@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 )
 
 //go:embed all:dist
@@ -21,6 +21,51 @@ func Register(e *core.ServeEvent) {
 		return serve(request, request.Request.URL.Path)
 	}
 	e.Router.GET("/{path...}", handler)
+}
+
+// MaintenanceHandler serves the embedded SPA while PocketBase is closed for
+// backup or migration. Business APIs remain unavailable until the normal
+// PocketBase server takes ownership of the listener.
+func MaintenanceHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		setHTTPHeaders(w)
+		requestPath := strings.TrimPrefix(path.Clean("/"+r.URL.Path), "/")
+		if strings.HasPrefix(requestPath, "api/") || requestPath == "api" || strings.HasPrefix(requestPath, "_/") || requestPath == "_" {
+			w.Header().Set("Retry-After", "3")
+			http.Error(w, `{"error":{"code":"maintenance","message":"Service maintenance is in progress"}}`, http.StatusServiceUnavailable)
+			return
+		}
+		clean := requestPath
+		if clean == "" || path.Ext(clean) == "" {
+			clean = "index.html"
+		}
+		data, err := fs.ReadFile(assets, clean)
+		if err != nil {
+			if path.Ext(clean) != "" {
+				http.NotFound(w, r)
+				return
+			}
+			clean = "index.html"
+			data, err = fs.ReadFile(assets, clean)
+		}
+		if err != nil {
+			http.Error(w, "SubFlow is starting", http.StatusServiceUnavailable)
+			return
+		}
+		contentType := mime.TypeByExtension(path.Ext(clean))
+		if contentType == "" {
+			contentType = http.DetectContentType(data)
+		}
+		w.Header().Set("Content-Type", contentType)
+		if strings.HasPrefix(clean, "assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		if r.Method == http.MethodGet {
+			_, _ = w.Write(data)
+		}
+	})
 }
 
 func serve(e *core.RequestEvent, requestPath string) error {
@@ -60,7 +105,11 @@ func serve(e *core.RequestEvent, requestPath string) error {
 }
 
 func setSecurityHeaders(e *core.RequestEvent) {
-	headers := e.Response.Header()
+	setHTTPHeaders(e.Response)
+}
+
+func setHTTPHeaders(w http.ResponseWriter) {
+	headers := w.Header()
 	headers.Set("X-Content-Type-Options", "nosniff")
 	headers.Set("X-Frame-Options", "SAMEORIGIN")
 	headers.Set("Referrer-Policy", "strict-origin-when-cross-origin")

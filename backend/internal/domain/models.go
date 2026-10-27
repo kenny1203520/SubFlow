@@ -282,20 +282,21 @@ type Role struct {
 }
 
 type AuditLog struct {
-	ID         string    `json:"id"`
-	ActorID    string    `json:"actorId,omitempty"`
-	ActorName  string    `json:"actorName,omitempty"`
-	GroupID    string    `json:"groupId,omitempty"`
-	Scope      string    `json:"scope"`
-	Action     string    `json:"action"`
-	Resource   string    `json:"resource"`
-	ResourceID string    `json:"resourceId,omitempty"`
-	Outcome    string    `json:"outcome"`
-	Summary    string    `json:"summary,omitempty"`
-	IP         string    `json:"ip,omitempty"`
-	UserAgent  string    `json:"userAgent,omitempty"`
-	Hash       string    `json:"hash"`
-	CreatedAt  time.Time `json:"createdAt"`
+	ID            string    `json:"id"`
+	SourceEventID string    `json:"-"`
+	ActorID       string    `json:"actorId,omitempty"`
+	ActorName     string    `json:"actorName,omitempty"`
+	GroupID       string    `json:"groupId,omitempty"`
+	Scope         string    `json:"scope"`
+	Action        string    `json:"action"`
+	Resource      string    `json:"resource"`
+	ResourceID    string    `json:"resourceId,omitempty"`
+	Outcome       string    `json:"outcome"`
+	Summary       string    `json:"summary,omitempty"`
+	IP            string    `json:"ip,omitempty"`
+	UserAgent     string    `json:"userAgent,omitempty"`
+	Hash          string    `json:"hash"`
+	CreatedAt     time.Time `json:"createdAt"`
 }
 
 // Share exposes a deliberately limited, read-only projection of either a

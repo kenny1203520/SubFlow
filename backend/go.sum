@@ -1,3 +1,11 @@
+ganigeorgiev.com/fexpr v0.7.0 h1:Os5bP9dU13UNo5qDTsTPTTkodLM96kO52WIEmMmCt30=
+ganigeorgiev.com/fexpr v0.7.0/go.mod h1:XrG5iYw+AGq55zq2+QY1zQvO+ovbEca08u7q0hucPdY=
+ganigeorgiev.com/pocketbase/dbx v1.13.0 h1:t8S5CaMv93tEOqaOToFaVQ994zldshdhIrVHKmxRjwc=
+ganigeorgiev.com/pocketbase/dbx v1.13.0/go.mod h1:QefEiWbbE/YoSipLGg33FbNc/GAX/2f3ymz02j2MGKo=
+ganigeorgiev.com/pocketbase/ozzo-validation/v4 v4.4.1 h1:teL3Lw7HCGZRdIQdqE/gV5DueFaN5Wj+/r4Ewg3M2WA=
+ganigeorgiev.com/pocketbase/ozzo-validation/v4 v4.4.1/go.mod h1:oV1SPPkS3PlKYYj+r9YDs48ooAWgC736cuFanXDXxbM=
+ganigeorgiev.com/pocketbase/pocketbase v0.41.0 h1:aFtRYqRES/fodowRhuBM0p/BcQepPpnrs/53QFCimtE=
+ganigeorgiev.com/pocketbase/pocketbase v0.41.0/go.mod h1:RqQKMhC34TpHwehZIcAviL4UDd0xzK5cqlrhUwjHB8o=
 github.com/altcha-org/altcha-lib-go v1.0.0 h1:7oPti0aUS+YCep8nwt5b9g4jYfCU55ZruWESL8G9K5M=
 github.com/altcha-org/altcha-lib-go v1.0.0/go.mod h1:I8ESLVWR9C58uvGufB/AJDPhaSU4+4Oh3DLpVtgwDAk=
 github.com/altcha-org/altcha-lib-go/v2 v2.4.1 h1:Y1lIhe+Y4QI/w1KV0wsCEfCzSmaBWJgu4I3gAKtHYaU=
@@ -22,8 +30,6 @@ github.com/fsnotify/fsnotify v1.10.1 h1:b0/UzAf9yR5rhf3RPm9gf3ehBPpf0oZKIjtpKrx5
 github.com/fsnotify/fsnotify v1.10.1/go.mod h1:TLheqan6HD6GBK6PrDWyDPBaEV8LspOxvPSjC+bVfgo=
 github.com/gabriel-vasile/mimetype v1.4.15 h1:05iP/CYtZ/w455R/KZM6rZ5ieAdh99UPtd+d3YzLmaI=
 github.com/gabriel-vasile/mimetype v1.4.15/go.mod h1:azpTcoLcDZRNgFou5j+APrqQx9HqVPWa6ijYQIIVswQ=
-github.com/ganigeorgiev/fexpr v0.6.0 h1:Fza3O/QMBKEudUvxV862qe6GjxM60GJjjKytdp+VQus=
-github.com/ganigeorgiev/fexpr v0.6.0/go.mod h1:RyGiGqmeXhEQ6+mlGdnUleLHgtzzu/VGO2WtJkF5drE=
 github.com/go-sql-driver/mysql v1.4.1 h1:g24URVg0OFbNUTx9qqY1IRZ9D9z3iPyi5zKhQZpNwpA=
 github.com/go-sql-driver/mysql v1.4.1/go.mod h1:zAC/RDZ24gD3HViQzih4MyKcchzm+sOG5ZlKdlhCg5w=
 github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
@@ -51,12 +57,6 @@ github.com/ncruces/go-strftime v1.1.0 h1:vtPmPWMkb539RGV9WpWT9EwJGvrOCKvMNI4obWL
 github.com/ncruces/go-strftime v1.1.0/go.mod h1:yVaq7iwCN09vHRrKBrrflXT0M9tTMG2KmZ9Fj7xeG/g=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/pocketbase/dbx v1.12.0 h1:/oLErM+A0b4xI0PWTGPqSDVjzix48PqI/bng2l0PzoA=
-github.com/pocketbase/dbx v1.12.0/go.mod h1:xXRCIAKTHMgUCyCKZm55pUOdvFziJjQfXaWKhu2vhMs=
-github.com/pocketbase/ozzo-validation/v4 v4.3.0 h1:uKBDVma7bZqgR2a6AwE+k9hkuDFfiZMpBHQdZ1z3iQs=
-github.com/pocketbase/ozzo-validation/v4 v4.3.0/go.mod h1:6XNjSTw/Jb2F8LOkKO3oyzIWExbrGiYoS4uVxVwz90g=
-github.com/pocketbase/pocketbase v0.40.6 h1:/Ol0iIZNdPzUdzMPDVCYuIgYYC9NhMpk/1T2KYRGM8A=
-github.com/pocketbase/pocketbase v0.40.6/go.mod h1:xfE8K+hqzlUxjbtC/VxqHrFxWWO+6wu4sk+L8Wc6Amg=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=
 github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec/go.mod h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=
 github.com/rogpeppe/go-internal v1.9.0 h1:73kH8U+JUqXU8lRuOHeVHaa/SZPifC7BkcraZVejAe8=

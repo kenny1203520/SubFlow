@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 	"net/http"
 	"subflow/internal/application"
 	"subflow/internal/domain"

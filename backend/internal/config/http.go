@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -31,6 +32,43 @@ func WithServeAddress(args []string, configuredPort string) ([]string, error) {
 	}
 	result := append([]string(nil), args...)
 	return append(result, "--http=0.0.0.0:"+port), nil
+}
+
+func DataDirFromArgs(args []string) string {
+	for index := 1; index < len(args); index++ {
+		if strings.HasPrefix(args[index], "--dir=") {
+			return strings.TrimPrefix(args[index], "--dir=")
+		}
+		if args[index] == "--dir" && index+1 < len(args) {
+			return args[index+1]
+		}
+	}
+	return "pb_data"
+}
+
+func ServeHTTPAddress(args []string) (string, bool, error) {
+	value := "0.0.0.0:" + DefaultHTTPPort
+	secure := false
+	for index := 1; index < len(args); index++ {
+		argument := args[index]
+		if argument == "--https" || strings.HasPrefix(argument, "--https=") {
+			secure = true
+		}
+		if strings.HasPrefix(argument, "--http=") {
+			value = strings.TrimPrefix(argument, "--http=")
+		}
+		if argument == "--http" && index+1 < len(args) {
+			value = args[index+1]
+			index++
+		}
+	}
+	if secure {
+		return "", true, fmt.Errorf("SubFlow maintenance status requires HTTP behind a TLS-terminating proxy; configure --http and let the proxy handle HTTPS")
+	}
+	if _, _, err := net.SplitHostPort(value); err != nil {
+		return "", false, fmt.Errorf("invalid PocketBase HTTP address")
+	}
+	return value, false, nil
 }
 
 func AppURL(configured, port string) string {
