@@ -137,10 +137,16 @@ try {
   }
   server = await start(candidate, data, 'new')
   let upgraded = await verifyData(server)
-  for (const note of upgraded) {
-    assert.equal(note.category, 'task')
-    assert.equal(note.status, 'pending')
-    assert.ok(note.viewedAt, 'legacy notices must not appear as newly unseen')
+  if (sourceVersion === 'alpha1') {
+    for (const note of upgraded) {
+      assert.equal(note.category, 'task')
+      assert.equal(note.status, 'pending')
+      assert.ok(note.viewedAt, 'alpha.1 notices predating the unseen marker must not appear as newly unseen')
+    }
+  } else {
+    const originalState = notes.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt }))
+    const migratedState = upgraded.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt }))
+    assert.deepEqual(migratedState, originalState, 'alpha.2+ notification lifecycle state must be preserved')
   }
   const first = upgraded.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt }))
   stop(server)
@@ -153,7 +159,7 @@ try {
   server = await start(oldImage, restored, 'restore')
   await verifyData(server)
   stop(server)
-  const result = { sourceVersion, oldImage, candidate, isolatedData: true, offlineBackup: true, financialAmountAndIds: true, groupPreserved: true, attachmentBytes: true, notificationBackfill: true, restartIdempotent: true, oldVersionRestore: true }
+  const result = { sourceVersion, oldImage, candidate, isolatedData: true, offlineBackup: true, financialAmountAndIds: true, groupPreserved: true, attachmentBytes: true, notificationStatePreserved: true, restartIdempotent: true, oldVersionRestore: true }
   await mkdir('.release', { recursive: true })
   await writeFile(`.release/upgrade-smoke-${sourceVersion}.json`, `${JSON.stringify(result, null, 2)}\n`)
   console.log(JSON.stringify(result))
