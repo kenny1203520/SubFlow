@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.6] - 2026-10-28
+
+### Added
+- Added a pre-bootstrap upgrade coordinator with an exclusive data-volume lock, verified SHA-256 backups, immutable migration journal, maintenance status endpoints, and `upgrade status`, `upgrade retry`, and `upgrade restore` commands.
+- Added a maintenance screen that pauses API, SSE, and outbox synchronization without discarding local forms or queued writes.
+
+### Changed
+- Upgrade PocketBase to v0.41.0 from its new `ganigeorgiev.com` module path and retain the existing image-decoder security fix.
+- Add readiness and liveness checks and document the stop-old-instance, upgrade, and restore procedure.
+
 ## [0.2.0-alpha.5] - 2026-10-27
 
 ### Security
