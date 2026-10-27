@@ -41,20 +41,36 @@ if (!declaredChecksum || declaredChecksum === 'sha256:replace-after-baseline-fre
 
 const files = (await readdir(upgradeDir)).filter(name => numberedMigration.test(name)).sort()
 const ids = []
+let printedMigrationChecksum = false
 for (const file of files) {
   const source = await readFile(path.join(upgradeDir, file), 'utf8')
   const id = /(?:ID|LegacyBaselineID)\s*=\s*"(\d{4}_[a-z0-9_]+)"/.exec(source)?.[1]
   const checksum = /(?:Checksum|LegacyBaselineChecksum)\s*=\s*"(sha256:[a-f0-9]+)"/.exec(source)?.[1]
   if (!id || !checksum || file.slice(0, 4) !== id.slice(0, 4)) throw new Error(`Migration ${file} must declare a matching ordered ID and static SHA-256 checksum.`)
+  if (id !== '0001_legacy_alpha_baseline') {
+    const canonicalSource = source.replace(/Checksum\s*=\s*"sha256:[^"]+"/, `Checksum = "${checksumPlaceholder}"`)
+    const actualMigrationChecksum = digest([[`backend/internal/upgrade/${file}`, canonicalSource]])
+    if (process.argv.includes(`--print-migration-checksum=${file}`)) {
+      console.log(actualMigrationChecksum)
+      printedMigrationChecksum = true
+      break
+    }
+    if (checksum !== actualMigrationChecksum) throw new Error(`Migration ${id} checksum mismatch: expected ${checksum}, got ${actualMigrationChecksum}.`)
+  }
   ids.push(id)
 }
+if (process.argv.some(value => value.startsWith('--print-migration-checksum=')) && !printedMigrationChecksum) {
+  throw new Error('Requested migration checksum file was not found.')
+}
+if (printedMigrationChecksum) process.exit(0)
 if (new Set(ids).size !== ids.length || ids.some((id, index) => Number(id.slice(0, 4)) !== index + 1)) {
   throw new Error('Migration IDs must be unique and contiguous from 0001.')
 }
 const registry = await readFile(path.join(upgradeDir, 'migrations.go'), 'utf8')
 for (const id of ids) {
   const suffix = id.replace(/^\d{4}_/, '')
-  const factory = `${id.slice(0, 4)}${suffix.split('_').map(value => value[0].toUpperCase() + value.slice(1)).join('')}`
+  const exportedFactory = suffix.split('_').map(value => value[0].toUpperCase() + value.slice(1)).join('')
+  const factory = `${exportedFactory[0].toLowerCase()}${exportedFactory.slice(1)}(`
   if (id === '0001_legacy_alpha_baseline' && !registry.includes('legacyAlphaBaseline(')) throw new Error(`Migration ${id} is missing from the migration registry.`)
   if (id !== '0001_legacy_alpha_baseline' && !registry.includes(factory)) throw new Error(`Migration ${id} is missing from the migration registry.`)
 }

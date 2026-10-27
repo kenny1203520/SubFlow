@@ -1,5 +1,11 @@
 # Adding PocketBase migrations
 
+After writing a migration, calculate its checksum with
+`node scripts/migrations/verify.mjs --print-migration-checksum=<migration-file>`
+and copy the result into its checksum constant. The contract check recalculates
+that value from the migration source with the checksum constant replaced by a
+fixed placeholder, so changing a released migration's code or checksum fails CI.
+
 The alpha.1–alpha.5 compatibility baseline is an immutable migration. Never
 change its behavior or checksum after alpha.6 has shipped. In particular,
 schema additions and data backfills must not be added to the legacy bootstrap

@@ -28,10 +28,10 @@ func registerUpgradeBootstrap(app *pocketbase.PocketBase, manager *upgrade.Manag
 		if err := upgrade.RunMigrations(context.Background(), event.App, manager, upgrade.Migrations(driver, appURL, &setupLink), upgrade.MigrationAudit(driver)); err != nil {
 			return err
 		}
-		if err := upgrade.ReconcileDurableEvents(context.Background(), event.App, driver, manager.Dir); err != nil {
+		if err := manager.SetPhase(upgrade.StatusVerifying); err != nil {
 			return err
 		}
-		if err := manager.SetPhase(upgrade.StatusVerifying); err != nil {
+		if err := upgrade.ReconcileDurableEvents(context.Background(), event.App, driver, manager.Dir); err != nil {
 			return err
 		}
 		return mailer.ConfigurePocketBase(event.App, smtpMailer)
