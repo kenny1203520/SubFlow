@@ -6,6 +6,16 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.5] - 2026-10-27
+
+### Security
+- Reject TIFF files with invalid palette references before PocketBase image processing; add a decoder regression test.
+- Use Vue-generated stable IDs for form controls to remove the CodeQL insecure-randomness findings.
+
+### Changed
+- Sync merged Go, frontend and GitHub Actions dependency updates into the prerelease line.
+- Update the frontend lockfile to remove the `serialize-javascript` XSS advisory.
+
 ## [0.2.0-alpha.4] - 2026-10-23
 
 This is an alpha pre-release. It includes the mobile interface, shared attachment, form and PDF preview repairs merged after Alpha 3. See [Alpha 4 qualification](docs/releases/0.2.0-alpha.4.md) and [functional coverage limits](frontend/e2e/COVERAGE.md).
