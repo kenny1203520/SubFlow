@@ -17,6 +17,20 @@ const member = 'upgrade-member@example.test'
 function docker(...args) {
   return execFileSync(process.platform === 'win32' ? 'rtk' : 'docker', process.platform === 'win32' ? ['proxy', 'docker', ...args] : args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
+function safeUpgradeDetail(name) {
+  try {
+    const line = docker('logs', name).split(/\r?\n/).reverse().find(value => /SubFlow upgrade stopped:|cannot prepare upgrade status:/i.test(value))
+    if (!line) return 'detail-unavailable'
+    return line
+      .replace(/^.*SubFlow upgrade stopped:\s*/i, '')
+      .replace(/((?:token|secret|key|password)\s*[:=]\s*)\S+/gi, '$1[redacted]')
+      .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[email]')
+      .replace(/[A-Za-z]:\\[^\s:]+/g, '[path]')
+      .replace(/\/(?:[^\s/:]+\/)*[^\s/:]+/g, '[path]')
+      .slice(0, 180)
+  } catch { return 'detail-unavailable' }
+}
 function volume(suffix) {
   const name = `${prefix}-${suffix}`
   docker('volume', 'create', name)
@@ -50,7 +64,7 @@ async function start(image, data, suffix) {
         }
       } catch { /* Keep the diagnostic limited to public, safe runtime state. */ }
       if (runtimeStatus.startsWith('failed')) {
-        throw new Error(`Upgrade test container entered maintenance failure (${healthStatus}, runtime=${runtimeStatus}).`)
+        throw new Error(`Upgrade test container entered maintenance failure (${healthStatus}, runtime=${runtimeStatus}, cause=${safeUpgradeDetail(name)}).`)
       }
     }
     await new Promise(resolve => setTimeout(resolve, 1000))
