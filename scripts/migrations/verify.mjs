@@ -5,6 +5,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
+const gitExecutable = process.platform === 'win32' ? 'C:\\Program Files\\Git\\cmd\\git.exe' : '/usr/bin/git'
 const upgradeDir = path.join(root, 'backend', 'internal', 'upgrade')
 const baselineFiles = [
   'backend/internal/adapters/pocketbase/category_kinds.go',
@@ -62,7 +63,7 @@ const base = process.env.MIGRATION_BASE
 if (base) {
   let changed
   try {
-    changed = execFileSync('git', ['diff', '--name-only', `${base}..HEAD`], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean)
+    changed = execFileSync(gitExecutable, ['diff', '--name-only', `${base}..HEAD`], { cwd: root, encoding: 'utf8' }).trim().split(/\r?\n/).filter(Boolean)
   } catch {
     throw new Error(`Could not compare migration history with base revision ${base}.`)
   }
@@ -72,8 +73,8 @@ if (base) {
   if (schemaChanged && newMigrations.length === 0) throw new Error('PocketBase schema sources changed without an appended migration.')
   for (const file of changed.filter(value => value.startsWith('backend/internal/upgrade/') && numberedMigration.test(path.basename(value)) && !value.endsWith('0001_legacy_alpha_baseline.go'))) {
     try {
-      execFileSync('git', ['cat-file', '-e', `${base}:${file}`], { cwd: root, stdio: 'ignore' })
-      const previous = execFileSync('git', ['show', `${base}:${file}`], { cwd: root, encoding: 'utf8' })
+      execFileSync(gitExecutable, ['cat-file', '-e', `${base}:${file}`], { cwd: root, stdio: 'ignore' })
+      const previous = execFileSync(gitExecutable, ['show', `${base}:${file}`], { cwd: root, encoding: 'utf8' })
       const current = await readFile(path.join(root, file), 'utf8')
       if (previous.replaceAll('\r\n', '\n') !== current.replaceAll('\r\n', '\n')) throw new Error(`Released migration source changed: ${file}`)
     } catch (error) {
