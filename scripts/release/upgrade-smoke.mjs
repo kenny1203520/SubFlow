@@ -18,18 +18,30 @@ function docker(...args) {
   return execFileSync(process.platform === 'win32' ? 'rtk' : 'docker', process.platform === 'win32' ? ['proxy', 'docker', ...args] : args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
 function safeUpgradeDetail(name) {
+  const details = []
+  try {
+    const state = JSON.parse(docker('exec', name, '/bin/sh', '-c', 'cat /app/pb_data/.subflow/state.json'))
+    const phase = state.failurePhase || state.phase
+    if (typeof phase === 'string' && /^[a-z_]{1,32}$/.test(phase)) details.push(`phase=${phase}`)
+    const history = Array.isArray(state.history)
+      ? state.history
+          .filter(item => typeof item?.id === 'string' && /^[a-z0-9_]{1,64}$/.test(item.id) && ['running', 'failed', 'complete'].includes(item.status))
+          .map(item => `${item.id}:${item.status}`)
+      : []
+    if (history.length) details.push(`migrations=${history.join(',')}`)
+  } catch { /* Status may be unavailable if the process stopped before writing it. */ }
   try {
     const lines = docker('logs', name).split(/\r?\n/).filter(value => /error|failed|stopped|denied|no such|migration|backup|unknown schema|audit/i.test(value))
-    if (lines.length === 0) return 'no-error-lines'
-    return lines.slice(-3).map(line => line
+    if (lines.length > 0) details.push(lines.slice(-3).map(line => line
       .replace(/([?&](?:token|key|password|secret)=)[^&\s]+/gi, '$1[redacted]')
       .replace(/((?:token|secret|key|password)\s*[:=]\s*)\S+/gi, '$1[redacted]')
       .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
       .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[email]')
       .replace(/[A-Za-z]:\\[^\s:]+/g, '[path]')
       .replace(/\/(?:[^\s/:]+\/)*[^\s/:]+/g, '[path]')
-      .slice(0, 180)).join(' | ')
-  } catch { return 'docker-logs-unavailable' }
+      .slice(0, 180)).join(' | '))
+  } catch { details.push('docker-logs-unavailable') }
+  return details.join('; ') || 'startup-details-unavailable'
 }
 function volume(suffix) {
   const name = `${prefix}-${suffix}`

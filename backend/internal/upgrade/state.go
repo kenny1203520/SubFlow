@@ -31,6 +31,7 @@ var ErrRestoreRecovered = errors.New("an interrupted restore was recovered; star
 type State struct {
 	State             string           `json:"state"`
 	Phase             string           `json:"phase"`
+	FailurePhase      string           `json:"failurePhase,omitempty"`
 	Ready             bool             `json:"ready"`
 	ProblemCode       string           `json:"problemCode,omitempty"`
 	AppVersion        string           `json:"appVersion"`
@@ -131,6 +132,7 @@ func (m *Manager) BeginStartup() error {
 		state.History = []MigrationEntry{}
 	}
 	state.State, state.Phase, state.Ready = StatusChecking, StatusChecking, false
+	state.FailurePhase = ""
 	m.state = state
 	return m.Save(m.state)
 }
@@ -239,6 +241,9 @@ func (m *Manager) Save(state State) error {
 }
 
 func (m *Manager) Fail(problemCode string) error {
+	if m.state.Phase != StatusFailed {
+		m.state.FailurePhase = m.state.Phase
+	}
 	m.state.State, m.state.Phase, m.state.Ready = StatusFailed, StatusFailed, false
 	m.state.ProblemCode = safeProblem(problemCode)
 	if err := m.Save(m.state); err != nil {
@@ -276,6 +281,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	}
 	m.state.AppVersion, m.state.PocketBaseVersion, m.state.SchemaVersion = appVersion, pbVersion, 1
 	m.state.Ready, m.state.State, m.state.Phase = false, StatusChecking, StatusChecking
+	m.state.FailurePhase = ""
 	m.state.ProblemCode, m.state.StartedAt, m.state.CompletedAt = "", time.Now().UTC(), time.Time{}
 	if m.state.History == nil {
 		m.state.History = []MigrationEntry{}

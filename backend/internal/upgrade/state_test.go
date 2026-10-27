@@ -9,6 +9,29 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestFailureRetainsLastStartupPhase(t *testing.T) {
+	manager, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.BeginStartup(); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.SetPhase(StatusMigrating); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Fail("upgrade_failed"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := manager.ReadState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.State != StatusFailed || state.FailurePhase != StatusMigrating || state.Ready {
+		t.Fatalf("failed state did not retain the startup phase: %#v", state)
+	}
+}
+
 func TestBackupVerifiesDataAndExcludesUpgradeControlDirectory(t *testing.T) {
 	manager, err := New(t.TempDir())
 	if err != nil {
