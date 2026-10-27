@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -7,6 +7,8 @@ import { fileURLToPath } from 'node:url'
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const codeql = process.env.CODEQL_CLI || 'codeql'
 const codeScanningConfig = path.join(repositoryRoot, '.github', 'codeql', 'codeql-config.yml')
+const reportDirectory = path.join(repositoryRoot, '.codeql')
+mkdirSync(reportDirectory, { recursive: true })
 
 function run(args, options = {}) {
   const result = spawnSync(codeql, args, {
@@ -48,7 +50,7 @@ try {
 
   for (const analysis of analyses) {
     const database = path.join(temporaryRoot, analysis.language)
-    const report = path.join(temporaryRoot, `${analysis.language}.sarif`)
+    const report = path.join(reportDirectory, `${analysis.language}.sarif`)
     const createArgs = [
       'database', 'create', database,
       `--language=${analysis.language}`,
@@ -61,9 +63,18 @@ try {
     run(createArgs, { cwd: analysis.workingDirectory })
     console.log(`CodeQL: analyzing ${analysis.language}`)
     run(['database', 'analyze', database, analysis.pack, '--format=sarif-latest', `--output=${report}`])
+    const sarif = JSON.parse(readFileSync(report, 'utf8'))
+    const unresolved = sarif.runs?.flatMap(runResult => runResult.results || []).filter(result =>
+      !result.suppressions?.some(suppression => suppression.status === 'accepted'),
+    ) || []
+    if (unresolved.length > 0) {
+      const findings = unresolved.map(result => `${result.ruleId || 'unknown'}: ${result.message?.text || 'finding'}`)
+      throw new Error(`CodeQL reported ${unresolved.length} unresolved ${analysis.language} finding(s):\n${findings.join('\n')}`)
+    }
+    console.log(`CodeQL: ${analysis.language} SARIF contains no unresolved findings (${report})`)
   }
 
-  console.log('\nCodeQL local analysis completed for Go and JavaScript/TypeScript.')
+  console.log(`\nCodeQL local analysis completed for Go and JavaScript/TypeScript. SARIF reports are retained in ${reportDirectory}.`)
 } catch (error) {
   console.error(`\n${error instanceof Error ? error.message : String(error)}`)
   process.exitCode = 1

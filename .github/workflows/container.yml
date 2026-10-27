@@ -42,8 +42,8 @@ jobs:
           cache-to: type=gha,mode=max
       - name: Check production SPA/API on isolated fresh data
         run: node scripts/release/container-smoke.mjs subflow:candidate
-      - name: Rehearse Alpha 1 data upgrade and backup restore
-        run: node scripts/release/upgrade-smoke.mjs
+      - name: Rehearse Alpha 1–5 data upgrades, restart and backup restore
+        run: node scripts/release/upgrade-matrix.mjs subflow:candidate
       - name: Retain container qualification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

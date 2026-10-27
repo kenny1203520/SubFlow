@@ -5,6 +5,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 
 const oldImage = process.argv[2] || 'ghcr.io/kenny1203520/subflow@sha256:99bcb63a7322dc66feb3fc36bb6840cf727b1cc1e283e66e4f83d284a9bebc03'
 const candidate = process.argv[3] || 'subflow:candidate'
+const sourceVersion = process.argv[4] || 'alpha1'
+assert.match(sourceVersion, /^alpha[1-5]$/)
 const prefix = `subflow-upgrade-${randomUUID()}`
 const volumes = new Set()
 const containers = new Set()
@@ -102,9 +104,9 @@ try {
   server = await start(oldImage, restored, 'restore')
   await verifyData(server)
   stop(server)
-  const result = { oldImage, candidate, isolatedData: true, offlineBackup: true, financialAmountAndIds: true, groupPreserved: true, attachmentBytes: true, notificationBackfill: true, restartIdempotent: true, oldVersionRestore: true }
+  const result = { sourceVersion, oldImage, candidate, isolatedData: true, offlineBackup: true, financialAmountAndIds: true, groupPreserved: true, attachmentBytes: true, notificationBackfill: true, restartIdempotent: true, oldVersionRestore: true }
   await mkdir('.release', { recursive: true })
-  await writeFile('.release/upgrade-smoke.json', `${JSON.stringify(result, null, 2)}\n`)
+  await writeFile(`.release/upgrade-smoke-${sourceVersion}.json`, `${JSON.stringify(result, null, 2)}\n`)
   console.log(JSON.stringify(result))
 } finally {
   for (const name of containers) { assert.ok(name.startsWith(`${prefix}-`)); docker('rm', '--force', name) }

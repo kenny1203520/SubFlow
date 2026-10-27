@@ -23,6 +23,9 @@ test('rejects each inconsistent version source', () => {
     assert.throws(() => releaseMetadata(`v${version}`, p, l, changelog), /must match/)
   }
 })
+test('rejects an embedded backend version that does not match the frontend and tag', () => {
+  assert.throws(() => releaseMetadata(`v${version}`, pkg, lock, changelog, '0.2.0-alpha.5'), /embedded backend version must match/)
+})
 for (const notes of ['', '## [0.2.0-alpha.20] - 2026-10-22\nOther version.', `## [${version}]\nNo date.`, `## [${version}] - 2026-10-22\n### Empty`, `${changelog}\n## [${version}] - 2026-10-22\nDuplicate.`]) {
   test(`rejects missing, empty or duplicate changelog (${notes.length})`, () => assert.throws(() => releaseMetadata(`v${version}`, pkg, lock, notes), /CHANGELOG|changelog/))
 }
