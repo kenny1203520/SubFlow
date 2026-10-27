@@ -40,13 +40,10 @@ jobs:
 
       # --new-from-rev scopes findings to lines changed since the diff base,
       # so this can be added without a full-repo cleanup pass first.
-      # golangci-lint v2 is required here: backend/go.mod declares `go
-      # 1.26.0`, and golangci-lint refuses to run when it was built with an
-      # older Go toolchain than the target module declares (v1.61.0 was
-      # built with go1.23.1 and fails with "the Go language version ...
-      # is lower than the targeted Go version"). The action itself must be
-      # v7+ too -- v6 doesn't know how to install a v2 golangci-lint at all
-      # ("golangci-lint v2 is not supported by golangci-lint-action v6").
+      # PocketBase 0.40.6 requires Go 1.27. Pin a golangci-lint release
+      # built with Go 1.27 or newer; older binaries reject this module's
+      # declared Go version before linting starts. The action must be v7+
+      # because v6 does not support golangci-lint v2.
       - uses: golangci/golangci-lint-action@db9de0fc1a667e1a49d2291a1a042dff081d78f6 # v9
         with:
           version: v2.15.0
