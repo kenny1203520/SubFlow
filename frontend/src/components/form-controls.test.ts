@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-import { defineComponent, h } from 'vue'
+import { h } from 'vue'
+import BaseCombobox from './BaseCombobox.vue'
 import BaseInput from './BaseInput.vue'
 import PasswordField from './PasswordField.vue'
 
@@ -17,17 +18,20 @@ describe('form controls', () => {
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['user@example.com'])
   })
 
-  it('generates unique ids for multiple inputs in the same app', () => {
-    const Form = defineComponent({
+  it('generates unique stable ids for inputs and comboboxes', () => {
+    const wrapper = mount({
       render: () => h('div', [
-        h(BaseInput, { modelValue: '', label: 'First' }),
-        h(BaseInput, { modelValue: '', label: 'Second' }),
+        h(BaseInput, { modelValue: '', label: 'Name' }),
+        h(BaseInput, { modelValue: '', label: 'Nickname' }),
+        h(BaseCombobox, { modelValue: 'one', options: ['one', 'two'], label: 'Category' }),
+        h(BaseCombobox, { modelValue: 'one', options: ['one', 'two'], label: 'Role' }),
       ]),
     })
-    const wrapper = mount(Form)
-    const ids = wrapper.findAll('input').map(input => input.attributes('id'))
+    const inputIds = wrapper.findAll('.base-input-control input').map(input => input.attributes('id'))
+    expect(new Set(inputIds).size).toBe(2)
 
-    expect(new Set(ids).size).toBe(2)
+    const comboboxIds = wrapper.findAll('.combobox-trigger').map(button => button.attributes('id'))
+    expect(new Set(comboboxIds).size).toBe(2)
   })
 
   it('toggles passwords without changing the value', async () => {
