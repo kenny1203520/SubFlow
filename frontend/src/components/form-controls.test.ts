@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
+import { defineComponent, h } from 'vue'
 import BaseInput from './BaseInput.vue'
 import PasswordField from './PasswordField.vue'
 
@@ -14,6 +15,19 @@ describe('form controls', () => {
     expect(input.attributes('aria-describedby')).toContain('-help')
     await input.setValue('user@example.com')
     expect(wrapper.emitted('update:modelValue')?.[0]).toEqual(['user@example.com'])
+  })
+
+  it('generates unique ids for multiple inputs in the same app', () => {
+    const Form = defineComponent({
+      render: () => h('div', [
+        h(BaseInput, { modelValue: '', label: 'First' }),
+        h(BaseInput, { modelValue: '', label: 'Second' }),
+      ]),
+    })
+    const wrapper = mount(Form)
+    const ids = wrapper.findAll('input').map(input => input.attributes('id'))
+
+    expect(new Set(ids).size).toBe(2)
   })
 
   it('toggles passwords without changing the value', async () => {

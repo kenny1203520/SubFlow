@@ -22,7 +22,7 @@ async function accept() {
             <p class="eyebrow">{{tr('invitation')}}</p>
             <h1>{{tr('joinGroup')}}</h1>
             <p>{{tr('inviteDesc')}}</p>
-            <button class="primary wide" :disabled="done" @click="accept">
+            <button class="primary wide" :disabled="done" @click="accept" type="button">
                 {{ done ? tr('joined') : tr('acceptInvitation') }}
             </button>
             <p v-if="workspace.error" class="form-error">{{ workspace.error }}</p>

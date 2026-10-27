@@ -94,7 +94,7 @@ watch(() => route.query.date, value => {
         <h1>{{ group?.name || tr('groupLedger') }}</h1>
         <p>{{ tr('groupLedgerDesc') }}</p>
       </div>
-      <button class="primary" @click="quickAdd=true">+ {{ tr('addRecord') }}</button>
+      <button class="primary" @click="quickAdd=true" type="button">+ {{ tr('addRecord') }}</button>
     </header>
     <p v-if="loadError" class="notice danger">{{ loadError }}</p>
     <LedgerDateNav :date="date" :timezone="timezone" :today="currentDate()" :loading="loading" @change="setDate" />
@@ -130,12 +130,12 @@ watch(() => route.query.date, value => {
         </div>
         <div class="item-side">
           <strong :class="item.kind === 'income' ? 'income' : 'expense'">{{ item.kind === 'income' ? '+' : '-' }}{{ money(item.amountMinor, item.currency) }}</strong>
-          <time>{{ new Date(item.occurredAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}</time><span class="row-actions"><AttachmentEntry v-if="item.kind!=='subscription'||item.subscriptionId" :target-type="item.kind==='income'?'income':item.kind==='subscription'?'subscription_period':'expense'" :target-id="item.kind==='subscription'?(item.subscriptionId||item.recordId||''):(item.recordId||'')" :billing-at="item.kind==='subscription'?item.occurredAt:undefined" :online="workspace.online" :disabled="!item.recordId&&item.kind!=='subscription'"/><button v-if="canEdit(item)" class="text-button" :aria-label="tr('edit')" @click="editItem(item)">{{ tr('edit') }}</button><button v-if="canDelete(item)" class="text-button danger-text" :aria-label="tr('remove')" @click="pendingDelete=item">{{ tr('remove') }}</button></span>
+          <time>{{ new Date(item.occurredAt).toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' }) }}</time><span class="row-actions"><AttachmentEntry v-if="item.kind!=='subscription'||item.subscriptionId" :target-type="item.kind==='income'?'income':item.kind==='subscription'?'subscription_period':'expense'" :target-id="item.kind==='subscription'?(item.subscriptionId||item.recordId||''):(item.recordId||'')" :billing-at="item.kind==='subscription'?item.occurredAt:undefined" :online="workspace.online" :disabled="!item.recordId&&item.kind!=='subscription'"/><button v-if="canEdit(item)" class="text-button" :aria-label="tr('edit')" @click="editItem(item)" type="button">{{ tr('edit') }}</button><button v-if="canDelete(item)" class="text-button danger-text" :aria-label="tr('remove')" @click="pendingDelete=item" type="button">{{ tr('remove') }}</button></span>
         </div>
       </article>
     </section>
         <LedgerQuickAddDrawer :open="quickAdd" :group-id="groupId" :date="date" @close="quickAdd=false" @saved="saved" /><LedgerQuickAddDrawer :open="Boolean(editRecord)" :group-id="groupId" :date="date" :edit-record="editRecord" :edit-kind="editKind" @close="editRecord=undefined;editKind=undefined" @saved="saved" /><ConfirmDialog :open="Boolean(pendingDelete)" :title="pendingDelete ? tr(pendingDelete.kind === 'income' ? 'deleteIncomeConfirm' : pendingDelete.kind === 'subscription' ? 'deleteSubscriptionConfirm' : 'removeExpenseConfirm', { name: pendingDelete.title }) : ''" danger @cancel="pendingDelete=undefined" @confirm="removeItem" />
-    <button class="ledger-fab" :aria-label="tr('addRecord')" @click="quickAdd=true">+</button>
+    <button class="ledger-fab" :aria-label="tr('addRecord')" @click="quickAdd=true" type="button">+</button>
   </section>
 </template>
 

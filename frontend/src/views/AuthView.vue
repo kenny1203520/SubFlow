@@ -97,7 +97,7 @@ watch(()=>setup.allowRegistration,value=>{if(!value&&mode.value==='register')mod
         <CaptchaChallenge v-if="captchaEnabled" ref="captchaRef" v-model="captchaToken" :flow="captchaFlowKey(mode)" :trigger="captchaConfig?.trigger||'load'" :mode="captchaConfig?.mode||'interactive'"/>
         <BaseInput v-if="isCodeMode" v-model="code" :label="tr('verificationCode')" required autocomplete="one-time-code" inputmode="numeric"/>
         <p v-if="registered" class="notice success">{{tr('verificationSent')}}</p><p v-if="error" class="form-error">{{error}}</p>
-        <button class="primary wide" :disabled="busy">{{busy?tr('processing'):mode==='login'?tr('login'):mode==='register'?tr('register'):mode==='otp-request'?tr('sendVerificationCode'):tr('verify')}}</button>
+        <button class="primary wide" :disabled="busy" type="submit">{{busy?tr('processing'):mode==='login'?tr('login'):mode==='register'?tr('register'):mode==='otp-request'?tr('sendVerificationCode'):tr('verify')}}</button>
       </form>
       <div v-if="isCodeMode" class="auth-actions"><button type="button" class="ghost" :disabled="busy" @click="resend">{{tr('resendCode')}}</button></div>
       <div v-if="mode==='login'&&methods.otp?.enabled" class="oauth-options"><button type="button" class="ghost wide" :disabled="busy" @click="startOtpRequest">{{tr('emailOtpLogin')}}</button></div>

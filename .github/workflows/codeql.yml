@@ -1,10 +1,7 @@
 name: CodeQL
 
 on:
-  pull_request:
-    branches: [develop, master]
-  push:
-    branches: [develop, master]
+  workflow_call:
   schedule:
     # Mondays at 06:00 UTC — catches newly-published advisories against
     # code that hasn't otherwise changed recently.
@@ -29,13 +26,14 @@ jobs:
             build-mode: autobuild
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@4bfa242aa49c5f7c6770b98670d354a7dfac05f8 # v3
         with:
           category: '/language:${{ matrix.language }}'

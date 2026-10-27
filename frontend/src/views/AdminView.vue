@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import './admin.css'
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch , useId} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiClient, ApiError } from '../api/client'
 import type { AccessRole, AuditLog, CaptchaFlowConfig, Meta, User } from '../api/types'
@@ -19,6 +19,8 @@ import AuditLogList from '../components/AuditLogList.vue'
 import Pagination from '../components/Pagination.vue'
 import PageSizeSelect from '../components/PageSizeSelect.vue'
 import { defaultPageSize } from '../pageSize'
+
+const a11yId = useId()
 
 const auth = useAuthStore()
 const workspace = useWorkspaceStore()
@@ -244,8 +246,8 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
     <form v-else-if="section === 'settings' && can('system.settings.manage')" class="card form-card admin-form" @submit.prevent="saveSettings">
       <h2>{{ tr('settings') }}</h2>
       <BaseInput v-model="settings.siteName" :label="tr('applicationName')" :help="tr('applicationNameHelp')" required :maxlength="255" />
-      <label>{{ tr('timezone') }}<TimezoneSelect v-model="settings.defaultTimezone" /></label>
-      <label>{{ tr('currency') }}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies" /></label>
+      <label :for="a11yId + '-field-1'">{{ tr('timezone') }}<TimezoneSelect v-model="settings.defaultTimezone"  :id="a11yId + '-field-1'"/></label>
+      <label :for="a11yId + '-field-2'">{{ tr('currency') }}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies"  :id="a11yId + '-field-2'"/></label>
       <fieldset class="settings-section"><legend>{{tr('attachments')}}</legend><p class="field-help">{{tr('attachmentSystemLimitsHelp')}}</p><div class="form-row"><label>{{tr('attachmentDefaultSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentDefaultMaxSize/1048576)" @input="updateAttachmentMiB('attachmentDefaultMaxSize',$event)"></label><label>{{tr('attachmentDefaultCount')}}<input v-model.number="settings.attachmentDefaultMaxCount" type="number" min="1" step="1"></label></div><div class="form-row"><label>{{tr('attachmentMaximumSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentLimitMaxSize/1048576)" @input="updateAttachmentMiB('attachmentLimitMaxSize',$event)"></label><label>{{tr('attachmentMaximumCount')}}<input v-model.number="settings.attachmentLimitMaxCount" type="number" min="1" step="1"></label></div></fieldset>
       <fieldset class="settings-section"><legend>{{ tr('loginSecurity') }}</legend>
         <label class="check"><input v-model="settings.allowPasswordRegistration" type="checkbox"><span>{{ tr('allowPasswordRegistration') }}</span></label>
@@ -273,7 +275,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
           </div>
         </div>
       </fieldset>
-      <div class="form-actions"><button class="primary">{{ tr('saveChanges') }}</button><span v-if="saved" class="success">{{ tr('saved') }}</span></div>
+      <div class="form-actions"><button class="primary" type="submit">{{ tr('saveChanges') }}</button><span v-if="saved" class="success">{{ tr('saved') }}</span></div>
     </form>
 
     <section v-else-if="section === 'users' && can('system.users.assign')" class="card admin-form">
@@ -288,16 +290,16 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
     </section>
 
     <section v-else-if="section === 'notification-emails' && can('system.settings.manage')" class="card admin-form failed-email-panel" :aria-busy="failedEmailLoading">
-      <div class="section-heading"><h2>{{ tr('failedNotificationEmails') }}</h2><button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="loadFailedEmails">{{ tr('refresh') }}</button></div>
+      <div class="section-heading"><h2>{{ tr('failedNotificationEmails') }}</h2><button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="loadFailedEmails" type="button">{{ tr('refresh') }}</button></div>
       <p class="field-help">{{ tr('failedNotificationEmailsHelp') }}</p>
       <p v-if="failedEmailNotice" class="notice success" role="status">{{ failedEmailNotice }}</p>
-      <div v-if="failedEmailError" class="resource-error failed-email-error" role="alert"><p>{{ failedEmailError }}</p><button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="loadFailedEmails">{{ tr('retry') }}</button></div>
+      <div v-if="failedEmailError" class="resource-error failed-email-error" role="alert"><p>{{ failedEmailError }}</p><button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="loadFailedEmails" type="button">{{ tr('retry') }}</button></div>
       <p v-if="failedEmailLoading" class="empty-inline" role="status">{{ tr('processing') }}</p>
       <div class="failed-email-controls"><span>{{ tr('records', { count: failedEmailMeta.totalItems }) }}</span><PageSizeSelect :model-value="failedEmailPageSize" @update:model-value="setFailedEmailPageSize" /></div>
       <div class="failed-email-list">
         <article v-for="job in failedEmails" :key="job.id" class="failed-email-row">
           <div class="grow"><strong>{{ tr('notificationDeliveryFailed') }}</strong><small>{{ tr('deliveryAttempts', { count: job.attempts }) }} · {{ tr('deliveryErrorCode') }}: {{ job.lastError || 'unknown' }}</small></div>
-          <button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="retryFailedEmail(job)">{{ retryingEmailId === job.id ? tr('processing') : tr('retryNotificationEmail') }}</button>
+          <button class="ghost" :disabled="failedEmailLoading || !!retryingEmailId" @click="retryFailedEmail(job)" type="button">{{ retryingEmailId === job.id ? tr('processing') : tr('retryNotificationEmail') }}</button>
         </article>
         <p v-if="!failedEmailLoading && !failedEmailError && !failedEmails.length" class="empty-inline">{{ tr('noFailedNotificationEmails') }}</p>
       </div>
@@ -306,7 +308,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
 
     <section v-else-if="section === 'roles' && can('system.roles.manage')" class="admin-stack">
       <section class="card admin-form">
-        <div class="section-heading"><h2>{{ tr('roleManagement') }}</h2><button class="primary" @click="startRole()">{{ tr('add') }}</button></div>
+        <div class="section-heading"><h2>{{ tr('roleManagement') }}</h2><button class="primary" @click="startRole()" type="button">{{ tr('add') }}</button></div>
         <div class="role-category-list">
           <section v-for="(categoryRoles, category) in rolesByCategory" :key="category" class="role-category">
           <h3>{{ category }}</h3>
@@ -321,8 +323,8 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
               <p v-else class="permission-empty">{{ tr('noSummary') }}</p>
             </div>
             <span v-if="role.protected" class="pill">{{ tr('protectedRole') }}</span>
-            <button v-else class="ghost" @click="startRole(role)">{{ tr('edit') }}</button>
-            <button v-if="!role.protected" class="danger-text" @click="deleteRole(role)">{{ tr('delete') }}</button>
+            <button v-else class="ghost" @click="startRole(role)" type="button">{{ tr('edit') }}</button>
+            <button v-if="!role.protected" class="danger-text" @click="deleteRole(role)" type="button">{{ tr('delete') }}</button>
           </article>
           </section>
         </div>
@@ -340,7 +342,7 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
             <span><strong>{{ permissionInfo(permission).title }}</strong><small>{{ permissionInfo(permission).description }}</small></span>
           </label>
         </fieldset>
-        <div class="form-actions"><button class="primary">{{ tr('save') }}</button><button type="button" class="ghost" @click="editRole = null">{{ tr('cancel') }}</button></div>
+        <div class="form-actions"><button class="primary" type="submit">{{ tr('save') }}</button><button type="button" class="ghost" @click="editRole = null">{{ tr('cancel') }}</button></div>
       </form>
     </section>
 

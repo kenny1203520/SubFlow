@@ -9,12 +9,16 @@ export type Store = typeof STORES[number]
 
 let dbPromise: Promise<IDBDatabase> | undefined
 
+function requestError(request: IDBRequest): Error {
+  return request.error ?? new Error('IndexedDB request failed')
+}
+
 function openDb(): Promise<IDBDatabase> {
   if (!dbPromise) dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION)
     request.onupgradeneeded = () => { const db = request.result; for (const store of STORES) if (!db.objectStoreNames.contains(store)) db.createObjectStore(store) }
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+    request.onerror = () => reject(requestError(request))
   })
   return dbPromise
 }
@@ -24,7 +28,7 @@ async function run<T>(store: Store, mode: IDBTransactionMode, fn: (objectStore: 
   return new Promise((resolve, reject) => {
     const request = fn(db.transaction(store, mode).objectStore(store))
     request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
+    request.onerror = () => reject(requestError(request))
   })
 }
 
