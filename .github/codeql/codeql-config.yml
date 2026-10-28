@@ -1,9 +1,13 @@
 paths-ignore:
+  - .codex-pr70-sonar/**
   - .codeql/**
   - .release/**
+  - .test-tmp/**
+  - codeql-repo/**
   - backend/internal/web/dist/**
   - frontend/coverage/**
   - frontend/dist/**
   - frontend/node_modules/**
   - frontend/playwright-report/**
   - frontend/test-results/**
+  - frontend/.test-tmp/**
