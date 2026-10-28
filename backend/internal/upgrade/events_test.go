@@ -26,10 +26,10 @@ func TestDurableUpgradeEventsImportExactlyOnce(t *testing.T) {
 	if err := manager.AppendEvent("upgrade.backup.created", "success", "verified backup"); err != nil {
 		t.Fatal(err)
 	}
-	if err := ReconcileDurableEvents(context.Background(), app, "pocketbase", manager.Dir); err != nil {
+	if err := ReconcileDurableEvents(context.Background(), app, "pocketbase", manager.Dir, "test-only-root-key"); err != nil {
 		t.Fatal(err)
 	}
-	if err := ReconcileDurableEvents(context.Background(), app, "pocketbase", manager.Dir); err != nil {
+	if err := ReconcileDurableEvents(context.Background(), app, "pocketbase", manager.Dir, "test-only-root-key"); err != nil {
 		t.Fatal(err)
 	}
 	events, err := app.FindRecordsByFilter("audit_logs", "action={:action}", "", 0, 0, map[string]any{"action": "upgrade.backup.created"})
@@ -73,10 +73,10 @@ func TestAlpha1AuditResourceIDLimitMigrationAllowsDurableEventImport(t *testing.
 	if err := RunMigrations(context.Background(), app, manager, []Migration{
 		legacyAlphaBaseline("pocketbase", "http://localhost:8080", &setupLink),
 		auditIdLimit(),
-	}, MigrationAudit("pocketbase")); err != nil {
+	}, MigrationAudit("pocketbase", "test-only-root-key")); err != nil {
 		t.Fatal(err)
 	}
-	if err := ReconcileDurableEvents(context.Background(), app, "pocketbase", manager.Dir); err != nil {
+	if err := ReconcileDurableEvents(context.Background(), app, "pocketbase", manager.Dir, "test-only-root-key"); err != nil {
 		t.Fatal(err)
 	}
 	events, err := app.FindRecordsByFilter("audit_logs", "action={:action}", "", 0, 0, map[string]any{"action": "upgrade.backup.created"})

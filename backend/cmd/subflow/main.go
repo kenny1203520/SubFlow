@@ -21,6 +21,7 @@ import (
 	"subflow/internal/exchange"
 	"subflow/internal/mailer"
 	"subflow/internal/realtime"
+	"subflow/internal/security"
 	"subflow/internal/transport/httpapi"
 	"subflow/internal/upgrade"
 	"subflow/internal/web"
@@ -34,27 +35,28 @@ func setupStartupNotice(link string) string {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		if err := checkHealth(config.AppURL("", config.LoadRuntime().HTTPPort) + "/api/ready"); err != nil {
+			log.Print(err)
+			os.Exit(1)
+		}
+		return
+	}
 	args, err := config.LoadEnvFile(os.Args)
 	if err != nil {
 		log.Fatal(err)
 	}
 	os.Args = args
-	if os.Getenv("SUBFLOW_SETTINGS_ENCRYPTION_KEY") == "" {
-		log.Print("share settings encryption key is missing; share links and encrypted CAPTCHA settings are unavailable")
+	runtime := config.LoadRuntime()
+	for _, name := range config.DeprecatedEnvironmentNames() {
+		log.Printf("deprecated environment setting %s is ignored; configure it in PocketBase or remove it", name)
 	}
-	driver := os.Getenv("SUBFLOW_DATA_DRIVER")
-	environment := os.Getenv("SUBFLOW_ENV")
-	httpPort := os.Getenv("SUBFLOW_HTTP_PORT")
-	args, err = config.WithServeAddress(os.Args, httpPort)
+	args, err = config.WithServeAddress(os.Args, runtime.HTTPPort)
 	if err != nil {
 		log.Fatal(err)
 	}
 	os.Args = args
-	appURL, err := config.PublicAppURL(os.Getenv("SUBFLOW_APP_URL"), httpPort, environment)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if _, err = adapters.New(driver, nil); err != nil {
+	if _, err = adapters.New("pocketbase", nil); err != nil {
 		log.Fatal(err)
 	}
 	pbVersion, err := upgrade.PocketBaseVersion()
@@ -64,8 +66,7 @@ func main() {
 	if pbVersion != upgrade.RequiredPocketBaseVersion {
 		log.Fatalf("binary uses PocketBase %s; this release requires %s", pbVersion, upgrade.RequiredPocketBaseVersion)
 	}
-	smtpMailer := mailer.FromEnv()
-	if handled, dispatchErr := dispatchUpgradeCommand(os.Args, driver, environment, smtpMailer); handled {
+	if handled, dispatchErr := dispatchUpgradeCommand(os.Args, "pocketbase", runtime.Environment, runtime.HTTPPort, runtime.EncryptionKey); handled {
 		if dispatchErr != nil {
 			log.Fatal(dispatchErr)
 		}
@@ -77,6 +78,10 @@ func main() {
 		}
 		return
 	}
+	if _, err := security.DeriveKeyring(runtime.EncryptionKey); err != nil {
+		log.Fatal(err)
+	}
+	setupURL := config.AppURL("", runtime.HTTPPort)
 	manager, err := upgrade.New(config.DataDirFromArgs(os.Args))
 	if err != nil {
 		log.Fatal(err)
@@ -138,26 +143,28 @@ func main() {
 		return
 	}
 	app := pocketbase.New()
+	registerPocketBaseSettingsAudit(app, runtime.EncryptionKey)
 	events := realtime.NewBus()
-	setupLink := registerUpgradeBootstrap(app, manager, driver, appURL, smtpMailer)
+	setupLink := registerUpgradeBootstrap(app, manager, "pocketbase", setupURL, runtime.EncryptionKey)
 	realtime.BindRecordEvents(app, events)
 	app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(e *core.RecordRequestPasswordResetRequestEvent) error {
-		if environment != "" && environment != "development" && !e.App.Settings().SMTP.Enabled {
-			return errors.New("SMTP is required for password reset outside development")
+		if runtime.Environment != "development" && !e.App.Settings().SMTP.Enabled {
+			return errors.New("SMTP must be configured in PocketBase for password reset outside development")
 		}
 		return e.Next()
 	})
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
-		stores, err := adapters.New(driver, e.App)
+		stores, err := adapters.New("pocketbase", e.App)
 		if err != nil {
 			return err
 		}
-		base := application.New(stores)
+		base := application.New(stores, runtime.EncryptionKey)
 		base.Events = events
 		base.Rates = exchange.NewOpenERAPIProvider()
-		applicationSettings := e.App.Settings().Meta
-		base.CaptchaAppName = applicationSettings.AppName
-		base.CaptchaAppURL = applicationSettings.AppURL
+		base.PocketBaseApplication = func() (string, string) {
+			settings := e.App.Settings().Meta
+			return settings.AppName, settings.AppURL
+		}
 		app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(event *core.RecordRequestPasswordResetRequestEvent) error {
 			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
 			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowPasswordReset, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
@@ -175,7 +182,7 @@ func main() {
 				if err := event.Next(); err != nil {
 					return err
 				}
-				txStores, err := adapters.New(driver, txApp)
+				txStores, err := adapters.New("pocketbase", txApp)
 				if err != nil {
 					return err
 				}
@@ -188,7 +195,7 @@ func main() {
 				if err := txStores.NotificationEmails.Enqueue(event.Request.Context(), &domain.NotificationEmailJob{NotificationID: note.ID, UserID: userID, Status: domain.NotificationEmailQueued, NextAttemptAt: &now}); err != nil {
 					return err
 				}
-				if err := application.New(txStores).RecordAudit(event.Request.Context(), userID, "", "account.password.changed", "user", userID, "success"); err != nil {
+				if err := application.New(txStores, runtime.EncryptionKey).RecordAudit(event.Request.Context(), userID, "", "account.password.changed", "user", userID, "success"); err != nil {
 					return err
 				}
 				return nil
@@ -258,12 +265,12 @@ func main() {
 				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)
 			}
 		}()
-		(&httpapi.API{Service: base, Upgrades: manager}).RegisterRoutes(e)
-		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: &mailer.Native{App: e.App}, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
+		(&httpapi.API{Service: base, Upgrades: manager, ApplicationURL: func() string { return e.App.Settings().Meta.AppURL }}).RegisterRoutes(e)
+		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: &mailer.Native{App: e.App}, Environment: runtime.Environment, ApplicationURL: func() string { return e.App.Settings().Meta.AppURL }}}).RegisterRoutes(e)
 		web.Register(e)
 		fmt.Print(setupStartupNotice(*setupLink))
 		if err := manager.Complete(func() error {
-			return upgrade.ReconcileDurableEvents(context.Background(), e.App, driver, manager.Dir)
+			return upgrade.ReconcileDurableEvents(context.Background(), e.App, "pocketbase", manager.Dir, runtime.EncryptionKey)
 		}); err != nil {
 			return err
 		}
@@ -288,7 +295,7 @@ func main() {
 	}
 	if !isServe {
 		if err := manager.Complete(func() error {
-			return upgrade.ReconcileDurableEvents(context.Background(), app, driver, manager.Dir)
+			return upgrade.ReconcileDurableEvents(context.Background(), app, "pocketbase", manager.Dir, runtime.EncryptionKey)
 		}); err != nil {
 			_ = manager.Fail("upgrade_finalize_failed")
 			log.Printf("SubFlow command completed but upgrade state could not be finalized: %v", err)

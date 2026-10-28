@@ -311,9 +311,13 @@ func (s *Service) VerifyCaptcha(ctx context.Context, flow, token, remoteIP strin
 	if err != nil {
 		return err
 	}
+	appName, appURL := s.CaptchaAppName, s.CaptchaAppURL
+	if s.PocketBaseApplication != nil {
+		appName, appURL = s.PocketBaseApplication()
+	}
 	err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), captcha.ApplicationIdentity{
-		Name:    s.CaptchaAppName,
-		URL:     s.CaptchaAppURL,
+		Name:    appName,
+		URL:     appURL,
 		SiteKey: settings.CaptchaSiteKey,
 	})
 	if s.Stores.Audits != nil {

@@ -60,7 +60,7 @@ func newExchangeTestService(t *testing.T) (*application.Service, adapters.Stores
 	if err != nil {
 		t.Fatal(err)
 	}
-	return application.New(stores), stores
+	return application.New(stores, "test-only-root-key"), stores
 }
 
 func TestRefreshReferenceRatesWarmsEveryCurrencyFromOneQuoteAllCall(t *testing.T) {

@@ -19,8 +19,7 @@ import (
 var invitationLogoPNG []byte
 
 // Native sends invitation email through PocketBase's own configured mailer
-// (Settings.SMTP, set via the Admin UI or synced from SUBFLOW_SMTP_* through
-// ConfigurePocketBase), the same client PocketBase itself uses for
+// (Settings.SMTP, configured by the PocketBase administrator), the same client PocketBase itself uses for
 // password-reset and verification email — so invitations stop requiring a
 // second, separately-configured SMTP client.
 type Native struct{ App core.App }

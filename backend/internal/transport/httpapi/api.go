@@ -12,7 +12,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"os"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -34,6 +34,7 @@ type shareAttempt struct {
 type API struct {
 	Service        *application.Service
 	Upgrades       *upgrade.Manager
+	ApplicationURL func() string
 	shareAttemptMu sync.Mutex
 	shareAttempts  map[string]shareAttempt
 }
@@ -453,7 +454,7 @@ func (a *API) shareAttachmentAccess(e *core.RequestEvent, account bool) (*domain
 			}
 			return nil, domain.ErrNotFound
 		}
-	} else if account || (share.AccessMode == "password" && !shareCookieValid(e, share)) {
+	} else if account || (share.AccessMode == "password" && !shareCookieValid(e, share, a.Service.ShareKey)) {
 		if auditErr := a.Service.AuditShareAttachmentFailure(e.Request.Context(), share, action, "share_access_denied"); auditErr != nil {
 			return nil, auditErr
 		}
@@ -509,16 +510,15 @@ func (a *API) accountShareAttachmentContent(e *core.RequestEvent) error {
 	return a.shareAttachmentContentFor(e, true)
 }
 
-func shareCookieSignature(value string) string {
-	key := os.Getenv("SUBFLOW_SHARE_SESSION_HMAC_KEY")
-	if key == "" {
-		key = "subflow-share-local"
-	}
-	mac := hmac.New(sha256.New, []byte(key))
+func shareCookieSignature(value string, key []byte) string {
+	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write([]byte(value))
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
-func shareCookieValid(e *core.RequestEvent, value *domain.Share) bool {
+func shareCookieValid(e *core.RequestEvent, value *domain.Share, key []byte) bool {
+	if len(key) == 0 {
+		return false
+	}
 	cookie, err := e.Request.Cookie(shareCookieName)
 	if err != nil {
 		return false
@@ -532,12 +532,21 @@ func shareCookieValid(e *core.RequestEvent, value *domain.Share) bool {
 		return false
 	}
 	payload := strings.Join(parts[:3], ".")
-	return hmac.Equal([]byte(parts[3]), []byte(shareCookieSignature(payload)))
+	return hmac.Equal([]byte(parts[3]), []byte(shareCookieSignature(payload, key)))
 }
-func setShareCookie(e *core.RequestEvent, value *domain.Share) {
+func (a *API) setShareCookie(e *core.RequestEvent, value *domain.Share) {
+	if len(a.Service.ShareKey) == 0 {
+		return
+	}
 	expires := time.Now().Add(8 * time.Hour).Unix()
 	payload := value.ID + "." + strconv.Itoa(value.AccessVersion) + "." + strconv.FormatInt(expires, 10)
-	http.SetCookie(e.Response, &http.Cookie{Name: shareCookieName, Value: payload + "." + shareCookieSignature(payload), Path: "/api/subflow/v1/shares/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: e.Request.TLS != nil, MaxAge: 8 * 60 * 60})
+	secure := e.Request.TLS != nil
+	if a.ApplicationURL != nil {
+		if parsed, err := url.ParseRequestURI(strings.TrimSpace(a.ApplicationURL())); err == nil && parsed.Scheme == "https" && parsed.Host != "" {
+			secure = true
+		}
+	}
+	http.SetCookie(e.Response, &http.Cookie{Name: shareCookieName, Value: payload + "." + shareCookieSignature(payload, a.Service.ShareKey), Path: "/api/subflow/v1/shares/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure, MaxAge: 8 * 60 * 60})
 }
 func (a *API) sharePasswordAllowed(ip, shareID string) bool {
 	a.shareAttemptMu.Lock()
@@ -579,7 +588,7 @@ func (a *API) publicShare(e *core.RequestEvent) error {
 		}
 		return fail(e, domain.ErrNotFound)
 	}
-	if share.AccessMode == "password" && !shareCookieValid(e, share) {
+	if share.AccessMode == "password" && !shareCookieValid(e, share, a.Service.ShareKey) {
 		return ok(e, http.StatusOK, map[string]bool{"requiresPassword": true}, nil)
 	}
 	if share.AccessMode == "accounts" {
@@ -632,7 +641,7 @@ func (a *API) sharePasswordAccess(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	a.clearSharePasswordFailures(e.RealIP(), share.ID)
-	setShareCookie(e, share)
+	a.setShareCookie(e, share)
 	return ok(e, http.StatusOK, page, nil)
 }
 func (a *API) accountShare(e *core.RequestEvent) error {

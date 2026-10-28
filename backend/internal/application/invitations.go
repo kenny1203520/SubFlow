@@ -17,6 +17,7 @@ type CollaborationService struct {
 	Events              ports.EventPublisher
 	Mailer              ports.Mailer
 	Environment, AppURL string
+	ApplicationURL      func() string
 }
 
 func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, groupID, email string) (*domain.Invitation, error) {
@@ -92,7 +93,15 @@ func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitati
 	if err != nil {
 		return nil, err
 	}
-	link := strings.TrimRight(s.AppURL, "/") + "/invite/" + url.PathEscape(plain)
+	appURL := s.AppURL
+	if s.ApplicationURL != nil {
+		appURL = s.ApplicationURL()
+	}
+	appURL = strings.TrimRight(appURL, "/")
+	if appURL == "" {
+		return nil, fmt.Errorf("PocketBase Application URL must be configured before sending invitations")
+	}
+	link := appURL + "/invite/" + url.PathEscape(plain)
 	if strings.EqualFold(s.Environment, "development") || s.Environment == "" {
 		inv.DebugURL = link
 	}

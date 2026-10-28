@@ -42,7 +42,7 @@ func newAPITestApp(t *testing.T) *apiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	service.Cipher = security.NewSettingsCipher("test-share-settings-key")
 	return &apiFixture{app: app, stores: stores, service: service}
 }
@@ -69,7 +69,7 @@ func newUninitializedAPITestApp(t *testing.T) (*apiFixture, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	service.Cipher = security.NewSettingsCipher("test-share-settings-key")
 	return &apiFixture{app: app, stores: stores, service: service}, parsed.Query().Get("token")
 }

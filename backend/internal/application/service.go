@@ -2,7 +2,6 @@ package application
 
 import (
 	"context"
-	"os"
 	"strings"
 	"time"
 
@@ -14,20 +13,24 @@ import (
 )
 
 type Service struct {
-	Stores  adapters.Stores
-	Events  ports.EventPublisher
-	Now     func() time.Time
-	Rates   RateProvider
-	Captcha captcha.Verifier
-	Cipher  security.SettingsCipher
+	Stores   adapters.Stores
+	Events   ports.EventPublisher
+	Now      func() time.Time
+	Rates    RateProvider
+	Captcha  captcha.Verifier
+	Cipher   security.SettingsCipher
+	AuditKey []byte
+	ShareKey []byte
 	// CAPTCHA application identity is read from PocketBase's Application
 	// settings, never from a separate CAPTCHA environment setting.
-	CaptchaAppName string
-	CaptchaAppURL  string
+	CaptchaAppName        string
+	CaptchaAppURL         string
+	PocketBaseApplication func() (name, url string)
 }
 
-func New(stores adapters.Stores) *Service {
-	return &Service{Stores: stores, Now: time.Now, Captcha: captcha.NewVerifier(), Cipher: security.NewSettingsCipher(os.Getenv("SUBFLOW_SETTINGS_ENCRYPTION_KEY"))}
+func New(stores adapters.Stores, encryptionKey string) *Service {
+	keys, _ := security.DeriveKeyring(encryptionKey)
+	return &Service{Stores: stores, Now: time.Now, Captcha: captcha.NewVerifier(), Cipher: security.NewSettingsCipher(encryptionKey), AuditKey: keys.Audit, ShareKey: keys.Share}
 }
 
 func (s *Service) role(ctx context.Context, groupID, userID string, ownerOnly bool) error {

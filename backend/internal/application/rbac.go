@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
@@ -127,9 +126,8 @@ func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, r
 }
 
 func (s *Service) auditWithEventID(ctx context.Context, eventID, actor, groupID, action, resource, resourceID, outcome string, summary ...string) error {
-	key := os.Getenv("SUBFLOW_AUDIT_HMAC_KEY")
-	if key == "" {
-		key = "subflow-audit-local"
+	if len(s.AuditKey) == 0 {
+		return fmt.Errorf("audit signing key is unavailable")
 	}
 	summaryText := ""
 	if len(summary) > 0 {
@@ -152,8 +150,8 @@ func (s *Service) auditWithEventID(ctx context.Context, eventID, actor, groupID,
 	// row, should a verifier ever need to tell them apart; nothing in this
 	// codebase re-derives or checks the hash today (grep confirms), so this
 	// change can't invalidate anything that currently depends on it.
-	payload := strings.Join([]string{"v2", actor, groupID, action, resource, resourceID, outcome, summaryText, ip, userAgent}, "|")
-	mac := hmac.New(sha256.New, []byte(key))
+	payload := strings.Join([]string{"v3", actor, groupID, action, resource, resourceID, outcome, summaryText, ip, userAgent}, "|")
+	mac := hmac.New(sha256.New, s.AuditKey)
 	_, _ = mac.Write([]byte(payload))
 	return s.Stores.Audits.Create(ctx, &domain.AuditLog{SourceEventID: eventID, ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, IP: ip, UserAgent: userAgent, Hash: hex.EncodeToString(mac.Sum(nil))})
 }
