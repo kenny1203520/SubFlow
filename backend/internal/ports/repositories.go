@@ -242,6 +242,15 @@ type SettlementRepository interface {
 	ReassignUser(ctx context.Context, groupID, fromUserID, toUserID string) error
 }
 
+type SettlementReviewRepository interface {
+	Create(context.Context, *domain.SettlementReview) error
+	Get(context.Context, string) (*domain.SettlementReview, error)
+	FindPending(context.Context, string) (*domain.SettlementReview, error)
+	ListPending(context.Context, string) ([]domain.SettlementReview, error)
+	Update(context.Context, *domain.SettlementReview) error
+	ReassignUser(context.Context, string, string, string) error
+}
+
 type AttachmentRepository interface {
 	Create(context.Context, *domain.Attachment, []byte) error
 	Rename(context.Context, string, string) error

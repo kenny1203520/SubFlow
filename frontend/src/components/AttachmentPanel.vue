@@ -10,7 +10,7 @@ import AttachmentPreviewContent from './AttachmentPreviewContent.vue'
 const props=defineProps<{targetType:string;targetId:string;billingAt?:string;online:boolean;disabled?:boolean;initialFiles?:File[]}>()
 const emit=defineEmits<{initialFilesHandled:[]}>()
 const auth=useAuthStore(),{tr}=useI18n(),api=new ApiClient(()=>auth.token,auth.logout)
-const items=ref<Attachment[]>([]),access=ref({canRead:false,canUpload:false,canDelete:false,canRename:false}),limits=ref({maxSize:0,maxCount:0}),loading=ref(false),busy=ref(false),error=ref(''),progress=ref(0),preview=ref(''),previewType=ref(''),retryFiles=ref<File[]>([])
+const items=ref<Attachment[]>([]),access=ref({canRead:false,canUpload:false,canDelete:false,canRename:false,modificationRequiresReview:false}),limits=ref({maxSize:0,maxCount:0}),loading=ref(false),busy=ref(false),error=ref(''),progress=ref(0),preview=ref(''),previewType=ref(''),retryFiles=ref<File[]>([])
 const uploadedCount=ref(0),refreshError=ref(''),previewDialog=ref<HTMLDialogElement>()
 const panel=ref<HTMLElement>(),renameInput=ref<HTMLInputElement>(),renameId=ref(''),renameStem=ref(''),renameExtension=ref(''),renameError=ref(''),renameBusy=ref(false),renamedName=ref(''),previewName=ref('')
 const renameInputId=useId()
@@ -19,7 +19,7 @@ let objectUrl='',initialHandledFor='',previousFocus:HTMLElement|undefined
 const requestIDs=new WeakMap<File,string>()
 function requestID(file:File){let id=requestIDs.get(file);if(!id){id=crypto.randomUUID();requestIDs.set(file,id)}return id}
 function query(){const p=new URLSearchParams({targetType:props.targetType,targetId:props.targetId});if(props.billingAt)p.set('billingAt',props.billingAt);return '?'+p}
-async function refresh(){const target=query();const r=await api.get<AttachmentPage>('/attachments'+target);if(target!==query())return;items.value=r.data.items;access.value=r.data.access;limits.value=r.data.limits}
+async function refresh(){const target=query();const r=await api.get<AttachmentPage>('/attachments'+target);if(target!==query())return;items.value=r.data.items;access.value={...r.data.access,modificationRequiresReview:r.data.access.modificationRequiresReview??false};limits.value=r.data.limits}
 async function load(){if(!props.targetId||!props.online)return;loading.value=true;try{await refresh();error.value='';if(props.initialFiles?.length&&initialHandledFor!==props.targetId){if(!access.value.canUpload){error.value=tr('attachmentPermissionDenied');return};initialHandledFor=props.targetId;const files=[...props.initialFiles];emit('initialFilesHandled');await upload(files)}}catch(reason){error.value=reason instanceof ApiError&&['forbidden','unauthorized','not_found'].includes(reason.code)?uploadMessage(reason):tr('attachmentLoadFailed')}finally{loading.value=false}}
 function selectFiles(files:File[]){if(files.length)void upload(files)}
 function uploadMessage(reason:unknown){
@@ -75,6 +75,7 @@ onBeforeUnmount(closePreview)
   <section v-if="targetId&&online" ref="panel" class="attachment-panel" :aria-label="tr('attachments')">
     <header><div><strong>{{tr('attachments')}}</strong><small v-if="limits.maxCount">{{items.length}} / {{limits.maxCount}} · {{tr('attachmentSizeEach',{size:Math.round(limits.maxSize/1048576)})}}</small></div></header><AttachmentDropzone v-if="access.canUpload&&!disabled" :disabled="busy||renameBusy||!!renameId||items.length>=limits.maxCount" :disabled-message="items.length>=limits.maxCount?tr('attachmentCountLimit'):tr('attachmentDropDisabled')" @files-selected="selectFiles"/>
     <progress v-if="busy" max="100" :value="progress" :aria-label="tr('attachmentUploading')"></progress>
+    <p v-if="access.modificationRequiresReview" class="field-help">{{tr('settlementAttachmentRequiresReview')}}</p>
     <p v-if="uploadedCount" role="status" class="notice inline">{{tr('attachmentUploadSuccess',{count:uploadedCount})}}</p>
     <p v-if="renamedName" role="status" class="notice inline">{{tr('attachmentRenamed',{name:renamedName})}}</p>
     <p v-if="error" class="notice danger inline" role="alert">{{error}} <button v-if="retryFiles.length&&access.canUpload" type="button" class="ghost" :disabled="busy" @click="upload(retryFiles)">{{tr('retry')}}</button></p>

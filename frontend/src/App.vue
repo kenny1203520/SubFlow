@@ -110,15 +110,13 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
       <RouterView v-else-if="!auth.authenticated || publicRoute" />
       <div v-else class="shell">
     <aside class="sidebar">
-      <RouterLink class="brand" :to="{ name: 'dashboard' }"><Logo variant="lockup" size="md" /></RouterLink>
+      <RouterLink class="brand" :to="{ name: 'home' }"><Logo variant="lockup" size="md" /></RouterLink>
       <p class="sidebar-label">{{ tr('workspace') }}</p>
-      <nav>
-        <RouterLink :to="{ name: 'dashboard' }"><svg viewBox="0 0 24 24"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" /></svg><span>{{ tr('overview') }}</span></RouterLink>
-        <RouterLink :to="{ name: 'personal-ledger' }"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg><span>{{ tr('personalLedger') }}</span></RouterLink>
-				<RouterLink :to="{ name: 'personal-share' }"><svg viewBox="0 0 24 24"><path d="M6 12h12M12 6l6 6-6 6" /></svg><span>{{ tr('share') }}</span></RouterLink>
-        <RouterLink :to="{ name: 'groups' }"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3-8-3Zm0 5 8 3 8-3M4 16.5l8 3 8-3" /></svg><span>{{ tr('groups') }}</span></RouterLink>
-        <RouterLink :to="{ name: 'about' }"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" /><path d="M12 16v-4M12 8h.01" /></svg><span>{{ tr('about') }}</span></RouterLink>
-        <RouterLink class="mobile-only-link" :to="{ name: 'profile' }"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" /></svg><span>{{ tr('profile') }}</span></RouterLink>
+      <nav :aria-label="tr('primaryNavigation')">
+        <RouterLink :to="{ name: 'home' }"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5v9a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 19.5v-9ZM9 21v-7h6v7" /></svg><span>{{ tr('home') }}</span></RouterLink>
+        <RouterLink :to="{ name: 'personal-ledger' }" :class="{ 'router-link-active': route.path.startsWith('/personal') }"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5" /></svg><span>{{ tr('personalLedger') }}</span></RouterLink>
+        <RouterLink :to="{ name: 'groups' }" :class="{ 'router-link-active': route.path.startsWith('/groups') }"><svg viewBox="0 0 24 24"><path d="M4 6.5 12 3l8 3.5-8 3-8-3Zm0 5 8 3 8-3M4 16.5l8 3 8-3" /></svg><span>{{ tr('groups') }}</span></RouterLink>
+        <RouterLink :to="{ name: 'more' }"><svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg><span>{{ tr('more') }}</span></RouterLink>
       </nav>
       <div class="sidebar-bottom">
         <RouterLink v-if="auth.canAdminister" class="admin-link" :to="{ name: 'admin' }"><svg viewBox="0 0 24 24"><path d="M12 3 4 7v5c0 5 3.4 8.6 8 9 4.6-.4 8-4 8-9V7l-8-4Z" /></svg><span>{{ tr('systemAdministration') }}</span></RouterLink>
@@ -138,7 +136,7 @@ watch(() => route.fullPath, () => { routeError.value = undefined })
       </header>
       <div v-if="workspace.permissionDenied" class="notice danger">{{ tr('forbidden') }}</div>
       <div v-else-if="workspace.error" class="notice">{{ workspace.localizedError }} <button @click="workspace.retryLast" type="button">{{ tr('retry') }}</button></div>
-      <section v-if="routeError" class="page narrow"><div class="card error-state"><h1>{{ tr('routeError') }}</h1><p>{{ tr('routeErrorDesc') }}</p><div class="form-actions"><button class="primary" @click="retryRoute" type="button">{{ tr('retry') }}</button><RouterLink class="ghost" :to="{ name: 'dashboard' }">{{ tr('backToDashboard') }}</RouterLink></div></div></section>
+      <section v-if="routeError" class="page narrow"><div class="card error-state"><h1>{{ tr('routeError') }}</h1><p>{{ tr('routeErrorDesc') }}</p><div class="form-actions"><button class="primary" @click="retryRoute" type="button">{{ tr('retry') }}</button><RouterLink class="ghost" :to="{ name: 'home' }">{{ tr('backToDashboard') }}</RouterLink></div></div></section>
       <RouterView v-else v-slot="{ Component }"><component :is="Component" :key="`${route.matched[0]?.path || route.path}-${routeRetry}`" /></RouterView>
     </main>
       </div>

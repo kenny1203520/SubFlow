@@ -9,7 +9,10 @@ import (
 	"subflow/internal/ports"
 )
 
-type DashboardQuery struct{ Scope, GroupID, Month string }
+type DashboardQuery struct {
+	Scope, GroupID, Month string
+	BalanceAsOf           time.Time
+}
 type BillingDatePage struct {
 	Dates      []time.Time `json:"dates"`
 	NextCursor string      `json:"nextCursor,omitempty"`
@@ -284,6 +287,10 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 	if err != nil {
 		return domain.DashboardSummary{}, err
 	}
+	balanceEnd := end
+	if !query.BalanceAsOf.IsZero() && query.BalanceAsOf.Before(balanceEnd) {
+		balanceEnd = query.BalanceAsOf
+	}
 	result := domain.DashboardSummary{Month: start.Format("2006-01")}
 	var expenses []domain.Expense
 	var subscriptions []domain.Subscription
@@ -492,7 +499,7 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		}
 		monthSubscriptionExpenses = append(monthSubscriptionExpenses, monthExpenses...)
 		if query.Scope == "group" {
-			historicalExpenses, err := subscriptionExpensesBetween(subscription, subscription.StartsOn.In(location), end, location)
+			historicalExpenses, err := subscriptionExpensesBetween(subscription, subscription.StartsOn.In(location), balanceEnd, location)
 			if err != nil {
 				return result, err
 			}
@@ -526,7 +533,7 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		balanceExpenses := append(allExpenses, historicalSubscriptionExpenses...)
 		filteredExpenses := make([]domain.Expense, 0, len(balanceExpenses))
 		for _, expense := range balanceExpenses {
-			if expense.IncurredOn.Before(end) {
+			if expense.IncurredOn.Before(balanceEnd) {
 				filteredExpenses = append(filteredExpenses, expense)
 			}
 		}
@@ -540,13 +547,13 @@ func (s *Service) WorkspaceDashboard(ctx context.Context, userID string, query D
 		}
 		filteredIncomes := make([]domain.Income, 0, len(allIncomes))
 		for _, income := range allIncomes {
-			if income.ReceivedOn.Before(end) {
+			if income.ReceivedOn.Before(balanceEnd) {
 				filteredIncomes = append(filteredIncomes, income)
 			}
 		}
 		filteredSettlements := make([]domain.Settlement, 0, len(allSettlements))
 		for _, settlement := range allSettlements {
-			if settlement.SettledOn.Before(end) {
+			if settlement.SettledOn.Before(balanceEnd) {
 				filteredSettlements = append(filteredSettlements, settlement)
 			}
 		}
@@ -853,12 +860,21 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 		return nil, err
 	}
 	if value.AmountMinor <= 0 || value.FromUserID == value.ToUserID || value.SettledOn.IsZero() {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"reason": "invalid_settlement"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, domain.ErrInvalid
 	}
 	if _, err := s.Stores.Memberships.GetRole(ctx, value.GroupID, value.FromUserID); err != nil {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"reason": "from_user_not_member"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, domain.ErrInvalid
 	}
 	if _, err := s.Stores.Memberships.GetRole(ctx, value.GroupID, value.ToUserID); err != nil {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"reason": "to_user_not_member"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, domain.ErrInvalid
 	}
 	group, err := s.Stores.Groups.Get(ctx, value.GroupID)
@@ -879,12 +895,53 @@ func (s *Service) CreateSettlement(ctx context.Context, userID string, value dom
 	value.CreatedBy = userID
 	value.Currency, value.BaseCurrency = group.Currency, group.Currency
 	value.BaseAmountMinor, value.RateScaled, value.ExchangeRate, value.ExchangeRateDate = value.AmountMinor, domain.ExchangeRateScale, "1", value.SettledOn
+	value.ApprovalRequired = group.SettlementApprovalEnabled
+	value.Version = 1
+	value.Status = "confirmed"
+	if value.ApprovalRequired {
+		if s.Stores.SettlementReviews == nil {
+			if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", "", "failure", encodeAuditSummary(map[string]any{"reason": "review_store_unavailable"}, nil)); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, domain.ErrAuditUnavailable
+		}
+		value.Status = "pending"
+	}
 	if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		if value.SuggestionVersion != "" {
+			suggestions, suggestionErr := s.SettlementSuggestions(tx, userID, value.GroupID)
+			if suggestionErr != nil {
+				return suggestionErr
+			}
+			valid := false
+			for _, suggestion := range suggestions {
+				if suggestion.Version == value.SuggestionVersion && suggestion.FromUserID == value.FromUserID && suggestion.ToUserID == value.ToUserID && suggestion.AmountMinor == value.AmountMinor && suggestion.Currency == value.Currency {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return domain.ErrConflict
+			}
+			value.SuggestionVersion = ""
+		}
 		if createErr := s.Stores.Settlements.Create(tx, &value); createErr != nil {
 			return createErr
 		}
-		return s.audit(tx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency), "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
+		if value.ApprovalRequired {
+			review := domain.SettlementReview{GroupID: value.GroupID, SettlementID: value.ID, Action: "create", Proposal: value, SubmittedBy: userID, Status: "pending", ExpectedVersion: value.Version}
+			if createErr := s.Stores.SettlementReviews.Create(tx, &review); createErr != nil {
+				return createErr
+			}
+			if notifyErr := s.notifySettlementReview(tx, value.ToUserID, value, review.ID, "settlement_review_pending"); notifyErr != nil {
+				return notifyErr
+			}
+		}
+		return s.audit(tx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "success", encodeAuditSummary(map[string]any{"from_user_id": value.FromUserID, "to_user_id": value.ToUserID, "amount_minor": value.AmountMinor, "currency": string(value.Currency), "settled_on": value.SettledOn.Format("2006-01-02"), "status": value.Status}, nil))
 	}); err != nil {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.created", "settlement", value.ID, "failure", encodeAuditSummary(map[string]any{"reason": "transaction_failed"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
 		return nil, err
 	}
 	return &value, nil
@@ -933,6 +990,18 @@ func (s *Service) UpdateSettlement(ctx context.Context, userID, id string, patch
 		return invalid("to_user_not_member")
 	}
 	value := *current
+	if current.ApprovalRequired && current.Status != "confirmed" {
+		if auditErr := s.audit(ctx, userID, current.GroupID, "settlement.updated", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "settlement_not_confirmed"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, domain.ErrConflict
+	}
+	if current.ApprovalRequired && (patch.FromUserID != current.FromUserID || patch.ToUserID != current.ToUserID) {
+		if auditErr := s.audit(ctx, userID, current.GroupID, "settlement.updated", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "participants_require_void_and_recreate"}, nil)); auditErr != nil {
+			return nil, auditErr
+		}
+		return nil, domain.ErrConflict
+	}
 	value.FromUserID, value.ToUserID = patch.FromUserID, patch.ToUserID
 	value.AmountMinor = patch.AmountMinor
 	value.SettledOn = patch.SettledOn
@@ -942,6 +1011,33 @@ func (s *Service) UpdateSettlement(ctx context.Context, userID, id string, patch
 	// the caller sent some, so it can't drift from that invariant.
 	value.Currency, value.BaseCurrency = group.Currency, group.Currency
 	value.BaseAmountMinor, value.RateScaled, value.ExchangeRate, value.ExchangeRateDate = value.AmountMinor, domain.ExchangeRateScale, "1", value.SettledOn
+	if current.ApprovalRequired {
+		if s.Stores.SettlementReviews == nil {
+			return nil, domain.ErrAuditUnavailable
+		}
+		if _, pendingErr := s.Stores.SettlementReviews.FindPending(ctx, id); pendingErr == nil {
+			if auditErr := s.audit(ctx, userID, current.GroupID, "settlement.updated", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "review_already_pending"}, nil)); auditErr != nil {
+				return nil, auditErr
+			}
+			return nil, domain.ErrConflict
+		} else if pendingErr != domain.ErrNotFound {
+			return nil, pendingErr
+		}
+		review := domain.SettlementReview{GroupID: current.GroupID, SettlementID: id, Action: "change", Proposal: value, SubmittedBy: userID, Status: "pending", ExpectedVersion: current.Version}
+		if err = s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+			if createErr := s.Stores.SettlementReviews.Create(tx, &review); createErr != nil {
+				return createErr
+			}
+			if notifyErr := s.notifySettlementReview(tx, current.ToUserID, value, review.ID, "settlement_review_pending"); notifyErr != nil {
+				return notifyErr
+			}
+			return s.audit(tx, userID, current.GroupID, "settlement.change_requested", "settlement", id, "success", encodeAuditSummary(map[string]any{"amount_minor": value.AmountMinor, "settled_on": value.SettledOn.Format("2006-01-02")}, nil))
+		}); err != nil {
+			return nil, err
+		}
+		return current, nil
+	}
+	value.Version = current.Version + 1
 
 	var changes changeSet
 	changes.addString("from_user_id", current.FromUserID, value.FromUserID)
@@ -981,6 +1077,12 @@ func (s *Service) DeleteSettlement(ctx context.Context, userID, id string) error
 			}
 			return permErr
 		}
+	}
+	if value.ApprovalRequired {
+		if auditErr := s.audit(ctx, userID, value.GroupID, "settlement.deleted", "settlement", id, "failure", encodeAuditSummary(map[string]any{"reason": "approval_workflow_required"}, nil)); auditErr != nil {
+			return auditErr
+		}
+		return domain.ErrConflict
 	}
 	items, err := s.Stores.Attachments.List(ctx, "settlement", id, time.Time{})
 	if err != nil {

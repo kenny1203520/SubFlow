@@ -9,7 +9,6 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/tests"
 
 	"subflow/internal/adapters"
-	"subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/domain"
 	"subflow/internal/ports"
@@ -22,9 +21,7 @@ func newTempMemberFixture(t *testing.T) (*application.CollaborationService, adap
 		t.Fatal(err)
 	}
 	t.Cleanup(app.Cleanup)
-	if err = pocketbase.EnsureSchema(app); err != nil {
-		t.Fatal(err)
-	}
+	applyLatestTestMigrations(t, app)
 	users, err := app.FindCollectionByNameOrId("users")
 	if err != nil {
 		t.Fatal(err)

@@ -20,13 +20,17 @@ import ShareManagerView from './views/ShareManagerView.vue'
 import PersonalLedgerView from './views/PersonalLedgerView.vue'
 import GroupLedgerView from './views/GroupLedgerView.vue'
 import NotificationCenterView from './views/NotificationCenterView.vue'
+import HomeView from './views/HomeView.vue'
+import MoreView from './views/MoreView.vue'
 
 export const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
   { path: '/auth', name: 'auth', component: AuthView, meta: { public: true } },
   { path: '/share/:token', name: 'share', component: ShareView, meta: { public: true } },
   { path: '/invite/:token', name: 'invite', component: InviteView },
-  { path: '/', redirect: { name: 'personal-ledger' } },
+  { path: '/', redirect: { name: 'home' } },
+  { path: '/home', name: 'home', component: HomeView },
+  { path: '/more', name: 'more', component: MoreView },
   { path: '/overview', name: 'dashboard', component: DashboardView },
   { path: '/groups', name: 'groups', component: GroupsView },
   {
@@ -58,21 +62,21 @@ export const routes: RouteRecordRaw[] = [
   { path: '/about', name: 'about', component: AboutView },
   { path: '/admin', name: 'admin', component: AdminView },
   { path: '/admin/:section(settings|users|roles|audit|notification-emails)', name: 'admin-section', component: AdminView },
-  { path: '/:pathMatch(.*)*', redirect: { name: 'personal-ledger' } },
+  { path: '/:pathMatch(.*)*', redirect: { name: 'home' } },
 ]
 
 export const router = createRouter({ history: createWebHistory(), routes })
 router.beforeEach(async to => {
   if (to.name === 'setup') return true
   if (!to.meta.public && !pb.authStore.isValid) return { name: 'auth', query: { redirect: to.fullPath } }
-  if (to.name === 'auth' && pb.authStore.isValid) return { name: 'personal-ledger' }
+  if (to.name === 'auth' && pb.authStore.isValid) return to.query.redirect ? String(to.query.redirect) : { name: 'home' }
   if (String(to.path).startsWith('/admin')) {
     try {
       const response = await fetch('/api/subflow/v1/system/access', { headers: { Authorization: `Bearer ${pb.authStore.token}` } })
       const body = await response.json()
       const permissions: string[] = body?.data?.permissions || []
-      if (!permissions.some(value => value.startsWith('system.'))) return { name: 'personal-ledger', query: { denied: 'admin' } }
-    } catch { return { name: 'personal-ledger' } }
+      if (!permissions.some(value => value.startsWith('system.'))) return { name: 'home', query: { denied: 'admin' } }
+    } catch { return { name: 'home' } }
   }
   return true
 })

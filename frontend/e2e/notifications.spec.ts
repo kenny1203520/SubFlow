@@ -11,7 +11,7 @@ async function signIn(page: Page, name: string) {
   await page.getByLabel('Email').fill(email)
   await page.locator('input[autocomplete="current-password"]').fill('test-password-1234')
   await page.locator('form').getByRole('button', { name: 'Log in' }).click()
-  await expect(page).toHaveURL(/personal/)
+  await expect(page).toHaveURL(/home/)
 }
 
 test('notification center preferences and bell fit supported widths and themes', async ({ browser, browserName }) => {

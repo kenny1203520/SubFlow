@@ -477,6 +477,9 @@ func MemberBalancesWithIncomes(expenses []Expense, incomes []Income, settlements
 		}
 	}
 	for _, settlement := range settlements {
+		if !SettlementIsEffective(settlement) {
+			continue
+		}
 		amount := settlement.BaseAmountMinor
 		if amount == 0 {
 			amount = settlement.AmountMinor
@@ -494,6 +497,12 @@ func MemberBalancesWithIncomes(expenses []Expense, incomes []Income, settlements
 		result = append(result, MemberBalance{UserID: id, AmountMinor: totals[id]})
 	}
 	return result
+}
+
+// SettlementIsEffective keeps legacy records active while excluding requests
+// that are still pending or that were rejected, withdrawn, or voided.
+func SettlementIsEffective(value Settlement) bool {
+	return value.Status == "" || value.Status == "confirmed"
 }
 
 func MemberBalances(expenses []Expense, settlements []Settlement) []MemberBalance {

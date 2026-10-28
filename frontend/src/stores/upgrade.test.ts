@@ -5,10 +5,18 @@ import { isMaintenanceBlocked, setMaintenanceBlocked } from '../runtime/maintena
 import { useUpgradeStore } from './upgrade'
 
 let pinia: ReturnType<typeof createPinia>
+const storage = new Map<string, string>()
+const storageMock = {
+  clear: () => storage.clear(),
+  getItem: (key: string) => storage.get(key) ?? null,
+  removeItem: (key: string) => { storage.delete(key) },
+  setItem: (key: string, value: string) => { storage.set(key, String(value)) },
+}
 
 beforeEach(() => {
   vi.useFakeTimers()
-  localStorage.clear()
+  storage.clear()
+  vi.stubGlobal('localStorage', storageMock)
   setMaintenanceBlocked(false)
   pinia = createPinia()
   setActivePinia(pinia)
@@ -20,7 +28,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
   vi.useRealTimers()
   setMaintenanceBlocked(false)
-  localStorage.clear()
+  storage.clear()
 })
 
 describe('upgrade store', () => {

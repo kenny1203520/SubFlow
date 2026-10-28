@@ -2,7 +2,7 @@ import { computed, reactive, ref } from 'vue'
 import { defineStore } from 'pinia'
 import { ApiClient, ApiError } from '../api/client'
 import { SSEClient } from '../api/sse'
-import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, IncomeOccurrence, IncomePeriodPreview, Invitation, Membership, MemberTransfer, Meta, OwnershipTransfer, RecurringIncome, RecurringIncomeInput, Settlement, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
+import type { AccessRole, AuditLog, BillingDates, Category, Currency, CurrencyChangePreview, CurrencyInfo, DailyLedger, DashboardSummary, Envelope, ExchangeRate, Expense, Group, GroupAccess, Income, IncomeOccurrence, IncomePeriodPreview, Invitation, Membership, MemberTransfer, Meta, OwnershipTransfer, RecurringIncome, RecurringIncomeInput, Settlement, SettlementSuggestion, Subscription, SubscriptionPeriods, SubFlowEvent } from '../api/types'
 import { useAuthStore } from './auth'
 import { useToastStore } from './toast'
 import { useNotificationsStore } from './notifications'
@@ -14,7 +14,7 @@ import { defaultPageSize } from '../pageSize'
 import { toDateInput } from '../dateInput'
 import { isMaintenanceBlocked } from '../runtime/maintenance'
 
-type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'> & Partial<Pick<Group, 'attachmentMaxSize'|'attachmentMaxCount'|'attachmentLimitsInherited'>>
+type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'> & Partial<Pick<Group, 'attachmentMaxSize'|'attachmentMaxCount'|'attachmentLimitsInherited'|'settlementApprovalEnabled'>>
 // startsOn is optional so an update can omit it when the user did not touch
 // the date input: the backend then keeps the exact stored instant instead of
 // a same-day reconstruction from the viewer's timezone, which would shift it
@@ -23,7 +23,7 @@ type SubscriptionInput = Pick<Subscription, 'name'|'category'|'amountMinor'|'cur
 // incurredOn is optional for the same reason startsOn is on SubscriptionInput.
 type ExpenseInput = Pick<Expense, 'title'|'category'|'amountMinor'|'currency'|'paidBy'|'notes'> & Partial<Pick<Expense, 'splitMode'|'splits'|'categoryId'|'rateMode'|'exchangeRate'|'incurredOn'>>
 type IncomeInput = Pick<Income, 'title'|'category'|'amountMinor'|'currency'| 'earnedBy' |'notes'> & Partial<Pick<Income, 'categoryId'|'baseCurrency'|'rateMode'|'exchangeRate'|'receivedOn'|'earnedBy'|'splitMode'|'splits'>>
-type SettlementInput = Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>
+type SettlementInput = Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'> & {suggestionVersion?:string}
 
 export const useWorkspaceStore = defineStore('workspace', () => {
   const auth = useAuthStore()
@@ -670,6 +670,10 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     settlementsMeta.value = result.meta || { page:1, perPage:defaultPageSize.value, totalItems:settlements.value.length, totalPages:1 }
     return result
   }
+  async function loadSettlementSuggestions(groupId = currentGroupId.value): Promise<SettlementSuggestion[]> {
+    if (!groupId) return []
+    return (await api.get<SettlementSuggestion[]>(`/groups/${encodeURIComponent(groupId)}/settlement-suggestions`)).data || []
+  }
 
   async function invite(email: string, targetPlaceholderId?: string) {
     if (!currentGroupId.value) return
@@ -951,6 +955,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   async function addSettlement(input: SettlementInput) {
     if (!currentGroupId.value) return false
+    if (!online.value && (currentGroup.value?.settlementApprovalEnabled || input.suggestionVersion)) { error.value = tr('offlineActionDisabled'); return false }
     return run(async () => {
       await withOfflineFallback(
         async () => { await api.post<Settlement>(`/groups/${currentGroupId.value}/settlements`, input); await refreshGroup() },
@@ -974,6 +979,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     return id
   }
   async function updateSettlement(id: string, input: SettlementInput) {
+    if (!online.value && settlements.value.find(item => item.id === id)?.approvalRequired) { error.value = tr('offlineActionDisabled'); return false }
     return run(async () => {
       await withOfflineFallback(
         async () => { await api.patch<Settlement>(`/settlements/${id}`, input); await refreshGroup() },
@@ -986,11 +992,19 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     }, 'settlements')
   }
   async function deleteSettlement(id: string) {
+    if (!online.value && settlements.value.find(item => item.id === id)?.approvalRequired) { error.value = tr('offlineActionDisabled'); return }
     await run(async () => {
       await withOfflineFallback(
         async () => { await api.delete(`/settlements/${id}`); await refreshGroup() },
         async () => { await localDelete('settlement', 'group', currentGroupId.value, id); settlements.value = settlements.value.filter(item => item.id !== id) },
       )
+    }, 'settlements')
+  }
+  async function requestSettlementVoid(id: string, reason = '') {
+    if (!online.value) { error.value = tr('offlineActionDisabled'); return false }
+    return run(async () => {
+      await api.post(`/settlements/${encodeURIComponent(id)}/void-request`, { reason })
+      await refreshGroup()
     }, 'settlements')
   }
 
@@ -1084,11 +1098,11 @@ export const useWorkspaceStore = defineStore('workspace', () => {
 
   return {
     groups, currencies, categories, currentGroupId, currentGroup, currentMembership, isOwner, members, invitations, invitationsMeta, loadInvitations, pendingInvitations,recurringIncomes,incomeOccurrences,
-    subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, permissionDenied, loadGroups, selectGroup,
+    subscriptions, expenses, groupIncomes, groupLedger, settlements, subscriptionsMeta, expensesMeta, settlementsMeta, personalSubscriptionsMeta, personalExpensesMeta, personalIncomesMeta, groupIncomesMeta, groupRoles, ownershipTransfer, memberTransfers, groupAuditLogs, groupAuditMeta, groupPermissions, groupErrors, groupBusy, personalSubscriptions, personalExpenses, personalIncomes, personalLedger, personalSummary, summary, loading, busy, error, localizedError, errorCode, permissionDenied, loadGroups, selectGroup,
     refreshGroup, createGroup, updateGroup, deleteGroup, removeMember, invite, createTempMember, resendInvitation,
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,exportLedgerSources,loadRecurringIncomes,loadIncomeOccurrences,createRecurringIncome,updateRecurringIncome,setRecurringIncomeStatus,confirmIncomeOccurrence,skipIncomeOccurrence,retryIncomeOccurrence,previewRecurringIncomeBackfill,backfillRecurringIncome,
-    loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, refreshGroupLedger,
+    loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, loadSettlementSuggestions, requestSettlementVoid, refreshGroupLedger,
     online, outboxPending, syncOutbox, hasSyncErrors, pauseForMaintenance, resumeAfterMaintenance,
     onEvent,
   }

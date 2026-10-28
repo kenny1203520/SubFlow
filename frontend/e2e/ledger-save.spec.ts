@@ -11,8 +11,9 @@ test('saving an edit remains available during a delayed real SSE refresh', async
   await page.getByLabel('Email').fill(email)
   await page.locator('input[autocomplete="current-password"]').fill('test-password-1234')
   await page.locator('form').getByRole('button', { name: 'Log in' }).click()
-  await expect(page).toHaveURL(/personal/)
+  await expect(page).toHaveURL(/home/)
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 1500 }).catch(() => {})
+  await page.goto('/personal')
   const token = await page.evaluate(() => JSON.parse(localStorage.getItem('pocketbase_auth') || '{}').token as string)
   const headers = { Authorization: `Bearer ${token}` }
   await page.getByRole('button', { name: 'Add record', exact: true }).click()
