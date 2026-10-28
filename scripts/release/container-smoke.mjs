@@ -17,8 +17,9 @@ await mkdir('.release', { recursive: true })
 let started = false
 let browser
 try {
-  docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--tmpfs', '/app/pb_data', '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${randomUUID()}`, image)
+  docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--tmpfs', '/app/pb_data:rw,uid=65532,gid=65532,mode=0750', '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${randomUUID()}`, image)
   started = true
+  assert.equal(docker('inspect', '--format', '{{.Config.User}}', name), '65532:65532', 'runtime image must default to the unprivileged UID')
   const baseURL = `http://${docker('port', name, '8080/tcp')}`
   let ready = false
   for (let attempt = 0; attempt < 120; attempt++) {
@@ -100,7 +101,7 @@ try {
   const secondSetup = await page.request.post('/api/subflow/v1/setup/initialize', { data: { token, adminName: 'Second', email: 'second@example.test', password } })
   assert.ok(secondSetup.status() >= 400, 'setup cannot be repeated')
   assert.deepEqual(errors, [], 'no browser runtime errors')
-  const result = { version, image, freshSetupUI: true, registrationUI: true, invalidLogin: true, logoutUI: true, logoutBackendAudits: true, sharedAttachmentDialog: true, sharedPdfPreview: true, adminList: 200, regularUserDenied: 403, directReload: true, aboutVersion: true, runtimeErrors: 0, device: 'Chromium touch simulation 390px; desktop 1440px' }
+  const result = { version, image, runtimeUser: '65532:65532', freshSetupUI: true, registrationUI: true, invalidLogin: true, logoutUI: true, logoutBackendAudits: true, sharedAttachmentDialog: true, sharedPdfPreview: true, adminList: 200, regularUserDenied: 403, directReload: true, aboutVersion: true, runtimeErrors: 0, device: 'Chromium touch simulation 390px; desktop 1440px' }
   await writeFile('.release/container-smoke.json', `${JSON.stringify(result, null, 2)}\n`)
   console.log(JSON.stringify(result))
 } finally {

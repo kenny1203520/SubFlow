@@ -51,6 +51,11 @@ function volume(suffix) {
 }
 async function start(image, data, suffix) {
   const name = `${prefix}-${suffix}`
+  if (image === candidate) {
+    // Historical volumes may be root-owned after older releases. Fix only
+    // this isolated rehearsal volume before the nonroot candidate starts.
+    docker('run', '--rm', '--user', '0:0', '--volume', `${data}:/app/pb_data`, image, 'init-permissions')
+  }
   docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
   containers.add(name)
   const base = `http://${docker('port', name, '8080/tcp')}`
