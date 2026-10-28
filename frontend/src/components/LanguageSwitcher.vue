@@ -31,7 +31,7 @@ onMounted(() => window.addEventListener('keydown', onKey)); onBeforeUnmount(() =
                         </div>
                     </div><button class="modal-close" type="button" :aria-label="t.close" @click="close">×</button>
                 </header>
-                <div class="language-modal-body"><label class="language-search"><svg viewBox="0 0 24 24"
+                <div class="language-modal-body"><label class="language-search"><span class="sr-only">{{t.searchLanguage}}</span><svg viewBox="0 0 24 24"
                             aria-hidden="true">
                             <circle cx="11" cy="11" r="6" />
                             <path d="m16 16 4 4" />

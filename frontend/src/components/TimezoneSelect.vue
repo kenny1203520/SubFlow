@@ -5,7 +5,7 @@ import BaseDropdown from './BaseDropdown.vue'
 import { timezoneOffset, timezoneLabel } from '../timezone'
 
 type TimeZone = { name: string; displayName: string; offset: string; offsetMinutes: number }
-const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean; id?: string }>(), { disabled: false })
+const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean; id?: string; label?: string }>(), { disabled: false, label: '' })
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const { locale, t } = useI18n(); const query = ref(''); const open = ref(false); const searchInput = ref<HTMLInputElement | null>(null); const searchInputId = useId()
 function getDisplayName(name: string) { return new Intl.DateTimeFormat(locale.value, { timeZone: name, timeZoneName: 'long' }).formatToParts(new Date()).find(value => value.type === 'timeZoneName')?.value || name.replaceAll('_', ' ') }
@@ -13,14 +13,14 @@ const allZones = computed<TimeZone[]>(() => ['UTC', ...Intl.supportedValuesOf('t
 const selectedZone = computed(() => allZones.value.find(zone => zone.name === props.modelValue))
 const matchingZones = computed(() => { const term = query.value.trim().toLocaleLowerCase(locale.value); return allZones.value.filter(zone => !term || `${zone.name} ${zone.displayName} ${zone.offset}`.toLocaleLowerCase(locale.value).includes(term)) })
 const groups = computed(() => matchingZones.value.reduce<Record<string, TimeZone[]>>((all, zone) => { (all[zone.offset] ||= []).push(zone); return all }, {}))
-const label = computed(() => props.modelValue ? timezoneLabel(props.modelValue,new Date(),locale.value) : t.value.timezone)
+const selectedLabel = computed(() => props.modelValue ? timezoneLabel(props.modelValue,new Date(),locale.value) : t.value.timezone)
 function select(value: string, close: () => void) { if (props.disabled) return; emit('update:modelValue', value); query.value = ''; close() }
 function focusSearch() { nextTick(() => searchInput.value?.focus()) }
 </script>
 <template>
     <BaseDropdown v-model="open" class="timezone-select" :panel-label="t.timezone" mobile-sheet @opened="focusSearch"><template
             #trigger="{ open: isOpen, toggle }"><button :id="props.id" class="timezone-trigger" type="button" :aria-expanded="isOpen" :disabled="props.disabled"
-                @click="toggle"><span>{{ label }}</span><svg viewBox="0 0 24 24" aria-hidden="true">
+                :aria-label="props.label||t.timezone" @click="toggle"><span>{{ selectedLabel }}</span><svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m7 10 5 5 5-5" />
                 </svg></button></template><template #default="{ close }">
             <div class="timezone-dropdown">
