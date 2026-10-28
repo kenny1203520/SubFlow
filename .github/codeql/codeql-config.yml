@@ -1,0 +1,9 @@
+paths-ignore:
+  - .codeql/**
+  - .release/**
+  - backend/internal/web/dist/**
+  - frontend/coverage/**
+  - frontend/dist/**
+  - frontend/node_modules/**
+  - frontend/playwright-report/**
+  - frontend/test-results/**

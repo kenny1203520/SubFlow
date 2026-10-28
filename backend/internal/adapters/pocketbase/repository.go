@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/pocketbase/dbx"
-	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tools/types"
+	"ganigeorgiev.com/pocketbase/dbx"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/tools/types"
 
 	"subflow/internal/domain"
 	"subflow/internal/ports"
@@ -1400,6 +1400,7 @@ func (r *Repository) CreateAudit(ctx context.Context, v *domain.AuditLog) error 
 	record.Set("ip", v.IP)
 	record.Set("user_agent", v.UserAgent)
 	record.Set("hash", v.Hash)
+	record.Set("source_event_id", v.SourceEventID)
 	if err = r.app(ctx).Save(record); err != nil {
 		return err
 	}

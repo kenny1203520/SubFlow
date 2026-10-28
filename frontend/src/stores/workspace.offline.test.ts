@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { pb } from '../pocketbase'
 import { useWorkspaceStore } from './workspace'
+import { setMaintenanceBlocked } from '../runtime/maintenance'
 
 vi.mock('../offline/db', () => ({
   get: vi.fn(async () => undefined),
@@ -54,9 +55,23 @@ beforeEach(() => {
   snapshots.clear()
   outboxEntries = []
 })
-afterEach(() => { vi.unstubAllGlobals() })
+afterEach(() => { vi.unstubAllGlobals(); setMaintenanceBlocked(false) })
 
 describe('workspace store offline behavior', () => {
+  it('preserves queued writes without replaying them during maintenance', async () => {
+    outboxEntries.push({ id: 'pending-1', userId: 'u1', kind: 'expense', op: 'create', scope: 'group', groupId: 'g1', targetId: 'local-e1', payload: { title: 'Pending expense' }, createdAt: '2026-10-28T00:00:00Z', status: 'pending' })
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    setMaintenanceBlocked(true)
+
+    const workspace = useWorkspaceStore()
+    await workspace.syncOutbox()
+
+    expect(outboxEntries).toHaveLength(1)
+    expect(outboxEntries[0]).toMatchObject({ id: 'pending-1', status: 'pending', targetId: 'local-e1' })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('falls back to a saved snapshot when refreshGroup runs offline', async () => {
     const fetchMock = vi.fn().mockImplementation((url: string) => {
       if (url.includes('/groups?perPage')) return Promise.resolve(envelope([{ id: 'g1', name: 'Home', description: '', currency: 'TWD', timezone: 'UTC', color: '#000', ownerId: 'u1', createdAt: '', updatedAt: '' }]))

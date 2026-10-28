@@ -15,6 +15,7 @@ const notifications=reactive({items:[],summary:{unread:0,pending:0,unseen:0},pre
 vi.mock('./stores/auth',()=>({useAuthStore:()=>auth}))
 vi.mock('./stores/workspace',()=>({useWorkspaceStore:()=>workspace}))
 vi.mock('./stores/setup',()=>({useSetupStore:()=>setup}))
+vi.mock('./stores/upgrade',()=>({useUpgradeStore:()=>reactive({blocked:false,checked:true,clientUpdateRequired:false,status:{state:'ready',phase:'ready',ready:true},start:vi.fn(async()=>{}),reloadAfterSaving:vi.fn()})}))
 vi.mock('./stores/notifications',()=>({useNotificationsStore:()=>notifications}))
 vi.mock('./pocketbase',()=>({pb:{authStore:{isValid:true}}}))
 vi.mock('./theme',()=>({useTheme:()=>({preference:{value:'system'},resolved:{value:'dark'},setTheme:vi.fn(),toggle:vi.fn()})}))

@@ -5,8 +5,8 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tests"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/tests"
 
 	"subflow/internal/adapters"
 	"subflow/internal/adapters/pocketbase"

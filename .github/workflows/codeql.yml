@@ -1,16 +1,40 @@
 name: CodeQL
 
 on:
-  pull_request:
-    branches: [develop, master]
-  push:
-    branches: [develop, master]
+  workflow_call:
   schedule:
     # Mondays at 06:00 UTC — catches newly-published advisories against
     # code that hasn't otherwise changed recently.
     - cron: '0 6 * * 1'
 
 jobs:
+  local-sarif-gate:
+    name: Local SARIF gate (Go and JavaScript/TypeScript)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      actions: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: '26'
+      - uses: github/codeql-action/setup-codeql@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+        id: codeql
+        with:
+          languages: javascript-typescript, go
+      - name: Analyze both languages and fail on unresolved findings
+        working-directory: frontend
+        env:
+          CODEQL_CLI: ${{ steps.codeql.outputs.codeql-path }}
+        run: npm run codeql
+
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ubuntu-latest
@@ -29,13 +53,14 @@ jobs:
             build-mode: autobuild
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: github/codeql-action/init@v3
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
+          config-file: ./.github/codeql/codeql-config.yml
 
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         with:
           category: '/language:${{ matrix.language }}'

@@ -18,12 +18,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/pocketbase/pocketbase/apis"
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/apis"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	"subflow/internal/application"
 	"subflow/internal/domain"
 	"subflow/internal/ports"
+	"subflow/internal/upgrade"
 )
 
 type shareAttempt struct {
@@ -32,9 +33,12 @@ type shareAttempt struct {
 }
 type API struct {
 	Service        *application.Service
+	Upgrades       *upgrade.Manager
 	shareAttemptMu sync.Mutex
 	shareAttempts  map[string]shareAttempt
 }
+
+const ClientProtocolVersion = 1
 
 type envelope struct {
 	Data any `json:"data"`
@@ -69,8 +73,24 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 		re.Response.Header().Set("X-Request-ID", id)
 		ctx := context.WithValue(re.Request.Context(), requestIDContextKey{}, id)
 		re.Request = re.Request.WithContext(application.WithAuditRequestMeta(ctx, application.AuditRequestMeta{IP: re.RealIP(), UserAgent: re.Request.UserAgent()}))
+		if strings.HasPrefix(re.Request.URL.Path, "/api/subflow/v1/") && isBusinessWrite(re.Request.Method) {
+			protocol := re.Request.Header.Get("X-SubFlow-Protocol")
+			if protocol == "" {
+				protocol = "1"
+			}
+			version, parseErr := strconv.Atoi(protocol)
+			if parseErr != nil || version != ClientProtocolVersion {
+				re.Response.Header().Set("X-SubFlow-Protocol", strconv.Itoa(ClientProtocolVersion))
+				re.Response.Header().Set("Content-Type", "application/json; charset=utf-8")
+				re.Response.WriteHeader(http.StatusUpgradeRequired)
+				return json.NewEncoder(re.Response).Encode(errorEnvelope{Error: apiError{Code: "client_update_required", Message: "Update SubFlow before writing data", RequestID: id}})
+			}
+		}
 		return re.Next()
 	})
+	e.Router.GET("/api/subflow/v1/runtime/status", a.runtimeStatus)
+	e.Router.GET("/api/ready", a.runtimeReady)
+	e.Router.GET("/api/live", a.runtimeLive)
 	bind := apis.RequireAuth("users")
 	e.Router.GET("/api/subflow/v1/setup/status", a.setupStatus)
 	e.Router.GET("/api/subflow/v1/auth/captcha/challenge", a.captchaChallenge)
@@ -180,6 +200,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/system/users", a.listSystemUsers).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/audit-logs", a.listSystemAudit).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/settings", a.getSystemSettings).Bind(bind)
+	e.Router.GET("/api/subflow/v1/system/upgrades", a.listSystemUpgrades).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/system/settings", a.updateSystemSettings).Bind(bind)
 	e.Router.POST("/api/subflow/v1/system/recover-admin", a.recoverSystemAdmin).Bind(apis.RequireSuperuserAuth())
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/subscriptions", a.listSubscriptions).Bind(bind)
@@ -210,6 +231,10 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.PATCH("/api/subflow/v1/attachments/{id}", a.renameAttachment).Bind(bind)
 	e.Router.GET("/api/subflow/v1/export/personal", a.exportPersonalLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/export", a.exportGroupLedger).Bind(bind)
+}
+
+func isBusinessWrite(method string) bool {
+	return method == http.MethodPost || method == http.MethodPut || method == http.MethodPatch || method == http.MethodDelete
 }
 
 func attachmentTargetFromRequest(e *core.RequestEvent) (application.AttachmentTarget, error) {

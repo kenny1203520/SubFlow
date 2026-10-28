@@ -123,6 +123,10 @@ func (s *Service) roleAuditFailure(ctx context.Context, actor, groupID, action, 
 }
 
 func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, resourceID, outcome string, summary ...string) error {
+	return s.auditWithEventID(ctx, "", actor, groupID, action, resource, resourceID, outcome, summary...)
+}
+
+func (s *Service) auditWithEventID(ctx context.Context, eventID, actor, groupID, action, resource, resourceID, outcome string, summary ...string) error {
 	key := os.Getenv("SUBFLOW_AUDIT_HMAC_KEY")
 	if key == "" {
 		key = "subflow-audit-local"
@@ -151,13 +155,17 @@ func (s *Service) audit(ctx context.Context, actor, groupID, action, resource, r
 	payload := strings.Join([]string{"v2", actor, groupID, action, resource, resourceID, outcome, summaryText, ip, userAgent}, "|")
 	mac := hmac.New(sha256.New, []byte(key))
 	_, _ = mac.Write([]byte(payload))
-	return s.Stores.Audits.Create(ctx, &domain.AuditLog{ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, IP: ip, UserAgent: userAgent, Hash: hex.EncodeToString(mac.Sum(nil))})
+	return s.Stores.Audits.Create(ctx, &domain.AuditLog{SourceEventID: eventID, ActorID: actor, GroupID: groupID, Scope: map[bool]string{true: "group", false: "system"}[groupID != ""], Action: action, Resource: resource, ResourceID: resourceID, Outcome: outcome, Summary: summaryText, IP: ip, UserAgent: userAgent, Hash: hex.EncodeToString(mac.Sum(nil))})
 }
 
 // RecordAudit lets focused application services share the central audit policy
 // without depending on adapter assembly details.
 func (s *Service) RecordAudit(ctx context.Context, actor, groupID, action, resource, resourceID, outcome string, summary ...string) error {
 	return s.audit(ctx, actor, groupID, action, resource, resourceID, outcome, summary...)
+}
+
+func (s *Service) RecordAuditEvent(ctx context.Context, eventID, action, outcome, summary string) error {
+	return s.auditWithEventID(ctx, eventID, "", "", action, "upgrade", eventID, outcome, summary)
 }
 
 func generatedRoleKey(name string) string {
@@ -193,6 +201,10 @@ func (s *Service) systemPermission(ctx context.Context, userID, permission strin
 		}
 	}
 	return domain.ErrForbidden
+}
+
+func (s *Service) RequireSystemPermission(ctx context.Context, userID, permission string) error {
+	return s.systemPermission(ctx, userID, permission)
 }
 func (s *Service) SystemPermissions(ctx context.Context, userID string) ([]string, error) {
 	user, err := s.Stores.Users.Get(ctx, userID)

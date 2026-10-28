@@ -15,9 +15,11 @@ jobs:
     name: Verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -32,24 +34,42 @@ jobs:
         working-directory: backend
         run: go tool cover -func=coverage.out | tail -1
 
-      - name: Backend vulnerability scan
-        uses: golang/govulncheck-action@v1
-        with:
-          go-version-file: backend/go.mod
-          work-dir: backend
-
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '26'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # Run before govulncheck: its repo-checkout step resets the worktree to a
+      # shallow checkout, which does not contain the tag's first parent.
+      - name: Verify immutable PocketBase migration history
+        env:
+          MIGRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
+        run: |
+          # Tag push events have either an all-zero `before` SHA (creation) or
+          # the previous annotated tag object SHA (tag update). Compare against
+          # the tagged commit's first parent so release runs apply the same
+          # migration immutability checks as PRs and branch pushes.
+          if [[ "$RELEASE_REF_TYPE" == "tag" || -z "$MIGRATION_BASE" || "$MIGRATION_BASE" =~ ^0+$ ]]; then
+            MIGRATION_BASE="$(git rev-parse HEAD^1)"
+            export MIGRATION_BASE
+          fi
+          echo "Comparing migration history against $MIGRATION_BASE"
+          node scripts/migrations/verify.mjs
+
+      - name: Backend vulnerability scan
+        uses: golang/govulncheck-action@032d45514ae346b1db93c04b0c90b841c370344f # v1
+        with:
+          go-version-file: backend/go.mod
+          work-dir: backend
+
       - name: Frontend install
         working-directory: frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Release metadata contract tests
-        run: node --test scripts/release/metadata.test.mjs scripts/release/publication.test.mjs
+        run: node --test scripts/release/metadata.test.mjs scripts/release/publication.test.mjs scripts/release/upgrade-fixtures.test.mjs
 
       - name: Frontend dependency audit
         working-directory: frontend
@@ -79,19 +99,19 @@ jobs:
       matrix:
         project: [chromium, firefox, webkit, chromium-touch, webkit-touch]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '26'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install test dependencies
         working-directory: frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
       - name: Check SDK matches the pinned browser runtime
         working-directory: frontend
         run: node -e "require('node:assert/strict').equal(require('@playwright/test/package.json').version, '1.64.1', 'Update the pinned browser image with Playwright')"
@@ -102,16 +122,33 @@ jobs:
 
       - name: Upload UI screenshots
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-route-screenshots-${{ github.run_id }}-${{ matrix.project }}
           path: frontend/test-results/**/*.png
           if-no-files-found: ignore
           retention-days: 14
 
+  migration-platform:
+    name: Migration core (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Test migration locks, backups, and restore
+        working-directory: backend
+        run: go test ./internal/upgrade ./cmd/subflow
+
       - name: Upload Playwright report and diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: playwright-report-${{ github.run_id }}-${{ matrix.project }}
           path: |

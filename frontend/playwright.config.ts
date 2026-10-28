@@ -26,7 +26,7 @@ export default defineConfig({
     command: 'node e2e/start.mjs',
     url: 'http://127.0.0.1:4174/api/health',
     reuseExistingServer: false,
-    timeout: 120_000,
+    timeout: 300_000,
     stdout: 'pipe',
     stderr: 'pipe',
   },

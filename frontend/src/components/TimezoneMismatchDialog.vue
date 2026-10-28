@@ -9,5 +9,5 @@ const { tr }=useI18n()
   <h2>{{tr('timezoneMismatchTitle')}}</h2>
   <p>{{tr('timezoneMismatchSaved',{timezone:timezoneLabel(savedTimezone)})}}</p>
   <p>{{tr('timezoneMismatchCurrent',{timezone:timezoneLabel(currentTimezone)})}}</p>
-  <div class="form-actions"><button class="ghost" @click="emit('later')">{{tr('later')}}</button><button class="primary" @click="emit('update')">{{tr('updateTimezone')}}</button></div>
+  <div class="form-actions"><button class="ghost" @click="emit('later')" type="button">{{tr('later')}}</button><button class="primary" @click="emit('update')" type="button">{{tr('updateTimezone')}}</button></div>
 </section></div></Teleport></template>

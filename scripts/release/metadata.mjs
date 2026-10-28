@@ -5,9 +5,12 @@ import { pathToFileURL } from 'node:url'
 const identifier = '(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
 const versionPattern = new RegExp(`^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-(${identifier}(?:\\.${identifier})*))?$`)
 
-export function releaseMetadata(tag, pkg, lock, changelog) {
+export function releaseMetadata(tag, pkg, lock, changelog, backendVersion) {
   if (!versionPattern.test(tag)) throw new Error('Release ref must be a v-prefixed SemVer tag without build metadata.')
   const version = tag.slice(1)
+  if (backendVersion !== undefined && backendVersion.trim() !== version) {
+    throw new Error('Tag, frontend manifest and embedded backend version must match.')
+  }
   if ([pkg.version, lock.version, lock.packages?.['']?.version].some(value => value !== version)) {
     throw new Error('Tag, package.json and both package-lock.json versions must match.')
   }
@@ -27,12 +30,13 @@ export function releaseMetadata(tag, pkg, lock, changelog) {
 
 export async function prepareRelease(root, tag, refType) {
   if (refType !== 'tag') throw new Error('Publishing requires an existing version tag. Select that tag when running this workflow manually.')
-  const [pkg, lock, changelog] = await Promise.all([
+  const [pkg, lock, changelog, backendVersion] = await Promise.all([
     readFile(resolve(root, 'frontend/package.json'), 'utf8'),
     readFile(resolve(root, 'frontend/package-lock.json'), 'utf8'),
     readFile(resolve(root, 'CHANGELOG.md'), 'utf8'),
+    readFile(resolve(root, 'backend/internal/upgrade/version.txt'), 'utf8'),
   ])
-  const metadata = releaseMetadata(tag, JSON.parse(pkg), JSON.parse(lock), changelog)
+  const metadata = releaseMetadata(tag, JSON.parse(pkg), JSON.parse(lock), changelog, backendVersion)
   await mkdir(resolve(root, '.release'), { recursive: true })
   await writeFile(resolve(root, '.release/notes.md'), `${metadata.notes}\n`)
   await writeFile(resolve(root, '.release/metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`)

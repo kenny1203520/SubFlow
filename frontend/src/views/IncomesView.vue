@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch , useId} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
@@ -27,6 +27,8 @@ import { timezoneLabel } from '../timezone'
 import { categoryGlyph, categoryLabel } from '../category'
 import { fromDateInput, toDateInput, todayInput } from '../dateInput'
 import { defaultPageSize } from '../pageSize'
+
+const a11yId = useId()
 
 const workspace = useWorkspaceStore()
 const auth = useAuthStore()
@@ -123,11 +125,11 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
             </div>
             <div class="page-heading-actions"><button v-if="canExport && activeTab==='details'" class="ghost"
                     :disabled="exporting || !workspace.online"
-                    :title="workspace.online ? '' : tr('offlineActionDisabled')" @click="openExportDialog">{{
-                        tr('exportLedger') }}</button><button v-if="canWrite && activeTab==='details'" class="primary" @click="create">{{
+                    :title="workspace.online ? '' : tr('offlineActionDisabled')" @click="openExportDialog" type="button">{{
+                        tr('exportLedger') }}</button><button v-if="canWrite && activeTab==='details'" class="primary" @click="create" type="button">{{
                         tr('createIncome') }}</button></div>
         </div>
-        <nav class="segmented income-tabs" :aria-label="tr('incomeViews')"><button :class="{active:activeTab==='details'}" @click="setTab('details')">{{tr('incomeDetails')}}</button><button :class="{active:activeTab==='recurring'}" @click="setTab('recurring')">{{tr('recurringIncome')}}</button><button :class="{active:activeTab==='pending'}" @click="setTab('pending')">{{tr('pendingIncome')}} <span v-if="workspace.incomeOccurrences.filter(item=>item.status==='pending').length">({{workspace.incomeOccurrences.filter(item=>item.status==='pending').length}})</span></button></nav>
+        <nav class="segmented income-tabs" :aria-label="tr('incomeViews')"><button :class="{active:activeTab==='details'}" @click="setTab('details')" type="button">{{tr('incomeDetails')}}</button><button :class="{active:activeTab==='recurring'}" @click="setTab('recurring')" type="button">{{tr('recurringIncome')}}</button><button :class="{active:activeTab==='pending'}" @click="setTab('pending')" type="button">{{tr('pendingIncome')}} <span v-if="workspace.incomeOccurrences.filter(item=>item.status==='pending').length">({{workspace.incomeOccurrences.filter(item=>item.status==='pending').length}})</span></button></nav>
         <RecurringIncomePanel v-if="activeTab==='recurring'||activeTab==='pending'" :personal="personal" :group-id="personal?'':workspace.currentGroupId" :can-write="canWrite" :pending-only="activeTab==='pending'" />
         <template v-if="activeTab==='details'">
         <div v-if="exportError" class="notice danger inline">{{ exportError }}</div>
@@ -137,7 +139,7 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                 <PageSizeSelect :model-value="perPage" @update:model-value="changePageSize" />
             </div>
             <div v-if="!personal && workspace.groupErrors.incomes" class="resource-error">
-                <p>{{ workspace.groupErrors.incomes }}</p><button class="ghost" @click="workspace.refreshGroup()">{{
+                <p>{{ workspace.groupErrors.incomes }}</p><button class="ghost" @click="workspace.refreshGroup()" type="button">{{
                     tr('retry') }}</button>
             </div>
             <div v-else-if="list.length" class="data-table income-table">
@@ -149,7 +151,7 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                     <div class="item-cell"><span class="service-icon income">{{ item.title.slice(0, 1)
                             }}</span><span><strong>{{ item.title }}</strong><small>{{ recordCategory(item) }}</small>
                             <SyncBadge :pending-sync="item.pendingSync" :sync-error="item.syncError" />
-                        </span></div><span><button class="source-badge" :class="{ shared: item.groupId }" @click="sourceItem=item">{{
+                        </span></div><span><button class="source-badge" :class="{ shared: item.groupId }" @click="sourceItem=item" type="button">{{
                             itemGroup(item)?.name || tr('privateRecord')
                             }}</button></span><span>{{workspace.members.find(m => m.userId === item.earnedBy)?.user?.name ||
                                 (item.earnedBy === auth.record?.id ? tr('myself') : '—')}}</span><span
@@ -160,9 +162,9 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                             <MoneyValue :amount="item.baseAmountMinor" :currency="item.baseCurrency" />
                         </small><small v-if="item.exchangeRate">{{ tr('exchangeRate') }} {{ item.exchangeRate }}</small>
                     </span><span class="row-actions"><AttachmentEntry target-type="income" :target-id="item.id" :online="workspace.online" :disabled="!!item.pendingSync||!!item.syncError"/><button v-if="canEditItem(item)" class="icon-button"
-                            :aria-label="tr('edit')" @click="edit(item)">✎</button><button v-if="canDeleteItem(item)"
+                            :aria-label="tr('edit')" @click="edit(item)" type="button">✎</button><button v-if="canDeleteItem(item)"
                             class="icon-button" :aria-label="tr('remove')"
-                            @click="pendingDelete = item">×</button></span>
+                            @click="pendingDelete = item" type="button">×</button></span>
                 </article>
             </div>
             <EmptyState v-else :title="tr('noIncomes')" :description="tr('noIncomesDesc')" />
@@ -185,20 +187,20 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                 <section class="ledger-form-section">
                     <div class="ledger-section-heading"><strong>{{ tr('item') }}</strong></div>
                     <div class="ledger-form-grid"><label class="ledger-wide">{{ tr('item') }}<input v-model="form.title"
-                                required :placeholder="tr('itemPlaceholder')"></label><label class="ledger-wide">{{
+                                required :placeholder="tr('itemPlaceholder')"></label><label class="ledger-wide" :for="a11yId + '-field-1'">{{
                             tr('category') }}
                             <CategorySelect v-model="form.categoryId" :categories="workspace.categories"
-                                @create="addCategory" />
+                                @create="addCategory"  :id="a11yId + '-field-1'"/>
                         </label></div>
                 </section>
                 <section class="ledger-form-section">
                     <div class="ledger-section-heading"><strong>{{ tr('amount') }} · {{ tr('currency') }}</strong></div>
                     <div class="ledger-form-grid"><label>{{ tr('amount') }}<input v-model="form.amount" type="number"
-                                min="0" :step="amountStep(form.currency)" required></label><label>{{ tr('currency') }}
-                            <CurrencySelect v-model="form.currency" :currencies="workspace.currencies" />
-                        </label><label v-if="!personal">{{ tr('receivedBy') }}
+                                min="0" :step="amountStep(form.currency)" required></label><label :for="a11yId + '-field-2'">{{ tr('currency') }}
+                            <CurrencySelect v-model="form.currency" :currencies="workspace.currencies"  :id="a11yId + '-field-2'"/>
+                        </label><label v-if="!personal" :for="a11yId + '-field-3'">{{ tr('receivedBy') }}
                             <PayerSelect v-model="form.earnedBy" :members="selectableMembers"
-                                :self-id="auth.record?.id" />
+                                :self-id="auth.record?.id"  :id="a11yId + '-field-3'"/>
                         </label><label>{{ tr('date') }}<input v-model="form.receivedOn" type="date" required
                                 @change="receivedOnTouched = true"></label></div>
                 </section>
@@ -242,7 +244,7 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                             rows="3"></textarea></label></section><section v-if="editingId" class="ledger-form-section"><AttachmentPanel target-type="income" :target-id="editingId" :online="workspace.online" :initial-files="pendingFiles" @initial-files-handled="pendingFiles=[]"/></section>
                 <div class="form-actions ledger-form-actions"><button type="button" class="ghost"
                         @click="cancelIncome">{{ tr('cancel') }}</button><button class="primary"
-                        :disabled="workspace.loading || !splitValid || !rateValid">{{ tr(editingId ? 'saveChanges' :
+                        :disabled="workspace.loading || !splitValid || !rateValid" type="submit">{{ tr(editingId ? 'saveChanges' :
                         'createIncome') }}</button>
                 </div>
             </form>
@@ -253,7 +255,7 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                 <label class="toggle-line"><input v-model="exportPersonalIncluded" type="checkbox"><span class="toggle-control"></span><span><strong>{{tr('shareLedgerPersonal')}}</strong></span></label>
                 <label class="toggle-line"><input v-model="exportForecastIncluded" type="checkbox"><span class="toggle-control"></span><span><strong>{{tr('exportForecastIncome')}}</strong></span></label>
                 <div class="export-group-list"><button type="button" class="ghost" @click="exportGroupIds=workspace.groups.map(group=>group.id)">{{tr('exportAllGroups')}}</button><label v-for="group in workspace.groups" :key="group.id" class="toggle-line"><input v-model="exportGroupIds" type="checkbox" :value="group.id"><span class="toggle-control"></span><span><strong>{{group.name}}</strong></span></label></div>
-                <div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="exportDialogOpen=false">{{tr('cancel')}}</button><button class="primary" :disabled="exporting||!workspace.online||(!exportPersonalIncluded&&!exportGroupIds.length)">{{tr('exportLedger')}}</button></div>
+                <div class="form-actions ledger-form-actions"><button type="button" class="ghost" @click="exportDialogOpen=false">{{tr('cancel')}}</button><button class="primary" :disabled="exporting||!workspace.online||(!exportPersonalIncluded&&!exportGroupIds.length)" type="submit">{{tr('exportLedger')}}</button></div>
             </form>
         </AppDrawer>
         <ConfirmDialog :open="!!pendingDelete"

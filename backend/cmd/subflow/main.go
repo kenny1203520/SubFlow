@@ -6,13 +6,15 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
-	"github.com/pocketbase/pocketbase"
-	"github.com/pocketbase/pocketbase/core"
-	_ "github.com/pocketbase/pocketbase/migrations"
+	"ganigeorgiev.com/pocketbase/pocketbase"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	_ "ganigeorgiev.com/pocketbase/pocketbase/migrations"
 
 	"subflow/internal/adapters"
-	pbadapter "subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/config"
 	"subflow/internal/domain"
@@ -20,6 +22,7 @@ import (
 	"subflow/internal/mailer"
 	"subflow/internal/realtime"
 	"subflow/internal/transport/httpapi"
+	"subflow/internal/upgrade"
 	"subflow/internal/web"
 )
 
@@ -54,21 +57,90 @@ func main() {
 	if _, err = adapters.New(driver, nil); err != nil {
 		log.Fatal(err)
 	}
+	pbVersion, err := upgrade.PocketBaseVersion()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if pbVersion != upgrade.RequiredPocketBaseVersion {
+		log.Fatalf("binary uses PocketBase %s; this release requires %s", pbVersion, upgrade.RequiredPocketBaseVersion)
+	}
+	smtpMailer := mailer.FromEnv()
+	if handled, dispatchErr := dispatchUpgradeCommand(os.Args, driver, environment, smtpMailer); handled {
+		if dispatchErr != nil {
+			log.Fatal(dispatchErr)
+		}
+		return
+	}
+	if safePocketBaseCommand(os.Args) {
+		if err := pocketbase.New().Start(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	manager, err := upgrade.New(config.DataDirFromArgs(os.Args))
+	if err != nil {
+		log.Fatal(err)
+	}
+	isServe := len(os.Args) > 1 && os.Args[1] == "serve"
+	acquireErr := manager.Acquire()
+	if acquireErr != nil && !errors.Is(acquireErr, upgrade.ErrRestoreRecovered) && !manager.HasLock() {
+		log.Fatal(acquireErr)
+	}
+	var statusServer *upgrade.StatusServer
+	if isServe {
+		address, _, addressErr := config.ServeHTTPAddress(os.Args)
+		if addressErr != nil {
+			_ = manager.Close()
+			log.Fatal(addressErr)
+		}
+		statusServer, err = upgrade.StartStatusServer(address, manager)
+		if err != nil {
+			_ = manager.Fail("maintenance_server_unavailable")
+			_ = manager.Close()
+			log.Fatal("cannot start maintenance status service: ", err)
+		}
+	}
+	defer manager.Close()
+	if statusServer != nil {
+		defer statusServer.Close()
+	}
+	if errors.Is(acquireErr, upgrade.ErrRestoreRecovered) {
+		log.Printf("SubFlow restore recovery completed; start the matching older binary before continuing")
+		if statusServer != nil {
+			waitForShutdown()
+		}
+		return
+	}
+	if acquireErr != nil {
+		log.Printf("SubFlow restore recovery stopped in maintenance mode: %v", acquireErr)
+		if statusServer != nil {
+			waitForShutdown()
+		} else {
+			log.Fatal(acquireErr)
+		}
+		return
+	}
+	if err := manager.BeginStartup(); err != nil {
+		_ = manager.Fail("upgrade_state_unavailable")
+		_ = manager.Close()
+		log.Fatal("cannot prepare upgrade status: ", err)
+	}
+	if err := manager.Prepare(upgrade.AppVersion(), pbVersion, false); err != nil {
+		if manager.HasLock() {
+			if auditErr := manager.Fail(problemCode(err)); auditErr != nil {
+				log.Printf("could not persist upgrade failure: %v", auditErr)
+			}
+		}
+		log.Printf("SubFlow upgrade stopped: %v", err)
+		if statusServer != nil {
+			waitForShutdown()
+		}
+		return
+	}
 	app := pocketbase.New()
 	events := realtime.NewBus()
-	smtpMailer := mailer.FromEnv()
-	var setupLink string
+	setupLink := registerUpgradeBootstrap(app, manager, driver, appURL, smtpMailer)
 	realtime.BindRecordEvents(app, events)
-	app.OnBootstrap().BindFunc(func(e *core.BootstrapEvent) error {
-		if err := e.Next(); err != nil {
-			return err
-		}
-		setupLink, err = pbadapter.EnsureSchemaWithSetupURL(e.App, appURL)
-		if err != nil {
-			return err
-		}
-		return mailer.ConfigurePocketBase(e.App, smtpMailer)
-	})
 	app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(e *core.RecordRequestPasswordResetRequestEvent) error {
 		if environment != "" && environment != "development" && !e.App.Settings().SMTP.Enabled {
 			return errors.New("SMTP is required for password reset outside development")
@@ -186,13 +258,56 @@ func main() {
 				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)
 			}
 		}()
-		(&httpapi.API{Service: base}).RegisterRoutes(e)
+		(&httpapi.API{Service: base, Upgrades: manager}).RegisterRoutes(e)
 		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: &mailer.Native{App: e.App}, Environment: environment, AppURL: appURL}}).RegisterRoutes(e)
 		web.Register(e)
-		fmt.Print(setupStartupNotice(setupLink))
+		fmt.Print(setupStartupNotice(*setupLink))
+		if err := manager.Complete(func() error {
+			return upgrade.ReconcileDurableEvents(context.Background(), e.App, driver, manager.Dir)
+		}); err != nil {
+			return err
+		}
+		if statusServer != nil {
+			if err := statusServer.Close(); err != nil {
+				return err
+			}
+		}
 		return e.Next()
 	})
 	if err := app.Start(); err != nil {
-		log.Fatal(err)
+		if manager.HasLock() {
+			if auditErr := manager.Fail(problemCode(err)); auditErr != nil {
+				log.Printf("could not persist upgrade failure: %v", auditErr)
+			}
+		}
+		log.Printf("SubFlow stopped: %v", err)
+		if statusServer != nil {
+			waitForShutdown()
+		}
+		return
 	}
+	if !isServe {
+		if err := manager.Complete(func() error {
+			return upgrade.ReconcileDurableEvents(context.Background(), app, driver, manager.Dir)
+		}); err != nil {
+			_ = manager.Fail("upgrade_finalize_failed")
+			log.Printf("SubFlow command completed but upgrade state could not be finalized: %v", err)
+		}
+	}
+}
+
+func safePocketBaseCommand(args []string) bool {
+	for _, arg := range args[1:] {
+		if arg == "--help" || arg == "-h" || arg == "--version" || arg == "version" || strings.HasPrefix(arg, "--help=") {
+			return true
+		}
+	}
+	return false
+}
+
+func waitForShutdown() {
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+	<-shutdown
+	signal.Stop(shutdown)
 }

@@ -9,8 +9,8 @@ import (
 	"net/mail"
 	"strings"
 
-	"github.com/pocketbase/pocketbase/core"
-	pbmailer "github.com/pocketbase/pocketbase/tools/mailer"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	pbmailer "ganigeorgiev.com/pocketbase/pocketbase/tools/mailer"
 
 	"subflow/internal/domain"
 )

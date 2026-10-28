@@ -1,7 +1,7 @@
-﻿<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId } from 'vue'
 import { useI18n, type Locale } from '../i18n'
-const { locale, t, setLocale } = useI18n(); const open = ref(false); const query = ref(''); const searchInput = ref<HTMLInputElement | null>(null)
+const { locale, t, setLocale } = useI18n(); const open = ref(false); const query = ref(''); const searchInput = ref<HTMLInputElement | null>(null); const searchInputId = useId()
 const languages = computed(() => [{ code: 'zh-TW' as Locale, title: t.value.traditionalChinese, subtitle: t.value.traditionalChineseNative, marker: t.value.languageZhMarker }, { code: 'en' as Locale, title: t.value.english, subtitle: t.value.englishNative, marker: t.value.languageEnMarker }])
 const matches = computed(() => { const term = query.value.trim().toLocaleLowerCase(locale.value); return languages.value.filter(item => !term || `${item.code} ${item.title} ${item.subtitle}`.toLocaleLowerCase(locale.value).includes(term)) })
 function close() { open.value = false; query.value = '' }; function openDialog() { open.value = true; nextTick(() => searchInput.value?.focus()) }; function choose(value: Locale) { setLocale(value); close() }; function onKey(event: KeyboardEvent) { if (event.key === 'Escape' && open.value) close() }
@@ -35,7 +35,7 @@ onMounted(() => window.addEventListener('keydown', onKey)); onBeforeUnmount(() =
                             aria-hidden="true">
                             <circle cx="11" cy="11" r="6" />
                             <path d="m16 16 4 4" />
-                        </svg><input ref="searchInput" v-model="query" :placeholder="t.searchLanguage"></label>
+                        </svg><input :id="searchInputId" ref="searchInput" v-model="query" :placeholder="t.searchLanguage"></label>
                     <div v-if="matches.length" class="language-options"><button v-for="item in matches" :key="item.code"
                             type="button" :class="{ selected: locale === item.code }" role="option"
                             :aria-selected="locale === item.code" @click="choose(item.code)"><span

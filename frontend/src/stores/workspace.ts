@@ -12,6 +12,7 @@ import type { OutboxEntry, OutboxKind, OutboxScope } from '../offline/outbox'
 import * as snapshotStore from '../offline/snapshot'
 import { defaultPageSize } from '../pageSize'
 import { toDateInput } from '../dateInput'
+import { isMaintenanceBlocked } from '../runtime/maintenance'
 
 type GroupInput = Pick<Group, 'name' | 'description' | 'currency' | 'timezone' | 'color'> & Partial<Pick<Group, 'attachmentMaxSize'|'attachmentMaxCount'|'attachmentLimitsInherited'|'settlementApprovalEnabled'>>
 // startsOn is optional so an update can omit it when the user did not touch
@@ -122,6 +123,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       if (notify) toast.push('success', tr('actionSucceeded'))
       return true
     } catch (reason) {
+      if (reason instanceof ApiError && (reason.code === 'maintenance' || reason.code === 'client_update_required')) return false
       const value = reason as { status?: number; message?: string }
       permissionDenied.value = value.status === 403
       error.value = value.message ?? ''
@@ -142,6 +144,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // still surface normally through run()'s catch, not be treated as "queue
   // it for later".
   async function withOfflineFallback(attempt: () => Promise<void>, applyOffline: () => Promise<void>): Promise<void> {
+    if (isMaintenanceBlocked()) throw new ApiError(503, 'maintenance', 'SubFlow is in maintenance mode')
     if (online.value) {
       try { await attempt(); return } catch (reason) { if (!(reason instanceof ApiError) || reason.code !== 'network_error') throw reason }
     }
@@ -173,6 +176,21 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   async function savePersonalSnapshot() {
     const userId = auth.record?.id
     if (userId) await snapshotStore.saveSnapshot(userId, 'personal', '', { expenses: personalExpenses.value, subscriptions: personalSubscriptions.value, incomes: personalIncomes.value })
+  }
+  function startRealtime() {
+    if (sseStarted || isMaintenanceBlocked()) return
+    sse = new SSEClient(() => auth.token, onEvent, auth.logout, () => { online.value = true; void syncOutbox() })
+    sseStarted = true
+    void sse.start()
+  }
+  function pauseForMaintenance() {
+    sse?.stop()
+    sseStarted = false
+  }
+  function resumeAfterMaintenance() {
+    if (!auth.record?.id || isMaintenanceBlocked()) return
+    startRealtime()
+    if (online.value) void syncOutbox()
   }
   function localSettlement(id: string, input: Pick<Settlement,'fromUserId'|'toUserId'|'amountMinor'|'settledOn'|'notes'>, groupId: string): Settlement {
     const now = new Date().toISOString()
@@ -213,7 +231,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
         currencies.value = (userId ? await snapshotStore.loadCurrencies(userId) : undefined) || currencies.value
       }
       if (currentGroupId.value && !groups.value.some(group => group.id === currentGroupId.value)) currentGroupId.value = ''
-      if (!sseStarted) { sse = new SSEClient(() => auth.token, onEvent, auth.logout, () => { online.value = true; void syncOutbox() }); sseStarted = true; void sse.start() }
+      startRealtime()
       if (userId) { await refreshOutboxPending(); if (online.value) void syncOutbox() }
     }, 'groups', false)
   }
@@ -453,7 +471,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
   // later entry behind it in the queue. A failed entry is kept, marked, and
   // left for the user to see rather than silently dropped.
   async function syncOutbox() {
-    if (syncing || !online.value || !auth.record?.id) return
+    if (syncing || !online.value || !auth.record?.id || isMaintenanceBlocked()) return
     const userId = auth.record.id
     syncing = true
     try {
@@ -462,6 +480,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
       let touchedGroupId = ''
       let touchedPersonal = false
       for (const entry of entries) {
+        if (isMaintenanceBlocked()) break
         try {
           if (entry.op === 'create') {
             const created = await api.post<{ id: string }>(offlineCreatePath(entry), entry.payload)
@@ -476,6 +495,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
           if (entry.scope === 'group') touchedGroupId = entry.groupId
           else touchedPersonal = true
         } catch (reason) {
+          if (reason instanceof ApiError && (reason.code === 'maintenance' || reason.code === 'client_update_required')) break
           if (reason instanceof ApiError && reason.code === 'network_error') { online.value = false; break }
           const message = reason instanceof ApiError ? reason.message : String(reason)
           await outbox.markFailed(entry.id, message)
@@ -1083,7 +1103,7 @@ export const useWorkspaceStore = defineStore('workspace', () => {
     revokeInvitation, acceptInvitation, loadInvitationInbox, acceptPendingInvitation, declinePendingInvitation, loadGroupRoles, createGroupRole, updateGroupRole, deleteGroupRole, assignGroupRole, loadOwnershipTransfer, createOwnershipTransfer, respondOwnershipTransfer, cancelOwnershipTransfer, loadMemberTransfers, createMemberTransfer, respondMemberTransfer, cancelMemberTransfer, loadGroupAuditLogs, addSubscription, backfillSubscription, updateSubscription, deleteSubscription,
     addExpense, addPersonalExpense, addExpenseForAttachments, updateExpense, deleteExpense, addIncome, addIncomeForAttachments, updateIncome, deleteIncome, addGroupIncome, updateGroupIncome, deleteGroupIncome, addPersonalSubscription, stopSubscription, cancelSubscriptionStop, billingDates, subscriptionPeriods, addSettlement, addSettlementForAttachments, updateSettlement, deleteSettlement, refreshPersonal, refreshPersonalLedger, refreshDashboard, loadCategories, createCategory, updateCategory, archiveCategory, quoteRate, previewGroupCurrency, changeGroupCurrency, retryLast, clear, isForbidden, exportLedger,exportLedgerSources,loadRecurringIncomes,loadIncomeOccurrences,createRecurringIncome,updateRecurringIncome,setRecurringIncomeStatus,confirmIncomeOccurrence,skipIncomeOccurrence,retryIncomeOccurrence,previewRecurringIncomeBackfill,backfillRecurringIncome,
     loadExpensesPage, loadPersonalExpensesPage, loadPersonalIncomesPage, loadGroupIncomesPage, loadSubscriptionsPage, loadPersonalSubscriptionsPage, loadSettlementsPage, loadSettlementSuggestions, requestSettlementVoid, refreshGroupLedger,
-    online, outboxPending, syncOutbox, hasSyncErrors,
+    online, outboxPending, syncOutbox, hasSyncErrors, pauseForMaintenance, resumeAfterMaintenance,
     onEvent,
   }
 })

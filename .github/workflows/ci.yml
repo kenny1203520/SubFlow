@@ -10,6 +10,15 @@ on:
     branches: [develop, master]
 
 jobs:
+  codeql:
+    name: CodeQL
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    uses: ./.github/workflows/codeql.yml
+
   verify:
     name: Verify
     uses: ./.github/workflows/verify.yml
@@ -26,7 +35,7 @@ jobs:
     name: Lint (Go, changed lines only)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -41,23 +50,23 @@ jobs:
             echo "sha=HEAD~1" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
 
       # --new-from-rev scopes findings to lines changed since the diff base,
       # so this can be added without a full-repo cleanup pass first.
-      # golangci-lint v2 is required here: backend/go.mod declares `go
-      # 1.26.0`, and golangci-lint refuses to run when it was built with an
+      # golangci-lint v2 is required here: backend/go.mod declares Go 1.27.3,
+      # and golangci-lint refuses to run when it was built with an
       # older Go toolchain than the target module declares (v1.61.0 was
       # built with go1.23.1 and fails with "the Go language version ...
       # is lower than the targeted Go version"). The action itself must be
       # v7+ too -- v6 doesn't know how to install a v2 golangci-lint at all
       # ("golangci-lint v2 is not supported by golangci-lint-action v6").
-      - uses: golangci/golangci-lint-action@v7
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
-          version: v2.12.2
+          version: v2.15.0
           working-directory: backend
           args: --new-from-rev=${{ steps.base.outputs.sha }}
 
@@ -65,11 +74,11 @@ jobs:
     name: Lint (frontend, changed files only)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
         with:
           node-version: '26'
           cache: npm
@@ -77,7 +86,7 @@ jobs:
 
       - name: Install
         working-directory: frontend
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Resolve diff base
         id: base

@@ -11,7 +11,7 @@ function dismiss() { needRefresh.value = false; offlineReady.value = false }
 <template>
   <div v-if="needRefresh || offlineReady" class="pwa-update-prompt">
     <span>{{ needRefresh ? tr('pwaUpdateAvailable') : tr('pwaOfflineReady') }}</span>
-    <button v-if="needRefresh" class="primary" @click="updateServiceWorker()">{{ tr('pwaReload') }}</button>
-    <button class="ghost" @click="dismiss">{{ tr('close') }}</button>
+    <button v-if="needRefresh" class="primary" @click="updateServiceWorker()" type="button">{{ tr('pwaReload') }}</button>
+    <button class="ghost" @click="dismiss" type="button">{{ tr('close') }}</button>
   </div>
 </template>

@@ -6,6 +6,26 @@
 
 ## [Unreleased]
 
+## [0.2.0-alpha.6] - 2026-10-28
+
+### Added
+- Added a pre-bootstrap upgrade coordinator with an exclusive data-volume lock, verified SHA-256 backups, immutable migration journal, maintenance status endpoints, and `upgrade status`, `upgrade retry`, and `upgrade restore` commands.
+- Added a maintenance screen that pauses API, SSE, and outbox synchronization without discarding local forms or queued writes.
+
+### Changed
+- Upgrade PocketBase to v0.41.0 from its new `ganigeorgiev.com` module path and retain the existing image-decoder security fix.
+- Add readiness and liveness checks and document the stop-old-instance, upgrade, and restore procedure.
+
+## [0.2.0-alpha.5] - 2026-10-27
+
+### Security
+- Reject TIFF files with invalid palette references before PocketBase image processing; add a decoder regression test.
+- Use Vue-generated stable IDs for form controls to remove the CodeQL insecure-randomness findings.
+
+### Changed
+- Sync merged Go, frontend and GitHub Actions dependency updates into the prerelease line.
+- Update the frontend lockfile to remove the `serialize-javascript` XSS advisory.
+
 ## [0.2.0-alpha.4] - 2026-10-23
 
 This is an alpha pre-release. It includes the mobile interface, shared attachment, form and PDF preview repairs merged after Alpha 3. See [Alpha 4 qualification](docs/releases/0.2.0-alpha.4.md) and [functional coverage limits](frontend/e2e/COVERAGE.md).

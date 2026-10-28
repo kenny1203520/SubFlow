@@ -3,7 +3,7 @@ package mailer
 import (
 	"strconv"
 
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 )
 
 // ConfigurePocketBase makes native users password-reset/verification emails

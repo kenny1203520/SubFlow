@@ -23,11 +23,11 @@ services:
     volumes:
       - pb_data:/app/pb_data
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:$${SUBFLOW_HTTP_PORT:-8080}/api/health"]
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:$${SUBFLOW_HTTP_PORT:-8080}/api/ready"]
       interval: 10s
       timeout: 3s
       retries: 8
-      start_period: 15s
+      start_period: 10m
 
 volumes:
   pb_data:
