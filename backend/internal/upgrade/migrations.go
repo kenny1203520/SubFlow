@@ -13,6 +13,7 @@ func Migrations(driver, appURL string, setupLink *string) []Migration {
 	return []Migration{
 		legacyAlphaBaseline(driver, appURL, setupLink),
 		auditIdLimit(),
+		settlementApprovals(),
 	}
 }
 

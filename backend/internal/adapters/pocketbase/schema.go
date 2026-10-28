@@ -33,7 +33,6 @@ const (
 	CollectionRecurringIncomeRevisions = "recurring_income_revisions"
 	CollectionIncomeOccurrences        = "income_occurrences"
 	CollectionSettlements              = "settlements"
-	CollectionSettlementReviews        = "settlement_reviews"
 	CollectionAttachments              = "attachments"
 	CollectionCategories               = "categories"
 	CollectionExchangeRates            = "exchange_rates"
@@ -162,7 +161,7 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		}
 	}
 	groups, err := ensureCollection(app, CollectionGroups, func(c *core.Collection) {
-		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "description", Max: 2000}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.TextField{Name: "timezone", Max: 64}, &core.TextField{Name: "color", Max: 32}, &core.NumberField{Name: "attachment_max_size", OnlyInt: true}, &core.NumberField{Name: "attachment_max_count", OnlyInt: true}, &core.BoolField{Name: "settlement_approval_enabled"}, &core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
+		c.Fields.Add(&core.TextField{Name: "name", Required: true, Max: 120}, &core.TextField{Name: "description", Max: 2000}, &core.SelectField{Name: "currency", Required: true, Values: currencyValues(), MaxSelect: 1}, &core.TextField{Name: "timezone", Max: 64}, &core.TextField{Name: "color", Max: 32}, &core.NumberField{Name: "attachment_max_size", OnlyInt: true}, &core.NumberField{Name: "attachment_max_count", OnlyInt: true}, &core.RelationField{Name: "owner", Required: true, CollectionId: users.Id, MaxSelect: 1, CascadeDelete: true})
 		c.AddIndex("idx_groups_owner", false, "owner", "")
 	})
 	if err != nil {
@@ -381,18 +380,9 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	settlementsCollection, err := ensureCollection(app, CollectionSettlements, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "created_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.DateField{Name: "settled_on", Required: true}, &core.TextField{Name: "notes", Max: 4000}, &core.SelectField{Name: "status", Values: []string{"confirmed", "pending", "rejected", "voided", "withdrawn"}, MaxSelect: 1}, &core.BoolField{Name: "approval_required"}, &core.NumberField{Name: "version", OnlyInt: true})
+	_, err = ensureCollection(app, CollectionSettlements, func(c *core.Collection) {
+		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "from_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "to_user", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "created_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.NumberField{Name: "amount_minor", Required: true, OnlyInt: true}, &core.SelectField{Name: "currency", Values: currencyValues(), MaxSelect: 1}, &core.SelectField{Name: "base_currency", Values: currencyValues(), MaxSelect: 1}, &core.NumberField{Name: "base_amount_minor", OnlyInt: true}, &core.NumberField{Name: "exchange_rate_scaled", OnlyInt: true}, &core.DateField{Name: "exchange_rate_date"}, &core.DateField{Name: "settled_on", Required: true}, &core.TextField{Name: "notes", Max: 4000})
 		c.AddIndex("idx_settlements_group_date", false, "`group`, settled_on", "")
-	})
-	if err != nil {
-		return "", err
-	}
-	_, err = ensureCollection(app, CollectionSettlementReviews, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "group", Required: true, CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.RelationField{Name: "settlement", Required: true, CollectionId: settlementsCollection.Id, MaxSelect: 1, CascadeDelete: true}, &core.SelectField{Name: "action", Required: true, Values: []string{"create", "change", "void"}, MaxSelect: 1}, &core.JSONField{Name: "proposal", MaxSize: 16384}, &core.RelationField{Name: "submitted_by", Required: true, CollectionId: users.Id, MaxSelect: 1}, &core.SelectField{Name: "status", Required: true, Values: []string{"pending", "accepted", "rejected", "withdrawn"}, MaxSelect: 1}, &core.RelationField{Name: "decided_by", CollectionId: users.Id, MaxSelect: 1}, &core.TextField{Name: "reason", Max: 1000}, &core.NumberField{Name: "expected_version", OnlyInt: true})
-		c.AddIndex("idx_settlement_reviews_group_status", false, "`group`, status, created", "")
-		c.AddIndex("idx_settlement_reviews_settlement_status", false, "settlement, status", "")
-		c.AddIndex("idx_settlement_reviews_pending_unique", true, "settlement", "status='pending'")
 	})
 	if err != nil {
 		return "", err
