@@ -46,7 +46,7 @@ try {
   await page.locator('input[autocomplete="new-password"]').fill(password)
   await page.getByLabel('Allow new user registrations', { exact: true }).check()
   await page.getByRole('button', { name: 'Complete setup', exact: true }).click()
-  await expect(page).toHaveURL(/\/personal$/, { timeout: 20000 })
+  await expect(page).toHaveURL(/\/home$/, { timeout: 20000 })
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 1500 }).catch(() => {})
   const auth = async email => {
     const response = await page.request.post('/api/collections/users/auth-with-password', { data: { identity: email, password } })
