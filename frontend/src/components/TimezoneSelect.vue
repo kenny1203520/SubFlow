@@ -5,7 +5,7 @@ import BaseDropdown from './BaseDropdown.vue'
 import { timezoneOffset, timezoneLabel } from '../timezone'
 
 type TimeZone = { name: string; displayName: string; offset: string; offsetMinutes: number }
-const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean }>(), { disabled: false })
+const props = withDefaults(defineProps<{ modelValue: string; disabled?: boolean; ariaLabel?: string }>(), { disabled: false })
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
 const { locale, t } = useI18n(); const query = ref(''); const open = ref(false); const searchInput = ref<HTMLInputElement | null>(null)
 function getDisplayName(name: string) { return new Intl.DateTimeFormat(locale.value, { timeZone: name, timeZoneName: 'long' }).formatToParts(new Date()).find(value => value.type === 'timeZoneName')?.value || name.replaceAll('_', ' ') }
@@ -19,7 +19,7 @@ function focusSearch() { nextTick(() => searchInput.value?.focus()) }
 </script>
 <template>
     <BaseDropdown v-model="open" class="timezone-select" :panel-label="t.timezone" mobile-sheet @opened="focusSearch"><template
-            #trigger="{ open: isOpen, toggle }"><button class="timezone-trigger" type="button" :aria-expanded="isOpen" :disabled="props.disabled"
+            #trigger="{ open: isOpen, toggle }"><button class="timezone-trigger" type="button" :aria-label="props.ariaLabel" :aria-expanded="isOpen" :disabled="props.disabled"
                 @click="toggle"><span>{{ label }}</span><svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="m7 10 5 5 5-5" />
                 </svg></button></template><template #default="{ close }">

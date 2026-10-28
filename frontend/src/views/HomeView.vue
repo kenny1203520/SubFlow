@@ -154,11 +154,11 @@ onMounted(() => void load())
             </div>
             <form v-if="rejectingId===review.id" class="home-reject-form" @submit.prevent="respond(review,'reject')">
               <label>{{ tr('rejectionReason') }}<textarea v-model="rejectionReason" rows="2" required maxlength="1000"></textarea></label>
-              <div class="form-actions"><button class="ghost" type="button" @click="rejectingId='';rejectionReason=''">{{ tr('cancel') }}</button><button class="primary" :disabled="busy||!rejectionReason.trim()">{{ tr('settlementReject') }}</button></div>
+              <div class="form-actions"><button class="ghost" type="button" @click="rejectingId='';rejectionReason=''">{{ tr('cancel') }}</button><button class="primary" type="submit" :disabled="busy||!rejectionReason.trim()">{{ tr('settlementReject') }}</button></div>
             </form>
             <form v-if="approvingId===review.id" class="home-reject-form" @submit.prevent="respond(review,'accept')">
               <label>{{ tr('managerApprovalReason') }}<textarea v-model="approvalReason" rows="2" required maxlength="1000"></textarea></label>
-              <div class="form-actions"><button class="ghost" type="button" @click="approvingId='';approvalReason=''">{{ tr('cancel') }}</button><button class="primary" :disabled="busy||!approvalReason.trim()">{{ tr('settlementApprove') }}</button></div>
+              <div class="form-actions"><button class="ghost" type="button" @click="approvingId='';approvalReason=''">{{ tr('cancel') }}</button><button class="primary" type="submit" :disabled="busy||!approvalReason.trim()">{{ tr('settlementApprove') }}</button></div>
             </form>
           </article>
           <RouterLink v-for="action in data.actions" :key="action.id" class="home-action-item home-notification-action" :to="actionPath(action)"><div class="action-icon" aria-hidden="true">!</div><div class="home-action-copy"><strong>{{ actionTitle(action) }}</strong><small v-if="action.type==='recurring_income_manual_pending'">{{ tr('homeManualIncomePrompt',{date:formatDate(action.scheduledOn||'',{dateStyle:'medium'})}) }}<template v-if="action.message"> / {{ action.message }}</template></small><small v-else>{{ action.message||tr('homeOpenToResolve') }}</small></div><MoneyValue v-if="action.currency" :amount="action.amountMinor||0" :currency="action.currency"/><span class="row-arrow" aria-hidden="true">›</span></RouterLink>
