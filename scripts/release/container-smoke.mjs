@@ -82,7 +82,7 @@ try {
   await expect(visitor.locator('.form-error')).toBeVisible()
   await visitor.locator('input[autocomplete="current-password"]').fill(password)
   await visitor.locator('form').getByRole('button', { name: 'Log in', exact: true }).click()
-  await expect(visitor).toHaveURL(/personal/)
+  await expect(visitor).toHaveURL(/home/)
   const memberToken = await auth(member)
   assert.equal((await page.request.get(list, { headers: { Authorization: memberToken } })).status(), 403)
   await visitor.goto('/admin/notification-emails')
