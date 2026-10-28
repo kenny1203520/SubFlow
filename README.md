@@ -23,7 +23,6 @@ docker compose up --build -d
 docker build -t subflow:local .
 docker run --rm -p 8080:8080 -v subflow-data:/app/pb_data \
   -e SUBFLOW_ENV=production \
-  -e SUBFLOW_APP_URL=https://subflow.example.com \
   subflow:local
 ```
 
@@ -36,17 +35,16 @@ docker compose exec subflow /app/subflow superuser create admin@example.com 'cha
 ## Port 設定
 
 - `SUBFLOW_HTTP_PORT` 是 Go 程序實際監聽的 container port，預設 `8080`。
-- `SUBFLOW_PUBLISH_PORT` 是 Compose 發佈至 host 的 port，預設 `8080`。
 - CLI 明確傳入 `--http` 時優先於 `SUBFLOW_HTTP_PORT`。
-- 若外部 URL 或 host port 不同，必須同步設定 `SUBFLOW_APP_URL`，確保邀請連結正確。
+- Application URL、Application Name 與 SMTP 寄件設定請在 PocketBase Admin (`/_/`) 設定，變更後立即生效。
 
 例如讓程序與 host 都使用 9000：
 
 ```env
 SUBFLOW_HTTP_PORT=9000
-SUBFLOW_PUBLISH_PORT=9000
-SUBFLOW_APP_URL=http://localhost:9000
 ```
+
+Host port 與 container port 預設相同。若需要不同的 host port，請用 Compose override 修改 `ports` 對應；不要新增第二組環境變數。
 
 ## 開發模式
 
@@ -67,7 +65,7 @@ npm install
 npm run dev
 ```
 
-Vite 透過 `VITE_BACKEND_URL` 將 `/api` 代理到 Go backend，預設為 `http://localhost:8080`。
+Vite 從 repository root `.env` 讀取 `SUBFLOW_HTTP_PORT`，並將 `/api` 與 `/_/` 代理到 Go backend。前端瀏覽器使用同源路徑，不需要 `VITE_BACKEND_URL`。
 
 ## 路由與外部服務
 
@@ -77,7 +75,7 @@ Vite 透過 `VITE_BACKEND_URL` 將 `/api` 代理到 Go backend，預設為 `http
 - `/_/`：PocketBase 管理台。
 - `/api/health`：健康檢查。
 
-預設 Compose 不會啟動 PostgreSQL、MySQL、MinIO/S3 或 SMTP image。未來外部資料庫、object storage 與郵件服務透過 adapter、DSN 或環境變數接入；`SUBFLOW_DATA_DRIVER=pocketbase` 仍是目前唯一可執行的資料層。
+PocketBase is the only runtime data layer. SMTP and public application settings are managed in PocketBase Admin (/_/).
 
 ## Turnstile
 
