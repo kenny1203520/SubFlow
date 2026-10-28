@@ -26,6 +26,16 @@ jobs:
     needs: check-tag
     uses: ./.github/workflows/verify.yml
 
+  codeql:
+    name: CodeQL
+    needs: check-tag
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    uses: ./.github/workflows/codeql.yml
+
   check-tag:
     name: Validate tag, versions and changelog
     runs-on: ubuntu-latest
@@ -42,7 +52,7 @@ jobs:
 
   release:
     name: Build and publish
-    needs: [verify, check-tag]
+    needs: [verify, check-tag, codeql]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -104,8 +114,8 @@ jobs:
 
       - name: Verify fresh setup, registration and production SPA/API
         run: node scripts/release/container-smoke.mjs subflow:candidate
-      - name: Rehearse Alpha 1 data upgrade and backup restore
-        run: node scripts/release/upgrade-smoke.mjs
+      - name: Rehearse Alpha 1–5 data upgrades, restart and backup restore
+        run: node scripts/release/upgrade-matrix.mjs subflow:candidate
 
       - name: Build and push
         id: publish
@@ -160,14 +170,15 @@ jobs:
   outcome:
     name: Release outcome
     if: always()
-    needs: [check-tag, verify, release]
+    needs: [check-tag, verify, codeql, release]
     runs-on: ubuntu-latest
     steps:
       - name: Require every publishing stage to succeed
         env:
           CHECK_TAG: ${{ needs.check-tag.result }}
           VERIFY: ${{ needs.verify.result }}
+          CODEQL: ${{ needs.codeql.result }}
           RELEASE: ${{ needs.release.result }}
         run: |
-          printf '## Release outcome\n\n| Stage | Result |\n| --- | --- |\n| Metadata | %s |\n| Verify | %s |\n| Publish and artifact verification | %s |\n' "$CHECK_TAG" "$VERIFY" "$RELEASE" >> "$GITHUB_STEP_SUMMARY"
-          test "$CHECK_TAG" = success && test "$VERIFY" = success && test "$RELEASE" = success
+          printf '## Release outcome\n\n| Stage | Result |\n| --- | --- |\n| Metadata | %s |\n| Verify | %s |\n| CodeQL | %s |\n| Publish and artifact verification | %s |\n' "$CHECK_TAG" "$VERIFY" "$CODEQL" "$RELEASE" >> "$GITHUB_STEP_SUMMARY"
+          test "$CHECK_TAG" = success && test "$VERIFY" = success && test "$CODEQL" = success && test "$RELEASE" = success

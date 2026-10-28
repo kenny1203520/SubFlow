@@ -9,3 +9,4 @@ backend/subflow
 backend/subflow.exe
 *.log
 .release/
+.codeql/

@@ -423,6 +423,9 @@ func (s *Service) UploadAttachment(ctx context.Context, userID string, target At
 		return s.attachmentSuccess(tx, userID, a.GroupID, "attachment.uploaded", a.TargetID, encodeAuditSummary(map[string]any{"target_type": a.TargetType, "size": len(data)}, nil))
 	})
 	if e != nil {
+		if errors.Is(e, domain.ErrAttachmentStorage) {
+			slog.ErrorContext(ctx, "attachment storage operation failed", "error", e)
+		}
 		return fail(e)
 	}
 	return &a, nil

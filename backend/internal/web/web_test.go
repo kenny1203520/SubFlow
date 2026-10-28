@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/pocketbase/pocketbase/core"
-	"github.com/pocketbase/pocketbase/tools/router"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/tools/router"
 )
 
 func event(method, target string) (*core.RequestEvent, *httptest.ResponseRecorder) {
@@ -49,6 +49,25 @@ func TestHeadReturnsNoBody(t *testing.T) {
 	}
 	if response.Body.Len() != 0 {
 		t.Fatal("HEAD response must not include a body")
+	}
+}
+
+func TestMaintenanceHandlerRejectsTraversalAndKeepsAPIMaintenanceResponse(t *testing.T) {
+	handler := MaintenanceHandler()
+	for _, target := range []string{"/../index.html", "/assets/../../index.html", "/%2e%2e/index.html"} {
+		response := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, target, nil)
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusNotFound {
+			t.Errorf("%s: expected 404 for invalid embedded path, got %d", target, response.Code)
+		}
+	}
+
+	response := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/subflow/v1/runtime/status", nil)
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("business API must remain unavailable during maintenance, got %d", response.Code)
 	}
 }
 

@@ -5,6 +5,8 @@ import { mkdir, writeFile } from 'node:fs/promises'
 
 const oldImage = process.argv[2] || 'ghcr.io/kenny1203520/subflow@sha256:99bcb63a7322dc66feb3fc36bb6840cf727b1cc1e283e66e4f83d284a9bebc03'
 const candidate = process.argv[3] || 'subflow:candidate'
+const sourceVersion = process.argv[4] || 'alpha1'
+assert.match(sourceVersion, /^alpha[1-5]$/)
 const prefix = `subflow-upgrade-${randomUUID()}`
 const volumes = new Set()
 const containers = new Set()
@@ -14,6 +16,32 @@ const owner = 'upgrade-owner@example.test'
 const member = 'upgrade-member@example.test'
 function docker(...args) {
   return execFileSync(process.platform === 'win32' ? 'rtk' : 'docker', process.platform === 'win32' ? ['proxy', 'docker', ...args] : args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+}
+function safeUpgradeDetail(name) {
+  const details = []
+  try {
+    const state = JSON.parse(docker('exec', name, '/bin/sh', '-c', 'cat /app/pb_data/.subflow/state.json'))
+    const phase = state.failurePhase || state.phase
+    if (typeof phase === 'string' && /^[a-z_]{1,32}$/.test(phase)) details.push(`phase=${phase}`)
+    const history = Array.isArray(state.history)
+      ? state.history
+          .filter(item => typeof item?.id === 'string' && /^[a-z0-9_]{1,64}$/.test(item.id) && ['running', 'failed', 'complete'].includes(item.status))
+          .map(item => `${item.id}:${item.status}`)
+      : []
+    if (history.length) details.push(`migrations=${history.join(',')}`)
+  } catch { /* Status may be unavailable if the process stopped before writing it. */ }
+  try {
+    const lines = docker('logs', name).split(/\r?\n/).filter(value => /error|failed|stopped|denied|no such|migration|backup|unknown schema|audit/i.test(value))
+    if (lines.length > 0) details.push(lines.slice(-3).map(line => line
+      .replace(/([?&](?:token|key|password|secret)=)[^&\s]+/gi, '$1[redacted]')
+      .replace(/((?:token|secret|key|password)\s*[:=]\s*)\S+/gi, '$1[redacted]')
+      .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
+      .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, '[email]')
+      .replace(/[A-Za-z]:\\[^\s:]+/g, '[path]')
+      .replace(/\/(?:[^\s/:]+\/)*[^\s/:]+/g, '[path]')
+      .slice(0, 180)).join(' | '))
+  } catch { details.push('docker-logs-unavailable') }
+  return details.join('; ') || 'startup-details-unavailable'
 }
 function volume(suffix) {
   const name = `${prefix}-${suffix}`
@@ -26,11 +54,34 @@ async function start(image, data, suffix) {
   docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
   containers.add(name)
   const base = `http://${docker('port', name, '8080/tcp')}`
-  for (let attempt = 0; attempt < 120; attempt++) {
-    try { if ((await fetch(`${base}/api/health`)).ok) return { name, base } } catch {}
-    await new Promise(resolve => setTimeout(resolve, 500))
+  let healthStatus = 'unreachable'
+  let runtimeStatus = 'unavailable'
+  for (let attempt = 0; attempt < 600; attempt++) {
+    try {
+      const response = await fetch(`${base}/api/health`)
+      healthStatus = `http-${response.status}`
+      if (response.ok) return { name, base }
+    } catch { healthStatus = 'unreachable' }
+    if (attempt % 5 === 0) {
+      try {
+        const response = await fetch(`${base}/api/subflow/v1/runtime/status`)
+        if (response.ok) {
+          const payload = await response.json()
+          const state = payload?.data?.state
+          const problemCode = payload?.data?.problemCode
+          if (['checking', 'backing_up', 'migrating', 'verifying', 'ready', 'failed'].includes(state)) {
+            runtimeStatus = state
+            if (state === 'failed' && typeof problemCode === 'string' && /^[a-z0-9_]{1,64}$/.test(problemCode)) runtimeStatus += `:${problemCode}`
+          }
+        }
+      } catch { /* Keep the diagnostic limited to public, safe runtime state. */ }
+      if (runtimeStatus.startsWith('failed')) {
+        throw new Error(`Upgrade test container entered maintenance failure (${healthStatus}, runtime=${runtimeStatus}, cause=${safeUpgradeDetail(name)}).`)
+      }
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000))
   }
-  throw new Error('Upgrade test container did not become healthy.')
+  throw new Error(`Upgrade test container did not become healthy (${healthStatus}, runtime=${runtimeStatus}).`)
 }
 function stop(server) { docker('stop', server.name); containers.delete(server.name) }
 async function request(server, path, token, method = 'GET', body) {
@@ -86,10 +137,16 @@ try {
   }
   server = await start(candidate, data, 'new')
   let upgraded = await verifyData(server)
-  for (const note of upgraded) {
-    assert.equal(note.category, 'task')
-    assert.equal(note.status, 'pending')
-    assert.ok(note.viewedAt, 'legacy notices must not appear as newly unseen')
+  if (sourceVersion === 'alpha1') {
+    for (const note of upgraded) {
+      assert.equal(note.category, 'task')
+      assert.equal(note.status, 'pending')
+      assert.ok(note.viewedAt, 'alpha.1 notices predating the unseen marker must not appear as newly unseen')
+    }
+  } else {
+    const originalState = notes.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt }))
+    const migratedState = upgraded.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt }))
+    assert.deepEqual(migratedState, originalState, 'alpha.2+ notification lifecycle state must be preserved')
   }
   const first = upgraded.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt }))
   stop(server)
@@ -102,9 +159,9 @@ try {
   server = await start(oldImage, restored, 'restore')
   await verifyData(server)
   stop(server)
-  const result = { oldImage, candidate, isolatedData: true, offlineBackup: true, financialAmountAndIds: true, groupPreserved: true, attachmentBytes: true, notificationBackfill: true, restartIdempotent: true, oldVersionRestore: true }
+  const result = { sourceVersion, oldImage, candidate, isolatedData: true, offlineBackup: true, financialAmountAndIds: true, groupPreserved: true, attachmentBytes: true, notificationStatePreserved: true, restartIdempotent: true, oldVersionRestore: true }
   await mkdir('.release', { recursive: true })
-  await writeFile('.release/upgrade-smoke.json', `${JSON.stringify(result, null, 2)}\n`)
+  await writeFile(`.release/upgrade-smoke-${sourceVersion}.json`, `${JSON.stringify(result, null, 2)}\n`)
   console.log(JSON.stringify(result))
 } finally {
   for (const name of containers) { assert.ok(name.startsWith(`${prefix}-`)); docker('rm', '--force', name) }

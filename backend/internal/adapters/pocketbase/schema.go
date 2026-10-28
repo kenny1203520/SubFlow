@@ -8,7 +8,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/pocketbase/pocketbase/core"
+	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	"subflow/internal/domain"
 )
@@ -208,9 +208,10 @@ func EnsureSchemaWithSetupURL(app core.App, appURL string) (string, error) {
 		return "", err
 	}
 	_, err = ensureCollection(app, CollectionAuditLogs, func(c *core.Collection) {
-		c.Fields.Add(&core.RelationField{Name: "actor", CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "scope", Required: true, Max: 24}, &core.TextField{Name: "action", Required: true, Max: 120}, &core.TextField{Name: "resource", Required: true, Max: 80}, &core.TextField{Name: "resource_id", Max: 32}, &core.TextField{Name: "outcome", Required: true, Max: 24}, &core.TextField{Name: "summary", Max: 4000}, &core.TextField{Name: "ip", Max: 80}, &core.TextField{Name: "user_agent", Max: 500}, &core.TextField{Name: "hash", Required: true, Max: 128})
+		c.Fields.Add(&core.RelationField{Name: "actor", CollectionId: users.Id, MaxSelect: 1}, &core.RelationField{Name: "group", CollectionId: groups.Id, MaxSelect: 1, CascadeDelete: true}, &core.TextField{Name: "scope", Required: true, Max: 24}, &core.TextField{Name: "action", Required: true, Max: 120}, &core.TextField{Name: "resource", Required: true, Max: 80}, &core.TextField{Name: "resource_id", Max: 64}, &core.TextField{Name: "outcome", Required: true, Max: 24}, &core.TextField{Name: "summary", Max: 4000}, &core.TextField{Name: "ip", Max: 80}, &core.TextField{Name: "user_agent", Max: 500}, &core.TextField{Name: "hash", Required: true, Max: 128}, &core.TextField{Name: "source_event_id", Max: 64})
 		c.AddIndex("idx_audit_logs_group_created", false, "group, created", "")
 		c.AddIndex("idx_audit_logs_actor_created", false, "actor, created", "")
+		c.AddIndex("idx_audit_logs_source_event_id", true, "source_event_id", "source_event_id != ''")
 	})
 	if err != nil {
 		return "", err

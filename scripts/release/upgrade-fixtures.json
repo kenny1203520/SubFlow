@@ -1,0 +1,22 @@
+[
+  {
+    "version": "alpha1",
+    "image": "ghcr.io/kenny1203520/subflow@sha256:99bcb63a7322dc66feb3fc36bb6840cf727b1cc1e283e66e4f83d284a9bebc03"
+  },
+  {
+    "version": "alpha2",
+    "image": "ghcr.io/kenny1203520/subflow@sha256:2800ec54dde162629b2dc74f8a7012aa2298b4754c77b7280b2afb44247d0bcf"
+  },
+  {
+    "version": "alpha3",
+    "image": "ghcr.io/kenny1203520/subflow@sha256:0e561c88ed409b1441b48ab44b3ee851db8590adaea87440dc41c8056b48b017"
+  },
+  {
+    "version": "alpha4",
+    "image": "ghcr.io/kenny1203520/subflow@sha256:43fdcbfb96acfac69684c078ec55e92ed398a6e64136db35765c11461e8f1bad"
+  },
+  {
+    "version": "alpha5",
+    "image": "ghcr.io/kenny1203520/subflow@sha256:944bb321106005bf840edf7781f2345e1446f624261b08e032e239be07a389ca"
+  }
+]

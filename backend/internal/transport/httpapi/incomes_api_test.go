@@ -2,7 +2,7 @@ package httpapi_test
 
 import (
 	"context"
-	"github.com/pocketbase/pocketbase/tests"
+	"ganigeorgiev.com/pocketbase/pocketbase/tests"
 	"net/http"
 	"strings"
 	"subflow/internal/domain"
