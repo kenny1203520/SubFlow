@@ -9,11 +9,11 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/tests"
 
 	"subflow/internal/adapters"
-	"subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/domain"
 	"subflow/internal/security"
 	"subflow/internal/transport/httpapi"
+	"subflow/internal/upgrade"
 )
 
 // apiFixture wires a PocketBase test app + Service exactly like the
@@ -35,9 +35,7 @@ func newAPITestApp(t *testing.T) *apiFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(app.Cleanup)
-	if err = pocketbase.EnsureSchema(app); err != nil {
-		t.Fatal(err)
-	}
+	applyLatestTestMigrations(t, app, nil)
 	stores, err := adapters.New("pocketbase", app)
 	if err != nil {
 		t.Fatal(err)
@@ -57,10 +55,8 @@ func newUninitializedAPITestApp(t *testing.T) (*apiFixture, string) {
 		t.Fatal(err)
 	}
 	t.Cleanup(app.Cleanup)
-	setupLink, err := pocketbase.EnsureSchemaWithSetupURL(app, "http://localhost:8080")
-	if err != nil {
-		t.Fatal(err)
-	}
+	setupLink := ""
+	applyLatestTestMigrations(t, app, &setupLink)
 	parsed, err := url.Parse(setupLink)
 	if err != nil {
 		t.Fatal(err)
@@ -72,6 +68,28 @@ func newUninitializedAPITestApp(t *testing.T) (*apiFixture, string) {
 	service := application.New(stores)
 	service.Cipher = security.NewSettingsCipher("test-share-settings-key")
 	return &apiFixture{app: app, stores: stores, service: service}, parsed.Query().Get("token")
+}
+
+func applyLatestTestMigrations(t *testing.T, app *tests.TestApp, setupLink *string) {
+	t.Helper()
+	manager, err := upgrade.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := manager.Close(); err != nil {
+			t.Errorf("close test migration manager: %v", err)
+		}
+	})
+	if err := upgrade.RunMigrations(
+		context.Background(),
+		app,
+		manager,
+		upgrade.Migrations("pocketbase", "http://localhost:8080", setupLink),
+		upgrade.MigrationAudit("pocketbase"),
+	); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // factory adapts this fixture's already-seeded app into a
