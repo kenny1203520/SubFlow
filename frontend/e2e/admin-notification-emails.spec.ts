@@ -96,6 +96,6 @@ test('a regular account cannot access notification email management or its API',
   const denied = await page.request.get('/api/subflow/v1/system/notification-emails/failed?page=1&perPage=25&sort=-created', { headers: { Authorization: `Bearer ${token}` } })
   expect(denied.status()).toBe(403)
   await page.goto('/admin/notification-emails')
-  await expect(page).toHaveURL(/\/personal\?denied=admin$/)
+  await expect(page).toHaveURL(/\/home\?denied=admin$/)
   await expect(page.getByRole('heading', { name: 'Failed notification emails' })).toBeHidden()
 })
