@@ -56,11 +56,13 @@ jobs:
       - name: Verify immutable PocketBase migration history
         env:
           MIGRATION_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          RELEASE_REF_TYPE: ${{ github.ref_type }}
         run: |
-          # A tag creation has an all-zero `before` SHA. Compare against the
-          # tagged commit's first parent so release runs apply the same
+          # Tag push events have either an all-zero `before` SHA (creation) or
+          # the previous annotated tag object SHA (tag update). Compare against
+          # the tagged commit's first parent so release runs apply the same
           # migration immutability checks as PRs and branch pushes.
-          if [[ -z "$MIGRATION_BASE" || "$MIGRATION_BASE" =~ ^0+$ ]]; then
+          if [[ "$RELEASE_REF_TYPE" == "tag" || -z "$MIGRATION_BASE" || "$MIGRATION_BASE" =~ ^0+$ ]]; then
             MIGRATION_BASE="$(git rev-parse HEAD^1)"
             export MIGRATION_BASE
           fi
