@@ -13,6 +13,7 @@ import (
 	pbmailer "ganigeorgiev.com/pocketbase/pocketbase/tools/mailer"
 
 	"subflow/internal/domain"
+	"subflow/internal/publicurl"
 )
 
 //go:embed assets/logo.png
@@ -34,12 +35,16 @@ func (m *Native) SendNotification(ctx context.Context, recipient, subject, body 
 		return fmt.Errorf("smtp is not configured")
 	}
 	settings := m.App.Settings()
+	appURL, err := publicurl.Parse(settings.Meta.AppURL)
+	if err != nil {
+		return fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTP or HTTPS URL", domain.ErrConfiguration)
+	}
 	senderName := settings.Meta.SenderName
 	if senderName == "" {
 		senderName = "SubFlow"
 	}
-	text := body + "\r\n\r\n" + strings.TrimRight(settings.Meta.AppURL, "/")
-	html := "<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#16161a\"><h1>" + escapeHTML(subject) + "</h1><p>" + strings.ReplaceAll(escapeHTML(body), "\n", "<br>") + "</p><p><a href=\"" + escapeHTML(strings.TrimRight(settings.Meta.AppURL, "/")) + "\">Open SubFlow</a></p></body></html>"
+	text := body + "\r\n\r\n" + appURL.String()
+	html := "<!doctype html><html><body style=\"font-family:Arial,sans-serif;color:#16161a\"><h1>" + escapeHTML(subject) + "</h1><p>" + strings.ReplaceAll(escapeHTML(body), "\n", "<br>") + "</p><p><a href=\"" + escapeHTML(appURL.String()) + "\">Open SubFlow</a></p></body></html>"
 	message := &pbmailer.Message{From: mail.Address{Name: senderName, Address: settings.Meta.SenderAddress}, To: []mail.Address{{Address: recipient}}, Subject: subject, HTML: html, Text: text}
 	return m.App.NewMailClient().Send(message)
 }

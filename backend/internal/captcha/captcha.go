@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"subflow/internal/publicurl"
+
 	altcha "github.com/altcha-org/altcha-lib-go"
 	altchav2 "github.com/altcha-org/altcha-lib-go/v2"
 )
@@ -76,6 +78,13 @@ func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token
 	}
 	if token == "" {
 		return failure("token_missing")
+	}
+	if provider == "recaptcha" || provider == "turnstile" || provider == "hcaptcha" {
+		parsed, err := publicurl.Parse(app.URL)
+		if err != nil {
+			return failure("application_url_invalid")
+		}
+		app.URL = parsed.String()
 	}
 	switch provider {
 	case "altcha":
@@ -157,8 +166,8 @@ func (v Verifier) Verify(ctx context.Context, provider, secret, verifyURL, token
 	if provider != "turnstile" && provider != "recaptcha" {
 		return nil
 	}
-	parsed, err := url.ParseRequestURI(app.URL)
-	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Hostname() == "" {
+	parsed, err := publicurl.Parse(app.URL)
+	if err != nil {
 		return failure("hostname_not_configured")
 	}
 	if !strings.EqualFold(result.Hostname, parsed.Hostname()) {

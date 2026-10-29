@@ -10,6 +10,7 @@ import (
 
 	"subflow/internal/domain"
 	"subflow/internal/ports"
+	"subflow/internal/publicurl"
 )
 
 type CollaborationService struct {
@@ -30,6 +31,9 @@ func (s *CollaborationService) CreateInvitation(ctx context.Context, userID, gro
 // user instead of only creating a fresh membership — see accept() below.
 func (s *CollaborationService) CreateInvitationBinding(ctx context.Context, userID, groupID, email, targetPlaceholderID string) (*domain.Invitation, error) {
 	if err := s.Base.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
+		return nil, err
+	}
+	if _, err := s.publicApplicationURL(); err != nil {
 		return nil, err
 	}
 	email = domain.NormalizeEmail(email)
@@ -93,15 +97,11 @@ func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitati
 	if err != nil {
 		return nil, err
 	}
-	appURL := s.AppURL
-	if s.ApplicationURL != nil {
-		appURL = s.ApplicationURL()
+	parsedURL, err := s.publicApplicationURL()
+	if err != nil {
+		return nil, err
 	}
-	appURL = strings.TrimRight(appURL, "/")
-	if appURL == "" {
-		return nil, fmt.Errorf("PocketBase Application URL must be configured before sending invitations")
-	}
-	link := appURL + "/invite/" + url.PathEscape(plain)
+	link := parsedURL.String() + "/invite/" + url.PathEscape(plain)
 	if strings.EqualFold(s.Environment, "development") || s.Environment == "" {
 		inv.DebugURL = link
 	}
@@ -135,6 +135,18 @@ func (s *CollaborationService) deliver(ctx context.Context, inv *domain.Invitati
 	s.publish(ctx, "created", *inv)
 	return inv, nil
 }
+
+func (s *CollaborationService) publicApplicationURL() (*url.URL, error) {
+	value := s.AppURL
+	if s.ApplicationURL != nil {
+		value = s.ApplicationURL()
+	}
+	parsed, err := publicurl.Parse(value)
+	if err != nil {
+		return nil, fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTP or HTTPS URL", domain.ErrConfiguration)
+	}
+	return parsed, nil
+}
 func (s *CollaborationService) ListInvitations(ctx context.Context, userID, groupID string, page ports.PageRequest) (ports.Page[domain.Invitation], error) {
 	if err := s.Base.groupPermission(ctx, userID, groupID, "group.members.manage"); err != nil {
 		return ports.Page[domain.Invitation]{}, err
@@ -151,6 +163,9 @@ func (s *CollaborationService) ResendInvitation(ctx context.Context, userID, id 
 	}
 	if inv.Status == domain.InvitationAccepted || inv.Status == domain.InvitationRevoked {
 		return nil, domain.ErrConflict
+	}
+	if _, err = s.publicApplicationURL(); err != nil {
+		return nil, err
 	}
 	plain, hash, err := domain.NewInvitationToken()
 	if err != nil {

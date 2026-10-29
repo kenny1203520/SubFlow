@@ -83,6 +83,7 @@ func TestNotificationDeliveryUsesRealSMTPAndAuditsResult(t *testing.T) {
 			settings.SMTP.Host = host
 			settings.SMTP.Port, _ = strconv.Atoi(port)
 			settings.Meta.SenderAddress = "noreply@example.test"
+			settings.Meta.AppURL = "http://localhost:8080"
 			if err := f.app.Save(settings); err != nil {
 				t.Fatal(err)
 			}

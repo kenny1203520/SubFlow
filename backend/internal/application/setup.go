@@ -5,12 +5,14 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"subflow/internal/captcha"
 	"subflow/internal/domain"
+	"subflow/internal/publicurl"
 )
 
 func (s *Service) SetupStatus(ctx context.Context) (domain.SystemSettings, error) {
@@ -315,16 +317,31 @@ func (s *Service) VerifyCaptcha(ctx context.Context, flow, token, remoteIP strin
 	if s.PocketBaseApplication != nil {
 		appName, appURL = s.PocketBaseApplication()
 	}
-	err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), captcha.ApplicationIdentity{
+	identity := captcha.ApplicationIdentity{
 		Name:    appName,
 		URL:     appURL,
 		SiteKey: settings.CaptchaSiteKey,
-	})
+	}
+	switch settings.CaptchaProvider {
+	case "recaptcha", "turnstile", "hcaptcha":
+		parsedURL, parseErr := publicurl.Parse(appURL)
+		if parseErr != nil {
+			err = fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTP or HTTPS URL", domain.ErrConfiguration)
+		} else {
+			identity.URL = parsedURL.String()
+			err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), identity)
+		}
+	default:
+		err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), identity)
+	}
 	if s.Stores.Audits != nil {
 		outcome := "success"
 		reason := "verified"
 		if err != nil {
 			outcome, reason = "failure", captcha.FailureReason(err)
+			if errors.Is(err, domain.ErrConfiguration) {
+				reason = "application_url_invalid"
+			}
 		}
 		auditErr := s.audit(ctx, "", "", "captcha.verified", "captcha", flow, outcome, encodeAuditSummary(map[string]any{"flow": flow, "provider": settings.CaptchaProvider, "reason": reason}, nil))
 		if auditErr != nil {
