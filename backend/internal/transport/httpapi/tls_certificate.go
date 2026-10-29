@@ -112,24 +112,37 @@ func readTLSCertificateUpload(e *core.RequestEvent) ([]byte, []byte, error) {
 	if err = e.Request.ParseMultipartForm(2 * maxTLSCertificateFileSize); err != nil {
 		return nil, nil, errInvalidTLSCertificateUpload
 	}
-	if e.Request.MultipartForm != nil {
-		defer e.Request.MultipartForm.RemoveAll()
-	}
-	certificateFiles := e.Request.MultipartForm.File["certificate"]
-	keyFiles := e.Request.MultipartForm.File["privateKey"]
-	if len(certificateFiles) != 1 || len(keyFiles) != 1 {
+	form := e.Request.MultipartForm
+	if form == nil {
 		return nil, nil, errInvalidTLSCertificateUpload
 	}
-	certificatePEM, err := readTLSPart(certificateFiles[0])
-	if err != nil {
-		return nil, nil, errInvalidTLSCertificateUpload
+	var certificatePEM, keyPEM []byte
+	parseErr := func() error {
+		certificateFiles := form.File["certificate"]
+		keyFiles := form.File["privateKey"]
+		if len(certificateFiles) != 1 || len(keyFiles) != 1 {
+			return errInvalidTLSCertificateUpload
+		}
+		var partErr error
+		certificatePEM, partErr = readTLSPart(certificateFiles[0])
+		if partErr != nil {
+			return errInvalidTLSCertificateUpload
+		}
+		keyPEM, partErr = readTLSPart(keyFiles[0])
+		if partErr != nil {
+			return errInvalidTLSCertificateUpload
+		}
+		if !strings.Contains(string(certificatePEM), "-----BEGIN CERTIFICATE-----") {
+			return errInvalidTLSCertificateUpload
+		}
+		return nil
+	}()
+	cleanupErr := form.RemoveAll()
+	if cleanupErr != nil {
+		return nil, nil, errors.Join(errInvalidTLSCertificateUpload, cleanupErr)
 	}
-	keyPEM, err := readTLSPart(keyFiles[0])
-	if err != nil {
-		return nil, nil, errInvalidTLSCertificateUpload
-	}
-	if !strings.Contains(string(certificatePEM), "-----BEGIN CERTIFICATE-----") {
-		return nil, nil, errInvalidTLSCertificateUpload
+	if parseErr != nil {
+		return nil, nil, parseErr
 	}
 	return certificatePEM, keyPEM, nil
 }
