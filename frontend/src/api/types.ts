@@ -37,6 +37,7 @@ export type CaptchaTrigger = 'load'|'submit'
 export type CaptchaMode = 'invisible'|'interactive'
 export interface CaptchaFlowConfig { enabled:boolean; trigger:CaptchaTrigger; mode:CaptchaMode }
 export interface CaptchaFlowSettings { register:CaptchaFlowConfig; passwordReset:CaptchaFlowConfig; otpRequest:CaptchaFlowConfig; login:CaptchaFlowConfig }
+export interface CaptchaProviderSettings { siteKey?:string; challengeUrl?:string; verifyUrl?:string; secret?:string; configured:boolean; clear?:boolean }
 export interface Notification { id:string;userId:string;type:string;category:'task'|'exception'|'security';eventKey?:string;title?:string;message?:string;groupId?:string;resourceId?:string;readAt?:string;viewedAt?:string;status:'pending'|'resolved'|'invalid';resolvedAt?:string;outcome?:string;createdAt:string;updatedAt:string }
 export interface NotificationSummary { unread:number;pending:number;unseen:number }
 export interface NotificationPreferences { tasksToast:boolean;tasksEmail:boolean;exceptionsToast:boolean;exceptionsEmail:boolean;securityToast:boolean;securityEmail:boolean }

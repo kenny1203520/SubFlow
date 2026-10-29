@@ -1702,7 +1702,19 @@ func settingsFrom(record *core.Record) domain.SystemSettings {
 		password, oidc = true, true
 	}
 	provider := record.GetString("captcha_provider")
-	return domain.SystemSettings{Initialized: record.GetBool("initialized"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaSiteKey: record.GetString("captcha_site_key"), CaptchaChallengeURL: record.GetString("captcha_challenge_url"), CaptchaVerifyURL: record.GetString("captcha_verify_url"), CaptchaConfigured: record.GetString("captcha_secret") != "", CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: record.GetString("captcha_secret"), AttachmentDefaultMaxSize: int64(record.GetFloat("attachment_default_max_size")), AttachmentDefaultMaxCount: record.GetInt("attachment_default_max_count"), AttachmentLimitMaxSize: int64(record.GetFloat("attachment_limit_max_size")), AttachmentLimitMaxCount: record.GetInt("attachment_limit_max_count"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+	profiles := map[string]domain.CaptchaProviderSettings{}
+	if raw := record.GetString("captcha_providers"); raw != "" && raw != "null" {
+		_ = json.Unmarshal([]byte(raw), &profiles)
+	}
+	if len(profiles) == 0 && provider != "" {
+		profiles[provider] = domain.CaptchaProviderSettings{SiteKey: record.GetString("captcha_site_key"), ChallengeURL: record.GetString("captcha_challenge_url"), VerifyURL: record.GetString("captcha_verify_url"), Secret: record.GetString("captcha_secret"), Configured: record.GetString("captcha_secret") != ""}
+	}
+	selected := profiles[provider]
+	enabled := record.GetBool("captcha_enabled")
+	if provider != "" && (record.GetString("captcha_providers") == "" || record.GetString("captcha_providers") == "null") {
+		enabled = true
+	}
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaEnabled: enabled, CaptchaProviders: profiles, CaptchaSiteKey: selected.SiteKey, CaptchaChallengeURL: selected.ChallengeURL, CaptchaVerifyURL: selected.VerifyURL, CaptchaConfigured: selected.Configured, CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: selected.Secret, AttachmentDefaultMaxSize: int64(record.GetFloat("attachment_default_max_size")), AttachmentDefaultMaxCount: record.GetInt("attachment_default_max_count"), AttachmentLimitMaxSize: int64(record.GetFloat("attachment_limit_max_size")), AttachmentLimitMaxCount: record.GetInt("attachment_limit_max_count"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
 }
 
 // captchaFlowsFrom reads the per-flow captcha configuration, falling back to
@@ -1821,6 +1833,12 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	// Set this unconditionally so changing provider or disabling CAPTCHA can
 	// clear an obsolete credential instead of silently retaining it.
 	record.Set("captcha_secret", value.CaptchaSecretCiphertext)
+	record.Set("captcha_enabled", value.CaptchaEnabled)
+	if value.CaptchaProviders == nil {
+		value.CaptchaProviders = map[string]domain.CaptchaProviderSettings{}
+	}
+	profiles, _ := json.Marshal(value.CaptchaProviders)
+	record.Set("captcha_providers", string(profiles))
 	if value.SetupTokenHash != "" {
 		record.Set("setup_secret_hash", value.SetupTokenHash)
 	}

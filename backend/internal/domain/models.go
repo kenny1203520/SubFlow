@@ -230,27 +230,40 @@ func (s CaptchaFlowSettings) For(flow string) CaptchaFlowConfig {
 // intentionally separate from a user profile so the initial setup can be
 // completed exactly once.
 type SystemSettings struct {
-	Initialized               bool                `json:"initialized"`
-	SiteName                  string              `json:"siteName"`
-	DefaultTimezone           string              `json:"defaultTimezone"`
-	DefaultCurrency           Currency            `json:"defaultCurrency"`
-	AllowRegistration         bool                `json:"allowRegistration"` // legacy response compatibility
-	AllowPasswordRegistration bool                `json:"allowPasswordRegistration"`
-	AllowOIDCRegistration     bool                `json:"allowOidcRegistration"`
-	CaptchaProvider           string              `json:"captchaProvider,omitempty"`
-	CaptchaSiteKey            string              `json:"captchaSiteKey,omitempty"`
-	CaptchaChallengeURL       string              `json:"captchaChallengeUrl,omitempty"`
-	CaptchaVerifyURL          string              `json:"captchaVerifyUrl,omitempty"`
-	CaptchaSecret             string              `json:"captchaSecret,omitempty"`
-	CaptchaConfigured         bool                `json:"captchaConfigured"`
-	CaptchaFlows              CaptchaFlowSettings `json:"captchaFlows"`
-	CaptchaSecretCiphertext   string              `json:"-"`
-	AttachmentDefaultMaxSize  int64               `json:"attachmentDefaultMaxSize"`
-	AttachmentDefaultMaxCount int                 `json:"attachmentDefaultMaxCount"`
-	AttachmentLimitMaxSize    int64               `json:"attachmentLimitMaxSize"`
-	AttachmentLimitMaxCount   int                 `json:"attachmentLimitMaxCount"`
-	SetupTokenHash            string              `json:"-"`
-	SetupTokenIssued          bool                `json:"-"`
+	Initialized               bool                               `json:"initialized"`
+	SiteName                  string                             `json:"siteName"`
+	DefaultTimezone           string                             `json:"defaultTimezone"`
+	DefaultCurrency           Currency                           `json:"defaultCurrency"`
+	AllowRegistration         bool                               `json:"allowRegistration"` // legacy response compatibility
+	AllowPasswordRegistration bool                               `json:"allowPasswordRegistration"`
+	AllowOIDCRegistration     bool                               `json:"allowOidcRegistration"`
+	CaptchaProvider           string                             `json:"captchaProvider,omitempty"`
+	CaptchaEnabled            bool                               `json:"captchaEnabled"`
+	CaptchaProviders          map[string]CaptchaProviderSettings `json:"captchaProviders,omitempty"`
+	CaptchaSiteKey            string                             `json:"captchaSiteKey,omitempty"`
+	CaptchaChallengeURL       string                             `json:"captchaChallengeUrl,omitempty"`
+	CaptchaVerifyURL          string                             `json:"captchaVerifyUrl,omitempty"`
+	CaptchaSecret             string                             `json:"captchaSecret,omitempty"`
+	CaptchaConfigured         bool                               `json:"captchaConfigured"`
+	CaptchaFlows              CaptchaFlowSettings                `json:"captchaFlows"`
+	CaptchaSecretCiphertext   string                             `json:"-"`
+	AttachmentDefaultMaxSize  int64                              `json:"attachmentDefaultMaxSize"`
+	AttachmentDefaultMaxCount int                                `json:"attachmentDefaultMaxCount"`
+	AttachmentLimitMaxSize    int64                              `json:"attachmentLimitMaxSize"`
+	AttachmentLimitMaxCount   int                                `json:"attachmentLimitMaxCount"`
+	SetupTokenHash            string                             `json:"-"`
+	SetupTokenIssued          bool                               `json:"-"`
+}
+
+// CaptchaProviderSettings stores one provider's configuration. Secrets are
+// accepted on writes but never returned by settings reads.
+type CaptchaProviderSettings struct {
+	SiteKey      string `json:"siteKey,omitempty"`
+	ChallengeURL string `json:"challengeUrl,omitempty"`
+	VerifyURL    string `json:"verifyUrl,omitempty"`
+	Secret       string `json:"secret,omitempty"`
+	Configured   bool   `json:"configured"`
+	Clear        bool   `json:"clear,omitempty"`
 }
 
 type SetupInput struct {

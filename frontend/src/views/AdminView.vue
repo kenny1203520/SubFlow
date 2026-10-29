@@ -3,7 +3,7 @@ import './admin.css'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch , useId} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiClient, ApiError } from '../api/client'
-import type { AccessRole, AuditLog, CaptchaFlowConfig, Meta, User } from '../api/types'
+import type { AccessRole, AuditLog, CaptchaFlowConfig, CaptchaProviderSettings, Meta, User } from '../api/types'
 import { useAuthStore } from '../stores/auth'
 import { useWorkspaceStore } from '../stores/workspace'
 import { useI18n } from '../i18n'
@@ -52,7 +52,7 @@ const auditFilters = reactive<AuditFilters>({ q:'', action:'', resource:'', outc
 // Kept in the URL so changing it always changes the route and re-runs load().
 const auditPageSize = computed(() => Number(route.query.perPage) || defaultPageSize.value)
 const defaultCaptchaFlow = (): CaptchaFlowConfig => ({ enabled: false, trigger: 'load', mode: 'interactive' })
-const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', attachmentDefaultMaxSize:20*1048576,attachmentDefaultMaxCount:10,attachmentLimitMaxSize:20*1048576,attachmentLimitMaxCount:10, allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false, captchaFlows: { register: defaultCaptchaFlow(), passwordReset: defaultCaptchaFlow(), otpRequest: defaultCaptchaFlow(), login: defaultCaptchaFlow() } })
+const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', attachmentDefaultMaxSize:20*1048576,attachmentDefaultMaxCount:10,attachmentLimitMaxSize:20*1048576,attachmentLimitMaxCount:10, allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaEnabled:false, captchaProvider: '', captchaProviders:{} as Record<string,CaptchaProviderSettings>, captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false, captchaFlows: { register: defaultCaptchaFlow(), passwordReset: defaultCaptchaFlow(), otpRequest: defaultCaptchaFlow(), login: defaultCaptchaFlow() } })
 function updateAttachmentMiB(field:'attachmentDefaultMaxSize'|'attachmentLimitMaxSize',event:Event){settings.value[field]=Math.round(Number((event.target as HTMLInputElement).value)*1048576)}
 const captchaFlowKeys = ['register', 'passwordReset', 'otpRequest', 'login'] as const
 const captchaFlowLabel = (key: typeof captchaFlowKeys[number]) => tr(`captchaFlow${key.charAt(0).toUpperCase()}${key.slice(1)}`)
@@ -105,7 +105,13 @@ async function loadLogs() {
     auditLoading.value = false
   }
 }
-async function loadSettings() { if (can('system.settings.manage')) settings.value = (await api.get<typeof settings.value>('/system/settings')).data }
+async function loadSettings() {
+  if (!can('system.settings.manage')) return
+  const loaded=(await api.get<typeof settings.value>('/system/settings')).data
+  const profiles=loaded.captchaProviders||{}
+  if(loaded.captchaProvider&&!profiles[loaded.captchaProvider]) profiles[loaded.captchaProvider]={siteKey:loaded.captchaSiteKey,challengeUrl:loaded.captchaChallengeUrl,verifyUrl:loaded.captchaVerifyUrl,configured:loaded.captchaConfigured}
+  settings.value={...settings.value,...loaded,captchaProviders:profiles}
+}
 async function loadFailedEmails() {
   if (!can('system.settings.manage') || section.value !== 'notification-emails') return
   const request = ++failedEmailRequest
@@ -160,19 +166,30 @@ async function load() {
   } catch { if (request === loadRequest) error.value = tr('requestFailed') }
   finally { if (request === loadRequest) loading.value = false }
 }
-function updateCaptchaProvider(value: string) {
-  settings.value.captchaProvider = value
-  if (!value || value === 'altcha_community') {
-    settings.value.captchaSiteKey = ''
-    settings.value.captchaSecret = ''
-  }
-  if (value !== 'altcha_sentinel') {
-    settings.value.captchaChallengeUrl = ''
-    settings.value.captchaVerifyUrl = ''
-  }
+const captchaProviderKeys = ['recaptcha','turnstile','hcaptcha','altcha_community','altcha_sentinel']
+function selectCaptchaProvider(provider:string) {
+	updateCaptchaDraft()
+  settings.value.captchaProvider=provider
+  const profile=settings.value.captchaProviders[provider] || {configured:false}
+  settings.value.captchaSiteKey=profile.siteKey||''; settings.value.captchaChallengeUrl=profile.challengeUrl||''; settings.value.captchaVerifyUrl=profile.verifyUrl||''; settings.value.captchaSecret=''; settings.value.captchaConfigured=!!profile.configured
+}
+function updateCaptchaDraft() {
+  if(!settings.value.captchaProvider)return
+  const profiles=settings.value.captchaProviders||{}
+  const old=profiles[settings.value.captchaProvider]||{configured:false}
+  profiles[settings.value.captchaProvider]={...old,siteKey:settings.value.captchaSiteKey,challengeUrl:settings.value.captchaChallengeUrl,verifyUrl:settings.value.captchaVerifyUrl,secret:settings.value.captchaSecret||undefined}
+  settings.value.captchaProviders=profiles
+}
+function clearCaptchaProvider() {
+  if(!settings.value.captchaProvider)return
+  if(!confirm(tr('captchaClearConfirm')))return
+  settings.value.captchaProviders[settings.value.captchaProvider]={configured:false,clear:true}
+  settings.value.captchaSecret=''; settings.value.captchaConfigured=false
+  settings.value.captchaEnabled=false
 }
 async function saveSettings() {
   try {
+    updateCaptchaDraft()
     settings.value = (await api.patch<typeof settings.value>('/system/settings', settings.value)).data
     await auth.refreshAccess()
     saved.value = true
@@ -253,15 +270,17 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
         <label class="check"><input v-model="settings.allowOidcRegistration" type="checkbox"><span>{{ tr('allowOidcRegistration') }}</span></label>
       </fieldset>
       <fieldset class="settings-section"><legend>{{ tr('captcha') }}</legend>
-        <BaseCombobox :model-value="settings.captchaProvider" :label="tr('captchaProvider')" :options="[{value:'',label:tr('disabled')},{value:'recaptcha',label:'Google reCAPTCHA'},{value:'turnstile',label:'Cloudflare Turnstile'},{value:'hcaptcha',label:'hCaptcha'},{value:'altcha_community',label:'ALTCHA Community'},{value:'altcha_sentinel',label:'ALTCHA Sentinel'}]" @update:model-value="updateCaptchaProvider" />
+        <label class="check"><input v-model="settings.captchaEnabled" type="checkbox"><span>{{ tr('captchaEnabled') }}</span></label>
+        <BaseCombobox :model-value="settings.captchaProvider" :label="tr('captchaProvider')" :options="captchaProviderKeys.map(value=>({value,label:value==='recaptcha'?'Google reCAPTCHA':value==='turnstile'?'Cloudflare Turnstile':value==='hcaptcha'?'hCaptcha':value==='altcha_community'?'ALTCHA Community':'ALTCHA Sentinel'}))" @update:model-value="selectCaptchaProvider" />
         <BaseInput v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'&&settings.captchaProvider!=='altcha_sentinel'" v-model="settings.captchaSiteKey" :label="tr('captchaSiteKey')" />
-        <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaChallengeUrl" label="Sentinel challenge URL" help="Public ALTCHA Sentinel challenge endpoint." />
-        <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaVerifyUrl" label="Sentinel verification URL" help="Server-side /v1/verify/signature endpoint." />
+        <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaChallengeUrl" :label="tr('captchaChallengeUrl')" :help="tr('captchaChallengeUrlHelp')" />
+        <BaseInput v-if="settings.captchaProvider==='altcha_sentinel'" v-model="settings.captchaVerifyUrl" :label="tr('captchaVerifyUrl')" :help="tr('captchaVerifyUrlHelp')" />
         <PasswordField v-if="settings.captchaProvider&&settings.captchaProvider!=='altcha_community'" v-model="settings.captchaSecret" :label="tr('captchaSecret')" autocomplete="off" :help="settings.captchaConfigured ? tr('captchaConfigured') : tr('captchaNotConfigured')" />
-        <p v-if="settings.captchaProvider==='turnstile'" class="field-help">The Site key and Secret key must belong to the same Turnstile widget. Its allowed domain must match PocketBase Dashboard → Settings → Application URL. Secrets are stored encrypted only when SUBFLOW_SETTINGS_ENCRYPTION_KEY is configured.</p>
-        <p v-else-if="settings.captchaProvider==='altcha_community'" class="field-help">ALTCHA Community signing secret is generated and encrypted by SubFlow.</p>
+        <p v-if="settings.captchaProvider==='turnstile'" class="field-help">{{tr('captchaTurnstileHelp')}}</p>
+        <p v-else-if="settings.captchaProvider==='altcha_community'" class="field-help">{{tr('captchaCommunityHelp')}}</p>
+        <button v-if="settings.captchaProvider" class="danger-text" type="button" @click="clearCaptchaProvider">{{tr('captchaClearProvider')}}</button>
       </fieldset>
-      <fieldset v-if="settings.captchaProvider" class="settings-section"><legend>{{ tr('captchaFlows') }}</legend>
+      <fieldset class="settings-section"><legend>{{ tr('captchaFlows') }}</legend>
         <p class="field-help">{{ tr('captchaFlowsHelp') }}</p>
         <div class="captcha-flow-table">
           <div class="captcha-flow-head"><span></span><span>{{ tr('captchaTrigger') }}</span><span>{{ tr('captchaMode') }}</span></div>

@@ -11,9 +11,9 @@ vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => ({ currencies: 
 function response(data: unknown, status = 200) {
   return new Response(JSON.stringify(status === 200 ? { data } : { error: { code: 'not_found', message: 'Not found' } }), { status, headers: { 'Content-Type': 'application/json' } })
 }
-async function render() {
+async function render(path='/admin/notification-emails') {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/admin/:section', name: 'admin-section', component: AdminView }, { path: '/admin', name: 'admin', component: AdminView }] })
-  await router.push('/admin/notification-emails')
+  await router.push(path)
   await router.isReady()
   const wrapper = mount(AdminView, { global: { plugins: [router] } })
   await flushPromises()
@@ -64,6 +64,22 @@ describe('admin notification email states', () => {
     await flushPromises()
     expect(wrapper.find('.failed-email-row').exists()).toBe(false)
     expect(wrapper.find('[role="status"]').text()).toContain('The notification email has been queued again.')
+    wrapper.unmount()
+  })
+})
+
+describe('admin CAPTCHA provider compatibility',()=>{
+  it('allows selecting a provider when older settings responses omit provider profiles',async()=>{
+    const legacySettings={initialized:true,siteName:'SubFlow',defaultTimezone:'UTC',defaultCurrency:'TWD',attachmentDefaultMaxSize:20971520,attachmentDefaultMaxCount:10,attachmentLimitMaxSize:20971520,attachmentLimitMaxCount:10,allowPasswordRegistration:true,allowOidcRegistration:true,captchaProvider:'',captchaFlows:{register:{enabled:false,trigger:'load',mode:'interactive'},passwordReset:{enabled:false,trigger:'load',mode:'interactive'},otpRequest:{enabled:false,trigger:'load',mode:'interactive'},login:{enabled:false,trigger:'load',mode:'interactive'}}}
+    const fetch=vi.fn().mockResolvedValue(response(legacySettings))
+    vi.stubGlobal('fetch',fetch)
+    const wrapper=await render('/admin/settings')
+    await wrapper.find('.combobox-trigger').trigger('click')
+    const option=wrapper.findAll('.combobox-option').find(button=>button.text().includes('Cloudflare Turnstile'))
+    expect(option).toBeTruthy()
+    await option!.trigger('click')
+    expect(wrapper.text()).not.toContain('Page failed to load')
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false)
     wrapper.unmount()
   })
 })

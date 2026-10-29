@@ -1106,7 +1106,12 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	if settings.Initialized {
-		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaProvider": settings.CaptchaProvider, "captchaSiteKey": settings.CaptchaSiteKey, "captchaChallengeUrl": settings.CaptchaChallengeURL, "captchaFlows": settings.CaptchaFlows}, nil)
+		provider, siteKey, challengeURL, flows := settings.CaptchaProvider, settings.CaptchaSiteKey, settings.CaptchaChallengeURL, settings.CaptchaFlows
+		if !settings.CaptchaEnabled {
+			provider, siteKey, challengeURL = "", "", ""
+			flows = domain.CaptchaFlowSettings{}
+		}
+		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaEnabled": settings.CaptchaEnabled, "captchaProvider": provider, "captchaSiteKey": siteKey, "captchaChallengeUrl": challengeURL, "captchaFlows": flows}, nil)
 	}
 	_, valid, err := a.Service.ValidateSetupToken(e.Request.Context(), e.Request.URL.Query().Get("token"))
 	if err != nil {
