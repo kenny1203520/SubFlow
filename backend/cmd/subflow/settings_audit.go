@@ -54,7 +54,7 @@ func registerPocketBaseSettingsAudit(app core.App, encryptionKey string) {
 			}); auditErr != nil {
 				return event.InternalServerError("Settings update audit could not be written.", auditErr)
 			}
-			fieldError := validation.NewError("validation_invalid_value", "Use an absolute HTTP or HTTPS URL without credentials, query, fragment, or path.")
+			fieldError := validation.NewError("validation_invalid_value", "Use an absolute HTTPS URL without credentials, query, fragment, or path.")
 			return event.BadRequestError("Application URL is invalid.", validation.Errors{
 				"meta": validation.Errors{"appURL": fieldError},
 			})

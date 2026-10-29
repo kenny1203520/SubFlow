@@ -15,7 +15,7 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
-預設入口為 `http://localhost:8080`，PocketBase 管理台為 `http://localhost:8080/_/`。Compose 只包含 `subflow` 一個 service，資料保存在 `pb_data` volume。
+預設入口為 `https://localhost:8080`，PocketBase 管理台為 `https://localhost:8080/_/`。首次使用會自動建立本機自簽憑證，瀏覽器會顯示憑證警告；正式部署請在系統管理的設定頁上傳 SubFlow 上游使用的憑證與私鑰，或由反向代理終止公開 TLS。Compose 只包含 `subflow` 一個 service，資料保存在 `pb_data` volume。
 
 不使用 Compose 時：
 
@@ -34,8 +34,9 @@ docker compose exec subflow /app/subflow superuser create admin@example.com 'cha
 
 ## Port 設定
 
-- `SUBFLOW_HTTP_PORT` 是 Go 程序實際監聽的 container port，預設 `8080`。
-- CLI 明確傳入 `--http` 時優先於 `SUBFLOW_HTTP_PORT`。
+- `SUBFLOW_HTTP_PORT` 是 Go 程序 HTTPS listener 的 container port，預設 `8080`（環境變數名稱為相容舊版而保留）。
+- SubFlow 不提供外部 HTTP；PocketBase 的 HTTP redirect listener 僅綁定 loopback。
+- 公開 Application URL 必須是 HTTPS。若反向代理連到 SubFlow 上游，請設定代理以 HTTPS 連線，並依部署的信任方式設定上游憑證驗證。
 - Application URL、Application Name 與 SMTP 寄件設定請在 PocketBase Admin (`/_/`) 設定，變更後立即生效。
 
 例如讓程序與 host 都使用 9000：
@@ -55,7 +56,7 @@ cd backend
 go run ./cmd/subflow serve --env-file ../.env
 ```
 
-預設監聽 `http://localhost:8080`。`--env-file` 會載入指定設定檔，已存在的程序環境變數優先。分享 URL 與加密 CAPTCHA 設定都使用 `SUBFLOW_SETTINGS_ENCRYPTION_KEY`；請保留同一把金鑰，遺失或更換後既有密文無法還原。repository 內含一個 development placeholder，因此不需要先 build frontend；正式 Docker build 會以真正的 Vue `dist` 覆蓋它。
+預設監聽 `https://localhost:8080`。本機開發自簽憑證位於 `backend/pb_data/.subflow/tls/`，Vite 會信任它作為本機後端憑證。`--env-file` 會載入指定設定檔，已存在的程序環境變數優先。分享 URL 與加密 CAPTCHA 設定都使用 `SUBFLOW_SETTINGS_ENCRYPTION_KEY`；請保留同一把金鑰，遺失或更換後既有密文無法還原。repository 內含一個 development placeholder，因此不需要先 build frontend；正式 Docker build 會以真正的 Vue `dist` 覆蓋它。
 
 Frontend：
 
@@ -75,7 +76,7 @@ Vite 從 repository root `.env` 讀取 `SUBFLOW_HTTP_PORT`，並將 `/api` 與 `
 - `/_/`：PocketBase 管理台。
 - `/api/health`：健康檢查。
 
-PocketBase is the only runtime data layer. SMTP and public application settings are managed in PocketBase Admin (/_/).
+PocketBase is the only runtime data layer. SMTP and public application settings are managed in PocketBase Admin (`/_/`). Public TLS termination and any path-prefix routing are configured at the reverse proxy. SubFlow's SPA currently expects its public root path; path-prefix application support requires a separate frontend/deployment change.
 
 ## Turnstile
 

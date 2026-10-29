@@ -43,15 +43,15 @@ func TestEnsureSchemaWithSetupURLReturnsOneTimeLink(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer app.Cleanup()
-	link, err := EnsureSchemaWithSetupURL(app, "http://localhost:5173")
-	if err != nil || !strings.HasPrefix(link, "http://localhost:5173/setup?token=") {
+	link, err := EnsureSchemaWithSetupURL(app, "https://localhost:5173")
+	if err != nil || !strings.HasPrefix(link, "https://localhost:5173/setup?token=") {
 		t.Fatalf("first setup link = %q, %v", link, err)
 	}
 	settings, err := app.FindFirstRecordByFilter(CollectionSystemSettings, "key='primary'", nil)
 	if err != nil || settings.GetString("setup_secret_hash") == "" || strings.Contains(settings.GetString("setup_secret_hash"), link) {
 		t.Fatalf("setup token must be stored only as a hash: %v", err)
 	}
-	if second, secondErr := EnsureSchemaWithSetupURL(app, "http://localhost:5173"); secondErr != nil || second != "" {
+	if second, secondErr := EnsureSchemaWithSetupURL(app, "https://localhost:5173"); secondErr != nil || second != "" {
 		t.Fatalf("second setup link = %q, %v", second, secondErr)
 	}
 }

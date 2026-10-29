@@ -41,7 +41,7 @@ func newTempMemberFixture(t *testing.T) (*application.CollaborationService, adap
 		t.Fatal(err)
 	}
 	base := application.New(stores, "test-only-root-key")
-	collab := &application.CollaborationService{Base: base, Environment: "development", AppURL: "http://localhost:8080"}
+	collab := &application.CollaborationService{Base: base, Environment: "development", AppURL: "https://localhost:8080"}
 
 	ctx := context.Background()
 	group := &domain.Group{Name: "Temp Member Group", Currency: domain.CurrencyTWD, Color: "#7057e8", OwnerID: ownerID, Timezone: "UTC"}

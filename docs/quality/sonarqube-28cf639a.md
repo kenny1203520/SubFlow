@@ -84,4 +84,4 @@ The cloud snapshot is unchanged until a new analysis runs. The register does not
 | AaFt8Zis7GRUxAPz9K5q | docker:S6505 | MAJOR | Dockerfile:4 | 已修正或核對，待重掃 | Dockerfile 的 npm ci 使用 --ignore-scripts。 |
 | AaFt8ZiB7GRUxAPz9K4f | go:S5332 | MINOR | backend/internal/mailer/mailer.go:49 | 已修正或核對，待重掃 | 移除獨立 SMTP 明文寄送實作，統一使用 PocketBase Native mailer。 |
 
-Out of scope for this 77-issue export: six dependency risks and the analysis warning shown in the project summary require separate dependency/CI evidence. Production HTTP remains supported and is documented as cleartext transport risk.
+Out of scope for this 77-issue export: six dependency risks and the analysis warning shown in the project summary require separate dependency/CI evidence. The follow-up security change makes SubFlow HTTPS-only; the public reverse proxy controls public TLS termination and path routing.

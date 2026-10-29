@@ -21,9 +21,11 @@ import (
 // what tests.ApiScenario needs to drive requests through the real HTTP
 // router instead of calling Service methods directly.
 type apiFixture struct {
-	app     *tests.TestApp
-	stores  adapters.Stores
-	service *application.Service
+	app                *tests.TestApp
+	stores             adapters.Stores
+	service            *application.Service
+	certificates       *security.ServerCertificateManager
+	certificateDataDir string
 }
 
 // newAPITestApp seeds schema only (no users/groups) so each test file can
@@ -85,7 +87,7 @@ func applyLatestTestMigrations(t *testing.T, app *tests.TestApp, setupLink *stri
 		context.Background(),
 		app,
 		manager,
-		upgrade.Migrations("pocketbase", "http://localhost:8080", setupLink),
+		upgrade.Migrations("pocketbase", "https://localhost:8080", setupLink),
 		upgrade.MigrationAudit("pocketbase", "test-only-root-key"),
 	); err != nil {
 		t.Fatal(err)
@@ -104,8 +106,41 @@ func (f *apiFixture) factory() func(t testing.TB) *tests.TestApp {
 // auth middleware, and handler wiring, not just Service methods directly.
 func (f *apiFixture) beforeTest() func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
 	return func(t testing.TB, app *tests.TestApp, e *core.ServeEvent) {
-		(&httpapi.API{Service: f.service}).RegisterRoutes(e)
+		(&httpapi.API{Service: f.service, Certificates: f.certificates}).RegisterRoutes(e)
 	}
+}
+
+func (f *apiFixture) enableCertificateManagement(t *testing.T) {
+	t.Helper()
+	f.certificateDataDir = t.TempDir()
+	manager, err := security.OpenServerCertificateManager(f.certificateDataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.certificates = manager
+}
+
+func (f *apiFixture) assignSystemAdmin(t *testing.T, user *core.Record) {
+	t.Helper()
+	roles, err := f.stores.Roles.List(context.Background(), "system", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range roles {
+		if role.Key != "admin" {
+			continue
+		}
+		record, findErr := f.app.FindRecordById("users", user.Id)
+		if findErr != nil {
+			t.Fatal(findErr)
+		}
+		record.Set("system_role", role.ID)
+		if saveErr := f.app.Save(record); saveErr != nil {
+			t.Fatal(saveErr)
+		}
+		return
+	}
+	t.Fatal("expected seeded system administrator role")
 }
 
 func (f *apiFixture) createUser(t *testing.T, email string) *core.Record {

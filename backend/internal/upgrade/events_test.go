@@ -71,7 +71,7 @@ func TestAlpha1AuditResourceIDLimitMigrationAllowsDurableEventImport(t *testing.
 	}
 	setupLink := ""
 	if err := RunMigrations(context.Background(), app, manager, []Migration{
-		legacyAlphaBaseline("pocketbase", "http://localhost:8080", &setupLink),
+		legacyAlphaBaseline("pocketbase", "https://localhost:8080", &setupLink),
 		auditIdLimit(),
 	}, MigrationAudit("pocketbase", "test-only-root-key")); err != nil {
 		t.Fatal(err)

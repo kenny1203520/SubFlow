@@ -2,18 +2,17 @@ package publicurl
 
 import "testing"
 
-func TestParseAcceptsRootHTTPAndHTTPSURLs(t *testing.T) {
+func TestParseAcceptsHTTPSOrigins(t *testing.T) {
 	tests := []struct {
 		name  string
 		input string
 		want  string
 	}{
-		{name: "HTTP domain", input: "http://subflow.example.test", want: "http://subflow.example.test"},
 		{name: "HTTPS with root slash and whitespace", input: "  https://subflow.example.test/  ", want: "https://subflow.example.test"},
-		{name: "localhost with custom port", input: "http://localhost:8080/", want: "http://localhost:8080"},
-		{name: "internal hostname", input: "http://subflow-internal:8090", want: "http://subflow-internal:8090"},
+		{name: "localhost with custom port", input: "https://localhost:8080/", want: "https://localhost:8080"},
+		{name: "internal hostname", input: "https://subflow-internal:8090", want: "https://subflow-internal:8090"},
 		{name: "IPv4", input: "https://192.0.2.10:8443", want: "https://192.0.2.10:8443"},
-		{name: "IPv6", input: "http://[2001:db8::1]:8080", want: "http://[2001:db8::1]:8080"},
+		{name: "IPv6", input: "https://[2001:db8::1]:8080", want: "https://[2001:db8::1]:8080"},
 		{name: "normalizes scheme casing", input: "HTTPS://subflow.example.test", want: "https://subflow.example.test"},
 	}
 	for _, test := range tests {
@@ -31,7 +30,7 @@ func TestParseAcceptsRootHTTPAndHTTPSURLs(t *testing.T) {
 
 func TestParseRejectsUnsupportedURLForms(t *testing.T) {
 	for _, input := range []string{
-		"", "   ", "subflow.example.test", "//subflow.example.test", "ftp://subflow.example.test",
+		"", "   ", "subflow.example.test", "//subflow.example.test", "ftp://subflow.example.test", "http://subflow.example.test",
 		"https:///missing-host", "https://user:password@subflow.example.test", "https://subflow.example.test?",
 		"https://subflow.example.test?next=/", "https://subflow.example.test#", "https://subflow.example.test#invite",
 		"https://subflow.example.test/app", "https://subflow.example.test/app/", "https://subflow.example.test:0",
