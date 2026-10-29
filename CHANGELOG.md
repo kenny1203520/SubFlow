@@ -6,6 +6,31 @@
 
 ## [Unreleased]
 
+## [0.2.0-beta] - 2026-10-29
+
+This is the first 0.2.0 beta for broader acceptance testing. See the [beta testing guide](https://github.com/kenny1203520/SubFlow/blob/v0.2.0-beta/docs/releases/0.2.0-beta.md).
+
+### Added
+- Added an actionable home view and group settlement proposal and approval workflows.
+- Added administrator-managed HTTPS certificate upload and reset controls with audited settings changes.
+
+### Changed
+- Preserve each CAPTCHA provider's settings when switching providers or disabling verification; add an explicit provider-data clearing action and migration from the Alpha settings format.
+- Harden application URL validation, share-cookie signing, upgrade recovery, and the production container runtime.
+
+### Fixed
+- Fixed provider selection for older settings responses and added spacing between personal-ledger date navigation and summary cards.
+
+### Beta testing focus
+- Test upgrades from an Alpha data copy, including restart and backup/restore procedures.
+- Exercise personal and group ledger workflows, settlement approvals, and access permissions.
+- Configure multiple CAPTCHA providers, disable and re-enable verification, and verify that clearing one provider leaves the others intact.
+- Exercise certificate upload/reset and the supported browser layouts on your deployment setup.
+
+### Validation limits
+- CI covers Chromium, Firefox and WebKit with touch emulation; it does not cover physical devices.
+- CI does not validate delivery through external SMTP services or real CAPTCHA provider accounts. Test those integrations with non-production credentials.
+
 ## [0.2.0-alpha.6] - 2026-10-28
 
 ### Added
