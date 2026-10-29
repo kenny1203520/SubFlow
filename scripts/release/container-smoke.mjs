@@ -79,7 +79,7 @@ try {
   await page.getByLabel('Allow new user registrations', { exact: true }).check()
   await page.getByRole('button', { name: 'Complete setup', exact: true }).click()
   try {
-    await expect(page).toHaveURL(/\/personal$/, { timeout: 20000 })
+    await expect.poll(() => new URL(page.url()).pathname, { timeout: 20000 }).toBe('/home')
   } catch (error) {
     await Promise.all(setupResponseReads)
     console.error('Container setup diagnostics', JSON.stringify({ path: new URL(page.url()).pathname, apiResponses: setupResponses, formErrorVisible: await page.locator('.form-error').isVisible(), runtimeErrorCount: errors.length }))
