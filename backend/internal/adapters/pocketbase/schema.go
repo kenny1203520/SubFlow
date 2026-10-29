@@ -114,7 +114,7 @@ func mergePermissions(current, desired []string) ([]string, bool) {
 // EnsureSchema installs the SubFlow baseline idempotently. Domain collections
 // have no public rules because business access is restricted to /api/subflow/v1.
 func EnsureSchema(app core.App) error {
-	_, err := EnsureSchemaWithSetupURL(app, "https://localhost:8080")
+	_, err := EnsureSchemaWithSetupURL(app, "http://localhost:8080")
 	return err
 }
 
