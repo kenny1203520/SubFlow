@@ -31,6 +31,7 @@ func newCaptchaTestService(t *testing.T, flows domain.CaptchaFlowSettings) *Serv
 	t.Helper()
 	settings := domain.SystemSettings{
 		CaptchaProvider:         "altcha_community",
+		CaptchaEnabled:          true,
 		CaptchaSecretCiphertext: "plain:test-secret",
 		CaptchaFlows:            flows,
 	}

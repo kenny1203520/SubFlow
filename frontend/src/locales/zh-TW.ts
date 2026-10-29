@@ -2,6 +2,7 @@ import { incomeAttachmentMessages } from './incomeAttachments'
 import { notificationMessages } from './notifications'
 import { homeMessages } from './home'
 export const zhTW = {
+  captchaEnabled:'啟用反機器人驗證',captchaClearProvider:'清除此供應商資料',captchaClearConfirm:'要清除此 CAPTCHA 供應商已儲存的所有設定嗎？若目前選用此供應商，將同時關閉驗證。',captchaChallengeUrl:'Sentinel 挑戰網址',captchaChallengeUrlHelp:'公開的 ALTCHA Sentinel challenge 端點。',captchaVerifyUrl:'Sentinel 驗證網址',captchaVerifyUrlHelp:'伺服器端 /v1/verify/signature 端點。',captchaTurnstileHelp:'Site key 和 Secret key 必須屬於同一個 Turnstile widget，允許的網域必須符合 PocketBase 的 Application URL。只有設定加密金鑰時，密鑰才會加密儲存。',captchaCommunityHelp:'ALTCHA Community 簽章金鑰由 SubFlow 產生；設定加密金鑰時會加密儲存。',
   ...incomeAttachmentMessages['zh-TW'],
   ...notificationMessages['zh-TW'],
   ...homeMessages['zh-TW'],

@@ -14,6 +14,7 @@ func Migrations(driver, setupURL string, setupLink *string) []Migration {
 		legacyAlphaBaseline(driver, setupURL, setupLink),
 		auditIdLimit(),
 		settlementApprovals(),
+		captchaProviderSettings(),
 	}
 }
 

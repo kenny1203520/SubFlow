@@ -138,7 +138,14 @@ func (s *Service) Register(ctx context.Context, input domain.SetupInput) (*domai
 	return created, nil
 }
 
-func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value domain.SystemSettings) (domain.SystemSettings, error) {
+func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value domain.SystemSettings) (result domain.SystemSettings, retErr error) {
+	defer func() {
+		if retErr != nil {
+			if auditErr := s.audit(ctx, userID, "", "system.settings.updated", "system_settings", "primary", "failure", encodeAuditSummary(map[string]any{"reason": "update_failed"}, nil)); auditErr != nil {
+				retErr = fmt.Errorf("settings update failed and failure audit could not be written: %w", auditErr)
+			}
+		}
+	}()
 	if err := s.systemPermission(ctx, userID, "system.settings.manage"); err != nil {
 		return domain.SystemSettings{}, err
 	}
@@ -174,36 +181,62 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	if value.CaptchaProvider != "" && value.CaptchaProvider != "recaptcha" && value.CaptchaProvider != "turnstile" && value.CaptchaProvider != "hcaptcha" && value.CaptchaProvider != "altcha_community" && value.CaptchaProvider != "altcha_sentinel" {
 		return domain.SystemSettings{}, domain.ErrInvalid
 	}
-	providerChanged := value.CaptchaProvider != current.CaptchaProvider
-	if value.CaptchaProvider == "altcha_community" && value.CaptchaSecret == "" && current.CaptchaSecretCiphertext == "" {
+	profiles := current.CaptchaProviders
+	if profiles == nil {
+		profiles = map[string]domain.CaptchaProviderSettings{}
+	}
+	if value.CaptchaProviders != nil {
+		for provider, requested := range value.CaptchaProviders {
+			if requested.Clear {
+				delete(profiles, provider)
+				continue
+			}
+			previous := profiles[provider]
+			if requested.Secret != "" {
+				if captchaProviderRequiresEncryptedSecret(provider) && !s.Cipher.Available() {
+					return domain.SystemSettings{}, domain.ErrInvalid
+				}
+				ciphertext := "plain:" + requested.Secret
+				if s.Cipher.Available() {
+					encrypted, encryptErr := s.Cipher.Encrypt(requested.Secret)
+					if encryptErr != nil {
+						return domain.SystemSettings{}, encryptErr
+					}
+					ciphertext = encrypted
+				}
+				previous.Secret, previous.Configured = ciphertext, true
+			}
+			previous.SiteKey, previous.ChallengeURL, previous.VerifyURL = requested.SiteKey, requested.ChallengeURL, requested.VerifyURL
+			profiles[provider] = previous
+		}
+	} else if value.CaptchaProvider != "" { // compatibility with older clients
+		profiles[value.CaptchaProvider] = domain.CaptchaProviderSettings{SiteKey: value.CaptchaSiteKey, ChallengeURL: value.CaptchaChallengeURL, VerifyURL: value.CaptchaVerifyURL, Secret: current.CaptchaSecretCiphertext, Configured: current.CaptchaConfigured}
+	}
+	selected := profiles[value.CaptchaProvider]
+	if value.CaptchaEnabled && value.CaptchaProvider == "altcha_community" && selected.Secret == "" {
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
 			return domain.SystemSettings{}, err
 		}
-		value.CaptchaSecret = fmt.Sprintf("%x", key)
-	}
-	if value.CaptchaSecret != "" {
-		if captchaProviderRequiresEncryptedSecret(value.CaptchaProvider) && !s.Cipher.Available() {
-			return domain.SystemSettings{}, domain.ErrInvalid
-		}
+		generated := fmt.Sprintf("%x", key)
+		selected.Secret = "plain:" + generated
 		if s.Cipher.Available() {
-			ciphertext, cipherErr := s.Cipher.Encrypt(value.CaptchaSecret)
-			if cipherErr != nil {
-				return domain.SystemSettings{}, cipherErr
+			ciphertext, encryptErr := s.Cipher.Encrypt(generated)
+			if encryptErr != nil {
+				return domain.SystemSettings{}, encryptErr
 			}
-			value.CaptchaSecretCiphertext = ciphertext
-		} else {
-			value.CaptchaSecretCiphertext = "plain:" + value.CaptchaSecret
+			selected.Secret = ciphertext
 		}
-	} else if providerChanged || value.CaptchaProvider == "" {
-		value.CaptchaSecretCiphertext = ""
-	} else {
-		value.CaptchaSecretCiphertext = current.CaptchaSecretCiphertext
+		selected.Configured = true
 	}
-	if captchaFlowsEnabled(value.CaptchaFlows) && captchaProviderRequiresSecret(value.CaptchaProvider) && value.CaptchaSecretCiphertext == "" {
+	profiles[value.CaptchaProvider] = selected
+	value.CaptchaProviders = profiles
+	value.CaptchaSiteKey, value.CaptchaChallengeURL, value.CaptchaVerifyURL = selected.SiteKey, selected.ChallengeURL, selected.VerifyURL
+	value.CaptchaSecretCiphertext, value.CaptchaConfigured = selected.Secret, selected.Configured
+	if value.CaptchaEnabled && captchaFlowsEnabled(value.CaptchaFlows) && captchaProviderRequiresSecret(value.CaptchaProvider) && selected.Secret == "" {
 		return domain.SystemSettings{}, domain.ErrInvalid
 	}
-	if captchaFlowsEnabled(value.CaptchaFlows) && captchaProviderRequiresSiteKey(value.CaptchaProvider) && strings.TrimSpace(value.CaptchaSiteKey) == "" {
+	if value.CaptchaEnabled && captchaFlowsEnabled(value.CaptchaFlows) && captchaProviderRequiresSiteKey(value.CaptchaProvider) && strings.TrimSpace(value.CaptchaSiteKey) == "" {
 		return domain.SystemSettings{}, domain.ErrInvalid
 	}
 	value.CaptchaConfigured = value.CaptchaSecretCiphertext != ""
@@ -218,6 +251,8 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	settingsChanges.addBool("allow_password_registration", current.AllowPasswordRegistration, value.AllowPasswordRegistration)
 	settingsChanges.addBool("allow_oidc_registration", current.AllowOIDCRegistration, value.AllowOIDCRegistration)
 	settingsChanges.addString("captcha_provider", current.CaptchaProvider, value.CaptchaProvider)
+	settingsChanges.addBool("captcha_enabled", current.CaptchaEnabled, value.CaptchaEnabled)
+	settingsChanges.addBool("captcha_flows_changed", false, current.CaptchaFlows != value.CaptchaFlows)
 	settingsChanges.addBool("captcha_secret_changed", false, current.CaptchaSecretCiphertext != value.CaptchaSecretCiphertext)
 	settingsChanges.addInt64("attachment_default_max_size", current.AttachmentDefaultMaxSize, value.AttachmentDefaultMaxSize)
 	settingsChanges.addInt("attachment_default_max_count", current.AttachmentDefaultMaxCount, value.AttachmentDefaultMaxCount)
@@ -245,6 +280,11 @@ func (s *Service) GetSystemSettings(ctx context.Context, userID string) (domain.
 func (s *Service) sanitiseSettings(value domain.SystemSettings) domain.SystemSettings {
 	value.CaptchaSecret = ""
 	value.CaptchaSecretCiphertext = ""
+	for provider, profile := range value.CaptchaProviders {
+		profile.Secret = ""
+		profile.Clear = false
+		value.CaptchaProviders[provider] = profile
+	}
 	return value
 }
 
@@ -303,7 +343,7 @@ func (s *Service) captchaSecretValue(ciphertext string) (string, error) {
 // pre-existing global on/off (settings.CaptchaProvider == "").
 func (s *Service) VerifyCaptcha(ctx context.Context, flow, token, remoteIP string) error {
 	settings, err := s.Stores.Settings.Get(ctx)
-	if err != nil || settings.CaptchaProvider == "" {
+	if err != nil || settings.CaptchaProvider == "" || !settings.CaptchaEnabled {
 		return err
 	}
 	if !settings.CaptchaFlows.For(flow).Enabled {
@@ -356,7 +396,7 @@ func (s *Service) CommunityCaptchaChallenge(ctx context.Context, flow string) (a
 	if err != nil {
 		return nil, err
 	}
-	if settings.CaptchaProvider != "altcha_community" && settings.CaptchaProvider != "altcha" {
+	if !settings.CaptchaEnabled || !settings.CaptchaFlows.For(flow).Enabled || settings.CaptchaProvider != "altcha_community" && settings.CaptchaProvider != "altcha" {
 		return nil, domain.ErrNotFound
 	}
 	secret, err := s.captchaSecretValue(settings.CaptchaSecretCiphertext)
