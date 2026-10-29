@@ -47,7 +47,7 @@ try {
   await page.locator('input[autocomplete="new-password"]').fill(password)
   await page.getByLabel('Allow new user registrations', { exact: true }).check()
   await page.getByRole('button', { name: 'Complete setup', exact: true }).click()
-  await expect(page).toHaveURL(/\/personal$/, { timeout: 20000 })
+  await expect(page).toHaveURL(/\/home$/, { timeout: 20000 })
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 1500 }).catch(() => {})
   const auth = async email => {
     const response = await page.request.post('/api/collections/users/auth-with-password', { data: { identity: email, password } })
@@ -83,7 +83,7 @@ try {
   await expect(visitor.locator('.form-error')).toBeVisible()
   await visitor.locator('input[autocomplete="current-password"]').fill(password)
   await visitor.locator('form').getByRole('button', { name: 'Log in', exact: true }).click()
-  await expect(visitor).toHaveURL(/personal/)
+  await expect(visitor).toHaveURL(/home/)
   const memberToken = await auth(member)
   assert.equal((await page.request.get(list, { headers: { Authorization: memberToken } })).status(), 403)
   await visitor.goto('/admin/notification-emails')

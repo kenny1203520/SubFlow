@@ -10,7 +10,6 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/tests"
 
 	"subflow/internal/adapters"
-	"subflow/internal/adapters/pocketbase"
 	"subflow/internal/application"
 	"subflow/internal/domain"
 	"subflow/internal/ports"
@@ -33,9 +32,7 @@ func newSettlementFixture(t *testing.T) settlementFixture {
 		t.Fatal(err)
 	}
 	t.Cleanup(app.Cleanup)
-	if err = pocketbase.EnsureSchema(app); err != nil {
-		t.Fatal(err)
-	}
+	applyLatestTestMigrations(t, app)
 	stores, err := adapters.New("pocketbase", app)
 	if err != nil {
 		t.Fatal(err)

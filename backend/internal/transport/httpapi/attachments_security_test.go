@@ -153,3 +153,58 @@ func TestAttachmentGroupPermissionsAndHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestSettlementApprovalSnapshotPreventsDirectAttachmentMutation(t *testing.T) {
+	f := newAPITestApp(t)
+	owner := f.createUser(t, "settlement-attachment-owner@example.com")
+	member := f.createUser(t, "settlement-attachment-member@example.com")
+	ctx := context.Background()
+	group := f.seedGroup(t, owner.Id, member.Id)
+	create := func() *domain.Settlement {
+		t.Helper()
+		value, err := f.service.CreateSettlement(ctx, owner.Id, domain.Settlement{
+			GroupID: group.ID, FromUserID: owner.Id, ToUserID: member.Id, AmountMinor: 300,
+			SettledOn: time.Now().Add(-time.Hour),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return value
+	}
+
+	legacy := create()
+	if legacy.ApprovalRequired {
+		t.Fatal("settlement created while approval was disabled must retain that rule snapshot")
+	}
+	group.SettlementApprovalEnabled = true
+	if err := f.stores.Groups.Update(ctx, group); err != nil {
+		t.Fatal(err)
+	}
+	legacyPage, err := f.service.ListAttachments(ctx, owner.Id, application.AttachmentTarget{Type: "settlement", ID: legacy.ID})
+	if err != nil || !legacyPage.Access.CanUpload {
+		t.Fatalf("changing the group setting must not alter legacy settlement attachment access: %#v (%v)", legacyPage.Access, err)
+	}
+
+	managed := create()
+	if !managed.ApprovalRequired || managed.Status != "pending" {
+		t.Fatalf("new settlement should be captured by the enabled review rule: %#v", managed)
+	}
+	reviews, err := f.service.ListSettlementReviews(ctx, member.Id, group.ID)
+	if err != nil || len(reviews) != 1 {
+		t.Fatalf("recipient should be able to find the pending settlement review: %#v (%v)", reviews, err)
+	}
+	if _, err = f.service.RespondSettlementReview(ctx, member.Id, reviews[0].ID, "accept", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	managedPage, err := f.service.ListAttachments(ctx, owner.Id, application.AttachmentTarget{Type: "settlement", ID: managed.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !managedPage.Access.CanRead || managedPage.Access.CanUpload || managedPage.Access.CanDelete || managedPage.Access.CanRename || !managedPage.Access.ModificationRequiresReview {
+		t.Fatalf("approved settlement attachments must remain readable but reject direct mutations: %#v", managedPage.Access)
+	}
+	if _, err = f.service.UploadAttachment(ctx, owner.Id, application.AttachmentTarget{Type: "settlement", ID: managed.ID, RequestID: "direct-settlement-attachment"}, "receipt.pdf", []byte("%PDF-1.7")); !errors.Is(err, domain.ErrConflict) {
+		t.Fatalf("direct upload must not bypass settlement confirmation: %v", err)
+	}
+}

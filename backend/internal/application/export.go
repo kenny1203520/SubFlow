@@ -471,7 +471,11 @@ func listAllSettlements(ctx context.Context, s *Service, userID, groupID string)
 		if err != nil {
 			return nil, err
 		}
-		all = append(all, result.Items...)
+		for _, item := range result.Items {
+			if domain.SettlementIsEffective(item) {
+				all = append(all, item)
+			}
+		}
 		if page >= result.TotalPages || len(result.Items) == 0 {
 			return all, nil
 		}

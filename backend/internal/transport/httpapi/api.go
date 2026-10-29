@@ -116,6 +116,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.DELETE("/api/subflow/v1/categories/{id}", a.archiveCategory).Bind(bind)
 	e.Router.GET("/api/subflow/v1/exchange-rates/quote", a.exchangeRateQuote).Bind(bind)
 	e.Router.GET("/api/subflow/v1/dashboard", a.workspaceDashboard).Bind(bind)
+	e.Router.GET("/api/subflow/v1/home", a.homeDashboard).Bind(bind)
 	e.Router.GET("/api/subflow/v1/subscriptions", a.listPersonalSubscriptions).Bind(bind)
 	e.Router.POST("/api/subflow/v1/subscriptions", a.createPersonalSubscription).Bind(bind)
 	e.Router.GET("/api/subflow/v1/expenses", a.listPersonalExpenses).Bind(bind)
@@ -152,6 +153,7 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/currency-change/preview", a.previewCurrencyChange).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/currency-change", a.changeCurrency).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/summary", a.dashboard).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/settlement-suggestions", a.settlementSuggestions).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/ledger", a.groupLedger).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/incomes", a.listGroupIncomes).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/incomes", a.createGroupIncome).Bind(bind)
@@ -216,9 +218,13 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.PATCH("/api/subflow/v1/expenses/{id}", a.updateExpense).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/expenses/{id}", a.deleteExpense).Bind(bind)
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/settlements", a.listSettlements).Bind(bind)
+	e.Router.GET("/api/subflow/v1/groups/{groupId}/settlement-reviews", a.listSettlementReviews).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/settlements", a.createSettlement).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/settlements/{id}", a.updateSettlement).Bind(bind)
 	e.Router.DELETE("/api/subflow/v1/settlements/{id}", a.deleteSettlement).Bind(bind)
+	e.Router.POST("/api/subflow/v1/settlements/{id}/void-request", a.requestSettlementVoid).Bind(bind)
+	e.Router.POST("/api/subflow/v1/settlement-reviews/{id}/respond", a.respondSettlementReview).Bind(bind)
+	e.Router.POST("/api/subflow/v1/settlement-reviews/{id}/withdraw", a.withdrawSettlementReview).Bind(bind)
 	e.Router.GET("/api/subflow/v1/attachments", a.listAttachments).Bind(bind)
 	e.Router.POST("/api/subflow/v1/attachments", a.uploadAttachment).Bind(bind)
 	e.Router.GET("/api/subflow/v1/attachments/{id}/content", a.readAttachment).Bind(bind)
@@ -1034,6 +1040,20 @@ func (a *API) workspaceDashboard(e *core.RequestEvent) error {
 	}
 	return ok(e, http.StatusOK, v, nil)
 }
+func (a *API) homeDashboard(e *core.RequestEvent) error {
+	value, err := a.Service.HomeDashboard(e.Request.Context(), authID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) settlementSuggestions(e *core.RequestEvent) error {
+	value, err := a.Service.SettlementSuggestions(e.Request.Context(), authID(e), groupID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
 func (a *API) billingDates(e *core.RequestEvent) error {
 	limit, _ := strconv.Atoi(e.Request.URL.Query().Get("limit"))
 	if limit == 0 {
@@ -1601,6 +1621,46 @@ func (a *API) listSettlements(e *core.RequestEvent) error {
 		return fail(e, err)
 	}
 	return ok(e, http.StatusOK, values.Items, pageMeta(values))
+}
+func (a *API) listSettlementReviews(e *core.RequestEvent) error {
+	values, err := a.Service.ListSettlementReviews(e.Request.Context(), authID(e), groupID(e))
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, values, nil)
+}
+func (a *API) requestSettlementVoid(e *core.RequestEvent) error {
+	var input struct {
+		Reason string `json:"reason"`
+	}
+	if e.Request.ContentLength != 0 && e.BindBody(&input) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.RequestSettlementVoid(e.Request.Context(), authID(e), e.Request.PathValue("id"), input.Reason)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusCreated, value, nil)
+}
+func (a *API) respondSettlementReview(e *core.RequestEvent) error {
+	var input struct {
+		Decision string `json:"decision"`
+		Reason   string `json:"reason"`
+	}
+	if e.BindBody(&input) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	value, err := a.Service.RespondSettlementReview(e.Request.Context(), authID(e), e.Request.PathValue("id"), input.Decision, input.Reason)
+	if err != nil {
+		return fail(e, err)
+	}
+	return ok(e, http.StatusOK, value, nil)
+}
+func (a *API) withdrawSettlementReview(e *core.RequestEvent) error {
+	if err := a.Service.WithdrawSettlementReview(e.Request.Context(), authID(e), e.Request.PathValue("id")); err != nil {
+		return fail(e, err)
+	}
+	return noContent(e)
 }
 func (a *API) createSettlement(e *core.RequestEvent) error {
 	var value domain.Settlement

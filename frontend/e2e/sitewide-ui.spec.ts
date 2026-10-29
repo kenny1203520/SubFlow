@@ -10,7 +10,7 @@ async function signInAsTestOwner(page: Page) {
   await page.getByLabel('Email').fill('owner@example.test')
   await page.locator('input[autocomplete="current-password"]').fill('test-password-1234')
   await page.locator('form').getByRole('button', { name: 'Log in' }).click()
-  await expect(page).toHaveURL(/personal/)
+  await expect(page).toHaveURL(/home/)
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 1500 }).catch(() => {})
 }
 
@@ -38,6 +38,31 @@ async function expectNoHorizontalOverflow(page: Page) {
   })
   expect(clipped, 'Form controls must stay within the viewport even when an ancestor clips overflow').toEqual([])
 }
+
+test('actionable home and primary navigation stay usable on mobile', async ({ page }) => {
+  await signInAsTestOwner(page)
+  await page.goto('/home')
+  await expect(page.getByRole('heading', { name: 'Outstanding balances' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Needs your attention', exact: true })).toBeVisible()
+  const navigation = page.getByRole('navigation', { name: 'Primary navigation' })
+  for (const name of ['Home', 'Personal ledger', 'Groups', 'More']) {
+    await expect(navigation.getByRole('link', { name })).toBeVisible()
+  }
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expectNoHorizontalOverflow(page)
+  const navBounds = await navigation.boundingBox()
+  expect(navBounds).not.toBeNull()
+  expect(navBounds!.y + navBounds!.height).toBeGreaterThanOrEqual(800)
+  await navigation.getByRole('link', { name: 'More' }).click()
+  await expect(page).toHaveURL(/\/more$/)
+  await expect(page.getByRole('heading', { name: 'More', exact: true })).toBeVisible()
+
+  await page.goto('/personal/expenses')
+  await expect(navigation.getByRole('link', { name: 'Personal ledger' })).toHaveClass(/router-link-active/)
+  await page.goto('/groups')
+  await expect(navigation.getByRole('link', { name: 'Groups' })).toHaveClass(/router-link-active/)
+})
 
 test('all application routes render on desktop and narrow screens', async ({ page }, testInfo) => {
   test.setTimeout(120_000)
@@ -141,7 +166,7 @@ test('all application routes render on desktop and narrow screens', async ({ pag
   await expect(groupNameInput).toHaveValue(updatedGroupName)
 
   const routes = [
-    '/overview', '/groups', '/personal', '/personal/incomes', '/personal/expenses', '/personal/subscriptions',
+    '/home', '/more', '/overview', '/groups', '/personal', '/personal/incomes', '/personal/expenses', '/personal/subscriptions',
     '/personal/share', '/profile', '/notifications', '/about', '/admin', '/admin/settings', '/admin/users',
     '/admin/roles', '/admin/audit', '/admin/notification-emails',
     `${groupPath}/overview`, `${groupPath}/ledger`, `${groupPath}/expenses`, `${groupPath}/incomes`,

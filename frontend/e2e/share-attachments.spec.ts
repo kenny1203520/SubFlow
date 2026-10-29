@@ -11,7 +11,7 @@ async function signIn(page: Page, browserName: string) {
   await page.getByLabel('Email').fill(email)
   await page.locator('input[autocomplete="current-password"]').fill('test-password-1234')
   await page.locator('form').getByRole('button', { name: 'Log in' }).click()
-  await expect(page).toHaveURL(/personal/)
+  await expect(page).toHaveURL(/home/)
   await page.goto('/personal/share')
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 1500 }).catch(() => {})
 }
