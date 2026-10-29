@@ -6,7 +6,7 @@ COPY frontend/ ./
 RUN npm run build
 RUN node -p "require('./package.json').version" > /src/frontend/app-version.txt
 
-FROM dhi.io/golang:1-alpine-dev AS backend-builder
+FROM dhi.io/golang:1.27.3-alpine3.24-dev AS backend-builder
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download
