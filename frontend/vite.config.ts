@@ -3,7 +3,7 @@ import { loadEnv } from 'vite'
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
-import { dirname, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 // package.json is the single source of truth for the released version; the
@@ -13,7 +13,19 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, repositoryRoot, '')
-  const backend = `http://127.0.0.1:${env.SUBFLOW_HTTP_PORT || '8080'}`
+  const dataDir = resolve(env.SUBFLOW_DATA_DIR || join(repositoryRoot, 'backend', 'pb_data'))
+  let localTLS: { key: Buffer; cert: Buffer } | undefined
+  if (mode === 'development') {
+    try {
+      const tlsDir = join(dataDir, '.subflow', 'tls')
+      const active = readFileSync(join(tlsDir, 'active'), 'utf8').trim()
+      const versionDir = active === 'self-signed' ? join(tlsDir, active) : join(tlsDir, 'versions', active)
+      localTLS = { key: readFileSync(join(versionDir, 'key.pem')), cert: readFileSync(join(versionDir, 'cert.pem')) }
+    } catch {
+      throw new Error('Start SubFlow once to create its local HTTPS certificate before running Vite.')
+    }
+  }
+  const backend = `https://127.0.0.1:${env.SUBFLOW_HTTP_PORT || '8080'}`
   return {
     define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version) },
     plugins: [
@@ -42,9 +54,12 @@ export default defineConfig(({ mode }) => {
       }),
     ],
     server: {
+      https: localTLS,
       proxy: {
-        '/api': { target: backend, changeOrigin: true, ws: true },
-        '/_': { target: backend, changeOrigin: true, ws: true },
+        // Vite is a local-only development proxy; the backend is HTTPS and
+        // uses its generated certificate unless a development certificate is installed.
+        '/api': { target: backend, changeOrigin: true, ws: true, secure: false },
+        '/_': { target: backend, changeOrigin: true, ws: true, secure: false },
       },
     },
     test: {

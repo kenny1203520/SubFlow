@@ -18,3 +18,5 @@ npm run dev
 ```
 
 Vite reads `SUBFLOW_HTTP_PORT` from the repository-root `.env` and proxies `/api` and `/_/` to the Go backend on that port. The browser uses same-origin paths; no backend URL is embedded in the frontend bundle.
+
+The backend and Vite dev server use HTTPS with the local certificate generated on the first backend startup. The browser automation trusts that test certificate; local browsers may ask you to accept it once. `SUBFLOW_HTTP_PORT` keeps its legacy name but selects the HTTPS listener port.

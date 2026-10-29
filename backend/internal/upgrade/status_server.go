@@ -3,10 +3,12 @@ package upgrade
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net"
 	"net/http"
 	"time"
 
+	"subflow/internal/security"
 	"subflow/internal/web"
 )
 
@@ -23,7 +25,10 @@ type StatusServer struct {
 	listener net.Listener
 }
 
-func StartStatusServer(address string, manager *Manager) (*StatusServer, error) {
+func StartStatusServer(address string, manager *Manager, certificates *security.ServerCertificateManager) (*StatusServer, error) {
+	if certificates == nil {
+		return nil, errors.New("HTTPS certificate manager is required")
+	}
 	listener, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, err
@@ -35,8 +40,8 @@ func StartStatusServer(address string, manager *Manager) (*StatusServer, error) 
 	mux.HandleFunc("/api/health", service.ready)
 	mux.HandleFunc("/api/live", service.live)
 	mux.Handle("/", web.MaintenanceHandler())
-	service.server = &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() { _ = service.server.Serve(listener) }()
+	service.server = &http.Server{Handler: mux, TLSConfig: certificates.TLSConfig(), ReadHeaderTimeout: 5 * time.Second}
+	go func() { _ = service.server.ServeTLS(listener, "", "") }()
 	return service, nil
 }
 

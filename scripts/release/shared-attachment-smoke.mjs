@@ -23,7 +23,7 @@ function pdfFixture() {
 
 // Exercise the bundled production CSS and a real anonymous attachment share.
 export async function verifySharedAttachment(browser, baseURL, token, ownerID, expect) {
-  const context = await browser.newContext({ baseURL, viewport: { width: 390, height: 844 }, hasTouch: true })
+  const context = await browser.newContext({ baseURL, ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, hasTouch: true })
   try {
     const headers = { Authorization: `Bearer ${token}` }
     const expense = await context.request.post('/api/subflow/v1/expenses', { headers, data: {

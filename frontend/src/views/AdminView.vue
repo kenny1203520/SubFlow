@@ -31,6 +31,7 @@ const roles = ref<AccessRole[]>([])
 const users = ref<User[]>([])
 const logs = ref<AuditLog[]>([])
 type FailedNotificationEmail = { id: string; notificationId: string; status: string; attempts: number; lastError?: string; createdAt: string }
+type TLSCertificateStatus = { source: 'uploaded' | 'self_signed'; expiresAt: string }
 const failedEmails = ref<FailedNotificationEmail[]>([])
 const failedEmailPage = computed(() => Math.max(1, Number(route.query.page) || 1))
 const failedEmailPageSize = computed(() => [10, 25, 50, 100].includes(Number(route.query.perPage)) ? Number(route.query.perPage) : 25)
@@ -38,6 +39,16 @@ const failedEmailMeta = ref<Meta>({ page:1, perPage:25, totalItems:0, totalPages
 const failedEmailLoading = ref(false)
 const failedEmailError = ref('')
 const failedEmailNotice = ref('')
+const tlsCertificate = ref<TLSCertificateStatus | null>(null)
+const tlsCertificateFile = ref<File>()
+const tlsPrivateKeyFile = ref<File>()
+const tlsCertificateInput = ref<HTMLInputElement>()
+const tlsPrivateKeyInput = ref<HTMLInputElement>()
+const tlsCertificateBusy = ref(false)
+const tlsCertificateError = ref('')
+const tlsCertificateNotice = ref('')
+const tlsUploadProgress = ref(0)
+const tlsCertificateExpiry = computed(() => tlsCertificate.value?.expiresAt ? new Intl.DateTimeFormat(locale.value).format(new Date(tlsCertificate.value.expiresAt)) : '')
 const retryingEmailId = ref('')
 let failedEmailRequest = 0
 let loadRequest = 0
@@ -107,10 +118,59 @@ async function loadLogs() {
 }
 async function loadSettings() {
   if (!can('system.settings.manage')) return
-  const loaded=(await api.get<typeof settings.value>('/system/settings')).data
-  const profiles=loaded.captchaProviders||{}
-  if(loaded.captchaProvider&&!profiles[loaded.captchaProvider]) profiles[loaded.captchaProvider]={siteKey:loaded.captchaSiteKey,challengeUrl:loaded.captchaChallengeUrl,verifyUrl:loaded.captchaVerifyUrl,configured:loaded.captchaConfigured}
-  settings.value={...settings.value,...loaded,captchaProviders:profiles}
+  const loaded = (await api.get<typeof settings.value>('/system/settings')).data
+  const profiles = loaded.captchaProviders || {}
+  if (loaded.captchaProvider && !profiles[loaded.captchaProvider]) {
+    profiles[loaded.captchaProvider] = { siteKey: loaded.captchaSiteKey, challengeUrl: loaded.captchaChallengeUrl, verifyUrl: loaded.captchaVerifyUrl, configured: loaded.captchaConfigured }
+  }
+  settings.value = { ...settings.value, ...loaded, captchaProviders: profiles }
+}
+async function loadTLSCertificate() {
+  try { tlsCertificate.value = (await api.get<TLSCertificateStatus>('/system/tls-certificate')).data }
+  catch { tlsCertificateError.value = tr('tlsCertificateUnavailable') }
+}
+function selectTLSCertificate(event: Event) { tlsCertificateFile.value = (event.target as HTMLInputElement).files?.[0] }
+function selectTLSPrivateKey(event: Event) { tlsPrivateKeyFile.value = (event.target as HTMLInputElement).files?.[0] }
+function clearTLSCertificateFiles() {
+  tlsCertificateFile.value = undefined
+  tlsPrivateKeyFile.value = undefined
+  if (tlsCertificateInput.value) tlsCertificateInput.value.value = ''
+  if (tlsPrivateKeyInput.value) tlsPrivateKeyInput.value.value = ''
+}
+async function uploadTLSCertificate() {
+  tlsCertificateError.value = ''
+  tlsCertificateNotice.value = ''
+  if (!tlsCertificateFile.value || !tlsPrivateKeyFile.value) {
+    tlsCertificateError.value = tr('tlsCertificateFilesRequired')
+    if (!tlsCertificateFile.value) tlsCertificateInput.value?.focus()
+    else tlsPrivateKeyInput.value?.focus()
+    return
+  }
+  const body = new FormData()
+  body.append('certificate', tlsCertificateFile.value)
+  body.append('privateKey', tlsPrivateKeyFile.value)
+  tlsCertificateBusy.value = true
+  tlsUploadProgress.value = 0
+  try {
+    tlsCertificate.value = (await api.upload<TLSCertificateStatus>('/system/tls-certificate', body, value => { tlsUploadProgress.value = value })).data
+    clearTLSCertificateFiles()
+    tlsCertificateNotice.value = tr('tlsCertificateSaved')
+  } catch {
+    tlsCertificateError.value = tr('tlsCertificateSaveFailed')
+  } finally { tlsCertificateBusy.value = false }
+}
+async function resetTLSCertificate() {
+  if (!window.confirm(tr('tlsCertificateResetConfirm'))) return
+  tlsCertificateBusy.value = true
+  tlsCertificateError.value = ''
+  tlsCertificateNotice.value = ''
+  try {
+    tlsCertificate.value = (await api.delete<TLSCertificateStatus>('/system/tls-certificate')).data
+    clearTLSCertificateFiles()
+    tlsCertificateNotice.value = tr('tlsCertificateReset')
+  } catch {
+    tlsCertificateError.value = tr('tlsCertificateSaveFailed')
+  } finally { tlsCertificateBusy.value = false }
 }
 async function loadFailedEmails() {
   if (!can('system.settings.manage') || section.value !== 'notification-emails') return
@@ -157,7 +217,7 @@ async function load() {
   try {
     switch (section.value) {
       case 'overview': await Promise.all([loadRoles(), loadUsers(), loadSettings()]); break
-      case 'settings': await loadSettings(); break
+      case 'settings': await Promise.all([loadSettings(), loadTLSCertificate()]); break
       case 'users': await Promise.all([loadUsers(), loadRoles()]); break
       case 'roles': await loadRoles(); break
       case 'audit': await loadLogs(); break
@@ -259,7 +319,8 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       </div>
     </template>
 
-    <form v-else-if="section === 'settings' && can('system.settings.manage')" class="card form-card admin-form" @submit.prevent="saveSettings">
+    <div v-else-if="section === 'settings' && can('system.settings.manage')" class="admin-stack">
+    <form class="card form-card admin-form" @submit.prevent="saveSettings">
       <h2>{{ tr('settings') }}</h2>
       <BaseInput v-model="settings.siteName" :label="tr('applicationName')" :help="tr('applicationNameHelp')" required :maxlength="255" />
       <div class="semantic-field"><span>{{ tr('timezone') }}</span><TimezoneSelect v-model="settings.defaultTimezone"  :id="a11yId + '-field-1'" :label="tr('timezone')"/></div>
@@ -295,6 +356,29 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       </fieldset>
       <div class="form-actions"><button class="primary" type="submit">{{ tr('saveChanges') }}</button><span v-if="saved" class="success">{{ tr('saved') }}</span></div>
     </form>
+    <form class="card form-card admin-form" @submit.prevent="uploadTLSCertificate">
+      <h2>{{ tr('tlsCertificate') }}</h2>
+      <p class="field-help">{{ tr('tlsCertificateHelp') }}</p>
+      <p v-if="tlsCertificate" class="field-help" role="status">
+        {{ tlsCertificate.source === 'uploaded' ? tr('tlsCertificateUploaded') : tr('tlsCertificateSelfSigned') }}
+        {{ tr('tlsCertificateExpires', { date: tlsCertificateExpiry }) }}
+      </p>
+      <label :for="a11yId + '-tls-certificate'">{{ tr('tlsCertificateFile') }}</label>
+      <input ref="tlsCertificateInput" :id="a11yId + '-tls-certificate'" name="certificate" type="file" accept=".pem,.crt,.cer,application/x-pem-file" :aria-describedby="a11yId + '-tls-certificate-help' + (tlsCertificateError ? ' ' + a11yId + '-tls-error' : '')" :aria-invalid="tlsCertificateError ? 'true' : undefined" required @change="selectTLSCertificate">
+      <p :id="a11yId + '-tls-certificate-help'" class="field-help">{{ tr('tlsCertificateFileHelp') }}</p>
+      <label :for="a11yId + '-tls-private-key'">{{ tr('tlsPrivateKeyFile') }}</label>
+      <input ref="tlsPrivateKeyInput" :id="a11yId + '-tls-private-key'" name="privateKey" type="file" accept=".pem,.key,application/x-pem-file" :aria-describedby="a11yId + '-tls-private-key-help' + (tlsCertificateError ? ' ' + a11yId + '-tls-error' : '')" :aria-invalid="tlsCertificateError ? 'true' : undefined" required @change="selectTLSPrivateKey">
+      <p :id="a11yId + '-tls-private-key-help'" class="field-help">{{ tr('tlsPrivateKeyHelp') }}</p>
+      <p v-if="tlsCertificateError" :id="a11yId + '-tls-error'" class="notice danger" role="alert">{{ tlsCertificateError }}</p>
+      <p v-if="tlsCertificateNotice" class="notice success" role="status" aria-live="polite">{{ tlsCertificateNotice }}</p>
+      <label v-if="tlsCertificateBusy" class="field-help" :for="a11yId + '-tls-upload-progress'">{{ tr('tlsCertificateProgress', { percent: tlsUploadProgress }) }}</label>
+      <progress v-if="tlsCertificateBusy" :id="a11yId + '-tls-upload-progress'" :value="tlsUploadProgress" max="100" :aria-label="tr('tlsCertificateProgress', { percent: tlsUploadProgress })"></progress>
+      <div class="form-actions">
+        <button class="primary" type="submit" :disabled="tlsCertificateBusy">{{ tlsCertificateBusy ? tr('processing') : tr('uploadTLSCertificate') }}</button>
+        <button v-if="tlsCertificate?.source === 'uploaded'" class="ghost" type="button" :disabled="tlsCertificateBusy" @click="resetTLSCertificate">{{ tr('useSelfSignedCertificate') }}</button>
+      </div>
+    </form>
+    </div>
 
     <section v-else-if="section === 'users' && can('system.users.assign')" class="card admin-form">
       <div class="section-heading"><h2>{{ tr('userManagement') }}</h2><BaseInput v-model="query" :label="tr('search')" @update:model-value="loadUsers" /></div>

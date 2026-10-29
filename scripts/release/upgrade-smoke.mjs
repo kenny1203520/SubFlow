@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile } from 'node:fs/promises'
+import https from 'node:https'
 
 const oldImage = process.argv[2] || 'ghcr.io/kenny1203520/subflow@sha256:99bcb63a7322dc66feb3fc36bb6840cf727b1cc1e283e66e4f83d284a9bebc03'
 const candidate = process.argv[3] || 'subflow:candidate'
@@ -16,6 +17,34 @@ const owner = 'upgrade-owner@example.test'
 const member = 'upgrade-member@example.test'
 function docker(...args) {
   return execFileSync(process.platform === 'win32' ? 'rtk' : 'docker', process.platform === 'win32' ? ['proxy', 'docker', ...args] : args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
+}
+function requestHTTPS(server, url, options = {}) {
+  return new Promise((resolve, reject) => {
+    const body = options.body === undefined ? undefined : Buffer.from(options.body)
+    const headers = { ...options.headers }
+    const requestPath = new URL(url).pathname
+    if (body) headers['Content-Length'] = String(body.length)
+    const request = https.request(url, { method: options.method || 'GET', headers, ca: server.certificate }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.once('aborted', () => reject(new Error(`HTTPS upgrade response was interrupted: ${requestPath}`)))
+      response.once('error', reject)
+      response.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8')
+        const status = response.statusCode || 0
+        resolve({
+          status,
+          ok: status >= 200 && status < 300,
+          async json() { return JSON.parse(text) },
+          async text() { return text },
+        })
+      })
+    })
+    request.once('error', reject)
+    request.setTimeout(options.timeout || 15_000, () => request.destroy(new Error(`HTTPS upgrade request timed out: ${requestPath}`)))
+    if (body) request.write(body)
+    request.end()
+  })
 }
 function safeUpgradeDetail(name) {
   const details = []
@@ -51,6 +80,7 @@ function volume(suffix) {
 }
 async function start(image, data, suffix) {
   const name = `${prefix}-${suffix}`
+  const secure = image === candidate
   if (image === candidate) {
     // Historical volumes may be root-owned after older releases. Fix only
     // this isolated rehearsal volume before the nonroot candidate starts.
@@ -58,18 +88,30 @@ async function start(image, data, suffix) {
   }
   docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
   containers.add(name)
-  const base = `http://${docker('port', name, '8080/tcp')}`
+  const base = `${secure ? 'https' : 'http'}://${docker('port', name, '8080/tcp')}`
+  let certificate
   let healthStatus = 'unreachable'
   let runtimeStatus = 'unavailable'
   for (let attempt = 0; attempt < 600; attempt++) {
     try {
-      const response = await fetch(`${base}/api/health`)
-      healthStatus = `http-${response.status}`
-      if (response.ok) return { name, base }
+      if (secure && !certificate) {
+        const tlsDir = '/app/pb_data/.subflow/tls'
+        const active = docker('exec', name, 'cat', `${tlsDir}/active`)
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(active)) throw new Error('invalid active TLS certificate selection')
+        const versionDir = active === 'self-signed' ? `${tlsDir}/${active}` : `${tlsDir}/versions/${active}`
+        certificate = Buffer.from(docker('exec', name, 'cat', `${versionDir}/cert.pem`))
+      }
+      const response = secure
+        ? await requestHTTPS({ certificate }, `${base}/api/health`, { timeout: 3_000 })
+        : await fetch(`${base}/api/health`)
+      healthStatus = `${secure ? 'https' : 'http'}-${response.status}`
+      if (response.ok) return { name, base, certificate }
     } catch { healthStatus = 'unreachable' }
     if (attempt % 5 === 0) {
       try {
-        const response = await fetch(`${base}/api/subflow/v1/runtime/status`)
+        const response = secure
+          ? await requestHTTPS({ certificate }, `${base}/api/subflow/v1/runtime/status`, { timeout: 3_000 })
+          : await fetch(`${base}/api/subflow/v1/runtime/status`)
         if (response.ok) {
           const payload = await response.json()
           const state = payload?.data?.state
@@ -91,7 +133,12 @@ async function start(image, data, suffix) {
 function stop(server) { docker('stop', server.name); containers.delete(server.name) }
 async function request(server, path, token, method = 'GET', body) {
   const form = body instanceof FormData
-  const response = await fetch(`${server.base}${path}`, { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body && !form ? { 'Content-Type': 'application/json' } : {}) }, body: body ? form ? body : JSON.stringify(body) : undefined })
+  console.log(`Checking ${method} ${path.split('?')[0]}`)
+  const options = { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body && !form ? { 'Content-Type': 'application/json' } : {}) }, body: body ? form ? body : JSON.stringify(body) : undefined }
+  assert.ok(!server.certificate || !form, 'HTTPS upgrade checks do not upload multipart data')
+  const response = server.certificate
+    ? await requestHTTPS(server, `${server.base}${path}`, options)
+    : await fetch(`${server.base}${path}`, options)
   assert.ok(response.ok, `${method} ${path.split('?')[0]} returned ${response.status}`)
   return response
 }

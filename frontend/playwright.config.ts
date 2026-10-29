@@ -9,7 +9,8 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   outputDir: 'test-results',
   use: {
-    baseURL: 'http://127.0.0.1:4174',
+    baseURL: 'https://127.0.0.1:4174',
+    ignoreHTTPSErrors: true,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -24,7 +25,8 @@ export default defineConfig({
   ],
   webServer: {
     command: 'node e2e/start.mjs',
-    url: 'http://127.0.0.1:4174/api/health',
+    url: 'https://127.0.0.1:4174/api/health',
+    ignoreHTTPSErrors: true,
     reuseExistingServer: false,
     timeout: 300_000,
     stdout: 'pipe',

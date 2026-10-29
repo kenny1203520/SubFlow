@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"ganigeorgiev.com/pocketbase/pocketbase"
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
@@ -36,7 +37,13 @@ func setupStartupNotice(link string) string {
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
-		if err := checkHealth(config.AppURL("", config.LoadRuntime().HTTPPort) + "/api/ready"); err != nil {
+		runtime := config.LoadRuntime()
+		certificates, err := security.LoadServerCertificateManager(config.DataDirFromArgs(os.Args))
+		if err != nil {
+			log.Print("readiness check failed: HTTPS certificate is unavailable")
+			os.Exit(1)
+		}
+		if err := checkHealth(config.AppURL("", runtime.HTTPPort)+"/api/ready", certificates.HealthClient(2*time.Second)); err != nil {
 			log.Print(err)
 			os.Exit(1)
 		}
@@ -92,13 +99,19 @@ func main() {
 		log.Fatal(acquireErr)
 	}
 	var statusServer *upgrade.StatusServer
+	var certificates *security.ServerCertificateManager
 	if isServe {
-		address, _, addressErr := config.ServeHTTPAddress(os.Args)
+		certificates, err = security.OpenServerCertificateManager(config.DataDirFromArgs(os.Args))
+		if err != nil {
+			_ = manager.Close()
+			log.Fatal("cannot initialize HTTPS certificate: ", err)
+		}
+		address, addressErr := config.ServeHTTPSAddress(os.Args)
 		if addressErr != nil {
 			_ = manager.Close()
 			log.Fatal(addressErr)
 		}
-		statusServer, err = upgrade.StartStatusServer(address, manager)
+		statusServer, err = upgrade.StartStatusServer(address, manager, certificates)
 		if err != nil {
 			_ = manager.Fail("maintenance_server_unavailable")
 			_ = manager.Close()
@@ -154,6 +167,7 @@ func main() {
 		return e.Next()
 	})
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
+		e.Server.TLSConfig = certificates.TLSConfig()
 		stores, err := adapters.New("pocketbase", e.App)
 		if err != nil {
 			return err
@@ -265,7 +279,7 @@ func main() {
 				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)
 			}
 		}()
-		(&httpapi.API{Service: base, Upgrades: manager, ApplicationURL: func() string { return e.App.Settings().Meta.AppURL }}).RegisterRoutes(e)
+		(&httpapi.API{Service: base, Upgrades: manager, Certificates: certificates}).RegisterRoutes(e)
 		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: &mailer.Native{App: e.App}, Environment: runtime.Environment, ApplicationURL: func() string { return e.App.Settings().Meta.AppURL }}}).RegisterRoutes(e)
 		web.Register(e)
 		fmt.Print(setupStartupNotice(*setupLink))

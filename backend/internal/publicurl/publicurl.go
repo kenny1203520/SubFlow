@@ -10,11 +10,10 @@ import (
 	"strings"
 )
 
-var ErrInvalid = errors.New("application URL must be an absolute HTTP or HTTPS origin without credentials, query, fragment, or subpath")
+var ErrInvalid = errors.New("application URL must be an absolute HTTPS origin without credentials, query, fragment, or subpath")
 
-// Parse accepts an HTTP or HTTPS origin and normalizes whitespace, scheme
-// casing, and a root trailing slash. Subpaths are intentionally unsupported
-// until the reverse-proxy deployment mode is implemented.
+// Parse accepts an HTTPS origin and normalizes whitespace, scheme casing, and
+// a root trailing slash. Subpaths remain reserved for a separate proxy feature.
 func Parse(raw string) (*url.URL, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" || strings.ContainsAny(value, "?#") {
@@ -26,7 +25,7 @@ func Parse(raw string) (*url.URL, error) {
 		return nil, ErrInvalid
 	}
 	scheme := strings.ToLower(parsed.Scheme)
-	if scheme != "http" && scheme != "https" {
+	if scheme != "https" {
 		return nil, ErrInvalid
 	}
 	if parsed.Host == "" || parsed.Hostname() == "" || parsed.User != nil {

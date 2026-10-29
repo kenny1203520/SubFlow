@@ -23,7 +23,7 @@ import (
 	"subflow/internal/application"
 	"subflow/internal/domain"
 	"subflow/internal/ports"
-	"subflow/internal/publicurl"
+	"subflow/internal/security"
 	"subflow/internal/upgrade"
 )
 
@@ -34,7 +34,7 @@ type shareAttempt struct {
 type API struct {
 	Service        *application.Service
 	Upgrades       *upgrade.Manager
-	ApplicationURL func() string
+	Certificates   *security.ServerCertificateManager
 	shareAttemptMu sync.Mutex
 	shareAttempts  map[string]shareAttempt
 }
@@ -202,8 +202,11 @@ func (a *API) RegisterRoutes(e *core.ServeEvent) {
 	e.Router.GET("/api/subflow/v1/system/users", a.listSystemUsers).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/audit-logs", a.listSystemAudit).Bind(bind)
 	e.Router.GET("/api/subflow/v1/system/settings", a.getSystemSettings).Bind(bind)
+	e.Router.GET("/api/subflow/v1/system/tls-certificate", a.getTLSCertificate)
 	e.Router.GET("/api/subflow/v1/system/upgrades", a.listSystemUpgrades).Bind(bind)
 	e.Router.PATCH("/api/subflow/v1/system/settings", a.updateSystemSettings).Bind(bind)
+	e.Router.POST("/api/subflow/v1/system/tls-certificate", a.updateTLSCertificate)
+	e.Router.DELETE("/api/subflow/v1/system/tls-certificate", a.resetTLSCertificate)
 	e.Router.POST("/api/subflow/v1/system/recover-admin", a.recoverSystemAdmin).Bind(apis.RequireSuperuserAuth())
 	e.Router.GET("/api/subflow/v1/groups/{groupId}/subscriptions", a.listSubscriptions).Bind(bind)
 	e.Router.POST("/api/subflow/v1/groups/{groupId}/subscriptions", a.createSubscription).Bind(bind)
@@ -547,13 +550,7 @@ func (a *API) setShareCookie(e *core.RequestEvent, value *domain.Share) {
 	}
 	expires := time.Now().Add(8 * time.Hour).Unix()
 	payload := strings.Join([]string{shareCookieVersion, value.ID, strconv.Itoa(value.AccessVersion), strconv.FormatInt(expires, 10)}, ".")
-	secure := e.Request.TLS != nil
-	if a.ApplicationURL != nil {
-		if parsed, err := publicurl.Parse(a.ApplicationURL()); err == nil && parsed.Scheme == "https" {
-			secure = true
-		}
-	}
-	http.SetCookie(e.Response, &http.Cookie{Name: shareCookieName, Value: payload + "." + shareCookieSignature(payload, a.Service.ShareKey), Path: "/api/subflow/v1/shares/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure, MaxAge: 8 * 60 * 60})
+	http.SetCookie(e.Response, &http.Cookie{Name: shareCookieName, Value: payload + "." + shareCookieSignature(payload, a.Service.ShareKey), Path: "/api/subflow/v1/shares/", HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: true, MaxAge: 8 * 60 * 60})
 }
 func (a *API) sharePasswordAllowed(ip, shareID string) bool {
 	a.shareAttemptMu.Lock()
