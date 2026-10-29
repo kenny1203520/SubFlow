@@ -16,7 +16,7 @@ func TestSettlementApprovalsMigrationAddsSchemaAndIsIdempotent(t *testing.T) {
 	setupLink := ""
 	migrations := Migrations("pocketbase", "http://localhost:8090", &setupLink)
 	for range 2 {
-		if err := RunMigrations(context.Background(), app, manager, migrations, MigrationAudit("pocketbase")); err != nil {
+		if err := RunMigrations(context.Background(), app, manager, migrations, MigrationAudit("pocketbase", "test-only-root-key")); err != nil {
 			t.Fatal(err)
 		}
 	}
