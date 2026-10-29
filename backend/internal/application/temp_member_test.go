@@ -40,7 +40,7 @@ func newTempMemberFixture(t *testing.T) (*application.CollaborationService, adap
 	if err != nil {
 		t.Fatal(err)
 	}
-	base := application.New(stores)
+	base := application.New(stores, "test-only-root-key")
 	collab := &application.CollaborationService{Base: base, Environment: "development", AppURL: "http://localhost:8080"}
 
 	ctx := context.Background()

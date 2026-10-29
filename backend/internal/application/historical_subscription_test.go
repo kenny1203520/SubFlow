@@ -69,7 +69,7 @@ func newHistoricalFixtureTZ(t *testing.T, timezone string) *historicalFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	service.Now = func() time.Time { return time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC) }
 
 	ctx := context.Background()

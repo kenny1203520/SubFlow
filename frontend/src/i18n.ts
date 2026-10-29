@@ -15,9 +15,10 @@ watchEffect(() => {
 
 export function useI18n() {
   const t = computed(() => messages[locale.value])
-  function tr(key: MessageKey | string, values: Record<string, string | number> = {}) {
+  function tr(key: MessageKey | string, values?: Record<string, string | number>) {
+    const replacements = values ?? {}
     const text = (t.value as Record<string,string>)[key] ?? upgradeMessages[locale.value][key as keyof typeof upgradeMessages['zh-TW']] ?? adminExtras[locale.value][key as keyof typeof adminExtras['zh-TW']] ?? key
-    return text.replace(/\{(\w+)\}/g, (_, name: string) => String(values[name] ?? ''))
+    return text.replace(/\{(\w+)\}/g, (_, name: string) => String(replacements[name] ?? ''))
   }
   function setLocale(next: Locale) {
     locale.value = next

@@ -187,21 +187,18 @@ onMounted(() => { if (personal.value) void workspace.refreshPersonal() })
                 <section class="ledger-form-section">
                     <div class="ledger-section-heading"><strong>{{ tr('item') }}</strong></div>
                     <div class="ledger-form-grid"><label class="ledger-wide">{{ tr('item') }}<input v-model="form.title"
-                                required :placeholder="tr('itemPlaceholder')"></label><label class="ledger-wide" :for="a11yId + '-field-1'">{{
-                            tr('category') }}
-                            <CategorySelect v-model="form.categoryId" :categories="workspace.categories"
-                                @create="addCategory"  :id="a11yId + '-field-1'"/>
-                        </label></div>
+                                required :placeholder="tr('itemPlaceholder')"></label><div class="semantic-field ledger-wide"><span>{{
+                            tr('category') }}</span><CategorySelect v-model="form.categoryId" :categories="workspace.categories"
+                                @create="addCategory"  :id="a11yId + '-field-1'" :label="tr('category')"/>
+                        </div></div>
                 </section>
                 <section class="ledger-form-section">
                     <div class="ledger-section-heading"><strong>{{ tr('amount') }} · {{ tr('currency') }}</strong></div>
                     <div class="ledger-form-grid"><label>{{ tr('amount') }}<input v-model="form.amount" type="number"
-                                min="0" :step="amountStep(form.currency)" required></label><label :for="a11yId + '-field-2'">{{ tr('currency') }}
-                            <CurrencySelect v-model="form.currency" :currencies="workspace.currencies"  :id="a11yId + '-field-2'"/>
-                        </label><label v-if="!personal" :for="a11yId + '-field-3'">{{ tr('receivedBy') }}
-                            <PayerSelect v-model="form.earnedBy" :members="selectableMembers"
-                                :self-id="auth.record?.id"  :id="a11yId + '-field-3'"/>
-                        </label><label>{{ tr('date') }}<input v-model="form.receivedOn" type="date" required
+                                min="0" :step="amountStep(form.currency)" required></label><div class="semantic-field"><span>{{ tr('currency') }}</span><CurrencySelect v-model="form.currency" :currencies="workspace.currencies"  :id="a11yId + '-field-2'" :label="tr('currency')"/>
+                        </div><div class="semantic-field" v-if="!personal"><span>{{ tr('receivedBy') }}</span><PayerSelect v-model="form.earnedBy" :members="selectableMembers"
+                                :self-id="auth.record?.id"  :id="a11yId + '-field-3'" :label="tr('receivedBy')"/>
+                        </div><label>{{ tr('date') }}<input v-model="form.receivedOn" type="date" required
                                 @change="receivedOnTouched = true"></label></div>
                 </section>
                 <section class="ledger-form-section">

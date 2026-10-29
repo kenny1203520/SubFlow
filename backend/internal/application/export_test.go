@@ -45,7 +45,7 @@ func newExportFixtureTZ(t *testing.T, timezone string) (*application.Service, ad
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	ctx := context.Background()
 
 	group := &domain.Group{Name: "Export Group", Currency: domain.CurrencyTWD, Color: "#7057e8", OwnerID: userID, Timezone: timezone}

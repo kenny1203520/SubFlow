@@ -80,7 +80,7 @@ func TestTurnstileRequiresMatchingActionAndApplicationURLHostname(t *testing.T) 
 		{"success", "login", "subflow.example.com", "https://subflow.example.com", ""},
 		{"wrong action", "register", "subflow.example.com", "https://subflow.example.com", "action_mismatch"},
 		{"wrong hostname", "login", "other.example.com", "https://subflow.example.com", "hostname_mismatch"},
-		{"missing configured hostname", "login", "subflow.example.com", "", "hostname_not_configured"},
+		{"missing configured hostname", "login", "subflow.example.com", "", "application_url_invalid"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -142,14 +142,14 @@ func TestExternalProvidersUsePocketBaseApplicationIdentity(t *testing.T) {
 		if err := v.Verify(context.Background(), "hcaptcha", "secret", "", "token", "", "", ApplicationIdentity{Name: "SubFlow", URL: "https://subflow.example.com", SiteKey: "site-key-from-pocketbase"}); err != nil {
 			t.Fatalf("Verify() error = %v", err)
 		}
-		if got := FailureReason(v.Verify(context.Background(), "hcaptcha", "secret", "", "token", "", "", ApplicationIdentity{})); got != "sitekey_not_configured" {
+		if got := FailureReason(v.Verify(context.Background(), "hcaptcha", "secret", "", "token", "", "", ApplicationIdentity{URL: "https://subflow.example.com"})); got != "sitekey_not_configured" {
 			t.Fatalf("FailureReason() = %q, want sitekey_not_configured", got)
 		}
 	})
 
 	t.Run("hcaptcha classifies expired and replayed tokens", func(t *testing.T) {
 		v := turnstileVerifier(http.StatusOK, `{"success":false,"error-codes":["already-seen-response"]}`)
-		if got := FailureReason(v.Verify(context.Background(), "hcaptcha", "secret", "", "token", "", "", ApplicationIdentity{SiteKey: "site-key-from-pocketbase"})); got != "timeout_or_duplicate" {
+		if got := FailureReason(v.Verify(context.Background(), "hcaptcha", "secret", "", "token", "", "", ApplicationIdentity{URL: "https://subflow.example.com", SiteKey: "site-key-from-pocketbase"})); got != "timeout_or_duplicate" {
 			t.Fatalf("FailureReason() = %q, want timeout_or_duplicate", got)
 		}
 	})

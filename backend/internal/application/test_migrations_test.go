@@ -26,7 +26,7 @@ func applyLatestTestMigrations(t *testing.T, app *tests.TestApp) {
 		app,
 		manager,
 		upgrade.Migrations("pocketbase", "http://localhost:8080", &setupLink),
-		upgrade.MigrationAudit("pocketbase"),
+		upgrade.MigrationAudit("pocketbase", "test-only-root-key"),
 	); err != nil {
 		t.Fatal(err)
 	}

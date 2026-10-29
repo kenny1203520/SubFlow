@@ -207,15 +207,15 @@ watch(() => form.billingCycle, cycle => {
         <div class="ledger-section-heading"><strong>{{ tr('item') }}</strong></div>
         <div class="ledger-form-grid">
           <BaseInput v-model="form.title" class="ledger-wide" :label="tr('item')" required :placeholder="tr('itemPlaceholder')" />
-          <div class="ledger-field ledger-wide"><label :for="quickAddFieldId + '-category'">{{ tr('category') }}</label><CategorySelect :id="quickAddFieldId + '-category'" v-model="form.categoryId" :categories="workspace.categories" @create="addCategory" /></div>
+          <div class="ledger-field ledger-wide"><span>{{ tr('category') }}</span><CategorySelect :label="tr('category')" :id="quickAddFieldId + '-category'" v-model="form.categoryId" :categories="workspace.categories" @create="addCategory" /></div>
         </div>
       </section>
       <section class="ledger-form-section">
         <div class="ledger-section-heading"><strong>{{ tr('amount') }} · {{ tr('currency') }}</strong></div>
         <div class="ledger-form-grid">
           <BaseInput v-model="form.amount" :label="tr('amount')" type="number" inputmode="decimal" min="0" :step="amountStep(form.currency)" required />
-          <div class="ledger-field"><label :for="quickAddFieldId + '-currency'">{{ tr('currency') }}</label><CurrencySelect :id="quickAddFieldId + '-currency'" v-model="form.currency" :currencies="workspace.currencies" /></div>
-          <div v-if="!personal" class="ledger-field"><label :for="quickAddFieldId + '-payer'">{{ mode==='income' ? tr('receivedBy') : tr('payer') }}</label><PayerSelect :id="quickAddFieldId + '-payer'" v-model="form.payer" :members="members" :self-id="auth.record?.id" /></div>
+          <div class="ledger-field"><span>{{ tr('currency') }}</span><CurrencySelect :label="tr('currency')" :id="quickAddFieldId + '-currency'" v-model="form.currency" :currencies="workspace.currencies" /></div>
+          <div v-if="!personal" class="ledger-field"><span>{{ mode==='income' ? tr('receivedBy') : tr('payer') }}</span><PayerSelect :label="mode==='income' ? tr('receivedBy') : tr('payer')" :id="quickAddFieldId + '-payer'" v-model="form.payer" :members="members" :self-id="auth.record?.id" /></div>
           <BaseInput v-if="mode!=='subscription'" v-model="form.date" :label="tr('date')" type="date" required @update:model-value="dateTouched = true" />
         </div>
       </section>

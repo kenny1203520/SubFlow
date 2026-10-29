@@ -45,7 +45,7 @@ func TestMutationRecordsCallerIPAndUserAgent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 
 	ctx := application.WithAuditRequestMeta(context.Background(), application.AuditRequestMeta{IP: "203.0.113.7", UserAgent: "integration-test/1.0"})
 	group, err := service.CreateGroup(ctx, userID, domain.Group{Name: "Test Group", Currency: domain.CurrencyTWD})

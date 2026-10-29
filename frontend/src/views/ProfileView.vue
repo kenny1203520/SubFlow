@@ -88,11 +88,10 @@ async function toggleProvider(name: string) {
         </div>
         <div class="profile-layout">
             <form class="card form-card profile-account" @submit.prevent="submit">
-                <h2>{{t.accountInfo}}</h2><label>{{ t.email }}<input :value="auth.record?.email"
-                        disabled></label><label>{{ t.displayName }}<input v-model="form.name"
-                        required></label><label :for="a11yId + '-field-1'">{{ t.timezone }}
-                    <TimezoneSelect v-model="form.timezone"  :id="a11yId + '-field-1'"/>
-                </label><label :for="a11yId + '-field-2'">{{t.currency}}<CurrencySelect v-model="form.default_currency" :currencies="workspace.currencies" :id="a11yId + '-field-2'"/></label><button class="primary" type="submit">{{ t.save }}</button><span v-if="saved" class="success">{{ t.saved }}</span>
+                <h2>{{t.accountInfo}}</h2><label :for="a11yId + '-email'">{{ t.email }}<input :id="a11yId + '-email'" :value="auth.record?.email" type="email" autocomplete="email"
+                        disabled></label><label :for="a11yId + '-display-name'">{{ t.displayName }}<input :id="a11yId + '-display-name'" v-model="form.name"
+                        required></label><div class="semantic-field"><span>{{ t.timezone }}</span><TimezoneSelect v-model="form.timezone"  :id="a11yId + '-field-1'" :label="t.timezone"/>
+                </div><div class="semantic-field"><span>{{t.currency}}</span><CurrencySelect v-model="form.default_currency" :currencies="workspace.currencies" :id="a11yId + '-field-2'" :label="t.currency"/></div><button class="primary" type="submit">{{ t.save }}</button><span v-if="saved" class="success">{{ t.saved }}</span>
             </form>
             <section class="card form-card profile-appearance">
                 <div>

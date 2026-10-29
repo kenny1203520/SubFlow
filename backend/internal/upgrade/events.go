@@ -19,7 +19,7 @@ import (
 // ReconcileDurableEvents imports pre-database upgrade events after the audit
 // collection is available. The source_event_id unique index makes repeated
 // startup imports idempotent, and import failure blocks readiness.
-func ReconcileDurableEvents(ctx context.Context, app core.App, driver, directory string) error {
+func ReconcileDurableEvents(ctx context.Context, app core.App, driver, directory, encryptionKey string) error {
 	file, err := os.Open(filepath.Join(directory, "events.jsonl"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
@@ -47,7 +47,7 @@ func ReconcileDurableEvents(ctx context.Context, app core.App, driver, directory
 				return fmt.Errorf("durable upgrade event ID is invalid")
 			}
 		}
-		if err := importEvent(ctx, app, driver, event); err != nil {
+		if err := importEvent(ctx, app, driver, event, encryptionKey); err != nil {
 			return fmt.Errorf("durable upgrade event import failed")
 		}
 	}
@@ -57,7 +57,7 @@ func ReconcileDurableEvents(ctx context.Context, app core.App, driver, directory
 	return nil
 }
 
-func importEvent(ctx context.Context, app core.App, driver string, event Event) error {
+func importEvent(ctx context.Context, app core.App, driver string, event Event, encryptionKey string) error {
 	return app.RunInTransaction(func(tx core.App) error {
 		var existing struct {
 			ID string `db:"id"`
@@ -73,6 +73,6 @@ func importEvent(ctx context.Context, app core.App, driver string, event Event) 
 		if err != nil {
 			return err
 		}
-		return application.New(stores).RecordAuditEvent(ctx, event.ID, event.Action, event.Outcome, event.Summary)
+		return application.New(stores, encryptionKey).RecordAuditEvent(ctx, event.ID, event.Action, event.Outcome, event.Summary)
 	})
 }

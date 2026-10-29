@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const codeql = process.env.CODEQL_CLI || 'codeql'
+const searchPath = process.env.CODEQL_SEARCH_PATH?.trim()
+const resourceArgs = searchPath ? ['--ram=4096', '--threads=4'] : []
 const codeScanningConfig = path.join(repositoryRoot, '.github', 'codeql', 'codeql-config.yml')
 const reportDirectory = path.join(repositoryRoot, '.codeql')
 mkdirSync(reportDirectory, { recursive: true })
@@ -62,7 +64,15 @@ try {
     console.log(`\nCodeQL: creating ${analysis.language} database`)
     run(createArgs, { cwd: analysis.workingDirectory })
     console.log(`CodeQL: analyzing ${analysis.language}`)
-    run(['database', 'analyze', database, analysis.pack, '--format=sarif-latest', `--output=${report}`])
+    run([
+      'database', 'analyze',
+      ...(searchPath ? [`--search-path=${searchPath}`] : []),
+      ...resourceArgs,
+      database,
+      analysis.pack,
+      '--format=sarif-latest',
+      `--output=${report}`,
+    ])
     const sarif = JSON.parse(readFileSync(report, 'utf8'))
     const unresolved = sarif.runs?.flatMap(runResult => runResult.results || []).filter(result =>
       !result.suppressions?.some(suppression => suppression.status === 'accepted'),

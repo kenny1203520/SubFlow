@@ -37,7 +37,7 @@ func newSettlementFixture(t *testing.T) settlementFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	ctx := context.Background()
 
 	createUser := func(email, name string) string {

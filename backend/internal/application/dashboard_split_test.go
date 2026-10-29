@@ -50,7 +50,7 @@ func TestWorkspaceDashboardReportsSplitSubscriptionShare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	now := time.Date(2026, time.August, 11, 0, 0, 0, 0, time.UTC)
 	service.Now = func() time.Time { return now }
 

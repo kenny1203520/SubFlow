@@ -35,10 +35,12 @@ func newCaptchaTestService(t *testing.T, flows domain.CaptchaFlowSettings) *Serv
 		CaptchaFlows:            flows,
 	}
 	store := &fakeSettingsStore{value: settings}
+	keys, _ := security.DeriveKeyring("test-only-root-key")
 	return &Service{
-		Stores:  adapters.Stores{Settings: store},
-		Captcha: captcha.NewVerifier(),
-		Cipher:  security.NewSettingsCipher(""),
+		Stores:   adapters.Stores{Settings: store},
+		Captcha:  captcha.NewVerifier(),
+		Cipher:   security.NewSettingsCipher(""),
+		AuditKey: keys.Audit,
 	}
 }
 

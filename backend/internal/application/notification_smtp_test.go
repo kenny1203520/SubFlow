@@ -78,7 +78,13 @@ func TestNotificationDeliveryUsesRealSMTPAndAuditsResult(t *testing.T) {
 			// fake. Remove that test-only interception to exercise TCP delivery.
 			f.app.OnMailerSend().UnbindAll()
 			host, port, messages := notificationSMTP(t, reject)
-			if err := mailer.ConfigurePocketBase(f.app, &mailer.SMTP{Host: host, Port: port, From: "noreply@example.test"}); err != nil {
+			settings := f.app.Settings()
+			settings.SMTP.Enabled = true
+			settings.SMTP.Host = host
+			settings.SMTP.Port, _ = strconv.Atoi(port)
+			settings.Meta.SenderAddress = "noreply@example.test"
+			settings.Meta.AppURL = "http://localhost:8080"
+			if err := f.app.Save(settings); err != nil {
 				t.Fatal(err)
 			}
 			now := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)

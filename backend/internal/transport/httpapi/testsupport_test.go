@@ -40,7 +40,7 @@ func newAPITestApp(t *testing.T) *apiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	service.Cipher = security.NewSettingsCipher("test-share-settings-key")
 	return &apiFixture{app: app, stores: stores, service: service}
 }
@@ -65,7 +65,7 @@ func newUninitializedAPITestApp(t *testing.T) (*apiFixture, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service := application.New(stores)
+	service := application.New(stores, "test-only-root-key")
 	service.Cipher = security.NewSettingsCipher("test-share-settings-key")
 	return &apiFixture{app: app, stores: stores, service: service}, parsed.Query().Get("token")
 }
@@ -86,7 +86,7 @@ func applyLatestTestMigrations(t *testing.T, app *tests.TestApp, setupLink *stri
 		app,
 		manager,
 		upgrade.Migrations("pocketbase", "http://localhost:8080", setupLink),
-		upgrade.MigrationAudit("pocketbase"),
+		upgrade.MigrationAudit("pocketbase", "test-only-root-key"),
 	); err != nil {
 		t.Fatal(err)
 	}

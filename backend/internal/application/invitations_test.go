@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"subflow/internal/domain"
+	"subflow/internal/ports"
 )
 
 func TestCreateInvitationRequiresPermission(t *testing.T) {
@@ -30,6 +31,22 @@ func TestCreateInvitationRejectsInvalidEmail(t *testing.T) {
 	ctx := context.Background()
 	if _, err := collab.CreateInvitation(ctx, ownerID, groupID, "not-an-email"); !errors.Is(err, domain.ErrInvalid) {
 		t.Fatalf("expected ErrInvalid for a malformed email, got %v", err)
+	}
+}
+
+func TestCreateInvitationRejectsInvalidPocketBaseApplicationURLBeforePersisting(t *testing.T) {
+	collab, _, ownerID, groupID := newTempMemberFixture(t)
+	collab.ApplicationURL = func() string { return "https://subflow.example.test/app" }
+
+	if _, err := collab.CreateInvitation(context.Background(), ownerID, groupID, "person@example.test"); !errors.Is(err, domain.ErrConfiguration) {
+		t.Fatalf("CreateInvitation error = %v, want an identifiable configuration error", err)
+	}
+	page, err := collab.Base.Stores.Invitations.List(context.Background(), groupID, ports.PageRequest{Page: 1, PerPage: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 0 {
+		t.Fatalf("invalid Application URL persisted %d invitations", len(page.Items))
 	}
 }
 

@@ -42,8 +42,8 @@ func New(driver string, app core.App) (Stores, error) {
 		s := pbadapter.NewStores(app)
 		return Stores{Groups: s.Groups, Memberships: s.Memberships, Invitations: s.Invitations, OwnershipTransfers: s.OwnershipTransfers, MemberTransfers: s.MemberTransfers, Notifications: s.Notifications, NotificationEmails: s.NotificationEmails, Subscriptions: s.Subscriptions, Expenses: s.Expenses, Incomes: s.Incomes, RecurringIncomes: s.RecurringIncomes, Settlements: s.Settlements, SettlementReviews: s.SettlementReviews, Attachments: s.Attachments, Categories: s.Categories, ExchangeRates: s.ExchangeRates, Roles: s.Roles, Audits: s.Audits, Shares: s.Shares, Contacts: s.Contacts, Users: s.Users, Settings: s.Settings, Transactions: s.Transactions}, nil
 	case "postgres", "mysql":
-		return Stores{}, fmt.Errorf("SUBFLOW_DATA_DRIVER %q is reserved but not implemented", driver)
+		return Stores{}, fmt.Errorf("database adapter %q is not implemented", driver)
 	default:
-		return Stores{}, fmt.Errorf("unsupported SUBFLOW_DATA_DRIVER %q", driver)
+		return Stores{}, fmt.Errorf("unsupported database adapter %q", driver)
 	}
 }

@@ -12,11 +12,11 @@ import (
 	"ganigeorgiev.com/pocketbase/pocketbase/core"
 
 	"subflow/internal/config"
-	"subflow/internal/mailer"
+	"subflow/internal/security"
 	"subflow/internal/upgrade"
 )
 
-func registerUpgradeBootstrap(app *pocketbase.PocketBase, manager *upgrade.Manager, driver, appURL string, smtpMailer *mailer.SMTP) *string {
+func registerUpgradeBootstrap(app *pocketbase.PocketBase, manager *upgrade.Manager, driver, setupURL, encryptionKey string) *string {
 	var setupLink string
 	app.OnBootstrap().BindFunc(func(event *core.BootstrapEvent) error {
 		if err := event.Next(); err != nil {
@@ -25,16 +25,16 @@ func registerUpgradeBootstrap(app *pocketbase.PocketBase, manager *upgrade.Manag
 		if err := manager.SetPhase(upgrade.StatusMigrating); err != nil {
 			return err
 		}
-		if err := upgrade.RunMigrations(context.Background(), event.App, manager, upgrade.Migrations(driver, appURL, &setupLink), upgrade.MigrationAudit(driver)); err != nil {
+		if err := upgrade.RunMigrations(context.Background(), event.App, manager, upgrade.Migrations(driver, setupURL, &setupLink), upgrade.MigrationAudit(driver, encryptionKey)); err != nil {
 			return err
 		}
 		if err := manager.SetPhase(upgrade.StatusVerifying); err != nil {
 			return err
 		}
-		if err := upgrade.ReconcileDurableEvents(context.Background(), event.App, driver, manager.Dir); err != nil {
+		if err := upgrade.ReconcileDurableEvents(context.Background(), event.App, driver, manager.Dir, encryptionKey); err != nil {
 			return err
 		}
-		return mailer.ConfigurePocketBase(event.App, smtpMailer)
+		return nil
 	})
 	return &setupLink
 }
@@ -53,7 +53,7 @@ type backupStatus struct {
 	FileCount         int    `json:"fileCount"`
 }
 
-func dispatchUpgradeCommand(args []string, driver, environment string, smtpMailer *mailer.SMTP) (bool, error) {
+func dispatchUpgradeCommand(args []string, driver, environment, httpPort, encryptionKey string) (bool, error) {
 	if len(args) < 2 || args[1] != "upgrade" {
 		return false, nil
 	}
@@ -99,13 +99,16 @@ func dispatchUpgradeCommand(args []string, driver, environment string, smtpMaile
 		}
 		return true, manager.Close()
 	case "retry":
-		return true, retryUpgrade(manager, driver, environment, smtpMailer)
+		return true, retryUpgrade(manager, driver, environment, httpPort, encryptionKey)
 	default:
 		return true, fmt.Errorf("unknown upgrade command %q; use status, retry, or restore", args[2])
 	}
 }
 
-func retryUpgrade(manager *upgrade.Manager, driver, environment string, smtpMailer *mailer.SMTP) (result error) {
+func retryUpgrade(manager *upgrade.Manager, driver, environment, httpPort, encryptionKey string) (result error) {
+	if _, err := security.DeriveKeyring(encryptionKey); err != nil {
+		return err
+	}
 	defer func() {
 		if err := manager.Close(); result == nil && err != nil {
 			result = err
@@ -132,14 +135,14 @@ func retryUpgrade(manager *upgrade.Manager, driver, environment string, smtpMail
 		return err
 	}
 	app := pocketbase.New()
-	registerUpgradeBootstrap(app, manager, driver, config.AppURL(os.Getenv("SUBFLOW_APP_URL"), os.Getenv("SUBFLOW_HTTP_PORT")), smtpMailer)
+	registerUpgradeBootstrap(app, manager, driver, config.AppURL("", httpPort), encryptionKey)
 	if err := app.Bootstrap(); err != nil {
 		_ = manager.Fail(problemCode(err))
 		_ = app.ClearBootstrap()
 		return err
 	}
 	if err := manager.Complete(func() error {
-		return upgrade.ReconcileDurableEvents(context.Background(), app, driver, manager.Dir)
+		return upgrade.ReconcileDurableEvents(context.Background(), app, driver, manager.Dir, encryptionKey)
 	}); err != nil {
 		_ = manager.Fail("upgrade_finalize_failed")
 		_ = app.ClearBootstrap()

@@ -90,7 +90,7 @@ if (!initialized.ok) { stop(); throw new Error(`Test setup failed (${initialized
 
 start(process.execPath, [join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', '127.0.0.1', '--port', '4174', '--strictPort'], {
   cwd: frontendDir,
-  env: { ...process.env, VITE_BACKEND_URL: backendURL },
+  env: { ...process.env, SUBFLOW_HTTP_PORT: String(backendPort) },
 })
 
 for (let attempt = 0; attempt < 120; attempt++) {

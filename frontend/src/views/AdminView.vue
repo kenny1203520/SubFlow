@@ -81,8 +81,7 @@ const roleCategories = computed(() => [...new Set(roles.value.map(role => role.c
 const rolesByCategory = computed(() => roles.value.reduce<Record<string, AccessRole[]>>((groups, role) => { const category = role.category || tr('ungroupedRoles'); (groups[category] ||= []).push(role); return groups }, {}))
 const can = (permission: string) => auth.permissions.includes(permission)
 const pbAdminUrl = computed(() => {
-  const base = import.meta.env.VITE_BACKEND_URL || window.location.origin
-  return new URL('/_/', base).toString()
+  return new URL('/_/', window.location.origin).toString()
 })
 
 function permissionInfo(permission: string) {
@@ -246,8 +245,8 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
     <form v-else-if="section === 'settings' && can('system.settings.manage')" class="card form-card admin-form" @submit.prevent="saveSettings">
       <h2>{{ tr('settings') }}</h2>
       <BaseInput v-model="settings.siteName" :label="tr('applicationName')" :help="tr('applicationNameHelp')" required :maxlength="255" />
-      <label :for="a11yId + '-field-1'">{{ tr('timezone') }}<TimezoneSelect v-model="settings.defaultTimezone"  :id="a11yId + '-field-1'"/></label>
-      <label :for="a11yId + '-field-2'">{{ tr('currency') }}<CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies"  :id="a11yId + '-field-2'"/></label>
+      <div class="semantic-field"><span>{{ tr('timezone') }}</span><TimezoneSelect v-model="settings.defaultTimezone"  :id="a11yId + '-field-1'" :label="tr('timezone')"/></div>
+      <div class="semantic-field"><span>{{ tr('currency') }}</span><CurrencySelect v-model="settings.defaultCurrency" :currencies="workspace.currencies"  :id="a11yId + '-field-2'" :label="tr('currency')"/></div>
       <fieldset class="settings-section"><legend>{{tr('attachments')}}</legend><p class="field-help">{{tr('attachmentSystemLimitsHelp')}}</p><div class="form-row"><label>{{tr('attachmentDefaultSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentDefaultMaxSize/1048576)" @input="updateAttachmentMiB('attachmentDefaultMaxSize',$event)"></label><label>{{tr('attachmentDefaultCount')}}<input v-model.number="settings.attachmentDefaultMaxCount" type="number" min="1" step="1"></label></div><div class="form-row"><label>{{tr('attachmentMaximumSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentLimitMaxSize/1048576)" @input="updateAttachmentMiB('attachmentLimitMaxSize',$event)"></label><label>{{tr('attachmentMaximumCount')}}<input v-model.number="settings.attachmentLimitMaxCount" type="number" min="1" step="1"></label></div></fieldset>
       <fieldset class="settings-section"><legend>{{ tr('loginSecurity') }}</legend>
         <label class="check"><input v-model="settings.allowPasswordRegistration" type="checkbox"><span>{{ tr('allowPasswordRegistration') }}</span></label>
