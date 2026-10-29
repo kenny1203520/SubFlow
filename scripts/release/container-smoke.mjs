@@ -50,19 +50,41 @@ try {
   const page = await browser.newPage({ baseURL, ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'UTC' })
   await page.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
   const errors = []
+  const setupResponses = []
+  const setupResponseReads = []
   page.on('pageerror', error => errors.push(error.message))
+  page.on('response', response => {
+    const url = new URL(response.url())
+    if (!url.pathname.startsWith('/api/')) return
+    const result = { method: response.request().method(), path: url.pathname, status: response.status() }
+    setupResponses.push(result)
+    if (response.status() >= 400) {
+      setupResponseReads.push(response.json().then(body => {
+        result.errorCode = body?.error?.code || 'unknown'
+      }).catch(() => {
+        result.errorCode = 'unparseable_error'
+      }))
+    }
+  })
   const owner = 'container-owner@example.test'
   const password = 'isolated-password-1234'
   await page.goto(`/setup?token=${token}`)
   await expect(page.getByRole('heading', { name: 'Create the administrator', exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Complete setup', exact: true }).click()
   assert.equal(await page.locator('form').evaluate(form => form.checkValidity()), false, 'empty setup must fail validation')
+  setupResponses.length = 0
   await page.getByLabel('Display name', { exact: true }).fill('Container Owner')
   await page.getByLabel('Email', { exact: true }).fill(owner)
   await page.locator('input[autocomplete="new-password"]').fill(password)
   await page.getByLabel('Allow new user registrations', { exact: true }).check()
   await page.getByRole('button', { name: 'Complete setup', exact: true }).click()
-  await expect(page).toHaveURL(/\/home$/, { timeout: 20000 })
+  try {
+    await expect(page).toHaveURL(/\/personal$/, { timeout: 20000 })
+  } catch (error) {
+    await Promise.all(setupResponseReads)
+    console.error('Container setup diagnostics', JSON.stringify({ path: new URL(page.url()).pathname, apiResponses: setupResponses, formErrorVisible: await page.locator('.form-error').isVisible(), runtimeErrorCount: errors.length }))
+    throw error
+  }
   await page.getByRole('button', { name: 'Not now' }).click({ timeout: 1500 }).catch(() => {})
   const auth = async email => {
     const response = await page.request.post('/api/collections/users/auth-with-password', { data: { identity: email, password } })
