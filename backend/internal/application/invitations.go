@@ -143,7 +143,7 @@ func (s *CollaborationService) publicApplicationURL() (*url.URL, error) {
 	}
 	parsed, err := publicurl.Parse(value)
 	if err != nil {
-		return nil, fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTP or HTTPS URL", domain.ErrConfiguration)
+		return nil, fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTPS URL", domain.ErrConfiguration)
 	}
 	return parsed, nil
 }

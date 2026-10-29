@@ -27,7 +27,7 @@ func newShareCookieEvent(t *testing.T, directTLS bool, applicationURL, forwarded
 		request.Header.Set("X-Forwarded-Proto", forwardedProto)
 	}
 	service := application.New(adapters.Stores{}, "test-cookie-root-key")
-	api := &API{Service: service, ApplicationURL: func() string { return applicationURL }}
+	api := &API{Service: service}
 	event := &core.RequestEvent{}
 	event.Request = request
 	event.Response = recorder
@@ -36,19 +36,18 @@ func newShareCookieEvent(t *testing.T, directTLS bool, applicationURL, forwarded
 	return api, event, recorder, share
 }
 
-func TestShareCookieSecureRequiresDirectOrConfiguredHTTPS(t *testing.T) {
+func TestShareCookieIsAlwaysSecure(t *testing.T) {
 	tests := []struct {
 		name           string
 		directTLS      bool
 		applicationURL string
 		forwardedProto string
-		wantSecure     bool
 	}{
-		{name: "direct TLS", directTLS: true, applicationURL: "http://subflow.example.test", wantSecure: true},
-		{name: "PocketBase public HTTPS URL", applicationURL: "https://subflow.example.test", wantSecure: true},
-		{name: "explicit HTTP stays compatible", applicationURL: "http://subflow.example.test", wantSecure: false},
-		{name: "forwarded header is not trusted", applicationURL: "http://subflow.example.test", forwardedProto: "https", wantSecure: false},
-		{name: "missing URL remains HTTP", wantSecure: false},
+		{name: "direct TLS", directTLS: true, applicationURL: "http://subflow.example.test"},
+		{name: "PocketBase public HTTPS URL", applicationURL: "https://subflow.example.test"},
+		{name: "explicit HTTP is rejected for links but cookie stays secure", applicationURL: "http://subflow.example.test"},
+		{name: "forwarded header does not change cookie policy", applicationURL: "http://subflow.example.test", forwardedProto: "https"},
+		{name: "missing URL does not downgrade cookie", applicationURL: ""},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -57,8 +56,8 @@ func TestShareCookieSecureRequiresDirectOrConfiguredHTTPS(t *testing.T) {
 			if len(cookies) != 1 {
 				t.Fatalf("issued %d cookies, want one", len(cookies))
 			}
-			if cookies[0].Secure != test.wantSecure {
-				t.Fatalf("Secure = %v, want %v", cookies[0].Secure, test.wantSecure)
+			if !cookies[0].Secure {
+				t.Fatalf("Secure = false, want every share cookie to be Secure")
 			}
 		})
 	}

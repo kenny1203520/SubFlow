@@ -11,9 +11,9 @@ vi.mock('../stores/workspace', () => ({ useWorkspaceStore: () => ({ currencies: 
 function response(data: unknown, status = 200) {
   return new Response(JSON.stringify(status === 200 ? { data } : { error: { code: 'not_found', message: 'Not found' } }), { status, headers: { 'Content-Type': 'application/json' } })
 }
-async function render() {
+async function render(section = 'notification-emails') {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/admin/:section', name: 'admin-section', component: AdminView }, { path: '/admin', name: 'admin', component: AdminView }] })
-  await router.push('/admin/notification-emails')
+  await router.push(`/admin/${section}`)
   await router.isReady()
   const wrapper = mount(AdminView, { global: { plugins: [router] } })
   await flushPromises()
@@ -64,6 +64,32 @@ describe('admin notification email states', () => {
     await flushPromises()
     expect(wrapper.find('.failed-email-row').exists()).toBe(false)
     expect(wrapper.find('[role="status"]').text()).toContain('The notification email has been queued again.')
+    wrapper.unmount()
+  })
+})
+
+describe('admin HTTPS certificate settings', () => {
+  it('shows the active certificate and labelled upload controls', async () => {
+    const settings = {
+      initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD',
+      attachmentDefaultMaxSize: 20 * 1048576, attachmentDefaultMaxCount: 10,
+      attachmentLimitMaxSize: 20 * 1048576, attachmentLimitMaxCount: 10,
+      allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true,
+      captchaProvider: '', captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '',
+      captchaSecret: '', captchaConfigured: false,
+      captchaFlows: { register: { enabled: false, trigger: 'load', mode: 'interactive' }, passwordReset: { enabled: false, trigger: 'load', mode: 'interactive' }, otpRequest: { enabled: false, trigger: 'load', mode: 'interactive' }, login: { enabled: false, trigger: 'load', mode: 'interactive' } },
+    }
+    const fetch = vi.fn((url: string) => Promise.resolve(url.endsWith('/system/tls-certificate')
+      ? response({ source: 'uploaded', expiresAt: '2030-01-01T00:00:00Z' })
+      : response(settings)))
+    vi.stubGlobal('fetch', fetch)
+    const wrapper = await render('settings')
+    expect(wrapper.text()).toContain('An uploaded certificate is active.')
+    expect(wrapper.find('input[name="certificate"]').attributes('type')).toBe('file')
+    expect(wrapper.find('input[name="privateKey"]').attributes('type')).toBe('file')
+    const certificateInput = wrapper.find<HTMLInputElement>('input[name="certificate"]')
+    expect(wrapper.find(`label[for="${certificateInput.attributes('id')}"]`).text()).toContain('Certificate chain (PEM)')
+    expect(fetch).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 })

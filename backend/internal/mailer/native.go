@@ -37,7 +37,7 @@ func (m *Native) SendNotification(ctx context.Context, recipient, subject, body 
 	settings := m.App.Settings()
 	appURL, err := publicurl.Parse(settings.Meta.AppURL)
 	if err != nil {
-		return fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTP or HTTPS URL", domain.ErrConfiguration)
+		return fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTPS URL", domain.ErrConfiguration)
 	}
 	senderName := settings.Meta.SenderName
 	if senderName == "" {

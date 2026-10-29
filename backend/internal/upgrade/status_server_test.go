@@ -6,6 +6,9 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
+
+	"subflow/internal/security"
 )
 
 func TestPublicStatusExposesOnlySafeUpgradeFields(t *testing.T) {
@@ -20,13 +23,21 @@ func TestPublicStatusExposesOnlySafeUpgradeFields(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	server, err := StartStatusServer("127.0.0.1:0", manager)
+	certificates, err := security.OpenServerCertificateManager(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := StartStatusServer("127.0.0.1:0", manager, certificates)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer server.Close()
 
-	response, err := http.Get("http://" + server.listener.Addr().String() + "/api/subflow/v1/runtime/status")
+	request, err := http.NewRequest(http.MethodGet, "https://"+server.listener.Addr().String()+"/api/subflow/v1/runtime/status", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := certificates.HealthClient(time.Second).Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}

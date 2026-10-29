@@ -326,7 +326,7 @@ func (s *Service) VerifyCaptcha(ctx context.Context, flow, token, remoteIP strin
 	case "recaptcha", "turnstile", "hcaptcha":
 		parsedURL, parseErr := publicurl.Parse(appURL)
 		if parseErr != nil {
-			err = fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTP or HTTPS URL", domain.ErrConfiguration)
+			err = fmt.Errorf("%w: PocketBase Application URL must be a valid root HTTPS URL", domain.ErrConfiguration)
 		} else {
 			identity.URL = parsedURL.String()
 			err = s.Captcha.Verify(ctx, settings.CaptchaProvider, secret, settings.CaptchaVerifyURL, token, remoteIP, captchaTurnstileAction(flow), identity)

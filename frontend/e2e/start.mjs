@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import https from 'node:https'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -18,7 +19,7 @@ const backendPort = await new Promise((resolvePort, rejectPort) => {
     server.close(() => resolvePort(port))
   })
 })
-const backendURL = `http://127.0.0.1:${backendPort}`
+const backendURL = `https://127.0.0.1:${backendPort}`
 const children = []
 let backendOutput = ''
 let stopping = false
@@ -38,6 +39,23 @@ function start(command, args, options) {
   const child = spawn(command, args, { stdio: ['ignore', 'pipe', 'pipe'], ...options })
   children.push(child)
   return child
+}
+
+function requestJSON(url, options, certificate) {
+  return new Promise((resolve, reject) => {
+    const request = https.request(url, { ...options, ca: certificate }, response => {
+      const chunks = []
+      response.on('data', chunk => chunks.push(chunk))
+      response.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8')
+        try { resolve({ status: response.statusCode, body: JSON.parse(body) }) }
+        catch { reject(new Error(`Test HTTPS endpoint returned invalid JSON (${response.statusCode}).`)) }
+      })
+    })
+    request.once('error', reject)
+    if (options.body) request.write(options.body)
+    request.end()
+  })
 }
 
 function stop() {
@@ -79,24 +97,28 @@ if (!setupToken) {
   throw new Error(`Isolated backend did not issue a setup token (exit=${backend.exitCode ?? 'still running'}). Raw logs are withheld because they may contain credentials.${diagnostics ? ` Safe error summary:\n${diagnostics}` : ''}`)
 }
 
-const setupStatus = await fetch(`${backendURL}/api/subflow/v1/setup/status?token=${setupToken}`)
-if (!(await setupStatus.json()).data?.setupAvailable) { stop(); throw new Error('The isolated backend did not accept its own setup token.') }
+const tlsRoot = join(dataDir, '.subflow', 'tls')
+const activeTLS = (await readFile(join(tlsRoot, 'active'), 'utf8')).trim()
+const activeTLSDir = activeTLS === 'self-signed' ? join(tlsRoot, activeTLS) : join(tlsRoot, 'versions', activeTLS)
+const certificate = await readFile(join(activeTLSDir, 'cert.pem'))
+const setupStatus = await requestJSON(`${backendURL}/api/subflow/v1/setup/status?token=${setupToken}`, {}, certificate)
+if (!setupStatus.body.data?.setupAvailable) { stop(); throw new Error('The isolated backend did not accept its own setup token.') }
 
-const initialized = await fetch(`${backendURL}/api/subflow/v1/setup/initialize`, {
+const initialized = await requestJSON(`${backendURL}/api/subflow/v1/setup/initialize`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({ token: setupToken, adminName: 'Playwright Owner', email: 'owner@example.test', password: 'test-password-1234', siteName: 'SubFlow E2E', defaultTimezone: 'Asia/Taipei', defaultCurrency: 'TWD', allowRegistration: true }),
-})
-if (!initialized.ok) { stop(); throw new Error(`Test setup failed (${initialized.status}).`) }
+}, certificate)
+if (initialized.status < 200 || initialized.status >= 300) { stop(); throw new Error(`Test setup failed (${initialized.status}).`) }
 
 start(process.execPath, [join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', '127.0.0.1', '--port', '4174', '--strictPort'], {
   cwd: frontendDir,
-  env: { ...process.env, SUBFLOW_HTTP_PORT: String(backendPort) },
+  env: { ...process.env, SUBFLOW_HTTP_PORT: String(backendPort), SUBFLOW_DATA_DIR: dataDir },
 })
 
 for (let attempt = 0; attempt < 120; attempt++) {
   try {
-    const response = await fetch('http://127.0.0.1:4174/api/health')
-    if (response.ok) break
+    const response = await requestJSON('https://127.0.0.1:4174/api/health', {}, certificate)
+    if (response.status === 200) break
   } catch { /* wait for Vite to bind */ }
   await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
   if (attempt === 119) throw new Error('Vite did not become ready on port 4174')

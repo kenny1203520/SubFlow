@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdir, writeFile, readFile } from 'node:fs/promises'
+import https from 'node:https'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { verifySharedAttachment } from './shared-attachment-smoke.mjs'
@@ -13,6 +14,15 @@ const name = `subflow-smoke-${randomUUID()}`
 function docker(...args) {
   return execFileSync(process.platform === 'win32' ? 'rtk' : 'docker', process.platform === 'win32' ? ['proxy', 'docker', ...args] : args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
+function getHealth(url, certificate) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, { ca: certificate }, response => {
+      response.resume()
+      response.once('end', () => resolve(response.statusCode === 200))
+    })
+    request.once('error', reject)
+  })
+}
 await mkdir('.release', { recursive: true })
 let started = false
 let browser
@@ -20,10 +30,15 @@ try {
   docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--tmpfs', '/app/pb_data:rw,uid=65532,gid=65532,mode=0750', '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${randomUUID()}`, image)
   started = true
   assert.equal(docker('inspect', '--format', '{{.Config.User}}', name), '65532:65532', 'runtime image must default to the unprivileged UID')
-  const baseURL = `http://${docker('port', name, '8080/tcp')}`
+  const baseURL = `https://${docker('port', name, '8080/tcp')}`
+  const certificatePath = '/app/pb_data/.subflow/tls/self-signed/cert.pem'
+  let certificate
   let ready = false
   for (let attempt = 0; attempt < 120; attempt++) {
-    try { ready = (await fetch(`${baseURL}/api/health`)).ok } catch {}
+    try {
+      certificate ||= docker('exec', name, 'cat', certificatePath)
+      ready = await getHealth(`${baseURL}/api/health`, certificate)
+    } catch {}
     if (ready) break
     await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
   }
@@ -32,7 +47,7 @@ try {
   assert.ok(token, 'fresh isolated data must issue a one-time setup token')
   const { chromium, expect } = await import(pathToFileURL(resolve(root, 'frontend/node_modules/@playwright/test/index.mjs')).href)
   browser = await chromium.launch()
-  const page = await browser.newPage({ baseURL, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'UTC' })
+  const page = await browser.newPage({ baseURL, ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'UTC' })
   await page.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
   const errors = []
   page.on('pageerror', error => errors.push(error.message))
@@ -67,7 +82,7 @@ try {
   await page.goto('/about')
   await expect(page.locator('body')).toContainText(version)
   // Start a second browser context so registration is tested without the owner session.
-  const visitor = await browser.newPage({ baseURL, viewport: { width: 1440, height: 900 }, timezoneId: 'UTC' })
+  const visitor = await browser.newPage({ baseURL, ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 }, timezoneId: 'UTC' })
   visitor.on('pageerror', error => errors.push(error.message))
   await visitor.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
   await visitor.goto('/auth')
