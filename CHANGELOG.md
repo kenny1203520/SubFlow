@@ -8,7 +8,7 @@
 
 ## [0.2.0-beta] - 2026-10-29
 
-This is the first 0.2.0 beta for broader acceptance testing. See the [beta testing guide](docs/releases/0.2.0-beta.md).
+This is the first 0.2.0 beta for broader acceptance testing. See the [beta testing guide](https://github.com/kenny1203520/SubFlow/blob/v0.2.0-beta/docs/releases/0.2.0-beta.md).
 
 ### Added
 - Added an actionable home view and group settlement proposal and approval workflows.
