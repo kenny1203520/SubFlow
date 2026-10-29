@@ -70,6 +70,10 @@ func TestNewShareCookieValidAndLegacySignatureRejected(t *testing.T) {
 	if len(issued) != 1 {
 		t.Fatalf("issued %d cookies, want one", len(issued))
 	}
+	parts := strings.Split(issued[0].Value, ".")
+	if len(parts) != 5 || parts[0] != "v1" {
+		t.Fatalf("share cookie = %q, want v1 plus four signed fields", issued[0].Value)
+	}
 	event.Request.AddCookie(issued[0])
 	if !shareCookieValid(event, share, api.Service.ShareKey) {
 		t.Fatal("cookie signed with the current purpose key should validate")
@@ -78,11 +82,29 @@ func TestNewShareCookieValidAndLegacySignatureRejected(t *testing.T) {
 	legacyExpiry := time.Now().Add(time.Hour).Unix()
 	legacyPayload := share.ID + "." + strconv.Itoa(share.AccessVersion) + "." + strconv.FormatInt(legacyExpiry, 10)
 	legacyValue := legacyPayload + "." + shareCookieSignature(legacyPayload, []byte("legacy-share-cookie-key"))
-	legacyRequest := httptest.NewRequest(http.MethodPost, "/api/subflow/v1/shares/share-id/password", nil)
-	legacyRequest.AddCookie(&http.Cookie{Name: shareCookieName, Value: legacyValue})
-	legacyEvent := &core.RequestEvent{}
-	legacyEvent.Request = legacyRequest
-	if shareCookieValid(legacyEvent, share, api.Service.ShareKey) {
-		t.Fatalf("legacy signature must be rejected; signature %q", strings.Split(legacyValue, ".")[3])
+	for _, test := range []struct {
+		name  string
+		value string
+	}{
+		{name: "legacy four-part cookie", value: legacyValue},
+		{name: "unknown version", value: signedShareCookie("v2", share.ID, share.AccessVersion, legacyExpiry, api.Service.ShareKey)},
+		{name: "tampered signature", value: strings.Join(append(append([]string(nil), parts[:4]...), "tampered"), ".")},
+		{name: "expired cookie", value: signedShareCookie("v1", share.ID, share.AccessVersion, time.Now().Add(-time.Hour).Unix(), api.Service.ShareKey)},
+		{name: "different access version", value: signedShareCookie("v1", share.ID, share.AccessVersion+1, legacyExpiry, api.Service.ShareKey)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/api/subflow/v1/shares/share-id/password", nil)
+			request.AddCookie(&http.Cookie{Name: shareCookieName, Value: test.value})
+			invalidEvent := &core.RequestEvent{}
+			invalidEvent.Request = request
+			if shareCookieValid(invalidEvent, share, api.Service.ShareKey) {
+				t.Fatalf("share cookie %q unexpectedly validated", test.value)
+			}
+		})
 	}
+}
+
+func signedShareCookie(version, id string, accessVersion int, expiry int64, key []byte) string {
+	payload := strings.Join([]string{version, id, strconv.Itoa(accessVersion), strconv.FormatInt(expiry, 10)}, ".")
+	return payload + "." + shareCookieSignature(payload, key)
 }

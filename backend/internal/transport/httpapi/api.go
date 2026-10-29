@@ -12,7 +12,6 @@ import (
 	"io"
 	"mime"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -24,6 +23,7 @@ import (
 	"subflow/internal/application"
 	"subflow/internal/domain"
 	"subflow/internal/ports"
+	"subflow/internal/publicurl"
 	"subflow/internal/upgrade"
 )
 
@@ -40,6 +40,7 @@ type API struct {
 }
 
 const ClientProtocolVersion = 1
+const shareCookieVersion = "v1"
 
 type envelope struct {
 	Data any `json:"data"`
@@ -530,25 +531,25 @@ func shareCookieValid(e *core.RequestEvent, value *domain.Share, key []byte) boo
 		return false
 	}
 	parts := strings.Split(cookie.Value, ".")
-	if len(parts) != 4 || parts[0] != value.ID || parts[1] != strconv.Itoa(value.AccessVersion) {
+	if len(parts) != 5 || parts[0] != shareCookieVersion || parts[1] != value.ID || parts[2] != strconv.Itoa(value.AccessVersion) {
 		return false
 	}
-	expires, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil || time.Now().Unix() > expires {
+	expires, err := strconv.ParseInt(parts[3], 10, 64)
+	if err != nil || time.Now().Unix() >= expires {
 		return false
 	}
-	payload := strings.Join(parts[:3], ".")
-	return hmac.Equal([]byte(parts[3]), []byte(shareCookieSignature(payload, key)))
+	payload := strings.Join(parts[:4], ".")
+	return hmac.Equal([]byte(parts[4]), []byte(shareCookieSignature(payload, key)))
 }
 func (a *API) setShareCookie(e *core.RequestEvent, value *domain.Share) {
 	if len(a.Service.ShareKey) == 0 {
 		return
 	}
 	expires := time.Now().Add(8 * time.Hour).Unix()
-	payload := value.ID + "." + strconv.Itoa(value.AccessVersion) + "." + strconv.FormatInt(expires, 10)
+	payload := strings.Join([]string{shareCookieVersion, value.ID, strconv.Itoa(value.AccessVersion), strconv.FormatInt(expires, 10)}, ".")
 	secure := e.Request.TLS != nil
 	if a.ApplicationURL != nil {
-		if parsed, err := url.ParseRequestURI(strings.TrimSpace(a.ApplicationURL())); err == nil && parsed.Scheme == "https" && parsed.Host != "" {
+		if parsed, err := publicurl.Parse(a.ApplicationURL()); err == nil && parsed.Scheme == "https" {
 			secure = true
 		}
 	}
