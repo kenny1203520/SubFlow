@@ -19,7 +19,7 @@
     },
     "devDependencies": {
         "@types/node": "^25.6.0",
-        "@vitejs/plugin-vue": "^6.0.8",
+        "@vitejs/plugin-vue": "^6.0.10",
         "@vitest/coverage-v8": "^5.0.5",
         "@vue/test-utils": "^2.4.11",
         "@vue/tsconfig": "^0.9.1",
