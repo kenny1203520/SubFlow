@@ -4,11 +4,12 @@ go 1.27.3
 
 require (
 	ganigeorgiev.com/pocketbase/dbx v1.13.0
+	ganigeorgiev.com/pocketbase/ozzo-validation/v4 v4.4.1
 	ganigeorgiev.com/pocketbase/pocketbase v0.41.0
 	github.com/altcha-org/altcha-lib-go v1.0.0
 	github.com/altcha-org/altcha-lib-go/v2 v2.4.1
 	github.com/disintegration/imaging v1.6.2
-	golang.org/x/crypto v0.58.0
+	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.60.1
@@ -16,7 +17,6 @@ require (
 
 require (
 	ganigeorgiev.com/fexpr v0.7.0 // indirect
-	ganigeorgiev.com/pocketbase/ozzo-validation/v4 v4.4.1 // indirect
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/domodwyer/mailyak/v3 v3.6.2 // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
