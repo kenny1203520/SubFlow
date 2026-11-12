@@ -1,22 +1,7 @@
 # SubFlow frontend development
 
-Production frontend assets are built by the repository root `Dockerfile` and embedded into the SubFlow Go binary. There is no standalone frontend or Nginx image.
+Production Vue assets are built into the single SubFlow Go image and served by that process. There is no standalone frontend or Nginx image.
 
-For local development, start the Go backend first:
+For the two-service Docker workflow, setup, and native Go/Vite workflow, see the repository [README](../README.md) and [development workflow](../docs/development-workflow.md).
 
-```bash
-cd backend
-go run ./cmd/subflow serve
-```
-
-Then start Vite in another terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Vite reads `SUBFLOW_HTTP_PORT` from the repository-root `.env` and proxies `/api` and `/_/` to the Go backend on that port. The browser uses same-origin paths; no backend URL is embedded in the frontend bundle.
-
-The backend and Vite dev server use HTTPS with the local certificate generated on the first backend startup. The browser automation trusts that test certificate; local browsers may ask you to accept it once. `SUBFLOW_HTTP_PORT` keeps its legacy name but selects the HTTPS listener port.
+The local `npm run dev` command explicitly reads only the proxy host, HTTPS port, and data directory from the repository-root `.env.development.local` when it exists. It does not pass the development encryption key to Vite. Vite does not load arbitrary `.env` files. Docker Compose supplies only the proxy host, HTTPS port, and read-only TLS certificate path to the frontend service.

@@ -110,9 +110,9 @@ const initialized = await requestJSON(`${backendURL}/api/subflow/v1/setup/initia
 }, certificate)
 if (initialized.status < 200 || initialized.status >= 300) { stop(); throw new Error(`Test setup failed (${initialized.status}).`) }
 
-start(process.execPath, [join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', '127.0.0.1', '--port', '4174', '--strictPort'], {
+start(process.execPath, [join(frontendDir, 'scripts', 'dev.mjs'), '--host', '127.0.0.1', '--port', '4174', '--strictPort'], {
   cwd: frontendDir,
-  env: { ...process.env, SUBFLOW_HTTP_PORT: String(backendPort), SUBFLOW_DATA_DIR: dataDir },
+  env: { ...process.env, SUBFLOW_HTTP_PORT: String(backendPort), SUBFLOW_DATA_DIR: dataDir, SUBFLOW_DEV_BACKEND_HOST: '127.0.0.1' },
 })
 
 for (let attempt = 0; attempt < 120; attempt++) {

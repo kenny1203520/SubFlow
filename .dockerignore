@@ -1,8 +1,11 @@
 .git
 .gitignore
-.env
+**/.env
+**/.env.*
 **/node_modules
 **/dist
+!backend/internal/web/dist/
+!backend/internal/web/dist/**
 backend/pb_data
 backend/subflow
 backend/subflow.exe
