@@ -2,6 +2,8 @@ package application
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -142,11 +144,40 @@ func (s *Service) ListLinkedProviders(ctx context.Context, userID string) ([]dom
 	return s.Stores.Users.ListExternalAuths(ctx, userID)
 }
 func (s *Service) UnlinkProvider(ctx context.Context, userID, provider string) error {
-	err := s.Stores.Users.UnlinkExternalAuth(ctx, userID, provider)
+	var unlinkErr, successAuditErr error
+	err := s.Stores.Transactions.Within(ctx, func(tx context.Context) error {
+		unlinkErr = s.Stores.Users.UnlinkExternalAuth(tx, userID, provider)
+		if unlinkErr != nil {
+			return unlinkErr
+		}
+		successAuditErr = s.audit(tx, userID, "", "user.provider_unlinked", "user", userID, "success", encodeAuditSummary(map[string]any{"provider": safeProviderAuditID(provider)}, nil))
+		return successAuditErr
+	})
 	if err == nil {
-		s.audit(ctx, userID, "", "user.provider_unlinked", "user", userID, "success", encodeAuditSummary(map[string]any{"provider": provider}, nil))
+		return nil
+	}
+
+	reason := "unlink_failed"
+	if successAuditErr != nil {
+		reason = "audit_write_failed"
+	}
+	if auditErr := s.audit(ctx, userID, "", "user.provider_unlinked", "user", userID, "failure", encodeAuditSummary(map[string]any{"provider": safeProviderAuditID(provider), "reason": reason}, nil)); auditErr != nil {
+		return errors.Join(err, fmt.Errorf("%w: %w", domain.ErrAuditUnavailable, auditErr))
 	}
 	return err
+}
+
+func safeProviderAuditID(provider string) string {
+	if provider == "" || len(provider) > 100 {
+		return "unknown"
+	}
+	for _, char := range provider {
+		if (char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') || (char >= '0' && char <= '9') || char == '-' || char == '_' || char == '.' {
+			continue
+		}
+		return "unknown"
+	}
+	return provider
 }
 
 func (s *Service) ListGroups(ctx context.Context, userID string, page ports.PageRequest) (ports.Page[domain.Group], error) {

@@ -10,11 +10,13 @@ import Logo from '../components/Logo.vue'
 import BaseInput from '../components/BaseInput.vue'
 import PasswordField from '../components/PasswordField.vue'
 import CaptchaChallenge from '../components/CaptchaChallenge.vue'
+import OAuthProviderList from '../components/OAuthProviderList.vue'
+import type { OAuthProviderInfo } from '../stores/auth'
 
 type AuthMode = 'login' | 'register' | 'otp-request' | 'otp-verify' | 'mfa-verify'
 const auth=useAuthStore(), setup=useSetupStore(), router=useRouter(), route=useRoute(), {tr}=useI18n()
 const mode=ref<AuthMode>('login'), email=ref(''), password=ref(''), name=ref(''), code=ref(''), otpId=ref(''), mfaId=ref(''), captchaToken=ref(''), busy=ref(false), error=ref(''), registered=ref(false)
-const providers=ref<Array<{name:string;displayName?:string}>>([]), methods=ref<{otp?:{enabled?:boolean};mfa?:{enabled?:boolean};password?:{enabled?:boolean}}>({})
+const providers=ref<OAuthProviderInfo[]>([]), methods=ref<{otp?:{enabled?:boolean};mfa?:{enabled?:boolean};password?:{enabled?:boolean}}>({})
 const canPasswordRegistration=computed(()=>setup.allowRegistration)
 const isCodeMode=computed(()=>mode.value==='otp-verify'||mode.value==='mfa-verify')
 const captchaRef=ref<{ solve: () => Promise<string>; reset: () => void } | null>(null)
@@ -101,7 +103,7 @@ watch(()=>setup.allowRegistration,value=>{if(!value&&mode.value==='register')mod
       </form>
       <div v-if="isCodeMode" class="auth-actions"><button type="button" class="ghost" :disabled="busy" @click="resend">{{tr('resendCode')}}</button></div>
       <div v-if="mode==='login'&&methods.otp?.enabled" class="oauth-options"><button type="button" class="ghost wide" :disabled="busy" @click="startOtpRequest">{{tr('emailOtpLogin')}}</button></div>
-      <div v-if="mode==='login'&&providers.length" class="oauth-options"><span>{{tr('or')}}</span><button v-for="provider in providers" :key="provider.name" type="button" class="ghost wide" :disabled="busy" @click="oauth(provider.name)">{{provider.displayName||provider.name}}</button></div>
+      <div v-if="mode==='login'&&providers.length" class="oauth-options oauth-options--providers"><span>{{tr('or')}}</span><OAuthProviderList :providers="providers" :busy="busy" @select="oauth" /></div>
     </div></section>
   </main>
 </template>

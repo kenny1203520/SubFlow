@@ -175,6 +175,7 @@ func main() {
 		base := application.New(stores, runtime.EncryptionKey)
 		base.Events = events
 		base.Rates = exchange.NewOpenERAPIProvider()
+		registerOAuthAudit(e, base)
 		base.PocketBaseApplication = func() (string, string) {
 			settings := e.App.Settings().Meta
 			return settings.AppName, settings.AppURL

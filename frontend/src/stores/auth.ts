@@ -9,6 +9,8 @@ import { isMaintenanceBlocked } from '../runtime/maintenance'
 
 export class ProviderLinkedElsewhereError extends Error {}
 
+export type OAuthProviderInfo = { name: string; displayName?: string; logo?: string }
+
 export const useAuthStore = defineStore('auth', () => {
   const { tr } = useI18n()
   const record = ref(pb.authStore.record)
@@ -92,7 +94,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!record.value) throw new Error(tr('notSignedIn'))
     record.value = await pb.collection('users').update(record.value.id, input)
   }
-  async function oauthProviders() { assertRuntimeReady(); const methods=await pb.collection('users').listAuthMethods(); return methods.oauth2?.providers||[] }
+  async function oauthProviders() { assertRuntimeReady(); const methods=await pb.collection('users').listAuthMethods(); return (methods.oauth2?.providers||[]) as OAuthProviderInfo[] }
   async function loginOAuth(provider:string) { assertRuntimeReady(); await pb.collection('users').authWithOAuth2({provider,createData:{timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,default_currency:'TWD'}}); await refreshAccess() }
   // Calling authWithOAuth2 while already authenticated makes PocketBase link
   // the provider to the CURRENT record instead of matching/creating by
