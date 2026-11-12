@@ -13,6 +13,8 @@ import { pb } from '../pocketbase'
 import { ApiClient } from '../api/client'
 import type { Contact } from '../api/types'
 import CaptchaChallenge from '../components/CaptchaChallenge.vue'
+import OAuthProviderLogo from '../components/OAuthProviderLogo.vue'
+import type { OAuthProviderInfo } from '../stores/auth'
 
 const a11yId = useId()
 const auth = useAuthStore(), setup = useSetupStore(), workspace=useWorkspaceStore(), toast = useToastStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), resetCaptchaToken = ref(''), { t, tr } = useI18n(), { preference, setTheme } = useTheme()
@@ -47,7 +49,7 @@ function editContact(contact: Contact) { Object.assign(contactForm, { id: contac
 function resetContact() { Object.assign(contactForm, { id: '', name: '', email: '' }) }
 async function saveContact() { contactBusy.value = true; try { const result = contactForm.id ? await contactClient.patch<Contact>('/personal/contacts/' + contactForm.id, { name: contactForm.name, email: contactForm.email }) : await contactClient.post<Contact>('/personal/contacts', { name: contactForm.name, email: contactForm.email }); const index = contacts.value.findIndex(value => value.id === result.data.id); if (index >= 0) contacts.value[index] = result.data; else contacts.value.push(result.data); resetContact() } finally { contactBusy.value = false } }
 async function deleteContact(contact: Contact) { if (!confirm(tr('deleteContactConfirm'))) return; await contactClient.delete('/personal/contacts/' + contact.id); contacts.value = contacts.value.filter(value => value.id !== contact.id) }
-const providers = ref<{ name: string; displayName: string }[]>([])
+const providers = ref<OAuthProviderInfo[]>([])
 const linkedProviders = ref<Set<string>>(new Set())
 const providerBusy = reactive<Record<string, boolean>>({})
 async function loadProviders() {
@@ -123,7 +125,7 @@ async function toggleProvider(name: string) {
                 <div><p class="eyebrow">{{t.connectedProviders}}</p><h2>{{ t.connectedProviders }}</h2><p class="setting-description">{{ t.connectedProvidersDesc }}</p></div>
                 <div class="rows">
                     <div v-for="provider in providers" :key="provider.name" class="row">
-                        <div class="grow"><strong>{{ provider.displayName || provider.name }}</strong></div>
+                        <div class="grow"><span class="profile-provider-name"><OAuthProviderLogo size="small" :provider="provider" /><strong>{{ provider.displayName || provider.name }}</strong></span></div>
                         <span class="pill">{{ linkedProviders.has(provider.name) ? t.providerConnected : t.providerNotConnected }}</span>
                         <button type="button" class="ghost" :disabled="providerBusy[provider.name]" @click="toggleProvider(provider.name)">{{ linkedProviders.has(provider.name) ? t.disconnectProvider : t.connectProvider }}</button>
                     </div>
@@ -139,3 +141,20 @@ async function toggleProvider(name: string) {
         </div>
     </section>
 </template>
+
+<style scoped>
+.profile-provider-name {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-provider-name strong {
+  min-width: 0;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
+}
+</style>
