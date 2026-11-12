@@ -6,8 +6,16 @@
 
 ## [Unreleased]
 
-### Target: 0.2.0-beta.1
-- Add audited password recovery and verified sign-in email changes, with PocketBase OTP/MFA integration. See the [0.2.0-beta.1 account security scope](docs/releases/0.2.0-beta.1.md).
+## [0.2.0-beta.1] - 2026-11-12
+
+### Added
+- Added audited password recovery with an administrator switch and PocketBase password-policy enforcement.
+- Added verified sign-in email changes with security alerts to the previous address.
+- Added PocketBase Email OTP and MFA continuation after password or OIDC sign-in.
+
+### Security
+- Applied CAPTCHA and rate limits to recovery and OTP requests while preserving generic responses for account-existence privacy.
+- Kept reset and email-change tokens in URL fragments and submitted them only in request bodies; audited request, delivery, confirmation, and failure outcomes without storing secrets.
 
 ## [0.2.0-beta] - 2026-10-29
 
