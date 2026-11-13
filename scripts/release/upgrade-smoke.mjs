@@ -139,7 +139,11 @@ async function request(server, path, token, method = 'GET', body) {
   const form = body instanceof FormData
   console.log(`Checking ${method} ${path.split('?')[0]}`)
   const options = { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body && !form ? { 'Content-Type': 'application/json' } : {}) }, body: body ? form ? body : JSON.stringify(body) : undefined }
-  assert.ok(!server.certificate || !form, 'HTTPS upgrade checks do not upload multipart data')
+  if (server.certificate && form) {
+    const encoded = new Response(body)
+    options.headers['Content-Type'] = encoded.headers.get('content-type')
+    options.body = await encoded.arrayBuffer()
+  }
   const response = server.certificate
     ? await requestHTTPS(server, `${server.base}${path}`, options)
     : await fetch(`${server.base}${path}`, options)
