@@ -3,6 +3,7 @@ import { en } from './locales/en'
 import { zhTW, type MessageKey } from './locales/zh-TW'
 import { adminExtras } from './locales/admin'
 import { upgradeMessages } from './locales/upgrades'
+import { accountSecurityMessages } from './locales/account-security'
 
 export type Locale = 'zh-TW' | 'en'
 const stored = typeof localStorage !== 'undefined' ? localStorage.getItem('subflow-locale') : null
@@ -17,7 +18,7 @@ export function useI18n() {
   const t = computed(() => messages[locale.value])
   function tr(key: MessageKey | string, values?: Record<string, string | number>) {
     const replacements = values ?? {}
-    const text = (t.value as Record<string,string>)[key] ?? upgradeMessages[locale.value][key as keyof typeof upgradeMessages['zh-TW']] ?? adminExtras[locale.value][key as keyof typeof adminExtras['zh-TW']] ?? key
+    const text = (t.value as Record<string,string>)[key] ?? accountSecurityMessages[locale.value][key as keyof typeof accountSecurityMessages['zh-TW']] ?? upgradeMessages[locale.value][key as keyof typeof upgradeMessages['zh-TW']] ?? adminExtras[locale.value][key as keyof typeof adminExtras['zh-TW']] ?? key
     return text.replace(/\{(\w+)\}/g, (_, name: string) => String(replacements[name] ?? ''))
   }
   function setLocale(next: Locale) {

@@ -249,6 +249,7 @@ func (s *Service) UpdateSystemSettings(ctx context.Context, userID string, value
 	settingsChanges.addString("default_timezone", current.DefaultTimezone, value.DefaultTimezone)
 	settingsChanges.addString("default_currency", string(current.DefaultCurrency), string(value.DefaultCurrency))
 	settingsChanges.addBool("allow_password_registration", current.AllowPasswordRegistration, value.AllowPasswordRegistration)
+	settingsChanges.addBool("allow_password_reset", current.AllowPasswordReset, value.AllowPasswordReset)
 	settingsChanges.addBool("allow_oidc_registration", current.AllowOIDCRegistration, value.AllowOIDCRegistration)
 	settingsChanges.addString("captcha_provider", current.CaptchaProvider, value.CaptchaProvider)
 	settingsChanges.addBool("captcha_enabled", current.CaptchaEnabled, value.CaptchaEnabled)

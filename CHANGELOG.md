@@ -6,6 +6,9 @@
 
 ## [Unreleased]
 
+### Target: 0.2.0-beta.1
+- Add audited password recovery and verified sign-in email changes, with PocketBase OTP/MFA integration. See the [0.2.0-beta.1 account security scope](docs/releases/0.2.0-beta.1.md).
+
 ## [0.2.0-beta] - 2026-10-29
 
 This is the first 0.2.0 beta for broader acceptance testing. See the [beta testing guide](https://github.com/kenny1203520/SubFlow/blob/v0.2.0-beta/docs/releases/0.2.0-beta.md).

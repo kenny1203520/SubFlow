@@ -160,12 +160,6 @@ func main() {
 	events := realtime.NewBus()
 	setupLink := registerUpgradeBootstrap(app, manager, "pocketbase", setupURL, runtime.EncryptionKey)
 	realtime.BindRecordEvents(app, events)
-	app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(e *core.RecordRequestPasswordResetRequestEvent) error {
-		if runtime.Environment != "development" && !e.App.Settings().SMTP.Enabled {
-			return errors.New("SMTP must be configured in PocketBase for password reset outside development")
-		}
-		return e.Next()
-	})
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		e.Server.TLSConfig = certificates.TLSConfig()
 		stores, err := adapters.New("pocketbase", e.App)
@@ -180,55 +174,9 @@ func main() {
 			settings := e.App.Settings().Meta
 			return settings.AppName, settings.AppURL
 		}
-		app.OnRecordRequestPasswordResetRequest("users").BindFunc(func(event *core.RecordRequestPasswordResetRequestEvent) error {
-			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
-			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowPasswordReset, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
-				return event.BadRequestError("captcha_verification_failed", nil)
-			}
-			return event.Next()
-		})
-		app.OnRecordConfirmPasswordResetRequest("users").BindFunc(func(event *core.RecordConfirmPasswordResetRequestEvent) error {
-			userID := event.Record.Id
-			requestApp := event.App
-			var notice *domain.Notification
-			if err := requestApp.RunInTransaction(func(txApp core.App) error {
-				event.App = txApp
-				defer func() { event.App = requestApp }()
-				if err := event.Next(); err != nil {
-					return err
-				}
-				txStores, err := adapters.New("pocketbase", txApp)
-				if err != nil {
-					return err
-				}
-				now := base.Now().UTC()
-				note := &domain.Notification{UserID: userID, Category: domain.NotificationCategorySecurity, Type: "password_changed", EventKey: fmt.Sprintf("password-changed:%s:%d", userID, now.UnixNano()), Title: "password_changed", Status: domain.NotificationStatusPending, CreatedAt: now, UpdatedAt: now}
-				if err := txStores.Notifications.Create(event.Request.Context(), note); err != nil {
-					return err
-				}
-				notice = note
-				if err := txStores.NotificationEmails.Enqueue(event.Request.Context(), &domain.NotificationEmailJob{NotificationID: note.ID, UserID: userID, Status: domain.NotificationEmailQueued, NextAttemptAt: &now}); err != nil {
-					return err
-				}
-				if err := application.New(txStores, runtime.EncryptionKey).RecordAudit(event.Request.Context(), userID, "", "account.password.changed", "user", userID, "success"); err != nil {
-					return err
-				}
-				return nil
-			}); err != nil {
-				return err
-			}
-			if notice != nil {
-				_ = events.Publish(event.Request.Context(), domain.Event{Type: "created", UserID: userID, Resource: "notifications", ResourceID: notice.ID, OccurredAt: base.Now().UTC()})
-			}
-			return nil
-		})
-		app.OnRecordRequestOTPRequest("users").BindFunc(func(event *core.RecordCreateOTPRequestEvent) error {
-			ctx := application.WithAuditRequestMeta(event.Request.Context(), application.AuditRequestMeta{IP: event.RealIP(), UserAgent: event.Request.UserAgent()})
-			if err := base.VerifyCaptcha(ctx, domain.CaptchaFlowOTPRequest, event.Request.Header.Get("X-SubFlow-Captcha"), event.RealIP()); err != nil {
-				return event.BadRequestError("captcha_verification_failed", nil)
-			}
-			return event.Next()
-		})
+		registerAccountSecurityRoutes(e, base)
+		registerAccountSecurityMailerAudit(e.App, base)
+		registerAccountSecurityConfirmationHooks(app, base, events, runtime.EncryptionKey)
 		// Password login has no built-in hook of its own -- fires after
 		// identity lookup but before the password is even checked, so a
 		// rejected captcha short-circuits before that check runs. Disabled by
@@ -280,7 +228,9 @@ func main() {
 				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)
 			}
 		}()
-		(&httpapi.API{Service: base, Upgrades: manager, Certificates: certificates}).RegisterRoutes(e)
+		(&httpapi.API{Service: base, Upgrades: manager, Certificates: certificates, PasswordResetAvailable: func() bool {
+			return passwordResetAvailable(e.App, base, context.Background())
+		}}).RegisterRoutes(e)
 		(&httpapi.CollaborationAPI{Service: &application.CollaborationService{Base: base, Events: events, Mailer: &mailer.Native{App: e.App}, Environment: runtime.Environment, ApplicationURL: func() string { return e.App.Settings().Meta.AppURL }}}).RegisterRoutes(e)
 		web.Register(e)
 		fmt.Print(setupStartupNotice(*setupLink))

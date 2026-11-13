@@ -651,6 +651,7 @@ func (r *Repository) RetryNotificationEmail(ctx context.Context, id string, now 
 func writeNotificationEmailJob(record *core.Record, value *domain.NotificationEmailJob) *core.Record {
 	record.Set("notification", value.NotificationID)
 	record.Set("user", value.UserID)
+	record.Set("recipient_email", value.RecipientEmail)
 	record.Set("status", value.Status)
 	record.Set("attempts", value.Attempts)
 	if value.NextAttemptAt != nil {
@@ -663,7 +664,7 @@ func writeNotificationEmailJob(record *core.Record, value *domain.NotificationEm
 }
 
 func notificationEmailJobFrom(record *core.Record) *domain.NotificationEmailJob {
-	value := &domain.NotificationEmailJob{ID: record.Id, NotificationID: record.GetString("notification"), UserID: record.GetString("user"), Status: record.GetString("status"), Attempts: record.GetInt("attempts"), LastError: record.GetString("last_error")}
+	value := &domain.NotificationEmailJob{ID: record.Id, NotificationID: record.GetString("notification"), UserID: record.GetString("user"), RecipientEmail: record.GetString("recipient_email"), Status: record.GetString("status"), Attempts: record.GetInt("attempts"), LastError: record.GetString("last_error")}
 	if next := record.GetDateTime("next_attempt_at").Time(); !next.IsZero() {
 		value.NextAttemptAt = &next
 	}
@@ -1714,7 +1715,7 @@ func settingsFrom(record *core.Record) domain.SystemSettings {
 	if provider != "" && (record.GetString("captcha_providers") == "" || record.GetString("captcha_providers") == "null") {
 		enabled = true
 	}
-	return domain.SystemSettings{Initialized: record.GetBool("initialized"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaEnabled: enabled, CaptchaProviders: profiles, CaptchaSiteKey: selected.SiteKey, CaptchaChallengeURL: selected.ChallengeURL, CaptchaVerifyURL: selected.VerifyURL, CaptchaConfigured: selected.Configured, CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: selected.Secret, AttachmentDefaultMaxSize: int64(record.GetFloat("attachment_default_max_size")), AttachmentDefaultMaxCount: record.GetInt("attachment_default_max_count"), AttachmentLimitMaxSize: int64(record.GetFloat("attachment_limit_max_size")), AttachmentLimitMaxCount: record.GetInt("attachment_limit_max_count"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
+	return domain.SystemSettings{Initialized: record.GetBool("initialized"), DefaultTimezone: record.GetString("default_timezone"), DefaultCurrency: domain.Currency(record.GetString("default_currency")), AllowRegistration: password, AllowPasswordRegistration: password, AllowPasswordReset: record.GetBool("allow_password_reset"), AllowOIDCRegistration: oidc, CaptchaProvider: provider, CaptchaEnabled: enabled, CaptchaProviders: profiles, CaptchaSiteKey: selected.SiteKey, CaptchaChallengeURL: selected.ChallengeURL, CaptchaVerifyURL: selected.VerifyURL, CaptchaConfigured: selected.Configured, CaptchaFlows: captchaFlowsFrom(record, provider), CaptchaSecretCiphertext: selected.Secret, AttachmentDefaultMaxSize: int64(record.GetFloat("attachment_default_max_size")), AttachmentDefaultMaxCount: record.GetInt("attachment_default_max_count"), AttachmentLimitMaxSize: int64(record.GetFloat("attachment_limit_max_size")), AttachmentLimitMaxCount: record.GetInt("attachment_limit_max_count"), SetupTokenHash: record.GetString("setup_secret_hash"), SetupTokenIssued: record.GetBool("setup_token_issued")}
 }
 
 // captchaFlowsFrom reads the per-flow captcha configuration, falling back to
@@ -1820,6 +1821,7 @@ func (r *Repository) SaveSystemSettings(ctx context.Context, value domain.System
 	record.Set("default_currency", value.DefaultCurrency)
 	record.Set("allow_registration", value.AllowPasswordRegistration)
 	record.Set("allow_password_registration", value.AllowPasswordRegistration)
+	record.Set("allow_password_reset", value.AllowPasswordReset)
 	record.Set("allow_oidc_registration", value.AllowOIDCRegistration)
 	record.Set("attachment_default_max_size", value.AttachmentDefaultMaxSize)
 	record.Set("attachment_default_max_count", value.AttachmentDefaultMaxCount)
