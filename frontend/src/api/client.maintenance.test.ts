@@ -8,6 +8,15 @@ afterEach(() => {
 })
 
 describe('maintenance protocol', () => {
+  it('keeps proxy and business 503 responses out of global maintenance', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('<html>Proxy unavailable</html>', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'audit_unavailable' } }), { status: 503 })))
+    const client = new ApiClient(() => '', () => {})
+    await expect(client.get('/groups')).rejects.toMatchObject({ code: 'invalid_response' })
+    await expect(client.get('/groups')).rejects.toMatchObject({ code: 'audit_unavailable' })
+    expect(isMaintenanceBlocked()).toBe(false)
+  })
   it('identifies the client protocol version on API requests', async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data: { ok: true } }), { status: 200 }))
     vi.stubGlobal('fetch', fetchMock)

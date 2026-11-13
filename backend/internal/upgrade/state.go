@@ -34,6 +34,8 @@ type State struct {
 	FailurePhase      string           `json:"failurePhase,omitempty"`
 	Ready             bool             `json:"ready"`
 	ProblemCode       string           `json:"problemCode,omitempty"`
+	FirstFailure      *Failure         `json:"firstFailure,omitempty"`
+	UpdatedAt         *time.Time       `json:"updatedAt,omitempty"`
 	AppVersion        string           `json:"appVersion"`
 	PocketBaseVersion string           `json:"pocketBaseVersion"`
 	SchemaVersion     int              `json:"schemaVersion"`
@@ -76,10 +78,11 @@ type Event struct {
 }
 
 type Manager struct {
-	DataDir string
-	Dir     string
-	state   State
-	lock    *Lock
+	DataDir  string
+	Dir      string
+	state    State
+	lock     *Lock
+	progress *Progress
 }
 
 func New(dataDir string) (*Manager, error) {
@@ -113,7 +116,11 @@ func (m *Manager) SetPhase(phase string) error {
 	}
 	m.state.State, m.state.Phase = phase, phase
 	m.state.Ready = phase == StatusReady
-	return m.Save(m.state)
+	if err := m.Save(m.state); err != nil {
+		return err
+	}
+	m.progress.Report(phase, "")
+	return nil
 }
 
 // BeginStartup clears a stale ready flag before the maintenance listener can
@@ -211,6 +218,8 @@ func (m *Manager) Save(state State) error {
 	if err := os.MkdirAll(m.Dir, 0o700); err != nil {
 		return err
 	}
+	now := time.Now().UTC()
+	state.UpdatedAt = &now
 	data, err := json.MarshalIndent(state, "", "  ")
 	if err != nil {
 		return err
@@ -241,11 +250,18 @@ func (m *Manager) Save(state State) error {
 }
 
 func (m *Manager) Fail(problemCode string) error {
+	if m.state.FirstFailure == nil && m.state.State == StatusFailed && m.state.ProblemCode != "" {
+		m.state.FirstFailure = &Failure{Code: safeProblem(m.state.ProblemCode), Phase: m.state.FailurePhase}
+	}
 	if m.state.Phase != StatusFailed {
 		m.state.FailurePhase = m.state.Phase
 	}
 	m.state.State, m.state.Phase, m.state.Ready = StatusFailed, StatusFailed, false
 	m.state.ProblemCode = safeProblem(problemCode)
+	if m.state.FirstFailure == nil {
+		m.state.FirstFailure = &Failure{Code: m.state.ProblemCode, Phase: m.state.FailurePhase}
+	}
+	m.progress.Report("failed", m.state.ProblemCode)
 	if err := m.Save(m.state); err != nil {
 		return err
 	}
@@ -262,7 +278,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 		return err
 	}
 	if m.state.State == StatusFailed && !retry {
-		return fmt.Errorf("previous upgrade failed (%s); inspect with `subflow upgrade status`, then run `subflow upgrade retry` or restore a verified backup", safeProblem(m.state.ProblemCode))
+		return fmt.Errorf("%w (%s); inspect with `subflow upgrade status --state-only` and `subflow upgrade preflight`", ErrPreviousFailure, safeProblem(m.state.ProblemCode))
 	}
 	if m.state.ProblemCode == "restore_requires_matching_binary" {
 		return fmt.Errorf("restored data requires its matching older SubFlow binary and original encryption key before another upgrade")
@@ -270,8 +286,12 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	previousVersion, previousPB := m.state.AppVersion, m.state.PocketBaseVersion
 	previousProblem := m.state.ProblemCode
 	previousCompleted := !m.state.CompletedAt.IsZero()
-	if previousVersion != "" && previousVersion != appVersion && compareVersions(previousVersion, appVersion) > 0 {
-		return fmt.Errorf("downgrades are not supported (data is at %s, executable is %s)", previousVersion, appVersion)
+	if err := checkVersions(previousVersion, appVersion); err != nil {
+		return err
+	}
+	m.progress.Report("checking", fmt.Sprintf("data_version=%s executable_version=%s", canonicalVersion(previousVersion), canonicalVersion(appVersion)))
+	if m.state.State == StatusFailed && m.state.FirstFailure == nil {
+		m.state.FirstFailure = &Failure{Code: safeProblem(previousProblem), Phase: m.state.FailurePhase}
 	}
 	previousBackup := m.state.BackupID
 	if previousVersion != "" && previousVersion != appVersion {
@@ -339,8 +359,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	if available < required+(16<<20) {
 		return fmt.Errorf("insufficient_disk_space")
 	}
-	m.state.State, m.state.Phase = StatusBackingUp, StatusBackingUp
-	if err := m.Save(m.state); err != nil {
+	if err := m.SetPhase(StatusBackingUp); err != nil {
 		return err
 	}
 	sourceApp, sourcePB := previousVersion, previousPB
@@ -355,6 +374,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	if err := m.Save(m.state); err != nil {
 		return err
 	}
+	m.progress.Report("backup_verified", "")
 	return m.AppendEvent("upgrade.backup.created", "success", "backup verified")
 }
 
@@ -376,17 +396,21 @@ func (m *Manager) Complete(reconcile ...func() error) error {
 			return fmt.Errorf("durable upgrade audit could not be imported: %w", err)
 		}
 	}
-	m.state.State, m.state.Phase, m.state.Ready = StatusReady, StatusReady, true
-	m.state.ProblemCode, m.state.CompletedAt = "", time.Now().UTC()
-	if err := m.Save(m.state); err != nil {
-		return err
-	}
 	if m.state.BackupID != "" {
 		if err := m.SetBackupStatus(m.state.BackupID, "successful"); err != nil {
 			return err
 		}
 	}
-	return m.PruneBackups(MaxBackupCount)
+	if err := m.PruneBackups(MaxBackupCount); err != nil {
+		return err
+	}
+	m.state.State, m.state.Phase, m.state.Ready = StatusReady, StatusReady, true
+	m.state.ProblemCode, m.state.CompletedAt = "", time.Now().UTC()
+	if err := m.Save(m.state); err != nil {
+		return err
+	}
+	m.progress.Report("ready", "")
+	return nil
 }
 
 func (m *Manager) Close() error {

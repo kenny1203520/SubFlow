@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+## [0.2.0-beta.2] - 2026-11-13
+
+### Added
+
+- Added a read-only upgrade preflight, a lightweight status command, and progress and completion messages for startup and manual retries.
+- Added published beta and beta.1 images to the release upgrade rehearsal.
+
+### Fixed
+
+- Preserved the original upgrade failure across restarts and compared prerelease versions according to SemVer.
+- Bounded browser status checks and distinguished confirmed maintenance from network, proxy and response errors.
+
 ## [0.2.0-beta.1] - 2026-11-12
 
 ### Added

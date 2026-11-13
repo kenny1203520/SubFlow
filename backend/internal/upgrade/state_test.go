@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -190,6 +191,11 @@ func TestLegacyFingerprintAcceptsKnownPocketBaseDomainAndRejectsUnknown(t *testi
 }
 
 func TestSemanticVersionComparisonHandlesAlphaOrdering(t *testing.T) {
+	if compareVersions("0.2.0-beta.2", "0.2.0-beta.10") >= 0 ||
+		compareVersions("0.2.0-beta", "0.2.0-beta.1") >= 0 ||
+		compareVersions("v0.2.0-beta.1+build", "0.2.0-beta.1") != 0 {
+		t.Fatal("beta identifiers and build metadata must follow SemVer")
+	}
 	if compareVersions("0.2.0-alpha.5", "0.2.0-alpha.6") >= 0 {
 		t.Fatal("alpha.5 must compare below alpha.6")
 	}
@@ -198,6 +204,42 @@ func TestSemanticVersionComparisonHandlesAlphaOrdering(t *testing.T) {
 	}
 	if compareVersions("0.2.0", "0.1.9") <= 0 {
 		t.Fatal("0.2.0 must compare above 0.1.9")
+	}
+}
+
+func TestPreflightAndFailedStartupPreserveState(t *testing.T) {
+	manager, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report := manager.Preflight("0.2.0-beta.2"); len(report.Blockers) != 0 {
+		t.Fatalf("unexpected blockers on a fresh volume: %#v", report)
+	}
+	if _, err := os.Stat(manager.Dir); !os.IsNotExist(err) {
+		t.Fatalf("preflight created upgrade state: %v", err)
+	}
+	writeFixture(t, filepath.Join(manager.DataDir, "data.db"), "existing data")
+	if err := manager.Save(State{State: StatusFailed, Phase: StatusFailed, FailurePhase: StatusChecking, ProblemCode: "unsupported_downgrade", AppVersion: "0.2.0-beta.1"}); err != nil {
+		t.Fatal(err)
+	}
+	report := manager.Preflight("0.2.0-beta")
+	if len(report.Blockers) != 2 || report.Blockers[0] != "unsupported_downgrade" || report.Blockers[1] != "manual_retry_required" {
+		t.Fatalf("unexpected report: %#v", report)
+	}
+	defer manager.Close()
+	if err := manager.Prepare("0.2.0-beta.2", "0.41.0", false); !errors.Is(err, ErrPreviousFailure) {
+		t.Fatalf("ordinary startup should preserve the failed state: %v", err)
+	}
+	if err := manager.Prepare("0.2.0-beta.2", "0.41.0", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Fail("migration_failed"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := manager.ReadState()
+	if err != nil || state.UpdatedAt == nil || state.ProblemCode != "migration_failed" ||
+		state.FirstFailure == nil || state.FirstFailure.Code != "unsupported_downgrade" {
+		t.Fatalf("first failure was lost: %#v, %v", state, err)
 	}
 }
 

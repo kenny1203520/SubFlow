@@ -94,6 +94,8 @@ func main() {
 		log.Fatal(err)
 	}
 	isServe := len(os.Args) > 1 && os.Args[1] == "serve"
+	stopProgress := manager.StartProgress(log.Printf)
+	defer stopProgress()
 	acquireErr := manager.Acquire()
 	if acquireErr != nil && !errors.Is(acquireErr, upgrade.ErrRestoreRecovered) && !manager.HasLock() {
 		log.Fatal(acquireErr)
@@ -123,6 +125,7 @@ func main() {
 		defer statusServer.Close()
 	}
 	if errors.Is(acquireErr, upgrade.ErrRestoreRecovered) {
+		stopProgress()
 		log.Printf("SubFlow restore recovery completed; start the matching older binary before continuing")
 		if statusServer != nil {
 			waitForShutdown()
@@ -130,6 +133,7 @@ func main() {
 		return
 	}
 	if acquireErr != nil {
+		stopProgress()
 		log.Printf("SubFlow restore recovery stopped in maintenance mode: %v", acquireErr)
 		if statusServer != nil {
 			waitForShutdown()
@@ -144,12 +148,17 @@ func main() {
 		log.Fatal("cannot prepare upgrade status: ", err)
 	}
 	if err := manager.Prepare(upgrade.AppVersion(), pbVersion, false); err != nil {
-		if manager.HasLock() {
+		if manager.HasLock() && !errors.Is(err, upgrade.ErrPreviousFailure) {
 			if auditErr := manager.Fail(problemCode(err)); auditErr != nil {
 				log.Printf("could not persist upgrade failure: %v", auditErr)
 			}
 		}
-		log.Printf("SubFlow upgrade stopped: %v", err)
+		stopProgress()
+		if errors.Is(err, upgrade.ErrPreviousFailure) || errors.Is(err, upgrade.ErrUnsupportedDowngrade) {
+			log.Printf("SubFlow upgrade stopped: %v", err)
+		} else {
+			log.Printf("SubFlow upgrade stopped (%s)", problemCode(err))
+		}
 		if statusServer != nil {
 			waitForShutdown()
 		}
@@ -239,6 +248,7 @@ func main() {
 		}); err != nil {
 			return err
 		}
+		stopProgress()
 		if statusServer != nil {
 			if err := statusServer.Close(); err != nil {
 				return err
@@ -247,12 +257,13 @@ func main() {
 		return e.Next()
 	})
 	if err := app.Start(); err != nil {
+		stopProgress()
 		if manager.HasLock() {
 			if auditErr := manager.Fail(problemCode(err)); auditErr != nil {
 				log.Printf("could not persist upgrade failure: %v", auditErr)
 			}
 		}
-		log.Printf("SubFlow stopped: %v", err)
+		log.Printf("SubFlow stopped (%s)", problemCode(err))
 		if statusServer != nil {
 			waitForShutdown()
 		}

@@ -117,7 +117,7 @@ jobs:
 
       - name: Verify fresh setup, registration and production SPA/API
         run: node scripts/release/container-smoke.mjs subflow:candidate
-      - name: Rehearse Alpha 1–5 data upgrades, restart and backup restore
+      - name: Rehearse Alpha and Beta upgrades, retry, restart and restore
         run: node scripts/release/upgrade-matrix.mjs subflow:candidate
 
       - name: Build and push

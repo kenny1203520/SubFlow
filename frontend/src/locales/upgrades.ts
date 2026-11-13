@@ -1,7 +1,12 @@
 export const upgradeMessages = {
   'zh-TW': {
+    upgradeConnectionTitle: '無法確認服務狀態',
+    upgradeTimeout: '服務狀態請求逾時，稍後會自動重試。',
+    upgradeInvalidStatus: '服務回傳了無法辨識的狀態，稍後會自動重試。',
+    upgradeUnavailable: '目前無法取得服務狀態，稍後會自動重試。',
+    upgradeCheckAgain: '重新檢查',
+    upgradePreserve: '同步已暫停。請保留此頁面，以保留已填寫內容與待同步資料。',
     upgradeTitle: 'SubFlow 正在維護',
-    upgradeDescription: '資料正在安全備份與更新。此期間同步暫停，已填寫內容與待同步資料會保留。',
     upgradeChecking: '正在檢查版本與資料狀態…',
     upgradeBackingUp: '正在備份本機資料與附件…',
     upgradeMigrating: '正在更新資料結構…',
@@ -14,8 +19,13 @@ export const upgradeMessages = {
     upgradeReload: '我已處理未儲存內容，重新載入',
   },
   en: {
+    upgradeConnectionTitle: 'Service status unavailable',
+    upgradeTimeout: 'The status check timed out. SubFlow will try again shortly.',
+    upgradeInvalidStatus: 'The service returned an invalid status. SubFlow will try again shortly.',
+    upgradeUnavailable: 'SubFlow could not check the service status. It will try again shortly.',
+    upgradeCheckAgain: 'Check again',
+    upgradePreserve: 'Sync is paused. Keep this page open to preserve open forms and queued changes.',
     upgradeTitle: 'SubFlow is under maintenance',
-    upgradeDescription: 'Your data is being backed up and upgraded. Sync is paused; open forms and queued changes will be kept.',
     upgradeChecking: 'Checking the application and data versions…',
     upgradeBackingUp: 'Backing up local data and attachments…',
     upgradeMigrating: 'Updating the data schema…',

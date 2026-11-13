@@ -7,7 +7,7 @@ import https from 'node:https'
 const oldImage = process.argv[2] || 'ghcr.io/kenny1203520/subflow@sha256:99bcb63a7322dc66feb3fc36bb6840cf727b1cc1e283e66e4f83d284a9bebc03'
 const candidate = process.argv[3] || 'subflow:candidate'
 const sourceVersion = process.argv[4] || 'alpha1'
-assert.match(sourceVersion, /^alpha[1-5]$/)
+assert.match(sourceVersion, /^(alpha[1-5]|beta1?)$/)
 const prefix = `subflow-upgrade-${randomUUID()}`
 const volumes = new Set()
 const containers = new Set()
@@ -78,16 +78,20 @@ function volume(suffix) {
   volumes.add(name)
   return name
 }
-async function start(image, data, suffix) {
+function launch(image, data, suffix, publishedPort = '127.0.0.1::8080') {
   const name = `${prefix}-${suffix}`
-  const secure = image === candidate
   if (image === candidate) {
     // Historical volumes may be root-owned after older releases. Fix only
     // this isolated rehearsal volume before the nonroot candidate starts.
     docker('run', '--rm', '--user', '0:0', '--volume', `${data}:/app/pb_data`, image, 'init-permissions')
   }
-  docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
+  docker('run', '--detach', '--rm', '--name', name, '--publish', publishedPort, '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
   containers.add(name)
+  return name
+}
+async function start(image, data, suffix, publishedPort) {
+  const name = launch(image, data, suffix, publishedPort)
+  const secure = image === candidate || sourceVersion.startsWith('beta')
   const base = `${secure ? 'https' : 'http'}://${docker('port', name, '8080/tcp')}`
   let certificate
   let healthStatus = 'unreachable'
@@ -206,6 +210,56 @@ try {
   upgraded = await verifyData(server)
   assert.deepEqual(upgraded.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt })), first, 'schema backfill must be idempotent on restart')
   stop(server)
+
+  if (sourceVersion === 'beta1') {
+    const maintenance = (image, ...args) => docker('run', '--rm', '--volume', `${data}:/app/pb_data`,
+      '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image, 'upgrade', ...args, '--dir=/app/pb_data')
+    assert.throws(() => maintenance(oldImage, 'retry'), error => {
+      assert.match(String(error.stderr), /downgrades are not supported/)
+      return error.status !== 0
+    })
+    const failed = JSON.parse(maintenance(candidate, 'status', '--state-only'))
+    assert.equal(failed.problemCode, 'unsupported_downgrade')
+    assert.throws(() => docker('run', '--rm', '--entrypoint', '/app/subflow',
+      '--volume', `${data}:/app/pb_data:ro`, candidate, 'upgrade', 'preflight', '--dir=/app/pb_data'), error => {
+      const report = JSON.parse(String(error.stdout))
+      assert.deepEqual(report.blockers, ['manual_retry_required'])
+      return error.status !== 0
+    })
+    const maintenanceName = launch(candidate, data, 'maintenance')
+    const address = docker('port', maintenanceName, '8080/tcp')
+    const { chromium, expect } = await import(new URL('../../frontend/node_modules/@playwright/test/index.mjs', import.meta.url).href)
+    const browser = await chromium.launch()
+    try {
+      const page = await browser.newPage({ ignoreHTTPSErrors: true })
+      await expect.poll(async () => {
+        try {
+          const response = await page.request.get(`https://${address}/api/subflow/v1/runtime/status`, { timeout: 2000 })
+          return (await response.json()).data?.state
+        } catch { return undefined }
+      }, { timeout: 30000 }).toBe('failed')
+      await page.goto(`https://${address}/auth`)
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toContainText('unsupported_downgrade')
+      stop({ name: maintenanceName })
+      assert.match(maintenance(candidate, 'retry'), /upgrade retry completed/)
+      const retried = JSON.parse(maintenance(candidate, 'status', '--state-only'))
+      assert.equal(retried.ready, true)
+      assert.equal(retried.firstFailure.code, 'unsupported_downgrade')
+      server = await start(candidate, data, 'retried', `${address}:8080`)
+      await expect(dialog).toBeHidden({ timeout: 40000 })
+      await expect(page.locator('input[autocomplete="current-password"]')).toBeVisible()
+    } finally {
+      await browser.close()
+    }
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (docker('inspect', '--format', '{{.State.Health.Status}}', server.name) === 'healthy') break
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    assert.equal(docker('inspect', '--format', '{{.State.Health.Status}}', server.name), 'healthy')
+    await verifyData(server)
+    stop(server)
+  }
 
   copyVolume(backup, restored)
   server = await start(oldImage, restored, 'restore')

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"strings"
 
@@ -58,7 +59,7 @@ func dispatchUpgradeCommand(args []string, driver, environment, httpPort, encryp
 		return false, nil
 	}
 	if len(args) < 3 {
-		return true, fmt.Errorf("usage: subflow upgrade <status|retry|restore>")
+		return true, fmt.Errorf("usage: subflow upgrade <status|preflight|retry|restore>")
 	}
 	manager, err := upgrade.New(config.DataDirFromArgs(args))
 	if err != nil {
@@ -66,6 +67,17 @@ func dispatchUpgradeCommand(args []string, driver, environment, httpPort, encryp
 	}
 	switch args[2] {
 	case "status":
+		for _, arg := range args[3:] {
+			if arg == "--state-only" {
+				state, err := manager.ReadState()
+				if err != nil {
+					return true, err
+				}
+				encoder := json.NewEncoder(os.Stdout)
+				encoder.SetIndent("", "  ")
+				return true, encoder.Encode(state)
+			}
+		}
 		state, backups, err := manager.Snapshot()
 		if err != nil {
 			return true, err
@@ -100,18 +112,34 @@ func dispatchUpgradeCommand(args []string, driver, environment, httpPort, encryp
 		return true, manager.Close()
 	case "retry":
 		return true, retryUpgrade(manager, driver, environment, httpPort, encryptionKey)
+	case "preflight":
+		report := manager.Preflight(upgrade.AppVersion())
+		encoder := json.NewEncoder(os.Stdout)
+		encoder.SetIndent("", "  ")
+		if err := encoder.Encode(report); err != nil {
+			return true, err
+		}
+		if len(report.Blockers) != 0 {
+			return true, fmt.Errorf("upgrade preflight found blockers")
+		}
+		return true, nil
 	default:
-		return true, fmt.Errorf("unknown upgrade command %q; use status, retry, or restore", args[2])
+		return true, fmt.Errorf("unknown upgrade command; use status, preflight, retry, or restore")
 	}
 }
 
 func retryUpgrade(manager *upgrade.Manager, driver, environment, httpPort, encryptionKey string) (result error) {
+	stopProgress := manager.StartProgress(log.Printf)
+	defer stopProgress()
 	if _, err := security.DeriveKeyring(encryptionKey); err != nil {
 		return err
 	}
 	defer func() {
 		if err := manager.Close(); result == nil && err != nil {
 			result = err
+		}
+		if result == nil {
+			fmt.Fprintln(os.Stdout, "SubFlow upgrade retry completed. Start SubFlow with the same image, data volume and encryption key, then check readiness.")
 		}
 	}()
 	pbVersion, err := upgrade.PocketBaseVersion()
@@ -126,29 +154,38 @@ func retryUpgrade(manager *upgrade.Manager, driver, environment, httpPort, encry
 			return err
 		}
 		if manager.HasLock() {
-			_ = manager.Fail(problemCode(err))
+			recordRetryFailure(manager, problemCode(err))
 		}
-		return err
+		if errors.Is(err, upgrade.ErrUnsupportedDowngrade) {
+			return err
+		}
+		return fmt.Errorf("upgrade retry failed (%s)", problemCode(err))
 	}
 	if err := manager.AppendEvent("upgrade.retry.started", "success", "operator initiated retry"); err != nil {
-		_ = manager.Fail("audit_unavailable")
-		return err
+		recordRetryFailure(manager, "audit_unavailable")
+		return fmt.Errorf("upgrade retry failed (audit_unavailable)")
 	}
 	app := pocketbase.New()
 	registerUpgradeBootstrap(app, manager, driver, config.AppURL("", httpPort), encryptionKey)
 	if err := app.Bootstrap(); err != nil {
-		_ = manager.Fail(problemCode(err))
+		recordRetryFailure(manager, problemCode(err))
 		_ = app.ClearBootstrap()
-		return err
+		return fmt.Errorf("upgrade retry failed (%s)", problemCode(err))
 	}
 	if err := manager.Complete(func() error {
 		return upgrade.ReconcileDurableEvents(context.Background(), app, driver, manager.Dir, encryptionKey)
 	}); err != nil {
-		_ = manager.Fail("upgrade_finalize_failed")
+		recordRetryFailure(manager, "upgrade_finalize_failed")
 		_ = app.ClearBootstrap()
-		return err
+		return fmt.Errorf("upgrade retry failed (upgrade_finalize_failed)")
 	}
 	return app.ClearBootstrap()
+}
+
+func recordRetryFailure(manager *upgrade.Manager, code string) {
+	if err := manager.Fail(code); err != nil {
+		log.Print("SubFlow could not persist the retry failure (upgrade_state_unavailable)")
+	}
 }
 
 func problemCode(err error) string {
@@ -157,14 +194,16 @@ func problemCode(err error) string {
 	}
 	message := strings.ToLower(err.Error())
 	switch {
+	case errors.Is(err, upgrade.ErrInvalidVersion):
+		return "invalid_upgrade_version"
+	case errors.Is(err, upgrade.ErrUnsupportedDowngrade):
+		return "unsupported_downgrade"
 	case strings.Contains(message, "insufficient_disk_space"):
 		return "insufficient_disk_space"
 	case errors.Is(err, upgrade.ErrUnknownSchema):
 		return "unknown_schema"
 	case strings.Contains(message, "checksum mismatch"):
 		return "migration_checksum_mismatch"
-	case strings.Contains(message, "downgrade"):
-		return "unsupported_downgrade"
 	case strings.Contains(message, "backup"):
 		return "backup_failed"
 	case strings.Contains(message, "audit"):
