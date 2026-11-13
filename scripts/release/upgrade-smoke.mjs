@@ -156,7 +156,8 @@ function copyVolume(from, to) {
   // Both volumes were created by this invocation. Copy only while the app is
   // stopped, and keep the backup read-only during restore.
   assert.ok(volumes.has(from) && volumes.has(to))
-  docker('run', '--rm', '--entrypoint', '/bin/sh', '--volume', `${from}:/from:ro`, '--volume', `${to}:/to`, oldImage, '-c', 'cp -a /from/. /to/')
+  docker('run', '--rm', '--user', '0:0', '--entrypoint', '/bin/sh',
+    '--volume', `${from}:/from:ro`, '--volume', `${to}:/to`, oldImage, '-c', 'cp -a /from/. /to/')
 }
 
 try {
