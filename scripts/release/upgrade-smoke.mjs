@@ -166,9 +166,15 @@ try {
   let memberToken = await login(server, member)
   const group = await api(server, '/groups', ownerToken, 'POST', { name: 'Preserved group', currency: 'TWD', timezone: 'UTC' })
   const income = await api(server, '/incomes', ownerToken, 'POST', { title: 'Preserved income', amountMinor: 12345, currency: 'TWD', receivedOn: '2026-10-21T00:00:00Z' })
-  await api(server, `/groups/${group.id}/invitations`, ownerToken, 'POST', { email: member })
+  // Alpha fixtures exercise the legacy invitation backfill. Beta invitations
+  // additionally require a configured public URL, unrelated to this rehearsal.
+  if (sourceVersion.startsWith('alpha')) {
+    await api(server, `/groups/${group.id}/invitations`, ownerToken, 'POST', { email: member })
+  }
   const notes = await api(server, '/notifications?perPage=50', memberToken)
-  assert.ok(notes.length > 0, 'old version must create a legacy invitation notification')
+  if (sourceVersion.startsWith('alpha')) {
+    assert.ok(notes.length > 0, 'old version must create a legacy invitation notification')
+  }
   const form = new FormData()
   form.set('targetType', 'income'); form.set('targetId', income.id); form.set('requestId', randomUUID())
   const file = '%PDF-1.7\npreserved attachment\n%%EOF'
