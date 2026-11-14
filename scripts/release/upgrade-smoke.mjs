@@ -90,10 +90,10 @@ async function volume(suffix) {
 }
 function launch(image, data, suffix, publishedPort = '127.0.0.1::8080') {
   const name = `${prefix}-${suffix}`
-  if (image === candidate) {
+  if (image === candidate || mounts.has(data)) {
     // Historical volumes may be root-owned after older releases. Fix only
     // this isolated rehearsal volume before the nonroot candidate starts.
-    docker('run', '--rm', '--user', '0:0', '--volume', `${data}:/app/pb_data`, image, 'init-permissions')
+    docker('run', '--rm', '--user', '0:0', '--volume', `${data}:/app/pb_data`, candidate, 'init-permissions')
   }
   docker('run', '--detach', '--rm', '--name', name, '--publish', publishedPort, '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
   containers.add(name)
@@ -305,6 +305,10 @@ try {
   console.log(JSON.stringify(result))
 } finally {
   for (const name of containers) { assert.ok(name.startsWith(`${prefix}-`)); docker('rm', '--force', name) }
-  if (bindRoot) await rm(bindRoot, {recursive:true,force:true})
+  if (bindRoot) {
+    docker('run', '--rm', '--user', '0:0', '--entrypoint', '/bin/sh',
+      '--volume', bindRoot + ':/fixture', candidate, '-c', 'find /fixture -type d -exec chmod a+rwx {} +')
+    await rm(bindRoot, { recursive: true, force: true })
+  }
   for (const name of volumes) { assert.ok(name.startsWith(`${prefix}-`)); docker('volume', 'rm', name) }
 }
