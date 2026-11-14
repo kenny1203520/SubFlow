@@ -9,5 +9,8 @@ for (const fixture of fixtures) {
   assert.match(fixture.image, /^ghcr\.io\/kenny1203520\/subflow@sha256:[a-f0-9]{64}$/)
   console.log(`\nRehearsing ${fixture.version} → ${candidate}`)
   execFileSync(process.execPath, ['scripts/release/upgrade-smoke.mjs', fixture.image, candidate, fixture.version], { stdio: 'inherit' })
+  if (fixture.version === 'beta1' && process.platform === 'linux') {
+    execFileSync(process.execPath, ['scripts/release/upgrade-smoke.mjs', fixture.image, candidate, fixture.version], { stdio: 'inherit', env: { ...process.env, SUBFLOW_REHEARSAL_BIND: '1' } })
+  }
 }
 

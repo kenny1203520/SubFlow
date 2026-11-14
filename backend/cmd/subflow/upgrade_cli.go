@@ -18,18 +18,22 @@ import (
 )
 
 func registerUpgradeBootstrap(app *pocketbase.PocketBase, manager *upgrade.Manager, driver, setupURL, encryptionKey string) *string {
+	registerPocketBaseBackups(app, manager)
 	var setupLink string
 	app.OnBootstrap().BindFunc(func(event *core.BootstrapEvent) error {
-		if err := event.Next(); err != nil {
+		if err := manager.SetPhase(upgrade.StatusMigrating); err != nil {
 			return err
 		}
-		if err := manager.SetPhase(upgrade.StatusMigrating); err != nil {
+		if err := event.Next(); err != nil {
 			return err
 		}
 		if err := upgrade.RunMigrations(context.Background(), event.App, manager, upgrade.Migrations(driver, setupURL, &setupLink), upgrade.MigrationAudit(driver, encryptionKey)); err != nil {
 			return err
 		}
 		if err := manager.SetPhase(upgrade.StatusVerifying); err != nil {
+			return err
+		}
+		if err := upgrade.VerifyLiveDatabases(event.App); err != nil {
 			return err
 		}
 		if err := upgrade.ReconcileDurableEvents(context.Background(), event.App, driver, manager.Dir, encryptionKey); err != nil {
@@ -90,6 +94,28 @@ func dispatchUpgradeCommand(args []string, driver, environment, httpPort, encryp
 		encoder.SetIndent("", "  ")
 		return true, encoder.Encode(output)
 	case "restore":
+		if len(args) >= 5 && args[3] == "--pocketbase-zip" {
+			sourceVersion := ""
+			pbVersion := upgrade.RequiredPocketBaseVersion
+			for _, arg := range args[5:] {
+				if value, ok := strings.CutPrefix(arg, "--source-version="); ok {
+					sourceVersion = value
+				}
+				if value, ok := strings.CutPrefix(arg, "--pocketbase-version="); ok {
+					pbVersion = value
+				}
+			}
+			if sourceVersion == "" {
+				return true, fmt.Errorf("usage: subflow upgrade restore --pocketbase-zip <path> --source-version=<version>")
+			}
+			defer manager.Close()
+			manifest, err := manager.RestorePocketBaseZIP(args[4], sourceVersion, pbVersion)
+			if err != nil {
+				return true, err
+			}
+			fmt.Printf("Restored %s. Use SubFlow %s / PocketBase %s and the original encryption key.\n", manifest.ID, manifest.AppVersion, manifest.PocketBaseVersion)
+			return true, nil
+		}
 		backupID := ""
 		for index := 3; index < len(args); index++ {
 			if strings.HasPrefix(args[index], "--backup=") {
@@ -149,6 +175,10 @@ func retryUpgrade(manager *upgrade.Manager, driver, environment, httpPort, encry
 	if pbVersion != upgrade.RequiredPocketBaseVersion {
 		return fmt.Errorf("this executable uses PocketBase %s; expected %s", pbVersion, upgrade.RequiredPocketBaseVersion)
 	}
+	if err := manager.Acquire(); err != nil {
+		return err
+	}
+	reclaimPocketBaseBackupTemporary(manager)
 	if err := manager.Prepare(upgrade.AppVersion(), pbVersion, true); err != nil {
 		if errors.Is(err, upgrade.ErrRestoreRecovered) {
 			return err

@@ -5,13 +5,17 @@ volume during startup. Run one SubFlow process per data volume. Stop the old
 process before replacing its image or executable; do not start an older binary
 against a database opened by a newer PocketBase version.
 
-The coordinator stores upgrade state, its durable event log, and verified
-backups in `<data-dir>/.subflow`. These control files are excluded from backup
-copies. A backup contains `data.db`, SQLite WAL files, local attachments, a
-relative file inventory, and a SHA-256 digest for each copied file. The three
-newest successful upgrade backups are retained; pending and failed backups are
-never pruned. External object storage and `SUBFLOW_SETTINGS_ENCRYPTION_KEY`
-must be backed up separately.
+The coordinator stores state and durable events in pb_data/.subflow and
+new upgrade snapshots in pb_data/.subflow-recovery. Old snapshots remain
+readable. Upgrade copies include SQLite data and WAL, local attachments and
+TLS. PocketBase backup archives and runtime work files are excluded.
+Successful upgrades retain zero snapshots by default after verification and
+durable audit. Failed upgrades preserve the verified snapshot needed for
+recovery. Cleanup errors are logged and retried at startup.
+
+PocketBase keeps its configured cron, retention and local or S3 destination.
+New archives include TLS but exclude SubFlow upgrade and restore work files.
+Keep the original encryption key and back up external attachments separately.
 
 Inspect progress or diagnose a failed startup from a second terminal:
 
@@ -72,6 +76,25 @@ Restore keeps the failed data tree under
 `.subflow/restore-failed-<backup-id>`. It restores only local data. Start the
 matching older SubFlow and PocketBase executable and use the original
 encryption key. Do not open the restored volume with the newer executable.
+
+For an older daily ZIP that contains nested upgrade snapshots, stop SubFlow
+and mount the source ZIP read-only at a separate path. Download S3 archives
+to a different filesystem first if space on the data disk is limited.
+
+    subflow upgrade restore --pocketbase-zip /recovery/daily.zip --source-version=0.2.0-beta.1 --dir=/app/pb_data
+
+The filtered restore preserves prior daily archives and the source ZIP. Rehearse
+against an isolated copy and verify the restored SQLite records, attachment
+bytes, TLS and the original encryption key before starting a service. An
+older binary may reject the restore marker; use its established offline copy
+restore workflow on a separate volume when the exact older binary is needed.
+
+On Rocky Linux, stop the service and take a separate offline backup before
+upgrading. If the filesystem is full, make space on the original filesystem
+under operator control after verifying independent copies. Preserve the only
+verified recovery snapshot. Reuse the existing mount, UID/GID and SELinux label.
+Verify readiness, stored data and attachments, TLS, audit and the next scheduled
+archive. Inspect the ZIP directory to confirm neither recovery location appears.
 
 CI starts isolated data sets using each immutable alpha.1–alpha.5, beta, and beta.1 container
 digest in `scripts/release/upgrade-fixtures.json`, then verifies migration,

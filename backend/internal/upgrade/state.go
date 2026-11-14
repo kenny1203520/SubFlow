@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -22,28 +23,31 @@ const (
 	StatusReady     = "ready"
 	StatusFailed    = "failed"
 	StateDirectory  = ".subflow"
-	MaxBackupCount  = 3
+	MaxBackupCount  = 0
 )
 
 var ErrUnknownSchema = errors.New("unsupported or unknown PocketBase schema")
 var ErrRestoreRecovered = errors.New("an interrupted restore was recovered; start the matching older binary before upgrading again")
 
 type State struct {
-	State             string           `json:"state"`
-	Phase             string           `json:"phase"`
-	FailurePhase      string           `json:"failurePhase,omitempty"`
-	Ready             bool             `json:"ready"`
-	ProblemCode       string           `json:"problemCode,omitempty"`
-	FirstFailure      *Failure         `json:"firstFailure,omitempty"`
-	UpdatedAt         *time.Time       `json:"updatedAt,omitempty"`
-	AppVersion        string           `json:"appVersion"`
-	PocketBaseVersion string           `json:"pocketBaseVersion"`
-	SchemaVersion     int              `json:"schemaVersion"`
-	StartedAt         time.Time        `json:"startedAt,omitempty"`
-	CompletedAt       time.Time        `json:"completedAt,omitempty"`
-	BackupID          string           `json:"backupId,omitempty"`
-	Source            string           `json:"source,omitempty"`
-	History           []MigrationEntry `json:"history,omitempty"`
+	State               string           `json:"state"`
+	Phase               string           `json:"phase"`
+	FailurePhase        string           `json:"failurePhase,omitempty"`
+	Ready               bool             `json:"ready"`
+	ProblemCode         string           `json:"problemCode,omitempty"`
+	FirstFailure        *Failure         `json:"firstFailure,omitempty"`
+	UpdatedAt           *time.Time       `json:"updatedAt,omitempty"`
+	AppVersion          string           `json:"appVersion"`
+	PocketBaseVersion   string           `json:"pocketBaseVersion"`
+	SchemaVersion       int              `json:"schemaVersion"`
+	StartedAt           time.Time        `json:"startedAt,omitempty"`
+	CompletedAt         time.Time        `json:"completedAt,omitempty"`
+	BackupSourceVersion string           `json:"backupSourceVersion,omitempty"`
+	BackupSourcePB      string           `json:"backupSourcePocketBase,omitempty"`
+	CleanupIDs          []string         `json:"cleanupIds,omitempty"`
+	BackupID            string           `json:"backupId,omitempty"`
+	Source              string           `json:"source,omitempty"`
+	History             []MigrationEntry `json:"history,omitempty"`
 }
 
 type MigrationEntry struct {
@@ -78,11 +82,12 @@ type Event struct {
 }
 
 type Manager struct {
-	DataDir  string
-	Dir      string
-	state    State
-	lock     *Lock
-	progress *Progress
+	DataDir      string
+	Dir          string
+	state        State
+	lock         *Lock
+	progress     *Progress
+	copySnapshot func(string, string) ([]BackupFile, error)
 }
 
 func New(dataDir string) (*Manager, error) {
@@ -93,7 +98,7 @@ func New(dataDir string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Manager{DataDir: absolute, Dir: filepath.Join(absolute, StateDirectory)}, nil
+	return &Manager{DataDir: absolute, Dir: filepath.Join(absolute, StateDirectory), copySnapshot: copyDataTree}, nil
 }
 
 func (m *Manager) Status() State { return m.state }
@@ -131,6 +136,10 @@ func (m *Manager) BeginStartup() error {
 	if err != nil {
 		return err
 	}
+	if state.State == StatusBackingUp || state.State == StatusMigrating || state.State == StatusVerifying || (state.State == StatusChecking && state.BackupID != "" && state.CompletedAt.IsZero()) {
+		m.state = state
+		return m.Fail("upgrade_interrupted")
+	}
 	if state.State == StatusFailed || state.ProblemCode == "restore_requires_matching_binary" {
 		m.state = state
 		return nil
@@ -166,7 +175,19 @@ func (m *Manager) Acquire() error {
 	if err := os.MkdirAll(m.Dir, 0o700); err != nil {
 		return err
 	}
-	lock, err := acquireLock(filepath.Join(m.Dir, "upgrade.lock"))
+	if err := realDirectory(m.DataDir); err != nil {
+		return err
+	}
+	if err := realDirectory(m.Dir); err != nil {
+		return err
+	}
+	lockPath := filepath.Join(m.Dir, "upgrade.lock")
+	if info, err := os.Lstat(lockPath); err == nil && !info.Mode().IsRegular() {
+		return fmt.Errorf("unsafe upgrade lock")
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	lock, err := acquireLock(lockPath)
 	if err != nil {
 		return fmt.Errorf("data directory is already in use; stop the other SubFlow process before upgrading")
 	}
@@ -182,6 +203,7 @@ func (m *Manager) Acquire() error {
 		_ = m.AppendEvent("upgrade.restore.recovery_failed", "failure", "restore_recovery_failed")
 		return err
 	}
+	m.recoverBackupWork()
 	return nil
 }
 
@@ -277,6 +299,15 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	if err != nil {
 		return err
 	}
+	if m.state.ProblemCode == "restore_requires_matching_binary" && compareVersions(m.state.AppVersion, appVersion) == 0 && strings.TrimPrefix(m.state.PocketBaseVersion, "v") == strings.TrimPrefix(pbVersion, "v") {
+		m.state.State, m.state.Phase, m.state.ProblemCode = StatusChecking, StatusChecking, ""
+		m.state.CompletedAt = time.Now().UTC()
+		// Keep the restore source available until successful validation.
+	}
+	if (m.state.State == StatusBackingUp || m.state.State == StatusMigrating || m.state.State == StatusVerifying) && retry {
+		m.state.FailurePhase = m.state.Phase
+		m.state.State = StatusFailed
+	}
 	if m.state.State == StatusFailed && !retry {
 		return fmt.Errorf("%w (%s); inspect with `subflow upgrade status --state-only` and `subflow upgrade preflight`", ErrPreviousFailure, safeProblem(m.state.ProblemCode))
 	}
@@ -294,7 +325,13 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 		m.state.FirstFailure = &Failure{Code: safeProblem(previousProblem), Phase: m.state.FailurePhase}
 	}
 	previousBackup := m.state.BackupID
+	previousFailurePhase := m.state.FailurePhase
+	if retry && (previousFailurePhase == StatusMigrating || previousFailurePhase == StatusVerifying) &&
+		((previousBackup == "" && m.state.Source != "fresh") || (previousBackup != "" && previousVersion != appVersion)) {
+		return fmt.Errorf("verified recovery backup and matching executable are required to retry a partially applied migration")
+	}
 	if previousVersion != "" && previousVersion != appVersion {
+		m.state.BackupSourceVersion, m.state.BackupSourcePB = "", ""
 		// Do not expose an older successful backup as the snapshot for a new
 		// attempt that may fail before its own backup is complete.
 		m.state.BackupID = ""
@@ -343,28 +380,25 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 		return err
 	}
 	if retry && previousVersion == appVersion && previousBackup != "" {
-		if err := VerifyBackup(filepath.Join(m.Dir, "backups", previousBackup)); err == nil {
+		if root, err := m.findBackup(previousBackup); err == nil && VerifyBackup(root) == nil {
 			m.state.BackupID = previousBackup
 			return m.Save(m.state)
 		}
-	}
-	required, err := backupSize(m.DataDir)
-	if err != nil {
-		return err
-	}
-	available, err := diskFree(m.DataDir)
-	if err != nil {
-		return err
-	}
-	if available < required+(16<<20) {
-		return fmt.Errorf("insufficient_disk_space")
-	}
-	if err := m.SetPhase(StatusBackingUp); err != nil {
-		return err
+		if previousFailurePhase != StatusBackingUp {
+			return fmt.Errorf("previous recovery backup failed verification")
+		}
+		m.state.BackupID = ""
 	}
 	sourceApp, sourcePB := previousVersion, previousPB
+	if retry && m.state.BackupSourceVersion != "" {
+		sourceApp, sourcePB = m.state.BackupSourceVersion, m.state.BackupSourcePB
+	}
 	if sourceApp == "" {
 		sourceApp, sourcePB = "legacy", "unknown"
+	}
+	m.state.BackupSourceVersion, m.state.BackupSourcePB = sourceApp, sourcePB
+	if err := m.SetPhase(StatusBackingUp); err != nil {
+		return err
 	}
 	manifest, err := m.CreateBackup(sourceApp, sourcePB)
 	if err != nil {
@@ -379,7 +413,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 }
 
 func (m *Manager) Complete(reconcile ...func() error) error {
-	if err := m.AppendEvent("upgrade.completed", "success", "upgrade verified"); err != nil {
+	if err := m.appendCompletionEvent(); err != nil {
 		m.state.State, m.state.Phase, m.state.Ready = StatusFailed, StatusFailed, false
 		m.state.ProblemCode = "audit_unavailable"
 		_ = m.Save(m.state)
@@ -396,19 +430,18 @@ func (m *Manager) Complete(reconcile ...func() error) error {
 			return fmt.Errorf("durable upgrade audit could not be imported: %w", err)
 		}
 	}
+	backupID, cleanupIDs := m.state.BackupID, m.state.CleanupIDs
 	if m.state.BackupID != "" {
-		if err := m.SetBackupStatus(m.state.BackupID, "successful"); err != nil {
-			return err
-		}
+		m.state.CleanupIDs = append(m.state.CleanupIDs, m.state.BackupID)
 	}
-	if err := m.PruneBackups(MaxBackupCount); err != nil {
-		return err
-	}
+	m.state.BackupID = ""
 	m.state.State, m.state.Phase, m.state.Ready = StatusReady, StatusReady, true
 	m.state.ProblemCode, m.state.CompletedAt = "", time.Now().UTC()
 	if err := m.Save(m.state); err != nil {
+		m.state.BackupID, m.state.CleanupIDs = backupID, cleanupIDs
 		return err
 	}
+	m.cleanSuccessfulBackups()
 	m.progress.Report("ready", "")
 	return nil
 }
@@ -423,37 +456,46 @@ func (m *Manager) Close() error {
 }
 
 func (m *Manager) CreateBackup(appVersion, pbVersion string) (BackupManifest, error) {
-	if err := os.MkdirAll(filepath.Join(m.Dir, "backups"), 0o700); err != nil {
+	parent := m.recoveryDirectory()
+	if err := ensureRealDirectory(parent); err != nil {
 		return BackupManifest{}, err
 	}
 	createdAt := time.Now().UTC()
 	manifest := BackupManifest{ID: createdAt.Format("20060102T150405.000000000Z"), Status: "pending", AppVersion: appVersion, PocketBaseVersion: pbVersion, CreatedAt: createdAt, Files: []BackupFile{}}
-	root := filepath.Join(m.Dir, "backups", manifest.ID)
 	required, err := backupSize(m.DataDir)
 	if err != nil {
 		return BackupManifest{}, err
 	}
-	available, err := diskFree(m.DataDir)
-	if err != nil {
+	if err := checkSpace(parent, required); err != nil {
 		return BackupManifest{}, err
 	}
-	if available < required+(16<<20) {
-		return BackupManifest{}, fmt.Errorf("insufficient_disk_space")
-	}
+	root := filepath.Join(parent, ".creating-"+manifest.ID)
 	if err := os.Mkdir(root, 0o700); err != nil {
-		return BackupManifest{}, err
+		return BackupManifest{}, spaceError(err)
 	}
-	files, err := copyDataTree(m.DataDir, root)
+	defer func() {
+		if err := safeRemoveTree(parent, filepath.Base(root)); err != nil {
+			m.cleanupWarning(err)
+		}
+	}()
+	if m.lock != nil {
+		m.state.BackupID = manifest.ID
+		m.state.BackupSourceVersion, m.state.BackupSourcePB = appVersion, pbVersion
+		if err := m.Save(m.state); err != nil {
+			return BackupManifest{}, err
+		}
+	}
+	files, err := m.copySnapshot(m.DataDir, root)
 	if err != nil {
-		return BackupManifest{}, err
+		return BackupManifest{}, spaceError(err)
 	}
 	manifest.Files = files
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
 		return BackupManifest{}, err
 	}
-	if err := os.WriteFile(filepath.Join(root, "manifest.json"), append(data, '\n'), 0o600); err != nil {
-		return BackupManifest{}, err
+	if err := writeSyncedFile(filepath.Join(root, "manifest.json"), append(data, '\n')); err != nil {
+		return BackupManifest{}, spaceError(err)
 	}
 	if err := syncDirectory(root); err != nil {
 		return BackupManifest{}, err
@@ -461,25 +503,36 @@ func (m *Manager) CreateBackup(appVersion, pbVersion string) (BackupManifest, er
 	if err := verifyBackup(root, manifest); err != nil {
 		return BackupManifest{}, err
 	}
+	if m.lock != nil && m.state.Phase == StatusBackingUp {
+		if err := checkSQLiteFiles(root); err != nil {
+			return BackupManifest{}, err
+		}
+	}
+	if err := os.Rename(root, filepath.Join(parent, manifest.ID)); err != nil {
+		return BackupManifest{}, err
+	}
+	if err := syncDirectory(parent); err != nil {
+		return BackupManifest{}, err
+	}
 	return manifest, nil
 }
 
 func (m *Manager) ListBackups() ([]BackupManifest, error) {
-	entries, err := os.ReadDir(filepath.Join(m.Dir, "backups"))
-	if errors.Is(err, os.ErrNotExist) {
-		return []BackupManifest{}, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	result := make([]BackupManifest, 0, len(entries))
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	result := []BackupManifest{}
+	for _, parent := range m.backupParents() {
+		entries, err := safeDirectoryEntries(parent)
+		if err != nil {
+			return nil, err
 		}
-		manifest, err := readManifest(filepath.Join(m.Dir, "backups", entry.Name()))
-		if err == nil && manifest.ID == entry.Name() && verifyBackup(filepath.Join(m.Dir, "backups", entry.Name()), manifest) == nil {
-			result = append(result, manifest)
+		for _, entry := range entries {
+			if !entry.IsDir() || !backupID(entry.Name()) {
+				continue
+			}
+			root := filepath.Join(parent, entry.Name())
+			manifest, err := readManifest(root)
+			if err == nil && manifest.ID == entry.Name() && verifyBackup(root, manifest) == nil {
+				result = append(result, manifest)
+			}
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
@@ -492,7 +545,15 @@ func (m *Manager) ListBackups() ([]BackupManifest, error) {
 }
 
 func readManifest(root string) (BackupManifest, error) {
-	data, err := os.ReadFile(filepath.Join(root, "manifest.json"))
+	if err := realDirectory(root); err != nil {
+		return BackupManifest{}, err
+	}
+	file, err := regularBackupFile(root, "manifest.json")
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	defer file.Close()
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return BackupManifest{}, err
 	}
@@ -509,19 +570,19 @@ func verifyBackup(root string, manifest BackupManifest) error {
 	}
 	seen := make(map[string]bool, len(manifest.Files))
 	for _, item := range manifest.Files {
-		clean := filepath.Clean(filepath.FromSlash(item.Path))
-		if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || seen[clean] {
+		clean, err := manifestPath(item.Path)
+		if err != nil || seen[strings.ToLower(clean)] {
 			return fmt.Errorf("backup manifest has an unsafe file path")
 		}
-		seen[clean] = true
-		filePath := filepath.Join(root, clean)
-		info, err := os.Lstat(filePath)
-		if err != nil || !info.Mode().IsRegular() || info.Size() != item.Size {
-			return fmt.Errorf("backup verification failed")
-		}
-		file, err := os.Open(filePath)
+		seen[strings.ToLower(clean)] = true
+		file, err := regularBackupFile(root, clean)
 		if err != nil {
 			return err
+		}
+		info, err := file.Stat()
+		if err != nil || info.Size() != item.Size {
+			_ = file.Close()
+			return fmt.Errorf("backup verification failed")
 		}
 		hash := sha256.New()
 		_, copyErr := io.Copy(hash, file)
@@ -541,26 +602,7 @@ func verifyBackup(root string, manifest BackupManifest) error {
 
 func copyDataTree(source, destination string) ([]BackupFile, error) {
 	files := []BackupFile{}
-	err := filepath.WalkDir(source, func(current string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		relative, err := filepath.Rel(source, current)
-		if err != nil {
-			return err
-		}
-		if relative == "." {
-			return nil
-		}
-		if entry.Name() == StateDirectory {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("backup source contains an unsupported symbolic link")
-		}
+	err := walkBackupTree(source, func(relative string, entry os.DirEntry) error {
 		target := filepath.Join(destination, relative)
 		if entry.IsDir() {
 			return os.MkdirAll(target, 0o700)
@@ -571,7 +613,7 @@ func copyDataTree(source, destination string) ([]BackupFile, error) {
 		if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
 			return err
 		}
-		input, err := os.Open(current)
+		input, err := regularBackupFile(source, relative)
 		if err != nil {
 			return err
 		}
@@ -603,27 +645,22 @@ func copyDataTree(source, destination string) ([]BackupFile, error) {
 
 func backupSize(root string) (int64, error) {
 	var total int64
-	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
+	err := walkBackupTree(root, func(relative string, entry os.DirEntry) error {
+		size := int64(4096)
+		if !entry.IsDir() {
+			info, err := entry.Info()
+			if err != nil {
+				return err
+			}
+			if info.Size() > math.MaxInt64-size {
+				return fmt.Errorf("backup size overflow")
+			}
+			size += info.Size()
 		}
-		if path != root && entry.Name() == StateDirectory && entry.IsDir() {
-			return filepath.SkipDir
+		if total > math.MaxInt64-size {
+			return fmt.Errorf("backup size overflow")
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("backup source contains an unsupported symbolic link")
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("backup source contains an unsupported file type")
-		}
-		total += info.Size()
+		total += size
 		return nil
 	})
 	return total, err
@@ -633,7 +670,10 @@ func (m *Manager) SetBackupStatus(id, status string) error {
 	if !backupID(id) || (status != "pending" && status != "successful") {
 		return fmt.Errorf("invalid backup status")
 	}
-	root := filepath.Join(m.Dir, "backups", id)
+	root, err := m.findBackup(id)
+	if err != nil {
+		return err
+	}
 	manifest, err := readManifest(root)
 	if err != nil {
 		return err
@@ -670,7 +710,11 @@ func (m *Manager) PruneBackups(keep int) error {
 		}
 	}
 	for _, backup := range successful[min(keep, len(successful)):] {
-		if err := os.RemoveAll(filepath.Join(m.Dir, "backups", backup.ID)); err != nil {
+		root, err := m.findBackup(backup.ID)
+		if err != nil {
+			return err
+		}
+		if err := os.RemoveAll(root); err != nil {
 			return err
 		}
 	}
@@ -693,6 +737,10 @@ func (m *Manager) AppendEvent(action, outcome, summary string) error {
 		return err
 	}
 	event := Event{ID: fmt.Sprintf("%d-%x", time.Now().UTC().UnixNano(), sha256.Sum256([]byte(action+outcome+summary)))[:40], Action: action, Outcome: outcome, CreatedAt: time.Now().UTC(), Summary: summary}
+	return m.appendDurableEvent(event)
+}
+
+func (m *Manager) appendDurableEvent(event Event) error {
 	data, err := json.Marshal(event)
 	if err != nil {
 		return err
@@ -709,7 +757,7 @@ func (m *Manager) AppendEvent(action, outcome, summary string) error {
 		_ = file.Close()
 		return err
 	}
-	return file.Close()
+	return errors.Join(file.Close(), syncDirectory(m.Dir))
 }
 
 func safeEventValue(value string) bool {

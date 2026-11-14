@@ -142,6 +142,7 @@ func main() {
 		}
 		return
 	}
+	reclaimPocketBaseBackupTemporary(manager)
 	if err := manager.BeginStartup(); err != nil {
 		_ = manager.Fail("upgrade_state_unavailable")
 		_ = manager.Close()

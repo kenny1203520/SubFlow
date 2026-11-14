@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import https from 'node:https'
 
 const oldImage = process.argv[2] || 'ghcr.io/kenny1203520/subflow@sha256:99bcb63a7322dc66feb3fc36bb6840cf727b1cc1e283e66e4f83d284a9bebc03'
@@ -10,6 +12,8 @@ const sourceVersion = process.argv[4] || 'alpha1'
 assert.match(sourceVersion, /^(alpha[1-5]|beta1?)$/)
 const prefix = `subflow-upgrade-${randomUUID()}`
 const volumes = new Set()
+const mounts = new Set()
+const bindRoot = process.env.SUBFLOW_REHEARSAL_BIND === "1" ? await mkdtemp(join(tmpdir(), prefix+"-")) : null
 const containers = new Set()
 const key = randomUUID()
 const password = 'isolated-upgrade-password-1234'
@@ -72,7 +76,13 @@ function safeUpgradeDetail(name) {
   } catch { details.push('docker-logs-unavailable') }
   return details.join('; ') || 'startup-details-unavailable'
 }
-function volume(suffix) {
+async function volume(suffix) {
+  if (bindRoot) {
+    const path = join(bindRoot,suffix)
+    await mkdir(path)
+    mounts.add(path)
+    return path
+  }
   const name = `${prefix}-${suffix}`
   docker('volume', 'create', name)
   volumes.add(name)
@@ -155,13 +165,13 @@ async function login(server, email) { return (await (await request(server, '/api
 function copyVolume(from, to) {
   // Both volumes were created by this invocation. Copy only while the app is
   // stopped, and keep the backup read-only during restore.
-  assert.ok(volumes.has(from) && volumes.has(to))
+  assert.ok((volumes.has(from) || mounts.has(from)) && (volumes.has(to) || mounts.has(to)))
   docker('run', '--rm', '--user', '0:0', '--entrypoint', '/bin/sh',
     '--volume', `${from}:/from:ro`, '--volume', `${to}:/to`, oldImage, '-c', 'cp -a /from/. /to/')
 }
 
 try {
-  const data = volume('data'), backup = volume('backup'), restored = volume('restored')
+  const data = await volume('data'), backup = await volume('backup'), restored = await volume('restored')
   let server = await start(oldImage, data, 'old')
   const setupToken = /setup[?]token=([A-Za-z0-9_-]+)/.exec(docker('logs', server.name))?.[1]
   assert.ok(setupToken)
@@ -185,6 +195,10 @@ try {
   const file = '%PDF-1.7\npreserved attachment\n%%EOF'
   form.set('file', new Blob([file], { type: 'application/pdf' }), 'preserved.pdf')
   const attachment = await api(server, '/attachments', ownerToken, 'POST', form)
+  if (sourceVersion === 'beta1') {
+    docker('exec', server.name, '/bin/sh', '-c',
+      'mkdir -p /app/pb_data/backups; printf old-daily > /app/pb_data/backups/daily-fixture-1.zip; printf old-daily > /app/pb_data/backups/daily-fixture-2.zip')
+  }
   stop(server)
   copyVolume(data, backup)
 
@@ -204,6 +218,15 @@ try {
   }
   server = await start(candidate, data, 'new')
   let upgraded = await verifyData(server)
+  const status = JSON.parse(docker('exec', server.name, '/app/subflow', 'upgrade', 'status', '--dir=/app/pb_data'))
+  assert.equal(status.state.ready, true)
+  assert.equal(status.state.backupId, undefined)
+  assert.equal(status.backups.filter(item => item.status === 'successful').length, 0)
+  if (sourceVersion === 'beta1') {
+    for (const archive of ['daily-fixture-1.zip', 'daily-fixture-2.zip']) {
+      assert.equal(docker('exec', server.name, 'cat', '/app/pb_data/backups/' + archive), 'old-daily')
+    }
+  }
   if (sourceVersion === 'alpha1') {
     for (const note of upgraded) {
       assert.equal(note.category, 'task')
@@ -282,5 +305,6 @@ try {
   console.log(JSON.stringify(result))
 } finally {
   for (const name of containers) { assert.ok(name.startsWith(`${prefix}-`)); docker('rm', '--force', name) }
+  if (bindRoot) await rm(bindRoot, {recursive:true,force:true})
   for (const name of volumes) { assert.ok(name.startsWith(`${prefix}-`)); docker('volume', 'rm', name) }
 }

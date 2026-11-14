@@ -33,7 +33,7 @@ func TestFailureRetainsLastStartupPhase(t *testing.T) {
 	}
 }
 
-func TestBackupVerifiesDataAndExcludesUpgradeControlDirectory(t *testing.T) {
+func TestBackupVerifiesDataAndIncludesUpgradeState(t *testing.T) {
 	manager, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -48,14 +48,14 @@ func TestBackupVerifiesDataAndExcludesUpgradeControlDirectory(t *testing.T) {
 	if manifest.AppVersion != "0.2.0-alpha.5" || manifest.PocketBaseVersion != "v0.40.6" {
 		t.Fatalf("source versions not preserved: %#v", manifest)
 	}
-	if err := VerifyBackup(filepath.Join(manager.Dir, "backups", manifest.ID)); err != nil {
+	if err := VerifyBackup(filepath.Join(manager.recoveryDirectory(), manifest.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(manager.Dir, "backups", manifest.ID, StateDirectory, "state.json")); !os.IsNotExist(err) {
-		t.Fatalf("control state was copied: %v", err)
+	if _, err := os.Stat(filepath.Join(manager.recoveryDirectory(), manifest.ID, StateDirectory, "state.json")); err != nil {
+		t.Fatalf("control state was not copied: %v", err)
 	}
-	writeFixture(t, filepath.Join(manager.Dir, "backups", manifest.ID, "data.db"), "tampered")
-	if err := VerifyBackup(filepath.Join(manager.Dir, "backups", manifest.ID)); err == nil {
+	writeFixture(t, filepath.Join(manager.recoveryDirectory(), manifest.ID, "data.db"), "tampered")
+	if err := VerifyBackup(filepath.Join(manager.recoveryDirectory(), manifest.ID)); err == nil {
 		t.Fatal("tampered backup unexpectedly verified")
 	}
 }
@@ -90,7 +90,7 @@ func TestBackupRetentionKeepsThreeSuccessfulAndAllPending(t *testing.T) {
 		t.Fatalf("expected 3 successful backups and 1 pending backup, got %d", len(backups))
 	}
 	for _, id := range []string{ids[0]} {
-		if _, err := os.Stat(filepath.Join(manager.Dir, "backups", id)); err == nil {
+		if _, err := os.Stat(filepath.Join(manager.recoveryDirectory(), id)); err == nil {
 			ordered := make([]string, 0, len(backups))
 			for _, backup := range backups {
 				ordered = append(ordered, backup.ID+"/"+backup.Status)
@@ -98,7 +98,7 @@ func TestBackupRetentionKeepsThreeSuccessfulAndAllPending(t *testing.T) {
 			t.Fatalf("older successful backup %s was retained; created=%v ordered=%v", id, ids, ordered)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(manager.Dir, "backups", ids[4])); err != nil {
+	if _, err := os.Stat(filepath.Join(manager.recoveryDirectory(), ids[4])); err != nil {
 		t.Fatalf("pending backup was pruned: %v", err)
 	}
 }
@@ -218,7 +218,7 @@ func TestPreflightAndFailedStartupPreserveState(t *testing.T) {
 	if _, err := os.Stat(manager.Dir); !os.IsNotExist(err) {
 		t.Fatalf("preflight created upgrade state: %v", err)
 	}
-	writeFixture(t, filepath.Join(manager.DataDir, "data.db"), "existing data")
+	writeSQLiteFixture(t, filepath.Join(manager.DataDir, "data.db"))
 	if err := manager.Save(State{State: StatusFailed, Phase: StatusFailed, FailurePhase: StatusChecking, ProblemCode: "unsupported_downgrade", AppVersion: "0.2.0-beta.1"}); err != nil {
 		t.Fatal(err)
 	}
