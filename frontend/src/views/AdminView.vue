@@ -329,9 +329,9 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       <fieldset class="settings-section"><legend>{{tr('attachments')}}</legend><p class="field-help">{{tr('attachmentSystemLimitsHelp')}}</p><div class="form-row"><label>{{tr('attachmentDefaultSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentDefaultMaxSize/1048576)" @input="updateAttachmentMiB('attachmentDefaultMaxSize',$event)"></label><label>{{tr('attachmentDefaultCount')}}<input v-model.number="settings.attachmentDefaultMaxCount" type="number" min="1" step="1"></label></div><div class="form-row"><label>{{tr('attachmentMaximumSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentLimitMaxSize/1048576)" @input="updateAttachmentMiB('attachmentLimitMaxSize',$event)"></label><label>{{tr('attachmentMaximumCount')}}<input v-model.number="settings.attachmentLimitMaxCount" type="number" min="1" step="1"></label></div></fieldset>
       <fieldset class="settings-section"><legend>{{ tr('loginSecurity') }}</legend>
         <label class="check"><input v-model="settings.allowPasswordRegistration" type="checkbox"><span>{{ tr('allowPasswordRegistration') }}</span></label>
-        <label class="check"><input v-model="settings.allowPasswordReset" type="checkbox"><span>{{ tr('allowPasswordReset') }}</span></label>
+        <label class="check"><input v-model="settings.allowPasswordReset" type="checkbox"><span>{{ tr('allowCredentialReset') }}</span></label>
         <p class="field-help">{{ tr('allowPasswordResetHelp') }}</p>
-        <p class="field-help" role="status">{{ settings.passwordResetAvailable ? tr('passwordResetReady') : tr('passwordResetNeedsConfiguration') }} <a :href="pbAdminUrl" target="_blank" rel="noopener">{{ tr('openPocketBase') }}</a></p>
+        <p class="field-help" role="status">{{ settings.passwordResetAvailable ? tr('resetAvailable') : tr('passwordResetNeedsConfiguration') }} <a :href="pbAdminUrl" target="_blank" rel="noopener">{{ tr('openPocketBase') }}</a></p>
         <label class="check"><input v-model="settings.allowOidcRegistration" type="checkbox"><span>{{ tr('allowOidcRegistration') }}</span></label>
       </fieldset>
       <fieldset class="settings-section"><legend>{{ tr('captcha') }}</legend>

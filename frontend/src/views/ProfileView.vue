@@ -33,7 +33,7 @@ async function resetPassword() {
     await auth.requestPasswordReset(String(auth.record.email), token)
     resetSent.value = true
   } catch {
-    resetError.value = tr('passwordResetRequestFailed')
+    resetError.value = tr('resetEmailRequestFailed')
   } finally {
     resetCaptchaToken.value = ''
     resetCaptchaRef.value?.reset()

@@ -9,14 +9,14 @@ import (
 )
 
 const (
-	PasswordResetSettingsID       = "0005_password_reset_settings"
-	PasswordResetSettingsChecksum = "sha256:f98c7b758d86416804c59a4279b41ae071d3f463ff58dcb5755a9fd896a7be67"
+	PasswordResetSettingsID = "0005_password_reset_settings"
+	Migration0005Checksum   = "sha256:f98c7b758d86416804c59a4279b41ae071d3f463ff58dcb5755a9fd896a7be67"
 )
 
 func passwordResetSettings() Migration {
 	return Migration{
 		ID:       PasswordResetSettingsID,
-		Checksum: PasswordResetSettingsChecksum,
+		Checksum: Migration0005Checksum,
 		Requires: []string{CaptchaProviderSettingsID},
 		Up: func(app core.App) error {
 			settings, err := app.FindCollectionByNameOrId(pbadapter.CollectionSystemSettings)

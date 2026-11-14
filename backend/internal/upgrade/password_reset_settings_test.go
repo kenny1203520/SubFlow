@@ -13,10 +13,6 @@ func TestPasswordResetSettingsMigrationUsesInstallationStateDefaults(t *testing.
 	for _, initialized := range []bool{false, true} {
 		t.Run(map[bool]string{false: "new_install", true: "existing_install"}[initialized], func(t *testing.T) {
 			app := newMigrationTestApp(t)
-			settingsCollection, err := app.FindCollectionByNameOrId(pbadapter.CollectionSystemSettings)
-			if err != nil {
-				t.Fatal(err)
-			}
 			settings, err := app.FindFirstRecordByFilter(pbadapter.CollectionSystemSettings, "key='primary'", nil)
 			if err != nil {
 				t.Fatal(err)
@@ -51,7 +47,7 @@ func TestPasswordResetSettingsMigrationUsesInstallationStateDefaults(t *testing.
 			if got := settings.GetBool("allow_password_reset"); got != initialized {
 				t.Fatalf("allow_password_reset = %t, want %t", got, initialized)
 			}
-			settingsCollection, err = app.FindCollectionByNameOrId(pbadapter.CollectionSystemSettings)
+			settingsCollection, err := app.FindCollectionByNameOrId(pbadapter.CollectionSystemSettings)
 			if err != nil {
 				t.Fatal(err)
 			}

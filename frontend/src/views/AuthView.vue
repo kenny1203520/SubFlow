@@ -278,7 +278,7 @@ function removeFragmentToken() {
 function syncRouteMode() {
   error.value = ''
   notice.value = route.query.notice === 'password-reset'
-    ? tr('passwordResetCompleted')
+    ? tr('resetCompleted')
     : route.query.notice === 'email-changed'
       ? tr('emailChangeCompleted')
       : ''

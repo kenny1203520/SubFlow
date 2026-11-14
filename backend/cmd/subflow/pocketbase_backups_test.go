@@ -26,7 +26,11 @@ func TestPocketBaseBackupHookKeepsTLSAndExcludesRecovery(t *testing.T) {
 	if err = app.Bootstrap(); err != nil {
 		t.Fatal(err)
 	}
-	defer app.ClearBootstrap()
+	t.Cleanup(func() {
+		if err := app.ClearBootstrap(); err != nil {
+			t.Error(err)
+		}
+	})
 	for _, name := range []string{".subflow/tls/cert.pem", ".subflow/backups/old/data.db", ".subflow-recovery/old/data.db", ".subflow/restore-failed-test/current/data.db", "storage/attachment.txt"} {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if err = os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
