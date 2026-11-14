@@ -2,15 +2,12 @@ name: subflow
 
 services:
   subflow:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${SUBFLOW_IMAGE:-subflow:local}
+    image: ${SUBFLOW_IMAGE:?Set SUBFLOW_IMAGE to a published, versioned SubFlow image}
     restart: unless-stopped
     environment:
       SUBFLOW_HTTP_PORT: ${SUBFLOW_HTTP_PORT:-8080}
       SUBFLOW_ENV: ${SUBFLOW_ENV:-production}
-      SUBFLOW_SETTINGS_ENCRYPTION_KEY: ${SUBFLOW_SETTINGS_ENCRYPTION_KEY:-}
+      SUBFLOW_SETTINGS_ENCRYPTION_KEY: ${SUBFLOW_SETTINGS_ENCRYPTION_KEY:?Set SUBFLOW_SETTINGS_ENCRYPTION_KEY to the persistent deployment key}
     ports:
       - "${SUBFLOW_HTTP_PORT:-8080}:${SUBFLOW_HTTP_PORT:-8080}"
     volumes:
@@ -24,3 +21,4 @@ services:
 
 volumes:
   pb_data:
+    name: subflow_pb_data

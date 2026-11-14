@@ -73,6 +73,7 @@ func (a *API) listSystemUpgrades(e *core.RequestEvent) error {
 }
 
 func (a *API) runtimeStatus(e *core.RequestEvent) error {
+	e.Response.Header().Set("Cache-Control", "no-store")
 	if a.Upgrades == nil {
 		return ok(e, http.StatusOK, upgrade.PublicStatus{State: upgrade.StatusChecking, Phase: upgrade.StatusChecking}, nil)
 	}
@@ -88,6 +89,7 @@ func (a *API) runtimeStatus(e *core.RequestEvent) error {
 }
 
 func (a *API) runtimeReady(e *core.RequestEvent) error {
+	e.Response.Header().Set("Cache-Control", "no-store")
 	if a.Upgrades == nil {
 		return e.JSON(http.StatusServiceUnavailable, map[string]any{"data": upgrade.PublicStatus{State: upgrade.StatusChecking, Phase: upgrade.StatusChecking}})
 	}

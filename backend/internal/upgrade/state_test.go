@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"database/sql"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -32,7 +33,7 @@ func TestFailureRetainsLastStartupPhase(t *testing.T) {
 	}
 }
 
-func TestBackupVerifiesDataAndExcludesUpgradeControlDirectory(t *testing.T) {
+func TestBackupVerifiesDataAndIncludesUpgradeState(t *testing.T) {
 	manager, err := New(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -47,14 +48,14 @@ func TestBackupVerifiesDataAndExcludesUpgradeControlDirectory(t *testing.T) {
 	if manifest.AppVersion != "0.2.0-alpha.5" || manifest.PocketBaseVersion != "v0.40.6" {
 		t.Fatalf("source versions not preserved: %#v", manifest)
 	}
-	if err := VerifyBackup(filepath.Join(manager.Dir, "backups", manifest.ID)); err != nil {
+	if err := VerifyBackup(filepath.Join(manager.recoveryDirectory(), manifest.ID)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(manager.Dir, "backups", manifest.ID, StateDirectory, "state.json")); !os.IsNotExist(err) {
-		t.Fatalf("control state was copied: %v", err)
+	if _, err := os.Stat(filepath.Join(manager.recoveryDirectory(), manifest.ID, StateDirectory, "state.json")); err != nil {
+		t.Fatalf("control state was not copied: %v", err)
 	}
-	writeFixture(t, filepath.Join(manager.Dir, "backups", manifest.ID, "data.db"), "tampered")
-	if err := VerifyBackup(filepath.Join(manager.Dir, "backups", manifest.ID)); err == nil {
+	writeFixture(t, filepath.Join(manager.recoveryDirectory(), manifest.ID, "data.db"), "tampered")
+	if err := VerifyBackup(filepath.Join(manager.recoveryDirectory(), manifest.ID)); err == nil {
 		t.Fatal("tampered backup unexpectedly verified")
 	}
 }
@@ -89,7 +90,7 @@ func TestBackupRetentionKeepsThreeSuccessfulAndAllPending(t *testing.T) {
 		t.Fatalf("expected 3 successful backups and 1 pending backup, got %d", len(backups))
 	}
 	for _, id := range []string{ids[0]} {
-		if _, err := os.Stat(filepath.Join(manager.Dir, "backups", id)); err == nil {
+		if _, err := os.Stat(filepath.Join(manager.recoveryDirectory(), id)); err == nil {
 			ordered := make([]string, 0, len(backups))
 			for _, backup := range backups {
 				ordered = append(ordered, backup.ID+"/"+backup.Status)
@@ -97,7 +98,7 @@ func TestBackupRetentionKeepsThreeSuccessfulAndAllPending(t *testing.T) {
 			t.Fatalf("older successful backup %s was retained; created=%v ordered=%v", id, ids, ordered)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(manager.Dir, "backups", ids[4])); err != nil {
+	if _, err := os.Stat(filepath.Join(manager.recoveryDirectory(), ids[4])); err != nil {
 		t.Fatalf("pending backup was pruned: %v", err)
 	}
 }
@@ -190,6 +191,11 @@ func TestLegacyFingerprintAcceptsKnownPocketBaseDomainAndRejectsUnknown(t *testi
 }
 
 func TestSemanticVersionComparisonHandlesAlphaOrdering(t *testing.T) {
+	if compareVersions("0.2.0-beta.2", "0.2.0-beta.10") >= 0 ||
+		compareVersions("0.2.0-beta", "0.2.0-beta.1") >= 0 ||
+		compareVersions("v0.2.0-beta.1+build", "0.2.0-beta.1") != 0 {
+		t.Fatal("beta identifiers and build metadata must follow SemVer")
+	}
 	if compareVersions("0.2.0-alpha.5", "0.2.0-alpha.6") >= 0 {
 		t.Fatal("alpha.5 must compare below alpha.6")
 	}
@@ -198,6 +204,42 @@ func TestSemanticVersionComparisonHandlesAlphaOrdering(t *testing.T) {
 	}
 	if compareVersions("0.2.0", "0.1.9") <= 0 {
 		t.Fatal("0.2.0 must compare above 0.1.9")
+	}
+}
+
+func TestPreflightAndFailedStartupPreserveState(t *testing.T) {
+	manager, err := New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report := manager.Preflight("0.2.0-beta.2"); len(report.Blockers) != 0 {
+		t.Fatalf("unexpected blockers on a fresh volume: %#v", report)
+	}
+	if _, err := os.Stat(manager.Dir); !os.IsNotExist(err) {
+		t.Fatalf("preflight created upgrade state: %v", err)
+	}
+	writeSQLiteFixture(t, filepath.Join(manager.DataDir, "data.db"))
+	if err := manager.Save(State{State: StatusFailed, Phase: StatusFailed, FailurePhase: StatusChecking, ProblemCode: "unsupported_downgrade", AppVersion: "0.2.0-beta.1"}); err != nil {
+		t.Fatal(err)
+	}
+	report := manager.Preflight("0.2.0-beta")
+	if len(report.Blockers) != 2 || report.Blockers[0] != "unsupported_downgrade" || report.Blockers[1] != "manual_retry_required" {
+		t.Fatalf("unexpected report: %#v", report)
+	}
+	defer manager.Close()
+	if err := manager.Prepare("0.2.0-beta.2", "0.41.0", false); !errors.Is(err, ErrPreviousFailure) {
+		t.Fatalf("ordinary startup should preserve the failed state: %v", err)
+	}
+	if err := manager.Prepare("0.2.0-beta.2", "0.41.0", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.Fail("migration_failed"); err != nil {
+		t.Fatal(err)
+	}
+	state, err := manager.ReadState()
+	if err != nil || state.UpdatedAt == nil || state.ProblemCode != "migration_failed" ||
+		state.FirstFailure == nil || state.FirstFailure.Code != "unsupported_downgrade" {
+		t.Fatalf("first failure was lost: %#v, %v", state, err)
 	}
 }
 

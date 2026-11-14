@@ -63,7 +63,7 @@ const auditFilters = reactive<AuditFilters>({ q:'', action:'', resource:'', outc
 // Kept in the URL so changing it always changes the route and re-runs load().
 const auditPageSize = computed(() => Number(route.query.perPage) || defaultPageSize.value)
 const defaultCaptchaFlow = (): CaptchaFlowConfig => ({ enabled: false, trigger: 'load', mode: 'interactive' })
-const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', attachmentDefaultMaxSize:20*1048576,attachmentDefaultMaxCount:10,attachmentLimitMaxSize:20*1048576,attachmentLimitMaxCount:10, allowRegistration: true, allowPasswordRegistration: true, allowOidcRegistration: true, captchaEnabled:false, captchaProvider: '', captchaProviders:{} as Record<string,CaptchaProviderSettings>, captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false, captchaFlows: { register: defaultCaptchaFlow(), passwordReset: defaultCaptchaFlow(), otpRequest: defaultCaptchaFlow(), login: defaultCaptchaFlow() } })
+const settings = ref({ initialized: true, siteName: 'SubFlow', defaultTimezone: 'UTC', defaultCurrency: 'TWD', attachmentDefaultMaxSize:20*1048576,attachmentDefaultMaxCount:10,attachmentLimitMaxSize:20*1048576,attachmentLimitMaxCount:10, allowRegistration: true, allowPasswordRegistration: true, allowPasswordReset: false, passwordResetAvailable: false, allowOidcRegistration: true, captchaEnabled:false, captchaProvider: '', captchaProviders:{} as Record<string,CaptchaProviderSettings>, captchaSiteKey: '', captchaChallengeUrl: '', captchaVerifyUrl: '', captchaSecret: '', captchaConfigured: false, captchaFlows: { register: defaultCaptchaFlow(), passwordReset: defaultCaptchaFlow(), otpRequest: defaultCaptchaFlow(), login: defaultCaptchaFlow() } })
 function updateAttachmentMiB(field:'attachmentDefaultMaxSize'|'attachmentLimitMaxSize',event:Event){settings.value[field]=Math.round(Number((event.target as HTMLInputElement).value)*1048576)}
 const captchaFlowKeys = ['register', 'passwordReset', 'otpRequest', 'login'] as const
 const captchaFlowLabel = (key: typeof captchaFlowKeys[number]) => tr(`captchaFlow${key.charAt(0).toUpperCase()}${key.slice(1)}`)
@@ -251,6 +251,7 @@ async function saveSettings() {
   try {
     updateCaptchaDraft()
     settings.value = (await api.patch<typeof settings.value>('/system/settings', settings.value)).data
+    settings.value = (await api.get<typeof settings.value>('/system/settings')).data
     await auth.refreshAccess()
     saved.value = true
     setTimeout(() => { saved.value = false }, 1800)
@@ -328,6 +329,9 @@ watch(() => route.fullPath, () => { Object.assign(auditFilters, readAuditFilters
       <fieldset class="settings-section"><legend>{{tr('attachments')}}</legend><p class="field-help">{{tr('attachmentSystemLimitsHelp')}}</p><div class="form-row"><label>{{tr('attachmentDefaultSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentDefaultMaxSize/1048576)" @input="updateAttachmentMiB('attachmentDefaultMaxSize',$event)"></label><label>{{tr('attachmentDefaultCount')}}<input v-model.number="settings.attachmentDefaultMaxCount" type="number" min="1" step="1"></label></div><div class="form-row"><label>{{tr('attachmentMaximumSizeMiB')}}<input type="number" min="1" step="1" :value="Math.round(settings.attachmentLimitMaxSize/1048576)" @input="updateAttachmentMiB('attachmentLimitMaxSize',$event)"></label><label>{{tr('attachmentMaximumCount')}}<input v-model.number="settings.attachmentLimitMaxCount" type="number" min="1" step="1"></label></div></fieldset>
       <fieldset class="settings-section"><legend>{{ tr('loginSecurity') }}</legend>
         <label class="check"><input v-model="settings.allowPasswordRegistration" type="checkbox"><span>{{ tr('allowPasswordRegistration') }}</span></label>
+        <label class="check"><input v-model="settings.allowPasswordReset" type="checkbox"><span>{{ tr('allowCredentialReset') }}</span></label>
+        <p class="field-help">{{ tr('allowPasswordResetHelp') }}</p>
+        <p class="field-help" role="status">{{ settings.passwordResetAvailable ? tr('resetAvailable') : tr('passwordResetNeedsConfiguration') }} <a :href="pbAdminUrl" target="_blank" rel="noopener">{{ tr('openPocketBase') }}</a></p>
         <label class="check"><input v-model="settings.allowOidcRegistration" type="checkbox"><span>{{ tr('allowOidcRegistration') }}</span></label>
       </fieldset>
       <fieldset class="settings-section"><legend>{{ tr('captcha') }}</legend>

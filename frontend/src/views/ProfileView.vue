@@ -17,7 +17,7 @@ import OAuthProviderLogo from '../components/OAuthProviderLogo.vue'
 import type { OAuthProviderInfo } from '../stores/auth'
 
 const a11yId = useId()
-const auth = useAuthStore(), setup = useSetupStore(), workspace=useWorkspaceStore(), toast = useToastStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), resetCaptchaToken = ref(''), { t, tr } = useI18n(), { preference, setTheme } = useTheme()
+const auth = useAuthStore(), setup = useSetupStore(), workspace=useWorkspaceStore(), toast = useToastStore(), saved = ref(false), resetSent = ref(false), resetBusy = ref(false), resetError = ref(''), resetCaptchaToken = ref(''), newEmail = ref(''), emailChangeBusy = ref(false), emailChangeSent = ref(false), emailChangeError = ref(''), { t, tr } = useI18n(), { preference, setTheme } = useTheme()
 const form = reactive({ name: String(auth.record?.name || ''), timezone: String(auth.record?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone), default_currency:String(auth.record?.defaultCurrency||'TWD') })
 async function submit() { await auth.updateProfile(form); saved.value = true; setTimeout(() => saved.value = false, 1800) }
 const passwordResetCaptcha = computed(()=>setup.status.captchaFlows?.passwordReset)
@@ -26,15 +26,31 @@ const resetCaptchaRef = ref<{ solve: () => Promise<string>; reset: () => void } 
 async function resetPassword() {
   if (!auth.record?.email) return
   resetBusy.value = true
+  resetError.value = ''
+  resetSent.value = false
   try {
     const token = passwordResetCaptchaEnabled.value ? (passwordResetCaptcha.value?.trigger === 'submit' ? await (resetCaptchaRef.value?.solve() || Promise.resolve('')) : resetCaptchaToken.value) : ''
     await auth.requestPasswordReset(String(auth.record.email), token)
     resetSent.value = true
+  } catch {
+    resetError.value = tr('resetEmailRequestFailed')
   } finally {
     resetCaptchaToken.value = ''
     resetCaptchaRef.value?.reset()
     resetBusy.value = false
   }
+}
+async function requestEmailChange() {
+  emailChangeBusy.value = true
+  emailChangeError.value = ''
+  emailChangeSent.value = false
+  try {
+    await auth.requestEmailChange(newEmail.value.trim())
+    emailChangeSent.value = true
+    newEmail.value = ''
+  } catch {
+    emailChangeError.value = tr('emailChangeRequestFailed')
+  } finally { emailChangeBusy.value = false }
 }
 
 const contactClient = new ApiClient(() => pb.authStore.token, () => {})
@@ -58,7 +74,7 @@ async function loadProviders() {
     linkedProviders.value = new Set((await auth.listLinkedProviders()).map(p => p.provider))
   } catch { /* provider list is a nice-to-have; leave the card empty on failure */ }
 }
-onMounted(async()=>{ try { if (!setup.ready) await setup.refresh() } finally { await loadProviders(); await loadContacts() } })
+onMounted(async()=>{ try { await setup.refresh() } finally { await loadProviders(); await loadContacts() } })
 async function toggleProvider(name: string) {
   providerBusy[name] = true
   const wasLinked = linkedProviders.value.has(name)
@@ -110,10 +126,18 @@ async function toggleProvider(name: string) {
                             class="theme-preview dark-preview"></span><strong>{{ t.darkTheme }}</strong></button></div>
             </section>
             <section class="card form-card profile-security">
-                <div><p class="eyebrow">{{t.loginSecurity}}</p><h2>{{ t.loginSecurity }}</h2><p class="setting-description">{{ t.passwordResetUnavailable }}</p></div>
-                <CaptchaChallenge v-if="passwordResetCaptchaEnabled" ref="resetCaptchaRef" v-model="resetCaptchaToken" flow="passwordReset" :trigger="passwordResetCaptcha?.trigger || 'load'" :mode="passwordResetCaptcha?.mode || 'interactive'" />
-                <button type="button" class="ghost" :disabled="!auth.record?.email || resetBusy" @click="resetPassword">{{ resetBusy ? t.processing : t.resetPassword }}</button>
+                <div><p class="eyebrow">{{t.loginSecurity}}</p><h2>{{ t.loginSecurity }}</h2><p class="setting-description">{{ setup.status.passwordResetAvailable ? tr('passwordResetAvailableDesc') : t.passwordResetUnavailable }}</p></div>
+                <CaptchaChallenge v-if="setup.status.passwordResetAvailable && passwordResetCaptchaEnabled" ref="resetCaptchaRef" v-model="resetCaptchaToken" flow="passwordReset" :trigger="passwordResetCaptcha?.trigger || 'load'" :mode="passwordResetCaptcha?.mode || 'interactive'" />
+                <button v-if="setup.status.passwordResetAvailable" type="button" class="ghost" :disabled="!auth.record?.email || resetBusy" @click="resetPassword">{{ resetBusy ? t.processing : t.resetPassword }}</button>
                 <p v-if="resetSent" class="success">{{ t.resetPasswordSent }}</p>
+                <p v-if="resetError" class="form-error" role="alert">{{ resetError }}</p>
+                <form class="email-change-form" @submit.prevent="requestEmailChange">
+                    <label :for="a11yId + '-new-email'">{{ tr('newLoginEmail') }}<input :id="a11yId + '-new-email'" v-model="newEmail" type="email" autocomplete="email" required></label>
+                    <p class="field-help">{{ tr('emailChangePasswordHelp') }} <RouterLink v-if="setup.status.passwordResetAvailable" to="/auth/reset-password">{{ tr('resetPassword') }}</RouterLink></p>
+                    <button class="ghost" type="submit" :disabled="emailChangeBusy || !newEmail.trim()">{{ emailChangeBusy ? t.processing : tr('sendEmailChange') }}</button>
+                </form>
+                <p v-if="emailChangeSent" class="success" role="status">{{ tr('emailChangeSent') }}</p>
+                <p v-if="emailChangeError" class="form-error" role="alert">{{ emailChangeError }}</p>
             </section>
             <section id="profile-categories" class="card form-card profile-categories"><CategoryManagement scope="personal" /></section>            <section id="profile-contacts" class="card form-card profile-contacts">
                 <div><p class="eyebrow">{{ tr('contacts') }}</p><h2>{{ tr('contactManagement') }}</h2><p class="setting-description">{{ tr('contactManagementDesc') }}</p></div>
