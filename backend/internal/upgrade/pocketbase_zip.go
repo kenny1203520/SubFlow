@@ -179,6 +179,9 @@ func (m *Manager) RestorePocketBaseZIP(path, sourceVersion, pbVersion string) (m
 
 func extractBackupFile(file *zip.File, root *os.Root) (BackupFile, error) {
 	item := BackupFile{Path: file.Name, Size: int64(file.UncompressedSize64)}
+	if !filepath.IsLocal(filepath.FromSlash(file.Name)) {
+		return item, fmt.Errorf("unsafe ZIP entry path")
+	}
 	target, err := manifestPath(file.Name)
 	if err != nil {
 		return item, err
