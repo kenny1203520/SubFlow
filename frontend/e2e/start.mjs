@@ -81,15 +81,21 @@ const backend = start('go', ['run', './cmd/subflow', 'serve', `--env-file=${envF
   cwd: backendDir,
   env: backendEnvironment,
 })
-backend.stdout.on('data', chunk => { backendOutput = (backendOutput + chunk.toString()).slice(-30000) })
-backend.stderr.on('data', chunk => { backendOutput = (backendOutput + chunk.toString()).slice(-30000) })
+// Development mode logs every SQL statement, so the one-time setup link is
+// followed by far more output than the retained tail. Match as output arrives,
+// before trimming, or the link is gone by the time the loop below looks for it.
+let setupToken
+const captureBackendOutput = chunk => {
+  const output = backendOutput + chunk.toString()
+  setupToken ??= /setup[?]token=([A-Za-z0-9_-]+)/.exec(output)?.[1]
+  backendOutput = output.slice(-30000)
+}
+backend.stdout.on('data', captureBackendOutput)
+backend.stderr.on('data', captureBackendOutput)
 backend.on('exit', code => { if (!stopping && code !== 0) { console.error(`Isolated backend exited (${code ?? 'signal'}). Raw logs are withheld because they may contain credentials.`); process.exitCode = code || 1 } })
 
-let setupToken
 for (let attempt = 0; attempt < 600 && !setupToken && backend.exitCode === null; attempt++) {
-    const match = /setup[?]token=([A-Za-z0-9_-]+)/.exec(backendOutput)
-  if (match) setupToken = match[1]
-  else await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
+  await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
 }
 if (!setupToken) {
   const diagnostics = safeBackendDiagnostics()
