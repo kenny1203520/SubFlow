@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Labelled every OAuth sign-in option with its provider name and gave them one button style; Google no longer shows a separate phrase and colours.
+
 ### Fixed
 
 - Stopped recording serve errors that happen after a completed upgrade as a failed upgrade; the process now exits for its supervisor to restart instead of locking the next start in maintenance mode.

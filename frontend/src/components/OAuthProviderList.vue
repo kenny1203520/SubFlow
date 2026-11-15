@@ -19,14 +19,12 @@ const { tr } = useI18n()
       :key="provider.name"
       type="button"
       class="oauth-provider-button"
-      :class="{ 'oauth-provider--google': provider.name === 'google' }"
       :disabled="busy"
       @click="emit('select', provider.name)"
     >
       <OAuthProviderLogo :provider="provider" />
-      <span class="oauth-provider-name" :translate="provider.name === 'google' ? 'no' : undefined">
-        {{ provider.name === 'google' ? tr('continueWithGoogle') : provider.displayName || provider.name }}
-      </span>
+      <!-- Every provider is labelled by its own name; brand names are not translated. -->
+      <span class="oauth-provider-name" translate="no">{{ provider.displayName || provider.name }}</span>
     </button>
   </div>
 </template>
@@ -82,28 +80,6 @@ const { tr } = useI18n()
 .oauth-provider-name {
   min-inline-size: 0;
   overflow-wrap: anywhere;
-}
-
-.oauth-provider--google {
-  border-color: #747775;
-  background: #fff;
-  color: #1f1f1f;
-}
-
-.oauth-provider--google:hover:not(:disabled) {
-  border-color: #1f1f1f;
-  background: #f8faff;
-}
-
-:global(html[data-theme='dark'] .oauth-provider--google) {
-  border-color: #8e918f;
-  background: #131314;
-  color: #e3e3e3;
-}
-
-:global(html[data-theme='dark'] .oauth-provider--google:hover:not(:disabled)) {
-  border-color: #e3e3e3;
-  background: #303134;
 }
 
 @media (prefers-reduced-motion: reduce) {

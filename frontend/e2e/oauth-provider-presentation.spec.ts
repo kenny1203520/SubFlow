@@ -15,7 +15,7 @@ const authMethods = (oauthProviders: typeof providers) => ({
   oauth2: { enabled: oauthProviders.length > 0, providers: oauthProviders },
 })
 
-test('OAuth provider options stay readable, branded and keyboard-ordered at narrow widths', async ({ page }) => {
+test('OAuth provider options stay readable, uniformly labelled and keyboard-ordered at narrow widths', async ({ page }) => {
   test.skip(test.info().project.name !== 'chromium', 'Responsive acceptance runs on Chromium.')
   await page.addInitScript(() => {
     if (!localStorage.getItem('subflow-locale')) localStorage.setItem('subflow-locale', 'en')
@@ -36,7 +36,9 @@ test('OAuth provider options stay readable, branded and keyboard-ordered at narr
   const group = page.getByRole('group', { name: 'Or sign in with a provider' })
   await expect(group).toBeVisible()
   await expect(group.getByRole('button')).toHaveCount(5)
-  await expect(group.getByRole('button', { name: 'Continue with Google' })).toBeVisible()
+  // Every provider is labelled by its own name; none gets a special phrase.
+  await expect(group.getByRole('button', { name: 'Google', exact: true })).toBeVisible()
+  await expect(group.getByRole('button', { name: /continue with/i })).toHaveCount(0)
   await expect(group).toContainText('Company identity with a long provider name')
 
   for (const width of [320, 375, 1440]) {
@@ -61,15 +63,21 @@ test('OAuth provider options stay readable, branded and keyboard-ordered at narr
     await expect(buttons.nth(index + 1)).toBeFocused()
   }
 
-  await page.locator('html').evaluate(element => element.setAttribute('data-theme', 'light'))
-  await expect(group.getByRole('button', { name: 'Continue with Google' })).toHaveCSS('background-color', 'rgb(255, 255, 255)')
-  await page.locator('html').evaluate(element => element.setAttribute('data-theme', 'dark'))
-  await expect(group.getByRole('button', { name: 'Continue with Google' })).toHaveCSS('background-color', 'rgb(19, 19, 20)')
+  for (const theme of ['light', 'dark']) {
+    await page.locator('html').evaluate((element, value) => element.setAttribute('data-theme', value), theme)
+    await page.mouse.move(0, 0)
+    const surfaces = await group.locator('button').evaluateAll(all => all.map(button => {
+      const style = getComputedStyle(button)
+      return `${style.backgroundColor} ${style.borderTopColor} ${style.color}`
+    }))
+    expect(new Set(surfaces).size, `one button style in the ${theme} theme`).toBe(1)
+  }
 
   await page.evaluate(() => localStorage.setItem('subflow-locale', 'zh-TW'))
   await page.reload()
   await expect(page.getByRole('group', { name: '或使用第三方帳號登入' })).toBeVisible()
-  await expect(page.getByRole('button', { name: '使用 Google 登入' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Google', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '使用 Google 登入' })).toHaveCount(0)
 
   await page.evaluate(() => localStorage.setItem('subflow-locale', 'en'))
   await page.reload()

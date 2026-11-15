@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
@@ -66,25 +67,95 @@ func (s *Service) QuoteRate(ctx context.Context, from, to domain.Currency, date 
 // without making one HTTP call per currency pair.
 var referenceRateBases = []domain.Currency{domain.CurrencyUSD, domain.CurrencyEUR, domain.CurrencyJPY, "GBP", domain.CurrencyTWD}
 
+// RefreshReferenceRates is a best-effort cache warm-up: every base and every
+// rate is attempted independently, so one bad rate or one failing base cannot
+// keep the others from being stored. Failure semantics:
+//
+//   - A quote currency SubFlow does not support (the feed lists more codes
+//     than domain.IsCurrency accepts, e.g. CLF) is skipped before it reaches
+//     the store. That is the expected steady state, not a failed operation,
+//     so it is neither audited nor reported.
+//   - The feed being unavailable for a base is audited as
+//     exchange_rate.refresh_failed and not returned (expected, transient).
+//   - Any other provider error, and any store error, is audited the same way
+//     (one entry per affected base) and also returned, joined across bases,
+//     so the caller logs it.
+//   - A failed audit write is returned as domain.ErrAuditUnavailable.
+//   - A cancelled context stops further work and is returned.
 func (s *Service) RefreshReferenceRates(ctx context.Context) error {
 	if s.Rates == nil {
 		return nil
 	}
 	today := s.Now().UTC()
+	var failures []error
 	for _, base := range referenceRateBases {
-		rates, err := s.Rates.QuoteAll(ctx, base, today)
-		if err != nil {
-			if errors.Is(err, domain.ErrRateUnavailable) {
-				s.audit(ctx, "", "", "exchange_rate.refresh_failed", "exchange_rate", string(base), "failure", encodeAuditSummary(map[string]any{"base": base}, nil))
-				continue
-			}
-			return err
+		if ctx.Err() != nil {
+			break
 		}
-		for _, rate := range rates {
-			if err = s.Stores.ExchangeRates.Upsert(ctx, rate); err != nil {
-				return err
-			}
+		if err := s.refreshReferenceBase(ctx, base, today); err != nil {
+			failures = append(failures, err)
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		failures = append(failures, err)
+	}
+	return errors.Join(failures...)
+}
+
+func (s *Service) refreshReferenceBase(ctx context.Context, base domain.Currency, today time.Time) error {
+	rates, err := s.Rates.QuoteAll(ctx, base, today)
+	if err != nil {
+		if ctx.Err() != nil {
+			// Shutdown, not a feed failure; the caller reports the cancellation.
+			return nil
+		}
+		if errors.Is(err, domain.ErrRateUnavailable) {
+			return s.auditRefreshFailure(ctx, base, map[string]any{"reason": "rate_unavailable"})
+		}
+		return errors.Join(
+			fmt.Errorf("refresh %s reference rates: %w", base, err),
+			s.auditRefreshFailure(ctx, base, map[string]any{"reason": "provider_error"}),
+		)
+	}
+	// Sorted so a run is deterministic regardless of map iteration order.
+	quotes := make([]domain.Currency, 0, len(rates))
+	for quote, rate := range rates {
+		if rate == nil || !domain.IsCurrency(rate.BaseCurrency) || !domain.IsCurrency(rate.QuoteCurrency) {
+			continue
+		}
+		quotes = append(quotes, quote)
+	}
+	sort.Slice(quotes, func(i, j int) bool { return quotes[i] < quotes[j] })
+	stored, failed := 0, 0
+	var firstErr error
+	for _, quote := range quotes {
+		if ctx.Err() != nil {
+			break
+		}
+		if err = s.Stores.ExchangeRates.Upsert(ctx, rates[quote]); err != nil {
+			failed++
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
+		}
+		stored++
+	}
+	if failed == 0 {
+		return nil
+	}
+	// The raw store error goes to the caller's log only; the audit summary
+	// keeps to counts.
+	return errors.Join(
+		fmt.Errorf("refresh %s reference rates: %d of %d rates could not be stored: %w", base, failed, len(quotes), firstErr),
+		s.auditRefreshFailure(ctx, base, map[string]any{"reason": "store_error", "failed": failed, "stored": stored}),
+	)
+}
+
+func (s *Service) auditRefreshFailure(ctx context.Context, base domain.Currency, details map[string]any) error {
+	details["base"] = base
+	if err := s.audit(ctx, "", "", "exchange_rate.refresh_failed", "exchange_rate", string(base), "failure", encodeAuditSummary(details, nil)); err != nil {
+		return errors.Join(domain.ErrAuditUnavailable, err)
 	}
 	return nil
 }
