@@ -14,11 +14,11 @@ const name = `subflow-smoke-${randomUUID()}`
 function docker(...args) {
   return execFileSync(process.platform === 'win32' ? 'rtk' : 'docker', process.platform === 'win32' ? ['proxy', 'docker', ...args] : args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
 }
-function getHealth(url, certificate) {
+function getStatus(url, certificate) {
   return new Promise((resolve, reject) => {
-    const request = https.get(url, { ca: certificate }, response => {
+    const request = https.get(url, { ca: certificate, agent: false }, response => {
       response.resume()
-      response.once('end', () => resolve(response.statusCode === 200))
+      response.once('end', () => resolve(response.statusCode))
     })
     request.once('error', reject)
   })
@@ -37,7 +37,7 @@ try {
   for (let attempt = 0; attempt < 120; attempt++) {
     try {
       certificate ||= docker('exec', name, 'cat', certificatePath)
-      ready = await getHealth(`${baseURL}/api/health`, certificate)
+      ready = await getStatus(`${baseURL}/api/health`, certificate) === 200
     } catch {}
     if (ready) break
     await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
@@ -45,6 +45,18 @@ try {
   assert.ok(ready, 'production container health must become ready')
   const token = /setup[?]token=([A-Za-z0-9_-]+)/.exec(docker('logs', name))?.[1]
   assert.ok(token, 'fresh isolated data must issue a one-time setup token')
+  // The maintenance listener hands the port to the application right after
+  // the upgrade completes. A page loaded during that handover stays in
+  // maintenance mode and never sends the setup form, so confirm that a
+  // business route is served before opening the browser.
+  let serving = false
+  for (let attempt = 0; attempt < 60 && !serving; attempt++) {
+    try {
+      serving = await getStatus(`${baseURL}/api/subflow/v1/setup/status`, certificate) === 200
+    } catch {}
+    if (!serving) await new Promise(resolveDelay => setTimeout(resolveDelay, 250))
+  }
+  assert.ok(serving, 'the application listener must serve the business API after health reports ready')
   const { chromium, expect } = await import(pathToFileURL(resolve(root, 'frontend/node_modules/@playwright/test/index.mjs')).href)
   browser = await chromium.launch()
   const page = await browser.newPage({ baseURL, ignoreHTTPSErrors: true, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, timezoneId: 'UTC' })

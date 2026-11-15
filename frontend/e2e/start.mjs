@@ -107,8 +107,18 @@ const tlsRoot = join(dataDir, '.subflow', 'tls')
 const activeTLS = (await readFile(join(tlsRoot, 'active'), 'utf8')).trim()
 const activeTLSDir = activeTLS === 'self-signed' ? join(tlsRoot, activeTLS) : join(tlsRoot, 'versions', activeTLS)
 const certificate = await readFile(join(activeTLSDir, 'cert.pem'))
-const setupStatus = await requestJSON(`${backendURL}/api/subflow/v1/setup/status?token=${setupToken}`, {}, certificate)
-if (!setupStatus.body.data?.setupAvailable) { stop(); throw new Error('The isolated backend did not accept its own setup token.') }
+// The setup link is printed before the maintenance listener hands the port to
+// the application. Until that handover finishes the request is answered with a
+// maintenance 503 or the connection is refused, so wait for the application.
+let setupStatus
+for (let attempt = 0; attempt < 120 && backend.exitCode === null; attempt++) {
+  try {
+    setupStatus = await requestJSON(`${backendURL}/api/subflow/v1/setup/status?token=${setupToken}`, {}, certificate)
+    if (setupStatus.status !== 503) break
+  } catch { /* the port is briefly unbound during the handover */ }
+  await new Promise(resolveDelay => setTimeout(resolveDelay, 250))
+}
+if (!setupStatus?.body.data?.setupAvailable) { stop(); throw new Error(`The isolated backend did not accept its own setup token (status ${setupStatus?.status ?? 'unreachable'}).`) }
 
 const initialized = await requestJSON(`${backendURL}/api/subflow/v1/setup/initialize`, {
   method: 'POST', headers: { 'Content-Type': 'application/json' },

@@ -58,6 +58,12 @@ func (s *StatusServer) status(w http.ResponseWriter, r *http.Request) {
 	if state.State == StatusFailed {
 		problem = safeProblem(state.ProblemCode)
 	}
+	if state.Ready {
+		// The state is saved as ready before this listener hands the port to
+		// the application. Until then the business API still answers with
+		// maintenance, so report the last step instead of readiness.
+		state.State, state.Phase, state.Ready = StatusVerifying, StatusVerifying, false
+	}
 	writeStatus(w, http.StatusOK, PublicStatus{State: state.State, Phase: state.Phase, Ready: state.Ready, ProblemCode: problem})
 }
 
@@ -66,11 +72,9 @@ func (s *StatusServer) ready(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	state, err := s.manager.ReadState()
-	if err == nil && state.Ready {
-		writeStatus(w, http.StatusOK, PublicStatus{State: StatusReady, Phase: StatusReady, Ready: true})
-		return
-	}
+	// Readiness is only ever reported by the application listener. While this
+	// one answers, the business API is not being served, even in the moment
+	// between saving the ready state and handing over the port.
 	writeStatus(w, http.StatusServiceUnavailable, PublicStatus{State: StatusChecking, Phase: StatusChecking, Ready: false})
 }
 

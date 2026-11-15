@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.2.0-beta.3] - 2026-11-15
+
 ### Changed
 
 - Labelled every OAuth sign-in option with its provider name and gave them one button style; Google no longer shows a separate phrase and colours.
@@ -17,6 +19,10 @@
 - Kept an ordinary restart that is interrupted during startup from being mistaken for an interrupted upgrade.
 - Prevented a crash when a failed startup released the database while the initial exchange-rate refresh was still running.
 - Classified upgrade problem codes at the source of the failure instead of by words in the error message.
+- Kept upgrade recovery snapshots out of PocketBase backup archives, checked free space before copying, and removed the snapshot once an upgrade succeeds, so scheduled backups no longer multiply disk usage.
+- Refreshed reference exchange rates for every supported currency and base instead of stopping at the first currency SubFlow does not support.
+- Set explicit button types and statically analysable autocomplete values on sign-in, setup, dashboard and share forms.
+- Stopped the maintenance listener from reporting readiness in the moment before it hands the port to the application, so `/api/health` and `/api/ready` only pass once the business API is served.
 
 ## [0.2.0-beta.2] - 2026-11-13
 
