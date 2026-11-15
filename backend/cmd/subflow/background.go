@@ -9,14 +9,15 @@ import (
 )
 
 // backgroundContext is cancelled when PocketBase terminates, which is also
-// when it releases its database handles.
-func backgroundContext(app core.App) context.Context {
+// when it releases its database handles. The caller defers the returned
+// cancel for the paths that never reach termination.
+func backgroundContext(app core.App) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	app.OnTerminate().BindFunc(func(event *core.TerminateEvent) error {
 		cancel()
 		return event.Next()
 	})
-	return ctx
+	return ctx, cancel
 }
 
 // guardBackground wraps work that runs outside a request. A job that is

@@ -172,7 +172,8 @@ func main() {
 	events := realtime.NewBus()
 	setupLink := registerUpgradeBootstrap(app, manager, "pocketbase", setupURL, runtime.EncryptionKey)
 	realtime.BindRecordEvents(app, events)
-	background := backgroundContext(app)
+	background, stopBackground := backgroundContext(app)
+	defer stopBackground()
 	// Set once the upgrade has completed; later serve errors are runtime
 	// failures and must not be recorded as a failed upgrade.
 	var ready atomic.Bool
