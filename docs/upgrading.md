@@ -81,13 +81,13 @@ wait for `healthy` and verify that the public `/api/ready` responds with HTTP 20
 
 For a deployment created with `docker run`, stop the original container and
 reuse the env file and exact PocketBase mount. This example assumes the stopped
-container named `subflow` already uses beta.2:
+container named `subflow` already uses beta.3:
 
 ```sh
 sudo docker stop subflow
 # Take the offline snapshot here before retrying.
 sudo docker run --rm --env-file .env --volumes-from subflow \
-  ghcr.io/kenny1203520/subflow:0.2.0-beta.2 upgrade retry --dir=/app/pb_data
+  ghcr.io/kenny1203520/subflow:0.2.0-beta.3 upgrade retry --dir=/app/pb_data
 sudo docker start subflow
 ```
 
