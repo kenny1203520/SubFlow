@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -115,7 +116,8 @@ func main() {
 		}
 		statusServer, err = upgrade.StartStatusServer(address, manager, certificates)
 		if err != nil {
-			_ = manager.Fail("maintenance_server_unavailable")
+			// A listener that cannot bind says nothing about the data: leave
+			// the upgrade state alone so the next start is not locked.
 			_ = manager.Close()
 			log.Fatal("cannot start maintenance status service: ", err)
 		}
@@ -170,6 +172,11 @@ func main() {
 	events := realtime.NewBus()
 	setupLink := registerUpgradeBootstrap(app, manager, "pocketbase", setupURL, runtime.EncryptionKey)
 	realtime.BindRecordEvents(app, events)
+	background, stopBackground := backgroundContext(app)
+	defer stopBackground()
+	// Set once the upgrade has completed; later serve errors are runtime
+	// failures and must not be recorded as a failed upgrade.
+	var ready atomic.Bool
 	app.OnServe().BindFunc(func(e *core.ServeEvent) error {
 		e.Server.TLSConfig = certificates.TLSConfig()
 		stores, err := adapters.New("pocketbase", e.App)
@@ -211,33 +218,28 @@ func main() {
 			}
 			return event.Next()
 		})
-		app.Cron().MustAdd("subflow_exchange_rates", "15 */6 * * *", func() {
-			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {
+		app.Cron().MustAdd("subflow_exchange_rates", "15 */6 * * *", guardBackground(background, "subflow_exchange_rates", log.Printf, func(ctx context.Context) {
+			if refreshErr := base.RefreshReferenceRates(ctx); refreshErr != nil {
 				app.Logger().Warn("exchange rate refresh failed", "error", refreshErr)
 			}
-			if refreshErr := base.RefreshAutomaticSubscriptions(context.Background()); refreshErr != nil {
+			if refreshErr := base.RefreshAutomaticSubscriptions(ctx); refreshErr != nil {
 				app.Logger().Warn("subscription rate refresh failed", "operation", "refresh_automatic_subscriptions", "error", refreshErr)
 			}
-		})
-		app.Cron().MustAdd("subflow_subscription_posting", "* * * * *", func() {
-			if postErr := base.PostDueSubscriptions(context.Background()); postErr != nil {
+		}))
+		app.Cron().MustAdd("subflow_subscription_posting", "* * * * *", guardBackground(background, "subflow_subscription_posting", log.Printf, func(ctx context.Context) {
+			if postErr := base.PostDueSubscriptions(ctx); postErr != nil {
 				app.Logger().Warn("subscription posting failed", "operation", "post_due_subscriptions", "error", postErr)
 			}
-			if postErr := base.PostDueRecurringIncomes(context.Background()); postErr != nil {
+			if postErr := base.PostDueRecurringIncomes(ctx); postErr != nil {
 				app.Logger().Warn("recurring income posting failed", "operation", "post_due_recurring_incomes", "error", postErr)
 			}
-		})
+		}))
 		notificationDelivery := application.NewNotificationDeliveryService(stores.Notifications, stores.NotificationEmails, stores.Transactions, stores.Users, base.RecordAudit, &mailer.Native{App: e.App}, nil)
-		app.Cron().MustAdd("subflow_notification_email_delivery", "* * * * *", func() {
-			if deliveryErr := notificationDelivery.ProcessDue(context.Background()); deliveryErr != nil {
+		app.Cron().MustAdd("subflow_notification_email_delivery", "* * * * *", guardBackground(background, "subflow_notification_email_delivery", log.Printf, func(ctx context.Context) {
+			if deliveryErr := notificationDelivery.ProcessDue(ctx); deliveryErr != nil {
 				app.Logger().Warn("notification email delivery failed", "operation", "deliver_notification_emails", "error", deliveryErr)
 			}
-		})
-		go func() {
-			if refreshErr := base.RefreshReferenceRates(context.Background()); refreshErr != nil {
-				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)
-			}
-		}()
+		}))
 		(&httpapi.API{Service: base, Upgrades: manager, Certificates: certificates, PasswordResetAvailable: func() bool {
 			return passwordResetAvailable(e.App, base, context.Background())
 		}}).RegisterRoutes(e)
@@ -249,22 +251,35 @@ func main() {
 		}); err != nil {
 			return err
 		}
+		ready.Store(true)
 		stopProgress()
 		if statusServer != nil {
+			// The upgrade is complete; a listener that fails to close surfaces
+			// as a bind error below instead of undoing the upgrade.
 			if err := statusServer.Close(); err != nil {
-				return err
+				log.Printf("SubFlow maintenance status service did not close cleanly: %v", err)
 			}
 		}
+		// Started only after completion: a failed startup releases the
+		// database, and a refresh already in flight would query a nil handle.
+		go guardBackground(background, "initial_exchange_rates", log.Printf, func(ctx context.Context) {
+			if refreshErr := base.RefreshReferenceRates(ctx); refreshErr != nil {
+				app.Logger().Warn("initial exchange rate refresh failed", "error", refreshErr)
+			}
+		})()
 		return e.Next()
 	})
 	if err := app.Start(); err != nil {
 		stopProgress()
-		if manager.HasLock() {
-			if auditErr := manager.Fail(problemCode(err)); auditErr != nil {
-				log.Printf("could not persist upgrade failure: %v", auditErr)
-			}
+		code := recordServeFailure(manager, ready.Load(), err, log.Printf)
+		if ready.Load() {
+			// The data is at a completed version: exit so the supervisor can
+			// restart, and leave the upgrade state alone.
+			log.Printf("SubFlow stopped after startup (%s): %v", code, err)
+			_ = manager.Close()
+			os.Exit(1)
 		}
-		log.Printf("SubFlow stopped (%s)", problemCode(err))
+		log.Printf("SubFlow stopped (%s)", code)
 		if statusServer != nil {
 			waitForShutdown()
 		}

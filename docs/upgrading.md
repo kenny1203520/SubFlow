@@ -17,6 +17,12 @@ PocketBase keeps its configured cron, retention and local or S3 destination.
 New archives include TLS but exclude SubFlow upgrade and restore work files.
 Keep the original encryption key and back up external attachments separately.
 
+The upgrade snapshot only protects the migration itself and is removed once
+the upgrade succeeds. Ongoing protection comes from PocketBase backups, whose
+schedule is empty by default: set a cron expression under Settings > Backups
+in the PocketBase dashboard, and confirm a recent archive exists before
+replacing the image.
+
 Inspect progress or diagnose a failed startup from a second terminal:
 
 ```sh
@@ -30,6 +36,23 @@ reports the recorded data version, executable version and known blockers as
 JSON. A blocked preflight exits nonzero and leaves the volume untouched.
 Compare the last timestamp with the container logs to see the current phase
 and its elapsed time.
+
+Only a failure before the upgrade completes keeps the volume in maintenance
+mode. Once an instance is ready, a later serve error (for example a port that
+cannot be bound) is logged, the process exits nonzero for the supervisor to
+restart, and the upgrade state is left ready. A start that is interrupted
+while nothing is pending, such as a host reboot during an ordinary restart,
+is likewise not treated as a failed upgrade.
+
+0.2.0-beta.1 and beta.2 recorded such later errors as a failed upgrade. The
+most common case is `backup_failed` after the recovery snapshot of a finished
+upgrade was no longer on disk; `upgrade retry` on those versions cannot clear
+it. Replace the image with a fixed release and start normally: when the
+recorded failure happened after completion (`failurePhase` is `ready` in
+`status --state-only`), startup clears it, writes an `upgrade.recovered` audit
+event and continues. If that event cannot be written the failure stays in
+place. Failures recorded during backup, migration or verification still need
+the manual retry below.
 
 A failed startup remains in maintenance mode. After fixing the cause, stop
 SubFlow and take an offline snapshot of the entire data directory, including

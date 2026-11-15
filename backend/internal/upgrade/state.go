@@ -30,24 +30,27 @@ var ErrUnknownSchema = errors.New("unsupported or unknown PocketBase schema")
 var ErrRestoreRecovered = errors.New("an interrupted restore was recovered; start the matching older binary before upgrading again")
 
 type State struct {
-	State               string           `json:"state"`
-	Phase               string           `json:"phase"`
-	FailurePhase        string           `json:"failurePhase,omitempty"`
-	Ready               bool             `json:"ready"`
-	ProblemCode         string           `json:"problemCode,omitempty"`
-	FirstFailure        *Failure         `json:"firstFailure,omitempty"`
-	UpdatedAt           *time.Time       `json:"updatedAt,omitempty"`
-	AppVersion          string           `json:"appVersion"`
-	PocketBaseVersion   string           `json:"pocketBaseVersion"`
-	SchemaVersion       int              `json:"schemaVersion"`
-	StartedAt           time.Time        `json:"startedAt,omitempty"`
-	CompletedAt         time.Time        `json:"completedAt,omitempty"`
-	BackupSourceVersion string           `json:"backupSourceVersion,omitempty"`
-	BackupSourcePB      string           `json:"backupSourcePocketBase,omitempty"`
-	CleanupIDs          []string         `json:"cleanupIds,omitempty"`
-	BackupID            string           `json:"backupId,omitempty"`
-	Source              string           `json:"source,omitempty"`
-	History             []MigrationEntry `json:"history,omitempty"`
+	State               string     `json:"state"`
+	Phase               string     `json:"phase"`
+	FailurePhase        string     `json:"failurePhase,omitempty"`
+	Ready               bool       `json:"ready"`
+	ProblemCode         string     `json:"problemCode,omitempty"`
+	FirstFailure        *Failure   `json:"firstFailure,omitempty"`
+	UpdatedAt           *time.Time `json:"updatedAt,omitempty"`
+	AppVersion          string     `json:"appVersion"`
+	PocketBaseVersion   string     `json:"pocketBaseVersion"`
+	SchemaVersion       int        `json:"schemaVersion"`
+	StartedAt           time.Time  `json:"startedAt,omitempty"`
+	CompletedAt         time.Time  `json:"completedAt,omitempty"`
+	BackupSourceVersion string     `json:"backupSourceVersion,omitempty"`
+	BackupSourcePB      string     `json:"backupSourcePocketBase,omitempty"`
+	CleanupIDs          []string   `json:"cleanupIds,omitempty"`
+	BackupID            string     `json:"backupId,omitempty"`
+	// RoutineStart marks a start of an already completed version. PocketBase
+	// still reports the migrating and verifying phases, but nothing is pending.
+	RoutineStart bool             `json:"routineStart,omitempty"`
+	Source       string           `json:"source,omitempty"`
+	History      []MigrationEntry `json:"history,omitempty"`
 }
 
 type MigrationEntry struct {
@@ -136,11 +139,27 @@ func (m *Manager) BeginStartup() error {
 	if err != nil {
 		return err
 	}
-	if state.State == StatusBackingUp || state.State == StatusMigrating || state.State == StatusVerifying || (state.State == StatusChecking && state.BackupID != "" && state.CompletedAt.IsZero()) {
+	interrupted := state.State == StatusBackingUp || state.State == StatusMigrating || state.State == StatusVerifying || (state.State == StatusChecking && state.BackupID != "" && state.CompletedAt.IsZero())
+	// An interrupted routine start had no migration in flight; the database
+	// journal stays authoritative and the next bootstrap re-verifies it.
+	if interrupted && !state.RoutineStart {
 		m.state = state
 		return m.Fail("upgrade_interrupted")
 	}
-	if state.State == StatusFailed || state.ProblemCode == "restore_requires_matching_binary" {
+	if failedAfterReady(state) {
+		m.state = state
+		// The audit record comes first: without it the failure stays in place.
+		if err := m.AppendEvent("upgrade.recovered", "success", "post-ready failure cleared code="+safeProblem(state.ProblemCode)); err != nil {
+			m.cleanupWarning(fmt.Errorf("post-ready failure kept because its recovery could not be audited: %w", err))
+			return nil
+		}
+		if state.BackupID != "" {
+			if _, err := m.findBackup(state.BackupID); errors.Is(err, os.ErrNotExist) {
+				state.BackupID = ""
+			}
+		}
+		state.ProblemCode, state.FirstFailure = "", nil
+	} else if state.State == StatusFailed || state.ProblemCode == "restore_requires_matching_binary" {
 		m.state = state
 		return nil
 	}
@@ -151,6 +170,15 @@ func (m *Manager) BeginStartup() error {
 	state.FailurePhase = ""
 	m.state = state
 	return m.Save(m.state)
+}
+
+// failedAfterReady reports a failure recorded once the upgrade had already
+// completed, such as a serve error. No migration was in flight, so the next
+// start can clear it; failures from earlier phases still need an operator.
+func failedAfterReady(state State) bool {
+	return state.State == StatusFailed && state.FailurePhase == StatusReady && !state.CompletedAt.IsZero() &&
+		state.ProblemCode != "restore_requires_matching_binary" &&
+		(state.FirstFailure == nil || state.FirstFailure.Phase == StatusReady)
 }
 
 func (m *Manager) Snapshot() (State, []BackupManifest, error) {
@@ -316,7 +344,8 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	}
 	previousVersion, previousPB := m.state.AppVersion, m.state.PocketBaseVersion
 	previousProblem := m.state.ProblemCode
-	previousCompleted := !m.state.CompletedAt.IsZero()
+	previousCompletedAt, previousRoutine := m.state.CompletedAt, m.state.RoutineStart
+	previousCompleted := !previousCompletedAt.IsZero()
 	if err := checkVersions(previousVersion, appVersion); err != nil {
 		return err
 	}
@@ -326,9 +355,10 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	}
 	previousBackup := m.state.BackupID
 	previousFailurePhase := m.state.FailurePhase
-	if retry && (previousFailurePhase == StatusMigrating || previousFailurePhase == StatusVerifying) &&
+	// A routine start of a completed version has no partially applied migration.
+	if retry && !previousRoutine && (previousFailurePhase == StatusMigrating || previousFailurePhase == StatusVerifying) &&
 		((previousBackup == "" && m.state.Source != "fresh") || (previousBackup != "" && previousVersion != appVersion)) {
-		return fmt.Errorf("verified recovery backup and matching executable are required to retry a partially applied migration")
+		return fmt.Errorf("%w: verified recovery backup and matching executable are required to retry a partially applied migration", ErrBackupFailed)
 	}
 	if previousVersion != "" && previousVersion != appVersion {
 		m.state.BackupSourceVersion, m.state.BackupSourcePB = "", ""
@@ -338,7 +368,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	}
 	m.state.AppVersion, m.state.PocketBaseVersion, m.state.SchemaVersion = appVersion, pbVersion, 1
 	m.state.Ready, m.state.State, m.state.Phase = false, StatusChecking, StatusChecking
-	m.state.FailurePhase = ""
+	m.state.FailurePhase, m.state.RoutineStart = "", false
 	m.state.ProblemCode, m.state.StartedAt, m.state.CompletedAt = "", time.Now().UTC(), time.Time{}
 	if m.state.History == nil {
 		m.state.History = []MigrationEntry{}
@@ -366,6 +396,9 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	}
 	if previousCompleted && previousVersion == appVersion {
 		m.state.State, m.state.Phase, m.state.Ready = StatusChecking, StatusChecking, false
+		// Keeping the completion time lets an interrupted routine start take
+		// this path again instead of being mistaken for a partial upgrade.
+		m.state.RoutineStart, m.state.CompletedAt = true, previousCompletedAt
 		return m.Save(m.state)
 	}
 	if previousVersion == "" {
@@ -385,7 +418,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 			return m.Save(m.state)
 		}
 		if previousFailurePhase != StatusBackingUp {
-			return fmt.Errorf("previous recovery backup failed verification")
+			return fmt.Errorf("%w: previous recovery backup failed verification", ErrBackupFailed)
 		}
 		m.state.BackupID = ""
 	}
@@ -402,7 +435,7 @@ func (m *Manager) Prepare(appVersion, pbVersion string, retry bool) error {
 	}
 	manifest, err := m.CreateBackup(sourceApp, sourcePB)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrBackupFailed, err)
 	}
 	m.state.BackupID = manifest.ID
 	if err := m.Save(m.state); err != nil {
@@ -417,7 +450,7 @@ func (m *Manager) Complete(reconcile ...func() error) error {
 		m.state.State, m.state.Phase, m.state.Ready = StatusFailed, StatusFailed, false
 		m.state.ProblemCode = "audit_unavailable"
 		_ = m.Save(m.state)
-		return err
+		return fmt.Errorf("%w: %w", ErrAuditUnavailable, err)
 	}
 	for _, syncAudit := range reconcile {
 		if syncAudit == nil {
@@ -427,7 +460,7 @@ func (m *Manager) Complete(reconcile ...func() error) error {
 			m.state.State, m.state.Phase, m.state.Ready = StatusFailed, StatusFailed, false
 			m.state.ProblemCode = "audit_unavailable"
 			_ = m.Save(m.state)
-			return fmt.Errorf("durable upgrade audit could not be imported: %w", err)
+			return fmt.Errorf("%w: durable upgrade audit could not be imported: %w", ErrAuditUnavailable, err)
 		}
 	}
 	backupID, cleanupIDs := m.state.BackupID, m.state.CleanupIDs
