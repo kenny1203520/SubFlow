@@ -98,6 +98,56 @@ func TestStartupKeepsFailuresFromBeforeReadyLocked(t *testing.T) {
 	}
 }
 
+// An operator command can also record a failure while the data is ready: an
+// older executable refusing the newer data leaves failurePhase "ready" too.
+// That is a deliberate block, not a serve error, and must wait for an operator.
+func TestStartupKeepsOperatorBlocksRecordedWhileReadyLocked(t *testing.T) {
+	for _, code := range []string{"unsupported_downgrade", "invalid_upgrade_version", "restore_recovery_failed", "some_future_code"} {
+		t.Run(code, func(t *testing.T) {
+			manager := lockedAfterReady(t)
+			state, err := manager.ReadState()
+			if err != nil {
+				t.Fatal(err)
+			}
+			state.ProblemCode = code
+			if err := manager.Save(state); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.BeginStartup(); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.Prepare("0.2.0-beta.3", "0.41.0", false); !errors.Is(err, ErrPreviousFailure) {
+				t.Fatalf("%s recorded while ready was cleared without an operator: %v", code, err)
+			}
+			if events := durableEvents(t, manager); strings.Contains(events, "upgrade.recovered") {
+				t.Fatalf("unexpected recovery event: %s", events)
+			}
+		})
+	}
+}
+
+func TestStartupRecoversEveryServeFailureCode(t *testing.T) {
+	for _, code := range []string{"backup_failed", "audit_unavailable", "migration_failed", "upgrade_failed", "upgrade_finalize_failed", "maintenance_server_unavailable"} {
+		t.Run(code, func(t *testing.T) {
+			manager := lockedAfterReady(t)
+			state, err := manager.ReadState()
+			if err != nil {
+				t.Fatal(err)
+			}
+			state.ProblemCode = code
+			if err := manager.Save(state); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.BeginStartup(); err != nil {
+				t.Fatal(err)
+			}
+			if err := manager.Prepare("0.2.0-beta.3", "0.41.0", false); err != nil {
+				t.Fatalf("%s recorded after readiness stayed locked: %v", code, err)
+			}
+		})
+	}
+}
+
 func TestStartupStaysLockedWhenRecoveryCannotBeAudited(t *testing.T) {
 	manager := lockedAfterReady(t)
 	// A directory in place of the event log makes every durable append fail.

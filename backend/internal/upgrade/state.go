@@ -172,13 +172,23 @@ func (m *Manager) BeginStartup() error {
 	return m.Save(m.state)
 }
 
-// failedAfterReady reports a failure recorded once the upgrade had already
-// completed, such as a serve error. No migration was in flight, so the next
-// start can clear it; failures from earlier phases still need an operator.
+// serveFailureCodes are the codes a serve or finalize error could be recorded
+// under once an upgrade had completed. An operator command can also fail
+// while the state is ready (an older executable refusing newer data records
+// unsupported_downgrade the same way), so the phase alone is not enough:
+// anything outside this list stays locked.
+var serveFailureCodes = map[string]bool{
+	"backup_failed": true, "audit_unavailable": true, "migration_failed": true,
+	"upgrade_failed": true, "upgrade_finalize_failed": true, "maintenance_server_unavailable": true,
+}
+
+// failedAfterReady reports a serve failure recorded once the upgrade had
+// already completed. No migration was in flight, so the next start can clear
+// it; every other failure still needs an operator.
 func failedAfterReady(state State) bool {
 	return state.State == StatusFailed && state.FailurePhase == StatusReady && !state.CompletedAt.IsZero() &&
-		state.ProblemCode != "restore_requires_matching_binary" &&
-		(state.FirstFailure == nil || state.FirstFailure.Phase == StatusReady)
+		serveFailureCodes[state.ProblemCode] &&
+		(state.FirstFailure == nil || (state.FirstFailure.Phase == StatusReady && serveFailureCodes[state.FirstFailure.Code]))
 }
 
 func (m *Manager) Snapshot() (State, []BackupManifest, error) {

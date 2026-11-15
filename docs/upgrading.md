@@ -49,10 +49,12 @@ most common case is `backup_failed` after the recovery snapshot of a finished
 upgrade was no longer on disk; `upgrade retry` on those versions cannot clear
 it. Replace the image with a fixed release and start normally: when the
 recorded failure happened after completion (`failurePhase` is `ready` in
-`status --state-only`), startup clears it, writes an `upgrade.recovered` audit
-event and continues. If that event cannot be written the failure stays in
-place. Failures recorded during backup, migration or verification still need
-the manual retry below.
+`status --state-only`) and its code is one a serve error produces, startup
+clears it, writes an `upgrade.recovered` audit event and continues. If that
+event cannot be written the failure stays in place. Failures recorded during
+backup, migration or verification, and operator blocks such as
+`unsupported_downgrade` from running an older executable against newer data,
+still need the manual retry below.
 
 A failed startup remains in maintenance mode. After fixing the cause, stop
 SubFlow and take an offline snapshot of the entire data directory, including
