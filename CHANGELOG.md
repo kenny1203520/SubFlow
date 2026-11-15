@@ -6,6 +6,41 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Labelled every OAuth sign-in option with its provider name and gave them one button style; Google no longer shows a separate phrase and colours.
+
+### Fixed
+
+- Stopped recording serve errors that happen after a completed upgrade as a failed upgrade; the process now exits for its supervisor to restart instead of locking the next start in maintenance mode.
+- Recovered installations that 0.2.0-beta.1 or beta.2 locked with a failure recorded after completion, such as `backup_failed` for a recovery snapshot that was already gone, and audited the recovery.
+- Kept an ordinary restart that is interrupted during startup from being mistaken for an interrupted upgrade.
+- Prevented a crash when a failed startup released the database while the initial exchange-rate refresh was still running.
+- Classified upgrade problem codes at the source of the failure instead of by words in the error message.
+
+## [0.2.0-beta.2] - 2026-11-13
+
+### Added
+
+- Added a read-only upgrade preflight, a lightweight status command, and progress and completion messages for startup and manual retries.
+- Added published beta and beta.1 images to the release upgrade rehearsal.
+
+### Fixed
+
+- Preserved the original upgrade failure across restarts and compared prerelease versions according to SemVer.
+- Bounded browser status checks and distinguished confirmed maintenance from network, proxy and response errors.
+
+## [0.2.0-beta.1] - 2026-11-12
+
+### Added
+- Added audited password recovery with an administrator switch and PocketBase password-policy enforcement.
+- Added verified sign-in email changes with security alerts to the previous address.
+- Added PocketBase Email OTP and MFA continuation after password or OIDC sign-in.
+
+### Security
+- Applied CAPTCHA and rate limits to recovery and OTP requests while preserving generic responses for account-existence privacy.
+- Kept reset and email-change tokens in URL fragments and submitted them only in request bodies; audited request, delivery, confirmation, and failure outcomes without storing secrets.
+
 ## [0.2.0-beta] - 2026-10-29
 
 This is the first 0.2.0 beta for broader acceptance testing. See the [beta testing guide](https://github.com/kenny1203520/SubFlow/blob/v0.2.0-beta/docs/releases/0.2.0-beta.md).

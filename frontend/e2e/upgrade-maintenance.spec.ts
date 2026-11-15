@@ -1,5 +1,20 @@
 import { expect, test } from '@playwright/test'
 
+test('recovers from an invalid proxy response without refreshing the login page', async ({ page }) => {
+  let ready = false
+  await page.addInitScript(() => localStorage.setItem('subflow-locale', 'en'))
+  await page.route('**/api/subflow/v1/runtime/status', route => ready
+    ? route.fulfill({ json: { data: { state: 'ready', phase: 'ready', ready: true } } })
+    : route.fulfill({ status: 503, contentType: 'text/html', body: '<html>Proxy unavailable</html>' }))
+  await page.goto('/auth')
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('heading', { name: 'Service status unavailable' })).toBeVisible()
+  ready = true
+  await dialog.getByRole('button', { name: 'Check again' }).click()
+  await expect(dialog).toBeHidden()
+  await expect(page.getByLabel('Email', { exact: true })).toBeVisible()
+})
+
 test('announces maintenance accessibly and resumes when the backend is ready', async ({ page }) => {
   let phase = 'migrating'
   let ready = false

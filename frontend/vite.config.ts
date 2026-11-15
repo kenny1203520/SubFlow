@@ -1,5 +1,5 @@
 ﻿import { readFileSync } from 'node:fs'
-import { loadEnv } from 'vite'
+import type { UserConfig } from 'vite'
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
@@ -11,11 +11,12 @@ import { fileURLToPath } from 'node:url'
 const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
-export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, repositoryRoot, '')
-  const dataDir = resolve(env.SUBFLOW_DATA_DIR || join(repositoryRoot, 'backend', 'pb_data'))
-  let localTLS: { key: Buffer; cert: Buffer } | undefined
-  if (mode === 'development') {
+export default defineConfig(({ command, mode }) => {
+  const devServer = command === 'serve' && mode === 'development'
+  let server: UserConfig['server']
+  if (devServer) {
+    const dataDir = resolve(repositoryRoot, process.env.SUBFLOW_DATA_DIR || join('backend', 'pb_data'))
+    let localTLS: { key: Buffer; cert: Buffer } | undefined
     try {
       const tlsDir = join(dataDir, '.subflow', 'tls')
       const active = readFileSync(join(tlsDir, 'active'), 'utf8').trim()
@@ -24,9 +25,19 @@ export default defineConfig(({ mode }) => {
     } catch {
       throw new Error('Start SubFlow once to create its local HTTPS certificate before running Vite.')
     }
+    const backend = `https://${process.env.SUBFLOW_DEV_BACKEND_HOST || '127.0.0.1'}:${process.env.SUBFLOW_HTTP_PORT || '8080'}`
+    server = {
+      https: localTLS,
+      proxy: {
+        // Vite is a local-only development proxy; the backend is HTTPS and
+        // uses its generated certificate unless a development certificate is installed.
+        '/api': { target: backend, changeOrigin: true, ws: true, secure: false },
+        '/_': { target: backend, changeOrigin: true, ws: true, secure: false },
+      },
+    }
   }
-  const backend = `https://127.0.0.1:${env.SUBFLOW_HTTP_PORT || '8080'}`
   return {
+    envDir: false,
     define: { 'import.meta.env.VITE_APP_VERSION': JSON.stringify(pkg.version) },
     plugins: [
       vue(),
@@ -53,15 +64,7 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
-    server: {
-      https: localTLS,
-      proxy: {
-        // Vite is a local-only development proxy; the backend is HTTPS and
-        // uses its generated certificate unless a development certificate is installed.
-        '/api': { target: backend, changeOrigin: true, ws: true, secure: false },
-        '/_': { target: backend, changeOrigin: true, ws: true, secure: false },
-      },
-    },
+    server,
     test: {
       exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
       coverage: {

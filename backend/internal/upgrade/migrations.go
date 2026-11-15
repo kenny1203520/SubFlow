@@ -15,6 +15,7 @@ func Migrations(driver, setupURL string, setupLink *string) []Migration {
 		auditIdLimit(),
 		settlementApprovals(),
 		captchaProviderSettings(),
+		passwordResetSettings(),
 	}
 }
 

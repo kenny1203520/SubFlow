@@ -9,12 +9,15 @@ const dialog = ref<HTMLDialogElement>()
 const heading = ref<HTMLElement>()
 const phaseText = computed(() => {
   if (upgrade.clientUpdateRequired) return tr('upgradeClientDescription')
+  if (upgrade.connectionIssue === 'timeout') return tr('upgradeTimeout')
+  if (upgrade.connectionIssue === 'invalid') return tr('upgradeInvalidStatus')
+  if (upgrade.connectionIssue) return tr('upgradeUnavailable')
   if (upgrade.status.state === 'failed') return tr('upgradeFailed')
   if (upgrade.status.state === 'backing_up') return tr('upgradeBackingUp')
   if (upgrade.status.state === 'migrating') return tr('upgradeMigrating')
   if (upgrade.status.state === 'verifying') return tr('upgradeVerifying')
   if (upgrade.status.state === 'ready') return tr('upgradeReconnect')
-  return upgrade.checked ? tr('upgradeReconnect') : tr('upgradeChecking')
+  return tr('upgradeChecking')
 })
 
 async function syncDialog(blocked: boolean) {
@@ -38,11 +41,14 @@ onBeforeUnmount(() => { if (dialog.value?.open) dialog.value.close() })
     <section class="upgrade-maintenance">
       <div class="upgrade-maintenance-mark" aria-hidden="true"><span></span></div>
       <p class="eyebrow">SubFlow</p>
-      <h1 id="upgrade-title" ref="heading" tabindex="-1">{{ upgrade.clientUpdateRequired ? tr('upgradeClientTitle') : tr('upgradeTitle') }}</h1>
+      <h1 id="upgrade-title" ref="heading" tabindex="-1">{{ upgrade.clientUpdateRequired ? tr('upgradeClientTitle') : upgrade.connectionIssue ? tr('upgradeConnectionTitle') : tr('upgradeTitle') }}</h1>
       <p id="upgrade-description" class="upgrade-maintenance-description" role="status" aria-live="polite" aria-atomic="true">{{ phaseText }}</p>
-      <p v-if="upgrade.status.state === 'failed' && upgrade.status.problemCode" class="upgrade-problem">{{ tr('upgradeProblem', { code: upgrade.status.problemCode }) }}</p>
+      <p v-if="!upgrade.connectionIssue && upgrade.status.state === 'failed' && upgrade.status.problemCode" class="upgrade-problem">{{ tr('upgradeProblem', { code: upgrade.status.problemCode }) }}</p>
       <button v-if="upgrade.clientUpdateRequired" class="primary" type="button" @click="upgrade.reloadAfterSaving">{{ tr('upgradeReload') }}</button>
-      <p v-else class="upgrade-maintenance-footnote">{{ tr('upgradeDescription') }}</p>
+      <template v-else>
+        <p class="upgrade-maintenance-footnote">{{ tr('upgradePreserve') }}</p>
+        <button v-if="upgrade.connectionIssue || upgrade.status.state === 'failed'" class="primary" type="button" :disabled="upgrade.checking" @click="upgrade.refresh()">{{ tr('upgradeCheckAgain') }}</button>
+      </template>
     </section>
   </dialog>
 </template>

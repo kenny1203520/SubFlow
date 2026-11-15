@@ -10,6 +10,7 @@ require (
 	github.com/altcha-org/altcha-lib-go/v2 v2.4.1
 	github.com/disintegration/imaging v1.6.2
 	golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
+	golang.org/x/mod v0.42.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.43.0
 	modernc.org/sqlite v1.60.1

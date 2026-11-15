@@ -1,15 +1,19 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import https from 'node:https'
 
 const oldImage = process.argv[2] || 'ghcr.io/kenny1203520/subflow@sha256:99bcb63a7322dc66feb3fc36bb6840cf727b1cc1e283e66e4f83d284a9bebc03'
 const candidate = process.argv[3] || 'subflow:candidate'
 const sourceVersion = process.argv[4] || 'alpha1'
-assert.match(sourceVersion, /^alpha[1-5]$/)
+assert.match(sourceVersion, /^(alpha[1-5]|beta1?)$/)
 const prefix = `subflow-upgrade-${randomUUID()}`
 const volumes = new Set()
+const mounts = new Set()
+const bindRoot = process.env.SUBFLOW_REHEARSAL_BIND === "1" ? await mkdtemp(join(tmpdir(), prefix+"-")) : null
 const containers = new Set()
 const key = randomUUID()
 const password = 'isolated-upgrade-password-1234'
@@ -72,22 +76,32 @@ function safeUpgradeDetail(name) {
   } catch { details.push('docker-logs-unavailable') }
   return details.join('; ') || 'startup-details-unavailable'
 }
-function volume(suffix) {
+async function volume(suffix) {
+  if (bindRoot) {
+    const path = join(bindRoot,suffix)
+    await mkdir(path)
+    mounts.add(path)
+    return path
+  }
   const name = `${prefix}-${suffix}`
   docker('volume', 'create', name)
   volumes.add(name)
   return name
 }
-async function start(image, data, suffix) {
+function launch(image, data, suffix, publishedPort = '127.0.0.1::8080') {
   const name = `${prefix}-${suffix}`
-  const secure = image === candidate
-  if (image === candidate) {
+  if (image === candidate || mounts.has(data)) {
     // Historical volumes may be root-owned after older releases. Fix only
     // this isolated rehearsal volume before the nonroot candidate starts.
-    docker('run', '--rm', '--user', '0:0', '--volume', `${data}:/app/pb_data`, image, 'init-permissions')
+    docker('run', '--rm', '--user', '0:0', '--volume', `${data}:/app/pb_data`, candidate, 'init-permissions')
   }
-  docker('run', '--detach', '--rm', '--name', name, '--publish', '127.0.0.1::8080', '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
+  docker('run', '--detach', '--rm', '--name', name, '--publish', publishedPort, '--volume', `${data}:/app/pb_data`, '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image)
   containers.add(name)
+  return name
+}
+async function start(image, data, suffix, publishedPort) {
+  const name = launch(image, data, suffix, publishedPort)
+  const secure = image === candidate || sourceVersion.startsWith('beta')
   const base = `${secure ? 'https' : 'http'}://${docker('port', name, '8080/tcp')}`
   let certificate
   let healthStatus = 'unreachable'
@@ -135,7 +149,11 @@ async function request(server, path, token, method = 'GET', body) {
   const form = body instanceof FormData
   console.log(`Checking ${method} ${path.split('?')[0]}`)
   const options = { method, headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body && !form ? { 'Content-Type': 'application/json' } : {}) }, body: body ? form ? body : JSON.stringify(body) : undefined }
-  assert.ok(!server.certificate || !form, 'HTTPS upgrade checks do not upload multipart data')
+  if (server.certificate && form) {
+    const encoded = new Response(body)
+    options.headers['Content-Type'] = encoded.headers.get('content-type')
+    options.body = await encoded.arrayBuffer()
+  }
   const response = server.certificate
     ? await requestHTTPS(server, `${server.base}${path}`, options)
     : await fetch(`${server.base}${path}`, options)
@@ -147,12 +165,13 @@ async function login(server, email) { return (await (await request(server, '/api
 function copyVolume(from, to) {
   // Both volumes were created by this invocation. Copy only while the app is
   // stopped, and keep the backup read-only during restore.
-  assert.ok(volumes.has(from) && volumes.has(to))
-  docker('run', '--rm', '--entrypoint', '/bin/sh', '--volume', `${from}:/from:ro`, '--volume', `${to}:/to`, oldImage, '-c', 'cp -a /from/. /to/')
+  assert.ok((volumes.has(from) || mounts.has(from)) && (volumes.has(to) || mounts.has(to)))
+  docker('run', '--rm', '--user', '0:0', '--entrypoint', '/bin/sh',
+    '--volume', `${from}:/from:ro`, '--volume', `${to}:/to`, oldImage, '-c', 'cp -a /from/. /to/')
 }
 
 try {
-  const data = volume('data'), backup = volume('backup'), restored = volume('restored')
+  const data = await volume('data'), backup = await volume('backup'), restored = await volume('restored')
   let server = await start(oldImage, data, 'old')
   const setupToken = /setup[?]token=([A-Za-z0-9_-]+)/.exec(docker('logs', server.name))?.[1]
   assert.ok(setupToken)
@@ -162,14 +181,24 @@ try {
   let memberToken = await login(server, member)
   const group = await api(server, '/groups', ownerToken, 'POST', { name: 'Preserved group', currency: 'TWD', timezone: 'UTC' })
   const income = await api(server, '/incomes', ownerToken, 'POST', { title: 'Preserved income', amountMinor: 12345, currency: 'TWD', receivedOn: '2026-10-21T00:00:00Z' })
-  await api(server, `/groups/${group.id}/invitations`, ownerToken, 'POST', { email: member })
+  // Alpha fixtures exercise the legacy invitation backfill. Beta invitations
+  // additionally require a configured public URL, unrelated to this rehearsal.
+  if (sourceVersion.startsWith('alpha')) {
+    await api(server, `/groups/${group.id}/invitations`, ownerToken, 'POST', { email: member })
+  }
   const notes = await api(server, '/notifications?perPage=50', memberToken)
-  assert.ok(notes.length > 0, 'old version must create a legacy invitation notification')
+  if (sourceVersion.startsWith('alpha')) {
+    assert.ok(notes.length > 0, 'old version must create a legacy invitation notification')
+  }
   const form = new FormData()
   form.set('targetType', 'income'); form.set('targetId', income.id); form.set('requestId', randomUUID())
   const file = '%PDF-1.7\npreserved attachment\n%%EOF'
   form.set('file', new Blob([file], { type: 'application/pdf' }), 'preserved.pdf')
   const attachment = await api(server, '/attachments', ownerToken, 'POST', form)
+  if (sourceVersion === 'beta1') {
+    docker('exec', server.name, '/bin/sh', '-c',
+      'mkdir -p /app/pb_data/backups; printf old-daily > /app/pb_data/backups/daily-fixture-1.zip; printf old-daily > /app/pb_data/backups/daily-fixture-2.zip')
+  }
   stop(server)
   copyVolume(data, backup)
 
@@ -189,6 +218,15 @@ try {
   }
   server = await start(candidate, data, 'new')
   let upgraded = await verifyData(server)
+  const status = JSON.parse(docker('exec', server.name, '/app/subflow', 'upgrade', 'status', '--dir=/app/pb_data'))
+  assert.equal(status.state.ready, true)
+  assert.equal(status.state.backupId, undefined)
+  assert.equal(status.backups.filter(item => item.status === 'successful').length, 0)
+  if (sourceVersion === 'beta1') {
+    for (const archive of ['daily-fixture-1.zip', 'daily-fixture-2.zip']) {
+      assert.equal(docker('exec', server.name, 'cat', '/app/pb_data/backups/' + archive), 'old-daily')
+    }
+  }
   if (sourceVersion === 'alpha1') {
     for (const note of upgraded) {
       assert.equal(note.category, 'task')
@@ -207,6 +245,56 @@ try {
   assert.deepEqual(upgraded.map(({ id, category, status, viewedAt }) => ({ id, category, status, viewedAt })), first, 'schema backfill must be idempotent on restart')
   stop(server)
 
+  if (sourceVersion === 'beta1') {
+    const maintenance = (image, ...args) => docker('run', '--rm', '--volume', `${data}:/app/pb_data`,
+      '-e', 'SUBFLOW_ENV=development', '-e', `SUBFLOW_SETTINGS_ENCRYPTION_KEY=${key}`, image, 'upgrade', ...args, '--dir=/app/pb_data')
+    assert.throws(() => maintenance(oldImage, 'retry'), error => {
+      assert.match(String(error.stderr), /downgrades are not supported/)
+      return error.status !== 0
+    })
+    const failed = JSON.parse(maintenance(candidate, 'status', '--state-only'))
+    assert.equal(failed.problemCode, 'unsupported_downgrade')
+    assert.throws(() => docker('run', '--rm', '--entrypoint', '/app/subflow',
+      '--volume', `${data}:/app/pb_data:ro`, candidate, 'upgrade', 'preflight', '--dir=/app/pb_data'), error => {
+      const report = JSON.parse(String(error.stdout))
+      assert.deepEqual(report.blockers, ['manual_retry_required'])
+      return error.status !== 0
+    })
+    const maintenanceName = launch(candidate, data, 'maintenance')
+    const address = docker('port', maintenanceName, '8080/tcp')
+    const { chromium, expect } = await import(new URL('../../frontend/node_modules/@playwright/test/index.mjs', import.meta.url).href)
+    const browser = await chromium.launch()
+    try {
+      const page = await browser.newPage({ ignoreHTTPSErrors: true })
+      await expect.poll(async () => {
+        try {
+          const response = await page.request.get(`https://${address}/api/subflow/v1/runtime/status`, { timeout: 2000 })
+          return (await response.json()).data?.state
+        } catch { return undefined }
+      }, { timeout: 30000 }).toBe('failed')
+      await page.goto(`https://${address}/auth`)
+      const dialog = page.getByRole('dialog')
+      await expect(dialog).toContainText('unsupported_downgrade')
+      stop({ name: maintenanceName })
+      assert.match(maintenance(candidate, 'retry'), /upgrade retry completed/)
+      const retried = JSON.parse(maintenance(candidate, 'status', '--state-only'))
+      assert.equal(retried.ready, true)
+      assert.equal(retried.firstFailure.code, 'unsupported_downgrade')
+      server = await start(candidate, data, 'retried', `${address}:8080`)
+      await expect(dialog).toBeHidden({ timeout: 40000 })
+      await expect(page.locator('input[autocomplete="current-password"]')).toBeVisible()
+    } finally {
+      await browser.close()
+    }
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (docker('inspect', '--format', '{{.State.Health.Status}}', server.name) === 'healthy') break
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    assert.equal(docker('inspect', '--format', '{{.State.Health.Status}}', server.name), 'healthy')
+    await verifyData(server)
+    stop(server)
+  }
+
   copyVolume(backup, restored)
   server = await start(oldImage, restored, 'restore')
   await verifyData(server)
@@ -217,5 +305,10 @@ try {
   console.log(JSON.stringify(result))
 } finally {
   for (const name of containers) { assert.ok(name.startsWith(`${prefix}-`)); docker('rm', '--force', name) }
+  if (bindRoot) {
+    docker('run', '--rm', '--user', '0:0', '--entrypoint', '/bin/sh',
+      '--volume', bindRoot + ':/fixture', candidate, '-c', 'find /fixture -type d -exec chmod a+rwx {} +')
+    await rm(bindRoot, { recursive: true, force: true })
+  }
   for (const name of volumes) { assert.ok(name.startsWith(`${prefix}-`)); docker('volume', 'rm', name) }
 }

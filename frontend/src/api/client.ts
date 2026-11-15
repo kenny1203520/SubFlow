@@ -20,11 +20,11 @@ export class ApiClient {
     const headers=new Headers(options.headers);headers.set('Accept','application/json');headers.set('X-SubFlow-Protocol','1');const token=this.token();if(token)headers.set('Authorization',bearer(token));if(options.body&&!headers.has('Content-Type'))headers.set('Content-Type','application/json')
     let response:Response
     try{response=await fetch(`/api/subflow/v1${path}`,{...options,headers})}catch{throw transportError()}
-    if(response.status===503){signalMaintenance();throw maintenanceError()}
     if(response.status===426)signalClientUpdateRequired()
     if(response.status===401)this.unauthorized()
     const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as Envelope<T>|ApiFailure
-    if(!response.ok){const failure=body as ApiFailure;if(failure.error?.code==='client_update_required')signalClientUpdateRequired();throw new ApiError(response.status,failure.error?.code??'request_failed',failure.error?.message??'Request failed',failure.error?.fields,failure.error?.details,failure.error?.requestId)}
+    if(response.status===503 && (body as ApiFailure)?.error?.code==='maintenance'){signalMaintenance();throw maintenanceError()}
+    if(!response.ok){const failure=(body as ApiFailure)?.error;if(failure?.code==='client_update_required')signalClientUpdateRequired();throw new ApiError(response.status,failure?.code??'request_failed',failure?.message??'Request failed',failure?.fields,failure?.details,failure?.requestId)}
     return body as Envelope<T>
   }
   get<T>(path:string){return this.request<T>(path)}
@@ -40,16 +40,16 @@ export class ApiClient {
       xhr.onerror=()=>reject(transportError())
       xhr.onabort=()=>reject(new ApiError(0,'upload_cancelled','Upload cancelled'))
       xhr.onload=()=>{
-        if(xhr.status===503){signalMaintenance();reject(maintenanceError());return}
         if(xhr.status===426)signalClientUpdateRequired()
         if(xhr.status===401)this.unauthorized()
         let body:Envelope<T>|ApiFailure
         try{body=JSON.parse(xhr.responseText)}catch{reject(new ApiError(xhr.status,'invalid_response','Invalid server response'));return}
+        if(xhr.status===503 && (body as ApiFailure)?.error?.code==='maintenance'){signalMaintenance();reject(maintenanceError());return}
         if(xhr.status>=200&&xhr.status<300){resolve(body as Envelope<T>);return}
-        const failure=body as ApiFailure
-        if(failure.error?.code==='client_update_required')signalClientUpdateRequired()
+        const failure=(body as ApiFailure)?.error
+        if(failure?.code==='client_update_required')signalClientUpdateRequired()
         const fallbackCode=xhr.status===401?'unauthorized':xhr.status===403?'forbidden':'request_failed'
-        reject(new ApiError(xhr.status,failure.error?.code??fallbackCode,failure.error?.message??'Request failed',failure.error?.fields,failure.error?.details,failure.error?.requestId))
+        reject(new ApiError(xhr.status,failure?.code??fallbackCode,failure?.message??'Request failed',failure?.fields,failure?.details,failure?.requestId))
       }
       xhr.send(body)
     })
@@ -59,10 +59,13 @@ export class ApiClient {
     const headers=new Headers();headers.set('Accept','*/*');headers.set('X-SubFlow-Protocol','1');const token=this.token();if(token)headers.set('Authorization',bearer(token))
     let response:Response
     try{response=await fetch(`/api/subflow/v1${path}`,{headers})}catch{throw transportError()}
-    if(response.status===503){signalMaintenance();throw maintenanceError()}
     if(response.status===426)signalClientUpdateRequired()
     if(response.status===401)this.unauthorized()
-    if(!response.ok){const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as ApiFailure;throw new ApiError(response.status,body.error?.code??'request_failed',body.error?.message??'Request failed',body.error?.fields,body.error?.details,body.error?.requestId)}
+    if(!response.ok){
+      const body=await response.json().catch(()=>({error:{code:'invalid_response',message:'Invalid server response'}})) as ApiFailure
+      if(response.status===503 && body?.error?.code==='maintenance'){signalMaintenance();throw maintenanceError()}
+      throw new ApiError(response.status,body?.error?.code??'request_failed',body?.error?.message??'Request failed',body?.error?.fields,body?.error?.details,body?.error?.requestId)
+    }
     const disposition=response.headers.get('Content-Disposition')||''
     const match=/filename="?([^"]+)"?/.exec(disposition)
     return {blob:await response.blob(),filename:match?.[1]||'export.csv'}

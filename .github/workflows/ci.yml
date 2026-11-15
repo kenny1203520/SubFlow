@@ -1,11 +1,11 @@
 name: CI
 
-# The only workflow that runs on every PR and every push to the two
+# The checks for pull requests to maintained branches and pushes to the two
 # long-lived branches — release.yml only ever runs at tag-push time, so
 # without this, code could reach develop/master with zero automated checks.
 on:
   pull_request:
-    branches: [develop, master]
+    branches: [develop, master, 'release/0.2.0-beta']
   push:
     branches: [develop, master]
 

@@ -70,11 +70,15 @@ func (s *NotificationDeliveryService) deliver(ctx context.Context, job *domain.N
 		return s.finish(ctx, job, domain.NotificationEmailCancelled, "preference_disabled", "cancelled", notification.GroupID, nil)
 	}
 	user, err := s.users.Get(ctx, job.UserID)
-	if err != nil || user.Email == "" {
+	if err != nil || (user.Email == "" && job.RecipientEmail == "") {
 		return s.finish(ctx, job, domain.NotificationEmailCancelled, "recipient_unavailable", "cancelled", notification.GroupID, err)
 	}
+	recipient := job.RecipientEmail
+	if recipient == "" {
+		recipient = user.Email
+	}
 	subject, body := notificationEmailContent(notification)
-	if err := s.mailer.SendNotification(ctx, user.Email, subject, body); err != nil {
+	if err := s.mailer.SendNotification(ctx, recipient, subject, body); err != nil {
 		return s.retry(ctx, job, notification.GroupID, err)
 	}
 	return s.finish(ctx, job, domain.NotificationEmailSent, "", "success", notification.GroupID, nil)
@@ -155,6 +159,7 @@ func emailRetryDelay(attempt int) time.Duration {
 
 func notificationEmailContent(note *domain.Notification) (string, string) {
 	titles := map[string]string{
+		"account_email_changed":        "Email address changed",
 		"group_invitation":             "Group invitation",
 		"ownership_transfer":           "Ownership transfer request",
 		"member_transfer":              "Member transfer request",

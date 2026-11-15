@@ -9,7 +9,7 @@ pb.beforeSend = (url, options) => {
   return { url, options: { ...options, headers: Object.fromEntries(headers.entries()) } }
 }
 pb.afterSend = (response, data) => {
-  if (response.status === 503) signalMaintenance()
+  if (response.status === 503 && data?.error?.code === 'maintenance') signalMaintenance()
   if (response.status === 426) signalClientUpdateRequired()
   return data
 }

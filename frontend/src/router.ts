@@ -26,6 +26,8 @@ import MoreView from './views/MoreView.vue'
 export const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: SetupView, meta: { public: true } },
   { path: '/auth', name: 'auth', component: AuthView, meta: { public: true } },
+  { path: '/auth/reset-password', name: 'auth-reset-password', component: AuthView, meta: { public: true } },
+  { path: '/auth/confirm-email-change', name: 'auth-confirm-email-change', component: AuthView, meta: { public: true } },
   { path: '/share/:token', name: 'share', component: ShareView, meta: { public: true } },
   { path: '/invite/:token', name: 'invite', component: InviteView },
   { path: '/', redirect: { name: 'home' } },

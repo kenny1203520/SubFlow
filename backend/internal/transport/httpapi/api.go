@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/rand"
@@ -32,11 +33,12 @@ type shareAttempt struct {
 	ResetAt time.Time
 }
 type API struct {
-	Service        *application.Service
-	Upgrades       *upgrade.Manager
-	Certificates   *security.ServerCertificateManager
-	shareAttemptMu sync.Mutex
-	shareAttempts  map[string]shareAttempt
+	Service                *application.Service
+	Upgrades               *upgrade.Manager
+	Certificates           *security.ServerCertificateManager
+	PasswordResetAvailable func() bool
+	shareAttemptMu         sync.Mutex
+	shareAttempts          map[string]shareAttempt
 }
 
 const ClientProtocolVersion = 1
@@ -1108,7 +1110,8 @@ func (a *API) setupStatus(e *core.RequestEvent) error {
 			provider, siteKey, challengeURL = "", "", ""
 			flows = domain.CaptchaFlowSettings{}
 		}
-		return ok(e, http.StatusOK, map[string]any{"initialized": true, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaEnabled": settings.CaptchaEnabled, "captchaProvider": provider, "captchaSiteKey": siteKey, "captchaChallengeUrl": challengeURL, "captchaFlows": flows}, nil)
+		available := a.PasswordResetAvailable != nil && a.PasswordResetAvailable()
+		return ok(e, http.StatusOK, map[string]any{"initialized": true, "passwordResetAvailable": available, "allowRegistration": settings.AllowPasswordRegistration, "allowPasswordRegistration": settings.AllowPasswordRegistration, "allowOidcRegistration": settings.AllowOIDCRegistration, "captchaEnabled": settings.CaptchaEnabled, "captchaProvider": provider, "captchaSiteKey": siteKey, "captchaChallengeUrl": challengeURL, "captchaFlows": flows}, nil)
 	}
 	_, valid, err := a.Service.ValidateSetupToken(e.Request.Context(), e.Request.URL.Query().Get("token"))
 	if err != nil {
@@ -1796,12 +1799,37 @@ func (a *API) getSystemSettings(e *core.RequestEvent) error {
 	if err != nil {
 		return fail(e, err)
 	}
-	return ok(e, http.StatusOK, value, nil)
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return fail(e, err)
+	}
+	var response map[string]any
+	if err := json.Unmarshal(encoded, &response); err != nil {
+		return fail(e, err)
+	}
+	response["passwordResetAvailable"] = a.PasswordResetAvailable != nil && a.PasswordResetAvailable()
+	return ok(e, http.StatusOK, response, nil)
 }
 func (a *API) updateSystemSettings(e *core.RequestEvent) error {
+	raw, err := io.ReadAll(io.LimitReader(e.Request.Body, 1<<20))
+	if err != nil || len(raw) == 1<<20 {
+		return fail(e, domain.ErrInvalid)
+	}
+	var provided map[string]json.RawMessage
+	if json.Unmarshal(raw, &provided) != nil {
+		return fail(e, domain.ErrInvalid)
+	}
+	e.Request.Body = io.NopCloser(bytes.NewReader(raw))
 	var value domain.SystemSettings
 	if e.BindBody(&value) != nil {
 		return fail(e, domain.ErrInvalid)
+	}
+	if _, exists := provided["allowPasswordReset"]; !exists {
+		current, err := a.Service.GetSystemSettings(e.Request.Context(), authID(e))
+		if err != nil {
+			return fail(e, err)
+		}
+		value.AllowPasswordReset = current.AllowPasswordReset
 	}
 	result, err := a.Service.UpdateSystemSettings(e.Request.Context(), authID(e), value)
 	if err != nil {

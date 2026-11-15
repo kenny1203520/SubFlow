@@ -135,6 +135,7 @@ func RunMigrations(ctx context.Context, app core.App, manager *Manager, migratio
 		if err := manager.AddHistory(entry); err != nil {
 			return fmt.Errorf("persist migration status: %w", err)
 		}
+		manager.progress.Report(StatusMigrating, "migration="+migration.ID)
 		err := runMigration(ctx, app, migration, audit)
 		if err != nil {
 			entry.Status = "failed"
@@ -149,6 +150,7 @@ func RunMigrations(ctx context.Context, app core.App, manager *Manager, migratio
 			return fmt.Errorf("persist completed migration status: %w", err)
 		}
 		completed[migration.ID] = true
+		manager.progress.Report(StatusMigrating, "completed_migration="+migration.ID)
 	}
 	return nil
 }
@@ -219,7 +221,7 @@ func completeMigration(ctx context.Context, tx core.App, migration Migration, au
 	}
 	if audit != nil {
 		if err := audit(ctx, tx, migration); err != nil {
-			return fmt.Errorf("migration audit failed: %w", err)
+			return fmt.Errorf("%w: migration audit failed: %w", ErrAuditUnavailable, err)
 		}
 	}
 	_, err := tx.DB().NewQuery(`INSERT INTO "` + migrationTable + `" (migration_id, checksum, status, applied_at, source) VALUES ({:id}, {:checksum}, 'complete', {:appliedAt}, {:source})`).Bind(map[string]any{"id": migration.ID, "checksum": migration.Checksum, "appliedAt": time.Now().UTC().Format(time.RFC3339Nano), "source": "subflow"}).Execute()

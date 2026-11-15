@@ -80,7 +80,36 @@ export const useAuthStore = defineStore('auth', () => {
   }
   async function requestOTP(email: string, captchaToken = '') {
     assertRuntimeReady()
-    return pb.collection('users').requestOTP(email, { headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {} })
+    return pb.send<{ otpId: string }>('/api/collections/users/request-otp', {
+      method: 'POST',
+      headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {},
+      body: { email },
+    })
+  }
+  async function requestMFAOTP(mfaId: string, captchaToken = '') {
+    assertRuntimeReady()
+    return pb.send<{ otpId: string }>('/api/collections/users/request-otp', {
+      method: 'POST',
+      headers: captchaToken ? { 'X-SubFlow-Captcha': captchaToken } : {},
+      body: { mfaId },
+    })
+  }
+  async function confirmPasswordReset(token: string, password: string, passwordConfirm: string) {
+    assertRuntimeReady()
+    await pb.collection('users').confirmPasswordReset(token, password, passwordConfirm)
+    logout()
+    ready.value = true
+  }
+  async function requestEmailChange(newEmail: string) {
+    assertRuntimeReady()
+    if (!record.value) throw new Error(tr('notSignedIn'))
+    await pb.collection('users').requestEmailChange(newEmail)
+  }
+  async function confirmEmailChange(token: string, password: string) {
+    assertRuntimeReady()
+    await pb.collection('users').confirmEmailChange(token, password)
+    logout()
+    ready.value = true
   }
   async function loginOTP(otpId: string, password: string, mfaId = '') {
     assertRuntimeReady()
@@ -138,5 +167,5 @@ export const useAuthStore = defineStore('auth', () => {
       return false
     } finally { signingOut.value = false }
   }
-  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, requestPasswordReset, requestOTP, loginOTP, updateProfile, oauthProviders, loginOAuth, linkOAuth, listLinkedProviders, unlinkProvider, refreshAccess, logout, signOut, signingOut }
+  return { record, ready, authenticated, token, name, permissions, canAdminister, initialize, login, register, requestPasswordReset, requestOTP, requestMFAOTP, confirmPasswordReset, requestEmailChange, confirmEmailChange, loginOTP, updateProfile, oauthProviders, loginOAuth, linkOAuth, listLinkedProviders, unlinkProvider, refreshAccess, logout, signOut, signingOut }
 })

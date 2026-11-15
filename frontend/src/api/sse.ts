@@ -22,7 +22,10 @@ export class SSEClient {
         const query=groupId?`?groupId=${encodeURIComponent(groupId)}`:''
         const response=await fetch(`/api/subflow/v1/events${query}`,{headers:{Accept:'text/event-stream',Authorization:bearer(this.token()),'X-SubFlow-Protocol':'1'},signal:this.controller.signal})
         if(response.status===401){this.onUnauthorized();return}
-        if(response.status===503){signalMaintenance();return}
+        if(response.status===503 && response.headers.get('Content-Type')?.includes('application/json')){
+          const failure = await response.json().catch(() => undefined)
+          if(failure?.error?.code==='maintenance'){signalMaintenance();return}
+        }
         if(response.status===426){signalClientUpdateRequired();return}
         if(!response.ok||!response.body)throw new Error('SSE failed')
         delay=1000

@@ -18,5 +18,13 @@
   {
     "version": "alpha5",
     "image": "ghcr.io/kenny1203520/subflow@sha256:944bb321106005bf840edf7781f2345e1446f624261b08e032e239be07a389ca"
+  },
+  {
+    "version": "beta",
+    "image": "ghcr.io/kenny1203520/subflow@sha256:ebbf9c77628c964b72b1f1790a75217a9400ae309ada78d9bad8d3b8a9b3bdc9"
+  },
+  {
+    "version": "beta1",
+    "image": "ghcr.io/kenny1203520/subflow@sha256:0b6f396812dc7c9bdc9420b225bfcc7ea3421bf44c1c13dd9cdc8079084c0bea"
   }
 ]

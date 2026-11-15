@@ -1,0 +1,76 @@
+name: subflow-dev
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: backend-dev
+    env_file:
+      - path: .env.development.local
+        required: true
+    environment:
+      SUBFLOW_ENV: development
+      SUBFLOW_HTTP_PORT: "8080"
+    volumes:
+      - dev_pb_data:/app/pb_data
+      - dev_tls:/app/pb_data/.subflow/tls
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "/app/subflow", "healthcheck", "--dir=/app/pb_data"]
+      interval: 10s
+      timeout: 3s
+      retries: 8
+      start_period: 10m
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend
+          ignore:
+            - pb_data/
+            - db/
+            - subflow
+            - subflow.exe
+            - "*.log"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+      target: frontend-dev
+    user: "1000:1000"
+    environment:
+      SUBFLOW_HTTP_PORT: "8080"
+      SUBFLOW_DATA_DIR: /var/lib/subflow
+      SUBFLOW_DEV_BACKEND_HOST: backend
+    volumes:
+      - dev_tls:/var/lib/subflow/.subflow/tls:ro
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    develop:
+      watch:
+        - action: rebuild
+          path: ./frontend/package.json
+        - action: rebuild
+          path: ./frontend/package-lock.json
+        - action: sync
+          path: ./frontend
+          target: /workspace/frontend
+          ignore:
+            - node_modules/
+            - dist/
+            - package.json
+            - package-lock.json
+            - .env
+            - .env.*
+            - coverage/
+            - test-results/
+            - playwright-report/
+
+volumes:
+  dev_pb_data:
+  dev_tls:

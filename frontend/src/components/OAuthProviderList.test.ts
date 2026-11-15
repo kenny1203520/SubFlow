@@ -43,9 +43,18 @@ describe('OAuth provider list', () => {
 
     expect(buttons).toHaveLength(5)
     expect(wrapper.text()).toContain('Company identity with a deliberately long provider name')
-    expect(wrapper.text()).toContain('Continue with Google')
     await buttons[1].trigger('click')
     expect(wrapper.emitted('select')).toEqual([['spotify']])
+  })
+
+  it.each(['en', 'zh-TW'] as const)('labels and styles every provider the same way in %s', locale => {
+    setLocale(locale)
+    const providers = [provider('spotify', 'Spotify'), provider('google', 'Google'), provider('github', 'GitHub')]
+    const buttons = mount(OAuthProviderList, { props: { providers } }).findAll('button')
+
+    expect(buttons.map(button => button.text())).toEqual(['Spotify', 'Google', 'GitHub'])
+    expect(new Set(buttons.map(button => button.classes().join(' '))).size).toBe(1)
+    expect(buttons.every(button => button.get('.oauth-provider-name').attributes('translate') === 'no')).toBe(true)
   })
 
   it('disables all provider actions while authentication is busy', () => {

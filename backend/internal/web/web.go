@@ -32,7 +32,10 @@ func MaintenanceHandler() http.Handler {
 		requestPath := strings.TrimPrefix(r.URL.Path, "/")
 		if strings.HasPrefix(requestPath, "api/") || requestPath == "api" || strings.HasPrefix(requestPath, "_/") || requestPath == "_" {
 			w.Header().Set("Retry-After", "3")
-			http.Error(w, `{"error":{"code":"maintenance","message":"Service maintenance is in progress"}}`, http.StatusServiceUnavailable)
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"code":"maintenance","message":"Service maintenance is in progress"}}`))
 			return
 		}
 		requestPath = strings.TrimSuffix(requestPath, "/")

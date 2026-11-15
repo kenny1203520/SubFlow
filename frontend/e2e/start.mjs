@@ -81,15 +81,21 @@ const backend = start('go', ['run', './cmd/subflow', 'serve', `--env-file=${envF
   cwd: backendDir,
   env: backendEnvironment,
 })
-backend.stdout.on('data', chunk => { backendOutput = (backendOutput + chunk.toString()).slice(-30000) })
-backend.stderr.on('data', chunk => { backendOutput = (backendOutput + chunk.toString()).slice(-30000) })
+// Development mode logs every SQL statement, so the one-time setup link is
+// followed by far more output than the retained tail. Match as output arrives,
+// before trimming, or the link is gone by the time the loop below looks for it.
+let setupToken
+const captureBackendOutput = chunk => {
+  const output = backendOutput + chunk.toString()
+  setupToken ??= /setup[?]token=([A-Za-z0-9_-]+)/.exec(output)?.[1]
+  backendOutput = output.slice(-30000)
+}
+backend.stdout.on('data', captureBackendOutput)
+backend.stderr.on('data', captureBackendOutput)
 backend.on('exit', code => { if (!stopping && code !== 0) { console.error(`Isolated backend exited (${code ?? 'signal'}). Raw logs are withheld because they may contain credentials.`); process.exitCode = code || 1 } })
 
-let setupToken
 for (let attempt = 0; attempt < 600 && !setupToken && backend.exitCode === null; attempt++) {
-    const match = /setup[?]token=([A-Za-z0-9_-]+)/.exec(backendOutput)
-  if (match) setupToken = match[1]
-  else await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
+  await new Promise(resolveDelay => setTimeout(resolveDelay, 500))
 }
 if (!setupToken) {
   const diagnostics = safeBackendDiagnostics()
@@ -110,9 +116,9 @@ const initialized = await requestJSON(`${backendURL}/api/subflow/v1/setup/initia
 }, certificate)
 if (initialized.status < 200 || initialized.status >= 300) { stop(); throw new Error(`Test setup failed (${initialized.status}).`) }
 
-start(process.execPath, [join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js'), '--host', '127.0.0.1', '--port', '4174', '--strictPort'], {
+start(process.execPath, [join(frontendDir, 'scripts', 'dev.mjs'), '--host', '127.0.0.1', '--port', '4174', '--strictPort'], {
   cwd: frontendDir,
-  env: { ...process.env, SUBFLOW_HTTP_PORT: String(backendPort), SUBFLOW_DATA_DIR: dataDir },
+  env: { ...process.env, SUBFLOW_HTTP_PORT: String(backendPort), SUBFLOW_DATA_DIR: dataDir, SUBFLOW_DEV_BACKEND_HOST: '127.0.0.1' },
 })
 
 for (let attempt = 0; attempt < 120; attempt++) {

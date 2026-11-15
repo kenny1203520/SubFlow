@@ -44,6 +44,33 @@ describe('auth store', () => {
     expect(auth.record).toBeNull()
   })
 
+  it('binds an OTP request to the supplied PocketBase MFA challenge and CAPTCHA', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ otpId: 'otp-1' }), { status: 200 }))
+    vi.stubGlobal('fetch', fetcher)
+    const auth = useAuthStore()
+
+    await expect(auth.requestMFAOTP('mfa-1', 'captcha-1')).resolves.toEqual({ otpId: 'otp-1' })
+    const [url, options] = fetcher.mock.calls[0] as [string, RequestInit]
+    expect(String(url)).toContain('/api/collections/users/request-otp')
+    expect(JSON.parse(String(options.body))).toEqual({ mfaId: 'mfa-1' })
+    expect(new Headers(options.headers).get('X-SubFlow-Captcha')).toBe('captcha-1')
+  })
+
+  it('uses PocketBase email-change and password-reset confirmation APIs and clears the session', async () => {
+    pb.authStore.save(validToken(), userRecord())
+    const fetcher = vi.fn().mockResolvedValue(new Response(null, { status: 204 }))
+    vi.stubGlobal('fetch', fetcher)
+    const auth = useAuthStore()
+
+    await auth.requestEmailChange('new@example.com')
+    expect(String(fetcher.mock.calls[0]?.[0])).toContain('/api/collections/users/request-email-change')
+    expect(JSON.parse(String((fetcher.mock.calls[0]?.[1] as RequestInit).body))).toEqual({ newEmail: 'new@example.com' })
+
+    await auth.confirmPasswordReset('reset-token', 'new-local-password', 'new-local-password')
+    expect(String(fetcher.mock.calls[1]?.[0])).toContain('/api/collections/users/confirm-password-reset')
+    expect(pb.authStore.isValid).toBe(false)
+  })
+
   it('waits for the audited sign out and rejects duplicate submissions', async () => {
     pb.authStore.save(validToken(), userRecord())
     const auth = useAuthStore()

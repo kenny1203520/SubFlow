@@ -4,8 +4,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,8 +43,11 @@ func (m *Manager) RestoreBackup(id string) (manifest BackupManifest, resultErr e
 	if !backupID(id) {
 		return BackupManifest{}, fmt.Errorf("invalid backup id")
 	}
-	backupRoot := filepath.Join(m.Dir, "backups", id)
-	manifest, err := readManifest(backupRoot)
+	backupRoot, err := m.findBackup(id)
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	manifest, err = readManifest(backupRoot)
 	if err != nil {
 		return BackupManifest{}, fmt.Errorf("backup is unavailable")
 	}
@@ -55,14 +60,43 @@ func (m *Manager) RestoreBackup(id string) (manifest BackupManifest, resultErr e
 	if err := m.AppendEvent("upgrade.restore.started", "success", "verified backup "+id); err != nil {
 		return BackupManifest{}, fmt.Errorf("durable audit log unavailable: %w", err)
 	}
+	return m.restoreVerifiedTree(backupRoot, manifest, &journalWritten)
+}
+
+func (m *Manager) restoreVerifiedTree(backupRoot string, manifest BackupManifest, journalWritten *bool) (BackupManifest, error) {
+	id := manifest.ID
+	manifest.Files = restoreFiles(manifest.Files)
+	required, err := backupSize(m.DataDir)
+	if err != nil {
+		return BackupManifest{}, err
+	}
+	for _, item := range manifest.Files {
+		if item.Size < 0 || item.Size > math.MaxInt64-required-4096 {
+			return BackupManifest{}, fmt.Errorf("restore size overflow")
+		}
+		required += item.Size + 4096
+	}
+	if err := checkSpace(m.Dir, required); err != nil {
+		return BackupManifest{}, err
+	}
 	stage := filepath.Join(m.Dir, "restore-stage-"+id)
 	failed := filepath.Join(m.Dir, "restore-failed-"+id)
-	if err := os.MkdirAll(stage, 0o700); err != nil {
+	if err := os.Mkdir(stage, 0o700); err != nil {
 		return BackupManifest{}, err
 	}
-	if err := os.MkdirAll(failed, 0o700); err != nil {
+	defer func() {
+		if !*journalWritten {
+			_ = safeRemoveTree(m.Dir, filepath.Base(stage))
+		}
+	}()
+	if err := os.Mkdir(failed, 0o700); err != nil {
 		return BackupManifest{}, err
 	}
+	defer func() {
+		if !*journalWritten {
+			_ = safeRemoveTree(m.Dir, filepath.Base(failed))
+		}
+	}()
 	if _, err := copyDataTree(m.DataDir, filepath.Join(failed, "current")); err != nil {
 		return BackupManifest{}, fmt.Errorf("failed to preserve current data: %w", err)
 	}
@@ -71,7 +105,7 @@ func (m *Manager) RestoreBackup(id string) (manifest BackupManifest, resultErr e
 		if err != nil {
 			return BackupManifest{}, err
 		}
-		if err := copyFile(filepath.Join(backupRoot, relative), filepath.Join(stage, relative)); err != nil {
+		if err := copyVerifiedFile(backupRoot, relative, filepath.Join(stage, relative)); err != nil {
 			return BackupManifest{}, err
 		}
 	}
@@ -79,7 +113,7 @@ func (m *Manager) RestoreBackup(id string) (manifest BackupManifest, resultErr e
 	if err := writeRestoreJournal(filepath.Join(m.Dir, "restore.json"), journal); err != nil {
 		return BackupManifest{}, err
 	}
-	journalWritten = true
+	*journalWritten = true
 	if err := m.applyRestoreJournal(journal); err != nil {
 		return BackupManifest{}, err
 	}
@@ -93,7 +127,7 @@ func (m *Manager) RestoreBackup(id string) (manifest BackupManifest, resultErr e
 	if err := os.Remove(filepath.Join(m.Dir, "restore.json")); err != nil {
 		return BackupManifest{}, err
 	}
-	if err := os.RemoveAll(stage); err != nil {
+	if err := safeRemoveTree(m.Dir, filepath.Base(stage)); err != nil {
 		return BackupManifest{}, err
 	}
 	return manifest, nil
@@ -101,24 +135,34 @@ func (m *Manager) RestoreBackup(id string) (manifest BackupManifest, resultErr e
 
 func (m *Manager) recoverRestoreJournal() error {
 	path := filepath.Join(m.Dir, "restore.json")
-	data, err := os.ReadFile(path)
+	file, err := regularBackupFile(m.Dir, filepath.Base(path))
 	if os.IsNotExist(err) {
 		return nil
 	}
 	if err != nil {
 		return err
 	}
+	data, err := io.ReadAll(file)
+	if err := errors.Join(err, file.Close()); err != nil {
+		return err
+	}
 	var journal restoreJournal
 	if err := json.Unmarshal(data, &journal); err != nil {
 		return fmt.Errorf("restore journal is corrupt; data is preserved for manual recovery")
 	}
-	if !backupID(journal.BackupID) || filepath.Base(journal.Stage) != journal.Stage || filepath.Base(journal.Failed) != journal.Failed {
+	if !backupID(journal.BackupID) || journal.Stage != "restore-stage-"+journal.BackupID || journal.Failed != "restore-failed-"+journal.BackupID {
 		return fmt.Errorf("restore journal contains an unsafe path")
 	}
-	manifest, err := readManifest(filepath.Join(m.Dir, "backups", journal.BackupID))
-	if err != nil || manifest.ID != journal.BackupID || verifyBackup(filepath.Join(m.Dir, "backups", journal.BackupID), manifest) != nil {
+	root, err := m.findBackup(journal.BackupID)
+	if err != nil {
+		return err
+	}
+	manifest, err := readManifest(root)
+	if err != nil || manifest.ID != journal.BackupID || verifyBackup(root, manifest) != nil {
 		return fmt.Errorf("restore journal backup no longer verifies; preserved data requires manual recovery")
 	}
+	manifest.Files = restoreFiles(manifest.Files)
+	journal.Files = restoreFiles(journal.Files)
 	if len(manifest.Files) != len(journal.Files) {
 		return fmt.Errorf("restore journal does not match its verified backup")
 	}
@@ -144,7 +188,7 @@ func (m *Manager) recoverRestoreJournal() error {
 	if err := os.Remove(path); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(filepath.Join(m.Dir, journal.Stage)); err != nil {
+	if err := safeRemoveTree(m.Dir, journal.Stage); err != nil {
 		return err
 	}
 	return ErrRestoreRecovered
@@ -152,13 +196,34 @@ func (m *Manager) recoverRestoreJournal() error {
 
 func (m *Manager) applyRestoreJournal(journal restoreJournal) error {
 	stage, failed := filepath.Join(m.Dir, journal.Stage), filepath.Join(m.Dir, journal.Failed)
+	if err := realDirectory(stage); err != nil {
+		return err
+	}
+	if err := realDirectory(failed); err != nil {
+		return err
+	}
+	live, err := os.OpenRoot(m.DataDir)
+	if err != nil {
+		return err
+	}
+	defer live.Close()
+	for _, item := range journal.Files {
+		if _, err := safeBackupPath(item.Path); err != nil {
+			return err
+		}
+		if err := validateRestoreDestination(live, item.Path); err != nil {
+			return err
+		}
+	}
 	expected := make(map[string]bool, len(journal.Files))
+	hasTLS := false
 	for _, item := range journal.Files {
 		relative, err := safeBackupPath(item.Path)
 		if err != nil {
 			return err
 		}
 		expected[filepath.Clean(relative)] = true
+		hasTLS = hasTLS || strings.HasPrefix(filepath.ToSlash(relative), ".subflow/tls/")
 		source := filepath.Join(stage, relative)
 		destination := filepath.Join(m.DataDir, relative)
 		if _, err := os.Stat(source); os.IsNotExist(err) {
@@ -172,11 +237,11 @@ func (m *Manager) applyRestoreJournal(journal restoreJournal) error {
 		if err := verifyBackupFile(stage, item); err != nil {
 			return fmt.Errorf("staged restore data failed verification")
 		}
-		if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		if err := live.MkdirAll(filepath.Dir(relative), 0o700); err != nil {
 			return err
 		}
 		if _, err := os.Stat(destination); err == nil {
-			if err := os.Remove(destination); err != nil {
+			if err := live.Remove(relative); err != nil {
 				return err
 			}
 		} else if !os.IsNotExist(err) {
@@ -194,26 +259,11 @@ func (m *Manager) applyRestoreJournal(journal restoreJournal) error {
 	// Move files absent from the snapshot out of the live data tree. This makes
 	// the restored tree match the verified file manifest while retaining the
 	// pre-restore scene in .subflow/restore-failed-<id>/current.
-	err := filepath.WalkDir(m.DataDir, func(current string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		relative, err := filepath.Rel(m.DataDir, current)
-		if err != nil {
-			return err
-		}
-		if relative == "." {
+	err = walkBackupTree(m.DataDir, func(relative string, entry os.DirEntry) error {
+		if entry.IsDir() || !restorablePath(relative) || (!hasTLS && strings.HasPrefix(filepath.ToSlash(relative), ".subflow/tls/")) {
 			return nil
 		}
-		if entry.Name() == StateDirectory && entry.IsDir() {
-			return filepath.SkipDir
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if !entry.Type().IsRegular() {
-			return fmt.Errorf("restored data tree contains an unsupported file type")
-		}
+		current := filepath.Join(m.DataDir, relative)
 		key := filepath.Clean(relative)
 		if expected[key] {
 			return nil
@@ -243,18 +293,19 @@ func writeRestoreJournal(path string, journal restoreJournal) error {
 	if err != nil {
 		return err
 	}
-	temporary := path + ".tmp"
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+	file, err := os.CreateTemp(filepath.Dir(path), ".restore-journal-*.tmp")
 	if err != nil {
 		return err
 	}
-	_, writeErr := file.Write(append(data, '\n'))
-	if writeErr == nil {
-		writeErr = file.Sync()
+	temporary := file.Name()
+	defer os.Remove(temporary)
+	_, err = file.Write(append(data, '\n'))
+	if err == nil {
+		err = file.Sync()
 	}
 	closeErr := file.Close()
-	if writeErr != nil {
-		return writeErr
+	if err != nil {
+		return err
 	}
 	if closeErr != nil {
 		return closeErr
@@ -265,15 +316,43 @@ func writeRestoreJournal(path string, journal restoreJournal) error {
 	return syncDirectory(filepath.Dir(path))
 }
 
+func restorablePath(path string) bool {
+	path = filepath.ToSlash(path)
+	return !ExcludedBackupPath(path) && path != ".subflow/state.json" && path != ".subflow/events.jsonl"
+}
+
+func restoreFiles(files []BackupFile) []BackupFile {
+	var result []BackupFile
+	for _, file := range files {
+		if restorablePath(file.Path) {
+			result = append(result, file)
+		}
+	}
+	return result
+}
+
 func safeBackupPath(value string) (string, error) {
-	if strings.TrimSpace(value) != value || strings.Contains(value, `\`) {
-		return "", fmt.Errorf("backup manifest has an unsafe file path")
+	if !restorablePath(value) {
+		return "", fmt.Errorf("excluded restore file")
 	}
-	clean := filepath.Clean(filepath.FromSlash(value))
-	if filepath.IsAbs(clean) || clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || clean == StateDirectory || strings.HasPrefix(clean, StateDirectory+string(filepath.Separator)) {
-		return "", fmt.Errorf("backup manifest has an unsafe file path")
+	return manifestPath(value)
+}
+
+func validateRestoreDestination(root *os.Root, value string) error {
+	parts := strings.Split(value, "/")
+	for i := range parts {
+		info, err := root.Lstat(filepath.Join(parts[:i+1]...))
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if (i < len(parts)-1 && !info.IsDir()) || (i == len(parts)-1 && !info.Mode().IsRegular()) {
+			return fmt.Errorf("unsafe restore destination")
+		}
 	}
-	return clean, nil
+	return nil
 }
 
 func copyFile(source, destination string) error {
@@ -313,7 +392,7 @@ func verifyBackupFile(root string, item BackupFile) error {
 	if err != nil || !info.Mode().IsRegular() || info.Size() != item.Size {
 		return fmt.Errorf("restore verification failed")
 	}
-	file, err := os.Open(filepath.Join(root, path))
+	file, err := regularBackupFile(root, path)
 	if err != nil {
 		return err
 	}

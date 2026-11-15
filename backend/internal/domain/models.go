@@ -27,6 +27,7 @@ type NotificationEmailJob struct {
 	ID             string     `json:"id"`
 	NotificationID string     `json:"notificationId"`
 	UserID         string     `json:"userId"`
+	RecipientEmail string     `json:"-"`
 	Status         string     `json:"status"`
 	Attempts       int        `json:"attempts"`
 	NextAttemptAt  *time.Time `json:"nextAttemptAt,omitempty"`
@@ -236,6 +237,7 @@ type SystemSettings struct {
 	DefaultCurrency           Currency                           `json:"defaultCurrency"`
 	AllowRegistration         bool                               `json:"allowRegistration"` // legacy response compatibility
 	AllowPasswordRegistration bool                               `json:"allowPasswordRegistration"`
+	AllowPasswordReset        bool                               `json:"allowPasswordReset"`
 	AllowOIDCRegistration     bool                               `json:"allowOidcRegistration"`
 	CaptchaProvider           string                             `json:"captchaProvider,omitempty"`
 	CaptchaEnabled            bool                               `json:"captchaEnabled"`

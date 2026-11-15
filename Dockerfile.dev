@@ -1,0 +1,27 @@
+FROM golang:1.27.3-alpine3.24 AS backend-dev
+WORKDIR /workspace/backend
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ ./
+RUN mkdir -p /app \
+    && CGO_ENABLED=0 go build -trimpath -o /app/subflow ./cmd/subflow \
+    && mkdir -p /app/pb_data/.subflow/tls \
+    && chown -R 1000:1000 /app/pb_data
+USER 1000:1000
+ENV SUBFLOW_ENV=development
+ENV SUBFLOW_HTTP_PORT=8080
+EXPOSE 8080
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10m --retries=8 CMD ["/app/subflow", "healthcheck", "--dir=/app/pb_data"]
+CMD ["/app/subflow", "serve", "--dir=/app/pb_data"]
+
+FROM node:26-alpine AS frontend-dev
+WORKDIR /workspace/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY frontend/ ./
+RUN mkdir -p /var/lib/subflow/.subflow/tls \
+    && chown -R node:node /workspace/frontend /var/lib/subflow
+USER 1000:1000
+ENV SUBFLOW_DATA_DIR=/var/lib/subflow
+EXPOSE 5173
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173", "--strictPort"]
