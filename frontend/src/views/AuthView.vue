@@ -354,12 +354,12 @@ watch(canPasswordRegistration, value => {
           <BaseInput v-if="mode === 'login' || mode === 'register' || mode === 'otp-request' || mode === 'otp-verify' || mode === 'reset-request'" v-model="email" :label="tr('email')" type="email" required autocomplete="email" :disabled="mode === 'otp-verify'" />
           <PasswordField v-if="mode === 'login' || mode === 'register'" v-model="password" :label="tr('password')" :minlength="8" required :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" />
           <template v-if="mode === 'reset-confirm' && resetToken">
-            <PasswordField v-model="resetPassword" :label="tr('newPassword')" :minlength="8" required autocomplete="new-password" />
-            <PasswordField v-model="resetPasswordConfirm" :label="tr('confirmNewPassword')" :minlength="8" required autocomplete="new-password" />
+            <PasswordField v-model="resetPassword" :label="tr('newPassword')" :minlength="8" required :autocomplete="'new-password'" />
+            <PasswordField v-model="resetPasswordConfirm" :label="tr('confirmNewPassword')" :minlength="8" required :autocomplete="'new-password'" />
           </template>
-          <PasswordField v-if="mode === 'email-change-confirm' && resetToken" v-model="emailChangePassword" :label="tr('currentPassword')" required autocomplete="current-password" />
+          <PasswordField v-if="mode === 'email-change-confirm' && resetToken" v-model="emailChangePassword" :label="tr('currentPassword')" required :autocomplete="'current-password'" />
           <CaptchaChallenge v-if="captchaEnabled && (mode === 'login' || mode === 'register' || mode === 'reset-request' || mode === 'otp-request' || mode === 'mfa-verify')" ref="captchaRef" v-model="captchaToken" :flow="captchaFlowKey()" :trigger="captchaConfig?.trigger || 'load'" :mode="captchaConfig?.mode || 'interactive'" />
-          <BaseInput v-if="isCodeMode" v-model="code" :label="tr('verificationCode')" required autocomplete="one-time-code" inputmode="numeric" :maxlength="8" />
+          <BaseInput v-if="isCodeMode" v-model="code" :label="tr('verificationCode')" required :autocomplete="'one-time-code'" inputmode="numeric" :maxlength="8" />
 
           <p v-if="registered" class="notice success" role="status">{{ tr('verificationSent') }}</p>
           <p v-if="notice" class="notice success" role="status">{{ notice }}</p>
