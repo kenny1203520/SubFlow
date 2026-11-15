@@ -6,6 +6,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- Labelled every OAuth sign-in option with its provider name and gave them one button style; Google no longer shows a separate phrase and colours.
+
 ## [0.2.0-beta.2] - 2026-11-13
 
 ### Added
