@@ -22,6 +22,7 @@
 - Kept upgrade recovery snapshots out of PocketBase backup archives, checked free space before copying, and removed the snapshot once an upgrade succeeds, so scheduled backups no longer multiply disk usage.
 - Refreshed reference exchange rates for every supported currency and base instead of stopping at the first currency SubFlow does not support.
 - Set explicit button types and statically analysable autocomplete values on sign-in, setup, dashboard and share forms.
+- Stopped the maintenance listener from reporting readiness in the moment before it hands the port to the application, so `/api/health` and `/api/ready` only pass once the business API is served.
 
 ## [0.2.0-beta.2] - 2026-11-13
 
