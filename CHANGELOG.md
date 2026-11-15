@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Stopped recording serve errors that happen after a completed upgrade as a failed upgrade; the process now exits for its supervisor to restart instead of locking the next start in maintenance mode.
+- Recovered installations that 0.2.0-beta.1 or beta.2 locked with a failure recorded after completion, such as `backup_failed` for a recovery snapshot that was already gone, and audited the recovery.
+- Kept an ordinary restart that is interrupted during startup from being mistaken for an interrupted upgrade.
+- Prevented a crash when a failed startup released the database while the initial exchange-rate refresh was still running.
+- Classified upgrade problem codes at the source of the failure instead of by words in the error message.
+
 ## [0.2.0-beta.2] - 2026-11-13
 
 ### Added

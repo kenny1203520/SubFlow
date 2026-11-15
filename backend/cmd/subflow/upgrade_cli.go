@@ -28,7 +28,7 @@ func registerUpgradeBootstrap(app *pocketbase.PocketBase, manager *upgrade.Manag
 			return err
 		}
 		if err := upgrade.RunMigrations(context.Background(), event.App, manager, upgrade.Migrations(driver, setupURL, &setupLink), upgrade.MigrationAudit(driver, encryptionKey)); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", upgrade.ErrMigrationFailed, err)
 		}
 		if err := manager.SetPhase(upgrade.StatusVerifying); err != nil {
 			return err
@@ -37,7 +37,7 @@ func registerUpgradeBootstrap(app *pocketbase.PocketBase, manager *upgrade.Manag
 			return err
 		}
 		if err := upgrade.ReconcileDurableEvents(context.Background(), event.App, driver, manager.Dir, encryptionKey); err != nil {
-			return err
+			return fmt.Errorf("%w: %w", upgrade.ErrAuditUnavailable, err)
 		}
 		return nil
 	})
@@ -234,11 +234,13 @@ func problemCode(err error) string {
 		return "unknown_schema"
 	case strings.Contains(message, "checksum mismatch"):
 		return "migration_checksum_mismatch"
-	case strings.Contains(message, "backup"):
+	// Classified where the failure happens: a path such as ".subflow/backups"
+	// in an unrelated error must not be reported as a backup failure.
+	case errors.Is(err, upgrade.ErrBackupFailed):
 		return "backup_failed"
-	case strings.Contains(message, "audit"):
+	case errors.Is(err, upgrade.ErrAuditUnavailable):
 		return "audit_unavailable"
-	case strings.Contains(message, "migration"):
+	case errors.Is(err, upgrade.ErrMigrationFailed):
 		return "migration_failed"
 	default:
 		return "upgrade_failed"

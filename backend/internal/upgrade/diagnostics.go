@@ -16,6 +16,11 @@ var (
 	ErrPreviousFailure      = errors.New("previous upgrade failed")
 	ErrUnsupportedDowngrade = errors.New("downgrades are not supported")
 	ErrInvalidVersion       = errors.New("invalid upgrade version")
+	// The three below classify a failure at its source. Matching on message
+	// text mislabels unrelated errors whose paths mention the same words.
+	ErrBackupFailed     = errors.New("recovery backup failed")
+	ErrAuditUnavailable = errors.New("upgrade audit unavailable")
+	ErrMigrationFailed  = errors.New("migration failed")
 )
 
 type Failure struct {
