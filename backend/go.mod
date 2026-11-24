@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/altcha-org/altcha-lib-go v1.0.0
-	github.com/altcha-org/altcha-lib-go/v2 v2.4.1
+	github.com/altcha-org/altcha-lib-go/v2 v2.5.0
 	github.com/pocketbase/dbx v1.12.0
 	github.com/pocketbase/pocketbase v0.40.6
 	golang.org/x/crypto v0.58.0
